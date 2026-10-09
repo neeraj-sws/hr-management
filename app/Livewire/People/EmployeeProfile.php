@@ -40,6 +40,13 @@ class EmployeeProfile extends Component
         $this->toast('Attendance methods updated.');
     }
 
+    public function toggleAppUsage(\App\Services\AppUsageService $usage): void
+    {
+        $on = ! $usage->enabledFor($this->employee);
+        $usage->setForEmployee($this->employee, $on, $this->user());
+        $this->toast($on ? 'Application usage tracking turned on.' : 'Application usage tracking turned off.');
+    }
+
     public function toggleCapture(\App\Services\ScreenCaptureService $captures): void
     {
         $on = ! $captures->policy($this->employee)['enabled'];
@@ -70,6 +77,7 @@ class EmployeeProfile extends Component
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
             'attendanceSources' => app(\App\Services\AttendanceService::class)->allowedSources($employee),
+            'appUsageOn' => $user->can('monitoring.manage') ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : null,
             'teamHistory' => \App\Models\EmployeeTeamHistory::with('team')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'managerHistory' => \App\Models\EmployeeManagerHistory::with('manager')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'history' => $user->canAny(['employees.manage', 'hr.manage', 'audit.view']) ? \App\Models\AuditLog::with('actor')->where('subject_type', $employee::class)->where('subject_id', $employee->id)->latest('id')->limit(15)->get() : collect(),

@@ -172,3 +172,10 @@ Inno Setup 6.7.3 installed; `python\build-desktop.bat` produced `dist\SWS-HR-Set
 - The employee is no longer asked to acknowledge; the desktop app still shows a visible "Screen capture on: every N min…" line (spec §48: no hidden surveillance).
 - Unchanged: only while checked in and working, never during breaks or after check-out, private storage, audited viewing, retention purge.
 - Desktop app 1.2.0 built and installed (`SWS-HR-Setup-1.2.0.exe`).
+
+### Application-usage tracking (2026-10-09, owner request: app name + duration only)
+- New: desktop reads only the **foreground application's executable name** (mapped to a friendly label), accumulates time per app while checked in and working, and reports totals via `POST /api/monitoring/app-usage`. **No window titles, typed text, keystrokes, passwords or content** — spec §10/§48 respected.
+- Off by default; an administrator (`monitoring.manage`) turns it on per employee (employee profile card), exactly like screen capture. The desktop app shows the employee a visible notice while it is on.
+- Admin report: **Reports → App Usage** (`app_usage`), on screen + CSV, per employee / day / application with hours and minutes. Only `monitoring.view` can see it.
+- Tables: `app_usage_daily` (employee_id, work_date, app_name, seconds; unique per employee/day/app). Desktop 1.3.0.
+- Tests: `test_application_usage_...` (admin-only enable, per-app/day totals, report visibility). Full suite **102 passed (1,554 assertions)**; desktop unittest OK; mobile tsc clean.

@@ -43,6 +43,58 @@ def seconds_since_input() -> float:
     return ((now - info.dwTime) & 0xFFFFFFFF) / 1000.0
 
 
+# Friendly names for common executables; anything else falls back to the .exe base name.
+_APP_NAMES = {
+    "chrome": "Google Chrome", "msedge": "Microsoft Edge", "firefox": "Firefox", "brave": "Brave",
+    "code": "VS Code", "devenv": "Visual Studio", "pycharm64": "PyCharm", "phpstorm64": "PhpStorm", "idea64": "IntelliJ IDEA",
+    "winword": "Microsoft Word", "excel": "Microsoft Excel", "powerpnt": "Microsoft PowerPoint", "outlook": "Microsoft Outlook",
+    "onenote": "OneNote", "teams": "Microsoft Teams", "ms-teams": "Microsoft Teams", "slack": "Slack", "zoom": "Zoom",
+    "whatsapp": "WhatsApp", "telegram": "Telegram", "notepad": "Notepad", "explorer": "File Explorer",
+    "acrobat": "Adobe Acrobat", "acrord32": "Adobe Reader", "photoshop": "Adobe Photoshop", "cmd": "Command Prompt",
+    "powershell": "PowerShell", "windowsterminal": "Windows Terminal", "postman": "Postman", "figma": "Figma",
+}
+
+
+def foreground_app() -> str | None:
+    """
+    The application that owns the foreground window, as a display name (e.g. "Google
+    Chrome"). Only the executable name is read - never the window title, so no
+    document names, e-mail subjects or other content are seen. None off Windows,
+    on the lock screen, or when it cannot be determined.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+        pid = ctypes.c_uint(0)
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return None
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+        if not handle:
+            return None
+        try:
+            size = ctypes.c_uint(32768)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                return None
+            exe = buf.value
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return None
+    if not exe:
+        return None
+    base = exe.replace("\\", "/").split("/")[-1]
+    stem = base[:-4] if base.lower().endswith(".exe") else base
+    key = stem.lower()
+    return _APP_NAMES.get(key, stem[:1].upper() + stem[1:] if stem else None)
+
+
 def is_locked() -> bool:
     """True while the lock screen (or another secure desktop) is shown."""
     if sys.platform != "win32":

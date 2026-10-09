@@ -208,4 +208,33 @@ class RemainingFeaturesTest extends TestCase
         Sanctum::actingAs($this->employeeUser, ['*']);
         $this->getJson('/api/me')->assertOk()->assertJsonPath('data.policies.attendance_sources', ['desktop']);
     }
+    public function test_application_usage_is_admin_enabled_and_totalled_per_app_per_day(): void
+    {
+        $usage = app(\App\Services\AppUsageService::class);
+        // Off by default - nothing is stored even if the desktop reports.
+        $this->assertFalse($usage->enabledFor($this->employee));
+        Sanctum::actingAs($this->employeeUser, ['*']);
+        $this->postJson('/api/monitoring/app-usage', ['apps' => ['Google Chrome' => 600]])->assertOk()->assertJsonPath('enabled', false);
+        $this->assertSame(0, \App\Models\AppUsage::count());
+
+        // HR cannot enable it; only monitoring.manage (admin) can.
+        $hr = User::factory()->create(); $hr->assignRole('HR');
+        try { $usage->setForEmployee($this->employee, true, $hr); $this->fail('HR blocked'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(403, $e->getStatusCode()); }
+        $usage->setForEmployee($this->employee, true, $this->admin);
+
+        // Reports accumulate per app per day.
+        $this->postJson('/api/monitoring/app-usage', ['apps' => ['Google Chrome' => 600, 'VS Code' => 1800]])->assertOk()->assertJsonPath('enabled', true)->assertJsonPath('recorded', 2);
+        $this->postJson('/api/monitoring/app-usage', ['apps' => ['Google Chrome' => 300]])->assertOk();
+        $this->assertSame(900, (int) \App\Models\AppUsage::where('employee_id', $this->employee->id)->where('app_name', 'Google Chrome')->value('seconds'));
+
+        // Admin report lists it; employees cannot view it.
+        $rows = app(ReportService::class)->rows($this->admin, 'app_usage', ['from' => today()->toDateString(), 'to' => today()->toDateString()]);
+        $chrome = $rows->firstWhere('application', 'Google Chrome');
+        $this->assertSame([15, 0.25], [$chrome['minutes'], $chrome['hours']]);
+        $this->assertFalse(app(ReportService::class)->canView($this->employeeUser, 'app_usage'));
+
+        // The phone/desktop learns the flag from /me.
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('data.policies.app_usage', true);
+    }
 }
