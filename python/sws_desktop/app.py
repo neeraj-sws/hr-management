@@ -51,6 +51,7 @@ class DesktopApp:
         self.app_usage_on = False
         self.window_titles: dict[tuple[str, str], float] = {}  # (app, title) -> seconds not yet sent
         self.window_titles_on = False
+        self.desktop_attendance_allowed = True  # admin can turn desktop attendance off for an employee
         self.last_presence_poll: datetime | None = None
         self.capture_policy: dict | None = None
         self.last_capture: datetime | None = None
@@ -461,6 +462,8 @@ class DesktopApp:
             self._apply_capture_policy((self.me.get("policies") or {}).get("screen_capture"))
             self.app_usage_on = bool((self.me.get("policies") or {}).get("app_usage"))
             self.window_titles_on = bool((self.me.get("policies") or {}).get("window_titles"))
+            sources = (self.me.get("policies") or {}).get("attendance_sources")
+            self.desktop_attendance_allowed = (not isinstance(sources, list)) or ("desktop" in sources)
             if hasattr(self, "app_usage_label") and self.app_usage_label.winfo_exists():
                 if self.app_usage_on and self.window_titles_on:
                     self.app_usage_label.config(text="Application usage AND the active window/tab title are recorded while you work.")
@@ -476,7 +479,7 @@ class DesktopApp:
             self._render_sync()
             if not self.me.get("employee"):
                 self._flash("This account has no employee profile — attendance and tasks are unavailable.", AMBER)
-            elif self.launched_at_startup and not self.check_in_prompted and not session:
+            elif self.launched_at_startup and not self.check_in_prompted and not session and self.desktop_attendance_allowed:
                 self._prompt_check_in()
             self._check_for_update()
 
@@ -517,6 +520,10 @@ class DesktopApp:
         self.session_fetched_at = datetime.now(timezone.utc)
         for button in self.att_buttons.values():
             button.pack_forget()
+        if not self.desktop_attendance_allowed:
+            # Admin turned desktop attendance off for this employee: show no buttons.
+            self.session_label.config(text="Attendance from the desktop app is turned off for you. Use the website or mobile app.", fg=AMBER)
+            return
         if not session:
             self.session_label.config(text="Not checked in", fg=MUTED)
             self.att_buttons["check_in"].pack(fill="x", pady=2)
