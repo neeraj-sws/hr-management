@@ -34,6 +34,14 @@ return [
         'access_token' => env('EXPO_ACCESS_TOKEN'),
     ],
 
+    // Desktop installer currently offered to the Windows app (see DesktopReleaseController).
+    'desktop' => [
+        'version' => env('DESKTOP_LATEST_VERSION'),
+        'url' => env('DESKTOP_DOWNLOAD_URL'),
+        'sha256' => env('DESKTOP_SHA256'),
+        'notes' => env('DESKTOP_RELEASE_NOTES'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

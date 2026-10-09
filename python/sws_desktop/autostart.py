@@ -36,16 +36,19 @@ def _windowless_python() -> str:
 
 
 def enable() -> None:
-    """Create the Startup shortcut: pythonw -m sws_desktop --startup, run from this project folder."""
+    """Create the Startup shortcut: the installed SWS HR.exe --startup, or pythonw -m sws_desktop --startup from source."""
     target = shortcut_path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    workdir = Path(__file__).resolve().parent.parent
+    frozen = getattr(sys, "frozen", False)  # installed .exe built with PyInstaller
+    workdir = Path(sys.executable).parent if frozen else Path(__file__).resolve().parent.parent
+    exe = sys.executable if frozen else _windowless_python()
+    arguments = STARTUP_FLAG if frozen else f"-m sws_desktop {STARTUP_FLAG}"
     quote = lambda value: str(value).replace("'", "''")  # noqa: E731 - PowerShell single-quote escaping
     script = (
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}'); "
-        "$s.TargetPath = '{exe}'; $s.Arguments = '-m sws_desktop {flag}'; "
+        "$s.TargetPath = '{exe}'; $s.Arguments = '{args}'; "
         "$s.WorkingDirectory = '{cwd}'; $s.Description = 'SWS HR work timer'; $s.Save()"
-    ).format(lnk=quote(target), exe=quote(_windowless_python()), flag=STARTUP_FLAG, cwd=quote(workdir))
+    ).format(lnk=quote(target), exe=quote(exe), args=quote(arguments), cwd=quote(workdir))
     subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
         check=True, capture_output=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),

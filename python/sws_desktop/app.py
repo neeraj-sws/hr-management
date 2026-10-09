@@ -20,6 +20,8 @@ import webbrowser
 
 from . import autostart, presence, settings
 from .tray import Tray
+from . import updater
+from .version import VERSION
 from .client import ApiError, HrClient
 from .offline import OfflineQueue
 
@@ -484,6 +486,7 @@ class DesktopApp:
                 self._flash("This account has no employee profile — attendance and tasks are unavailable.", AMBER)
             elif self.launched_at_startup and not self.check_in_prompted and not session:
                 self._prompt_check_in()
+            self._check_for_update()
 
         def failed(error):
             if isinstance(error, ApiError) and error.is_network:
@@ -494,6 +497,28 @@ class DesktopApp:
                 self._flash(error.first_message if isinstance(error, ApiError) else str(error), RED)
 
         self._run(work, done, failed)
+
+    def _check_for_update(self):
+        """Once per run: offer a newer version if the server publishes one."""
+        if getattr(self, "update_checked", False):
+            return
+        self.update_checked = True
+
+        def offer(latest):
+            update = updater.available_update(latest)
+            if not update:
+                return
+            notes = f"\n\n{update['notes']}" if update.get("notes") else ""
+            if not messagebox.askyesno("SWS HR update", f"Version {update['version']} is available (you have {VERSION}).{notes}\n\nInstall it now? SWS HR will close and reopen.", parent=self.root):
+                return
+            self._flash("Downloading the update…", INK)
+            self._run(lambda: updater.download(update), install, lambda error: self._flash(f"Update failed: {error}", RED))
+
+        def install(path):
+            updater.run_installer(path)
+            self._quit()
+
+        self._run(self.client.latest_desktop, offer, lambda error: None)
 
     def _set_session(self, session: dict | None):
         self.session = session

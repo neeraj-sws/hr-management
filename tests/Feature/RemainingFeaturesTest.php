@@ -120,4 +120,26 @@ class RemainingFeaturesTest extends TestCase
         $this->actingAs($this->admin)->get('/reports/payments')->assertOk()->assertSee('NEFT-1');
         $this->actingAs($this->admin)->get('/reports/teams/export?from=2026-10-01&to=2026-10-07')->assertOk();
     }
+    public function test_phone_push_registers_sends_respects_preferences_and_forgets_dead_phones(): void
+    {
+        \Illuminate\Support\Facades\Http::fake(['exp.host/*' => \Illuminate\Support\Facades\Http::response(['data' => [['status' => 'error', 'details' => ['error' => 'DeviceNotRegistered']]]])]);
+        Sanctum::actingAs($this->employeeUser, ['*']);
+        $this->postJson('/api/push-tokens', ['token' => 'not-a-token'])->assertUnprocessable();
+        $this->postJson('/api/push-tokens', ['token' => 'ExponentPushToken[abc123]', 'platform' => 'android'])->assertOk()->assertJsonPath('push_enabled', false);
+        $notification = new \App\Notifications\ApprovalRequested('LeaveRequest', 1, 'Your leave was approved');
+        $this->assertSame(['database'], $notification->via($this->employeeUser->fresh()), 'Off until EXPO_PUSH_ENABLED');
+
+        config(['services.expo_push.enabled' => true]);
+        $this->assertContains(\App\Notifications\Channels\ExpoPushChannel::class, $notification->via($this->employeeUser->fresh()));
+        $this->employeeUser->forceFill(['notification_preferences' => ['company' => ['in_app' => true, 'push' => false]]])->save();
+        $this->assertNotContains(\App\Notifications\Channels\ExpoPushChannel::class, (new \App\Notifications\ApprovalRequested('Announcement', 1, 'News'))->via($this->employeeUser->fresh()));
+
+        (new \App\Notifications\Channels\ExpoPushChannel)->send($this->employeeUser, $notification);
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->url() === \App\Notifications\Channels\ExpoPushChannel::ENDPOINT && $request[0]['to'] === 'ExponentPushToken[abc123]' && $request[0]['body'] === 'Your leave was approved');
+        $this->assertSame(0, \App\Models\PushToken::count(), 'Phone that uninstalled the app is forgotten');
+
+        $this->postJson('/api/push-tokens', ['token' => 'ExponentPushToken[xyz]'])->assertOk();
+        $this->postJson('/api/push-tokens/remove', ['token' => 'ExponentPushToken[xyz]'])->assertOk();
+        $this->assertSame(0, \App\Models\PushToken::count());
+    }
 }

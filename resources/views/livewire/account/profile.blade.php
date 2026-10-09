@@ -36,12 +36,13 @@
             @endif
         </div>
         <section class="card" id="notifications">
-            <div class="card-head"><div><h2>Notifications</h2><p>Choose what reaches you in the app and by e-mail. Important updates always appear in the app.</p></div></div>
+            <div class="card-head"><div><h2>Notifications</h2><p>Choose what reaches you in the app, on your phone (SWS HR mobile app) and by e-mail. Important updates always appear in the app.</p></div></div>
             <form class="card-body" wire:submit="savePreferences">
-                <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th>In the app</th><th>E-mail</th></tr></thead><tbody>
+                <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th>In the app</th><th>Phone push</th><th>E-mail</th></tr></thead><tbody>
                     @foreach(\App\Notifications\ApprovalRequested::GROUPS as $group => [$label, $mutable])
                         <tr><td>{{ $label }}</td>
                             <td>@if($mutable)<input type="checkbox" wire:model="prefs.{{ $group }}.in_app" aria-label="{{ $label }} in the app">@else<span class="small muted">always</span>@endif</td>
+                            <td><input type="checkbox" wire:model="prefs.{{ $group }}.push" aria-label="{{ $label }} as a phone notification"></td>
                             <td><input type="checkbox" wire:model="prefs.{{ $group }}.email" aria-label="{{ $label }} by e-mail"></td></tr>
                     @endforeach
                 </tbody></table></div>
