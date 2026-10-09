@@ -223,6 +223,8 @@ class DesktopApp:
         buttons = tk.Frame(att, bg="white")
         buttons.grid(row=0, column=1, rowspan=3, sticky="e", padx=(20, 0))
         att.columnconfigure(0, weight=1)
+        self.att_off_label = tk.Label(buttons, text="", fg=AMBER, bg="white", wraplength=200, justify="right")
+        self.att_off_label.pack(side="bottom")
         self.att_buttons = {}
         for action in ("check_in", "break_start", "break_end", "check_out"):
             look = {"check_in": "Primary.TButton", "break_end": "Success.TButton", "check_out": "Danger.TButton"}.get(action, "TButton")
@@ -520,25 +522,26 @@ class DesktopApp:
         self.session_fetched_at = datetime.now(timezone.utc)
         for button in self.att_buttons.values():
             button.pack_forget()
-        if not self.desktop_attendance_allowed:
-            # Admin turned desktop attendance off for this employee: show no buttons.
-            self.session_label.config(text="Attendance from the desktop app is turned off for you. Use the website or mobile app.", fg=AMBER)
-            return
+        # Today's time/status always shows; the buttons depend on the admin setting.
         if not session:
             self.session_label.config(text="Not checked in", fg=MUTED)
-            self.att_buttons["check_in"].pack(fill="x", pady=2)
-            return
-        check_in = parse_time(session.get("check_in"))
-        check_out = parse_time(session.get("check_out"))
-        text = f"In {check_in.astimezone().strftime('%I:%M %p') if check_in else '—'}"
-        if check_out:
-            text += f" · Out {check_out.astimezone().strftime('%I:%M %p')}"
-        self.session_label.config(text=f"{text} · {STATUS_LABEL.get(session['status'], session['status'])}", fg={"working": GREEN, "on_break": AMBER}.get(session["status"], MUTED))
-        if getattr(self, "tray", None):
-            self.tray.set_title(f"SWS HR - {STATUS_LABEL.get(session['status'], session['status'])}")
-        if not check_out:
-            self.att_buttons["break_end" if session["status"] == "on_break" else "break_start"].pack(fill="x", pady=2)
-            self.att_buttons["check_out"].pack(fill="x", pady=2)
+            if self.desktop_attendance_allowed:
+                self.att_buttons["check_in"].pack(fill="x", pady=2)
+        else:
+            check_in = parse_time(session.get("check_in"))
+            check_out = parse_time(session.get("check_out"))
+            text = f"In {check_in.astimezone().strftime('%I:%M %p') if check_in else '—'}"
+            if check_out:
+                text += f" · Out {check_out.astimezone().strftime('%I:%M %p')}"
+            self.session_label.config(text=f"{text} · {STATUS_LABEL.get(session['status'], session['status'])}", fg={"working": GREEN, "on_break": AMBER}.get(session["status"], MUTED))
+            if getattr(self, "tray", None):
+                self.tray.set_title(f"SWS HR - {STATUS_LABEL.get(session['status'], session['status'])}")
+            if self.desktop_attendance_allowed and not check_out:
+                self.att_buttons["break_end" if session["status"] == "on_break" else "break_start"].pack(fill="x", pady=2)
+                self.att_buttons["check_out"].pack(fill="x", pady=2)
+        # A small note when the admin has turned desktop attendance off (buttons hidden, time still shown).
+        if hasattr(self, "att_off_label") and self.att_off_label.winfo_exists():
+            self.att_off_label.config(text="" if self.desktop_attendance_allowed else "Attendance from the desktop app is turned off for you. Use the website or mobile app.")
 
     def _tick(self):
         if not self.clock_label.winfo_exists():
