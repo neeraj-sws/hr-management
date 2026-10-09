@@ -1,0 +1,99 @@
+<?php
+
+namespace App\Notifications;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Notifications\Notification;
+
+/**
+ * Database notification for workflow events (approval requests, decisions,
+ * payroll, payments, task assignment). Queued and dispatched after commit.
+ */
+class ApprovalRequested extends Notification implements ShouldQueue
+{
+    use Queueable;
+
+    /** Page an employee lands on for updates about their own records. */
+    private const ROUTES = [
+        'LeaveRequest' => 'leave.requests',
+        'OvertimeRequest' => 'leave.overtime',
+        'SalaryAdjustment' => 'payroll.salary',
+        'SalaryAdvance' => 'payroll.advances',
+        'EmployeePenalty' => 'compliance.penalties',
+        'PayrollRun' => 'payroll.payslips',
+        'SalaryPayment' => 'payroll.payslips',
+        'TaskAssignment' => 'work.my-tasks',
+        'EmployeeFinalSettlement' => 'lifecycle.settlements',
+        'EmployeeFinalSettlementPayment' => 'lifecycle.settlements',
+        'PerformanceReview' => 'performance.reviews',
+        'AttendanceCorrection' => 'attendance.corrections',
+        'ExpenseClaim' => 'expenses.index',
+        'Announcement' => 'company.announcements',
+        'Celebration' => 'dashboard',
+        'Interview' => 'recruitment.interviews',
+        'TrainingAssignment' => 'training.my',
+    ];
+
+    /** group => [label, can be muted in the app] — everything not listed is "important" and always shown in the app. */
+    public const GROUPS = [
+        'important' => ['Approvals, my requests, payroll, attendance and penalties', false],
+        'work' => ['Tasks, comments, interviews, training and reviews', true],
+        'reminders' => ['Daily status reminders and team blockers', true],
+        'company' => ['Announcements, birthdays and anniversaries', true],
+    ];
+
+    private const KIND_GROUP = [
+        'TaskAssignment' => 'work', 'TaskComment' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
+        'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders',
+        'Announcement' => 'company', 'Celebration' => 'company',
+    ];
+
+    public static function groupFor(string $kind): string
+    {
+        return self::KIND_GROUP[$kind] ?? 'important';
+    }
+
+    public function __construct(
+        private readonly string $kind,
+        private readonly int $recordId,
+        private readonly string $message,
+        private readonly ?string $url = null,
+    ) {
+        $this->afterCommit();
+    }
+
+    /** In-app unless the person muted an optional group; e-mail only where they asked for it. */
+    public function via(object $notifiable): array
+    {
+        $group = self::groupFor($this->kind);
+        $prefs = (array) (($notifiable->notification_preferences ?? [])[$group] ?? []);
+        $channels = [];
+        if (! self::GROUPS[$group][1] || ($prefs['in_app'] ?? true)) $channels[] = 'database';
+        if (($prefs['email'] ?? false) && ! empty($notifiable->email)) $channels[] = 'mail';
+
+        return $channels;
+    }
+
+    public function toMail(object $notifiable): MailMessage
+    {
+        $url = $this->url ?? self::urlFor($this->kind, $this->message);
+
+        return (new MailMessage)->subject('SWS HR: '.\Illuminate\Support\Str::limit($this->message, 70))->line($this->message)->action('Open SWS HR', url($url));
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return ['kind' => $this->kind, 'record_id' => $this->recordId, 'message' => $this->message, 'url' => $this->url ?? self::urlFor($this->kind, $this->message)];
+    }
+
+    /** Requests that "need review/approval" go to the approver inbox; everything else to the record's page. */
+    public static function urlFor(string $kind, string $message): string
+    {
+        $route = str_contains(strtolower($message), 'needs') ? 'approvals.pending' : (self::ROUTES[$kind] ?? 'dashboard');
+        if ($kind === 'PayrollRun' && str_contains(strtolower($message), 'needs')) $route = 'payroll.approvals';
+
+        return route($route, absolute: false);
+    }
+}

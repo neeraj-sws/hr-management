@@ -1,0 +1,91 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Resources\AttendanceSessionResource;
+use App\Models\AttendanceSession;
+use App\Services\AttendanceService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+
+/** Attendance actions for signed-in employees (mobile app / web). Device agents use /attendance/sync. */
+class AttendanceActionController extends ApiController
+{
+    public function __construct(private readonly AttendanceService $attendance) {}
+
+    public function today(Request $request): JsonResponse
+    {
+        return $this->respond($this->attendance->today($this->apiEmployee($request)));
+    }
+
+    public function checkIn(Request $request): JsonResponse
+    {
+        return $this->respond($this->attendance->checkIn($this->apiEmployee($request), $this->source($request), null, $this->location($request)), 201);
+    }
+
+    public function startBreak(Request $request): JsonResponse
+    {
+        return $this->respond($this->attendance->startBreak($this->apiEmployee($request), $this->source($request)));
+    }
+
+    public function endBreak(Request $request): JsonResponse
+    {
+        return $this->respond($this->attendance->endBreak($this->apiEmployee($request), $this->source($request)));
+    }
+
+    public function checkOut(Request $request): JsonResponse
+    {
+        return $this->respond($this->attendance->checkOut($this->apiEmployee($request), $this->source($request), null, $this->location($request)));
+    }
+
+    /** Desktop: the employee confirmed that time away from the computer was a break. */
+    public function away(Request $request): JsonResponse
+    {
+        $data = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after:from'], 'reason' => ['required', 'in:idle,locked,asleep']]);
+        $from = Carbon::parse($data['from']);
+        abort_if($from->lt(now()->subHours(24)), 422, 'Away periods older than 24 hours cannot be recorded; ask for an attendance correction instead.');
+
+        return $this->respond($this->attendance->recordAway($this->apiEmployee($request), $from, Carbon::parse($data['to']), $data['reason'], 'desktop'));
+    }
+
+    public function heartbeat(Request $request): JsonResponse
+    {
+        $data = $request->validate(['screen_active_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'], 'screen_idle_seconds' => ['nullable', 'integer', 'min:0', 'max:3600']]);
+
+        return $this->respond($this->attendance->heartbeat($this->apiEmployee($request), (int) ($data['screen_active_seconds'] ?? 0), (int) ($data['screen_idle_seconds'] ?? 0)));
+    }
+
+    public function history(Request $request): JsonResponse
+    {
+        $employee = $this->apiEmployee($request);
+        $data = $request->validate(['from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);
+        $from = Carbon::parse($data['from'] ?? now()->startOfMonth());
+        $to = Carbon::parse($data['to'] ?? today());
+        abort_if($from->diffInDays($to) > 92, 422, 'History range may not exceed 92 days.');
+
+        return response()->json(['data' => $this->attendance->days($employee, $from, $to)->map(fn ($day) => [
+            'date' => $day['date'],
+            'status' => $day['status'],
+            'session' => $day['session'] ? (new AttendanceSessionResource($day['session']))->resolve() : null,
+        ])->values()]);
+    }
+
+    /** Position sent by the phone at check-in/out (validated in AttendanceService::locate). */
+    private function location(Request $request): ?array
+    {
+        $request->validate(['latitude' => ['nullable', 'numeric', 'between:-90,90'], 'longitude' => ['nullable', 'numeric', 'between:-180,180'], 'accuracy' => ['nullable', 'numeric', 'min:0']]);
+
+        return $request->filled(['latitude', 'longitude']) ? $request->only(['latitude', 'longitude', 'accuracy']) : null;
+    }
+
+    private function source(Request $request): string
+    {
+        return in_array($request->input('source'), ['mobile', 'desktop', 'web'], true) ? $request->input('source') : 'mobile';
+    }
+
+    private function respond(?AttendanceSession $session, int $status = 200): JsonResponse
+    {
+        return response()->json(['data' => $session ? array_merge((new AttendanceSessionResource($session->load('events')))->resolve(), ['worked_seconds' => $this->attendance->workedSeconds($session)]) : null], $status);
+    }
+}

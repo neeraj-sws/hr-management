@@ -13,6 +13,8 @@
 /.zed
 /auth.json
 /node_modules
+__pycache__/
+*.py[cod]
 /public/build
 /public/hot
 /public/storage
@@ -22,3 +24,12 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Local-only helpers (contain the LAN IP / personal settings)
+/.claude/settings.local.json
+/mobile/.claude/
+/mobile/expo-qr.png
+/mobile/phone-qr.html
+/python/dist/
+/python/build/
+*.spec.bak

@@ -1,0 +1,212 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\AttendanceEmployee;
+use App\Models\AttendanceSession;
+use App\Models\AuditLog;
+use App\Models\EmployeePenalty;
+use App\Models\ExpenseClaim;
+use App\Models\LeaveRequest;
+use App\Models\OvertimeRequest;
+use App\Models\PayrollItem;
+use App\Models\PerformanceReview;
+use App\Models\SalaryProfile;
+use App\Models\Task;
+use App\Models\TrainingAssignment;
+use App\Models\User;
+use Illuminate\Support\Collection;
+
+/**
+ * One definition per report, shared by the on-screen report and the CSV
+ * export so both always show the same rows for the same filters.
+ *
+ * Filters: from, to (Y-m-d), employee_id, department_id, team_id, search.
+ */
+class ReportService
+{
+    /** type => [label, view permissions (any), organisation-wide permissions (any; otherwise own team only)] */
+    public const TYPES = [
+        'attendance' => ['Attendance', ['reports.view', 'hr.manage', 'attendance.view'], ['hr.manage', 'employees.manage']],
+        'leave' => ['Leave', ['leave.manage', 'leave.approve', 'hr.manage'], ['hr.manage', 'leave.manage']],
+        'tasks' => ['Tasks', ['reports.view', 'hr.manage', 'tasks.manage'], ['hr.manage', 'employees.manage']],
+        'overtime' => ['Overtime', ['overtime.manage', 'hr.manage', 'payroll.manage'], ['hr.manage', 'employees.manage', 'payroll.manage']],
+        'payroll' => ['Payroll', ['payroll.manage', 'payroll.approve'], ['payroll.manage', 'payroll.approve']],
+        'salary' => ['Salary', ['payroll.manage', 'payroll.approve'], ['payroll.manage', 'payroll.approve']],
+        'performance' => ['Performance', ['reports.view', 'hr.manage'], ['hr.manage', 'employees.manage']],
+        'productivity' => ['Productivity', ['reports.view', 'hr.manage'], ['hr.manage', 'employees.manage']],
+        'compliance' => ['Compliance', ['penalties.manage', 'policies.manage', 'hr.manage'], ['hr.manage', 'penalties.manage', 'policies.manage']],
+        'audit' => ['Audit', ['audit.view'], ['audit.view']],
+        'employees' => ['Employees', ['employees.manage', 'hr.manage'], ['employees.manage', 'hr.manage']],
+        'expenses' => ['Expenses', ['expenses.manage', 'hr.manage', 'approvals.manage'], ['expenses.manage', 'hr.manage']],
+        'training' => ['Training', ['training.manage', 'training.assign', 'hr.manage'], ['training.manage', 'hr.manage']],
+    ];
+
+    public function __construct(private readonly AttendanceService $attendance, private readonly WorkService $work) {}
+
+    public function label(string $type): string
+    {
+        return self::TYPES[$type][0] ?? ucfirst($type);
+    }
+
+    public function canView(?User $user, string $type): bool
+    {
+        return $user !== null && isset(self::TYPES[$type]) && $user->canAny(self::TYPES[$type][1]);
+    }
+
+    /** @return array<int, string> types the user may open */
+    public function availableTypes(User $user): array
+    {
+        return array_values(array_filter(array_keys(self::TYPES), fn ($type) => $this->canView($user, $type)));
+    }
+
+    public function columns(string $type): array
+    {
+        return match ($type) {
+            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'day_status', 'session_status'],
+            'leave' => ['id', 'employee_code', 'employee_name', 'leave_type', 'paid', 'starts_on', 'ends_on', 'days', 'status', 'decided_at'],
+            'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
+            'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
+            'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance'],
+            'salary' => ['employee_code', 'employee_name', 'effective_from', 'monthly_salary', 'working_days_per_month', 'standard_daily_hours'],
+            'performance' => ['employee_code', 'employee_name', 'completed_tasks', 'attendance_days', 'approved_leave_days', 'completed_late', 'overdue_tasks', 'logged_hours', 'average_rating'],
+            'productivity' => ['employee_code', 'employee_name', 'completed_tasks', 'completed_late', 'on_time_rate', 'open_tasks', 'overdue_tasks', 'estimated_hours', 'logged_hours', 'active_hours', 'utilization'],
+            'compliance' => ['id', 'employee_code', 'employee_name', 'effective_on', 'amount', 'reason', 'rule', 'status', 'in_payroll'],
+            'audit' => ['id', 'created_at', 'actor', 'action', 'record_type', 'record_id', 'ip_address', 'metadata'],
+            'employees' => ['employee_code', 'name', 'email', 'designation', 'department', 'manager', 'joined_at', 'status'],
+            'expenses' => ['id', 'employee_code', 'employee_name', 'spent_on', 'category', 'amount', 'description', 'status', 'receipt', 'paid_in_payroll'],
+            'training' => ['employee_code', 'employee_name', 'course', 'mandatory', 'assigned_on', 'due_on', 'status', 'completed_at'],
+            default => [],
+        };
+    }
+
+    /** @return Collection<int, array<string, mixed>> rows keyed by column */
+    public function rows(User $user, string $type, array $filters, ?int $limit = null): Collection
+    {
+        abort_unless($this->canView($user, $type), 403);
+        $from = $filters['from'] ?? now()->startOfMonth()->toDateString();
+        $to = $filters['to'] ?? today()->toDateString();
+        $ids = $this->employeeIds($user, $type, $filters);
+
+        $rows = match ($type) {
+            'attendance' => AttendanceSession::with('employee.department')->whereIn('employee_id', $ids)
+                ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')->orderBy('employee_id')
+                ->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(function (AttendanceSession $s) {
+                    $status = $this->attendance->isHalfDay($s) ? 'half_day' : ($this->attendance->isLate($s) ? 'late' : 'present');
+
+                    return ['employee_code' => $s->employee?->employee_code, 'employee_name' => $s->employee?->name, 'department' => $s->employee?->department?->name, 'work_date' => $s->work_date?->toDateString(), 'check_in' => $s->check_in?->format('H:i'), 'check_out' => $s->check_out?->format('H:i'), 'active_hours' => $this->hours($s->active_seconds), 'idle_hours' => $this->hours($s->idle_seconds), 'break_hours' => $this->hours($s->break_seconds), 'screen_active_hours' => $this->hours($s->screen_active_seconds), 'screen_idle_hours' => $this->hours($s->screen_idle_seconds), 'late_minutes' => $this->attendance->lateMinutes($s), 'early_minutes' => $this->attendance->earlyMinutes($s), 'day_status' => $status, 'session_status' => $s->status];
+                }),
+            'leave' => LeaveRequest::with(['employee', 'leaveType'])->whereIn('employee_id', $ids)
+                ->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->orderByDesc('starts_on')
+                ->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($r) => ['id' => $r->id, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'leave_type' => $r->leaveType?->name, 'paid' => $r->leaveType?->paid ? 'yes' : 'no', 'starts_on' => $r->starts_on?->toDateString(), 'ends_on' => $r->ends_on?->toDateString(), 'days' => (float) $r->days, 'status' => $r->status, 'decided_at' => $r->decided_at?->toDateTimeString()]),
+            'tasks' => Task::with(['assignee', 'project', 'timeEntries'])->whereIn('assignee_id', $ids)
+                ->where(fn ($q) => $q->whereBetween('due_on', [$from, $to])->orWhere(fn ($q) => $q->whereDate('created_at', '>=', $from)->whereDate('created_at', '<=', $to)))
+                ->when($filters['search'] ?? null, fn ($q, $term) => $q->where('title', 'like', "%{$term}%"))
+                ->orderByDesc('id')->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn (Task $t) => ['id' => $t->id, 'title' => $t->title, 'project' => $t->project?->name, 'employee_code' => $t->assignee?->employee_code, 'employee_name' => $t->assignee?->name, 'priority' => $t->priority, 'status' => $t->status, 'due_on' => $t->due_on?->toDateString(), 'estimated_hours' => $t->estimated_hours !== null ? (float) $t->estimated_hours : null, 'logged_hours' => round($this->work->loggedSeconds($t) / 3600, 2), 'completed_at' => $t->completed_at?->toDateTimeString(), 'timeliness' => $t->wasCompletedLate() ? 'late' : ($t->isOverdue() ? 'overdue' : ($t->status === 'completed' ? 'on_time' : 'open'))]),
+            'overtime' => OvertimeRequest::with('employee')->whereIn('employee_id', $ids)
+                ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')
+                ->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($r) => ['id' => $r->id, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'work_date' => $r->work_date?->toDateString(), 'requested_minutes' => $r->requested_minutes, 'approved_minutes' => $r->approved_minutes, 'status' => $r->status, 'reason' => $r->reason]),
+            'payroll' => PayrollItem::with(['run', 'employee', 'payments'])->whereIn('employee_id', $ids)
+                ->whereHas('run', fn ($q) => $q->whereDate('period_starts_on', '<=', $to)->whereDate('period_ends_on', '>=', $from))
+                ->orderByDesc('payroll_run_id')->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(function (PayrollItem $r) {
+                    $paid = (float) $r->payments->sum('amount');
+
+                    return ['run_id' => $r->payroll_run_id, 'period_start' => $r->run?->period_starts_on?->toDateString(), 'period_end' => $r->run?->period_ends_on?->toDateString(), 'run_status' => $r->run?->status, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'working_days' => (int) $r->working_days, 'present_days' => (float) $r->present_days, 'paid_leave_days' => (float) $r->paid_leave_days, 'unpaid_leave_days' => (float) $r->unpaid_leave_days, 'overtime_amount' => (float) $r->overtime_amount, 'gross' => (float) $r->gross_amount, 'statutory_earnings' => (float) $r->statutory_earnings, 'statutory_deductions' => (float) $r->statutory_deductions, 'penalties' => (float) $r->penalties_amount, 'advance_recovery' => (float) $r->recovery_amount, 'adjustments' => (float) $r->adjustments_amount, 'fixed_deductions' => (float) ($r->calculation_breakdown['fixed_deductions_total'] ?? 0), 'reimbursements' => (float) $r->reimbursements_amount, 'payable' => (float) $r->net_amount, 'paid' => round($paid, 2), 'balance' => round((float) $r->net_amount - $paid, 2)];
+                }),
+            'salary' => SalaryProfile::with('employee')->whereIn('employee_id', $ids)
+                ->whereDate('effective_from', '<=', $to)->orderBy('employee_id')->orderByDesc('effective_from')
+                ->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($r) => ['employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'effective_from' => $r->effective_from?->toDateString(), 'monthly_salary' => (float) $r->monthly_salary, 'working_days_per_month' => $r->working_days_per_month, 'standard_daily_hours' => (float) $r->standard_daily_hours]),
+            'performance' => $this->performanceRows($ids, $from, $to),
+            'productivity' => $this->work->productivity(AttendanceEmployee::whereIn('id', $ids)->orderBy('name')->get(), $from, $to)
+                ->map(fn ($m) => ['employee_code' => $m->employee->employee_code, 'employee_name' => $m->employee->name, 'completed_tasks' => $m->completed_tasks, 'completed_late' => $m->completed_late, 'on_time_rate' => $m->on_time_rate, 'open_tasks' => $m->open_tasks, 'overdue_tasks' => $m->overdue_tasks, 'estimated_hours' => $m->estimated_hours, 'logged_hours' => $m->logged_hours, 'active_hours' => $m->active_hours, 'utilization' => $m->utilization]),
+            'compliance' => EmployeePenalty::with(['employee', 'policyRule'])->whereIn('employee_id', $ids)
+                ->whereDate('effective_on', '>=', $from)->whereDate('effective_on', '<=', $to)->orderByDesc('effective_on')
+                ->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($r) => ['id' => $r->id, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'effective_on' => $r->effective_on?->toDateString(), 'amount' => (float) $r->amount, 'reason' => $r->reason, 'rule' => $r->policyRule?->rule_key ?? 'manual', 'status' => $r->status, 'in_payroll' => $r->payroll_item_id ? 'yes' : 'no']),
+            'audit' => AuditLog::with('actor')->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+                ->when($filters['search'] ?? null, fn ($q, $term) => $q->where('action', 'like', "%{$term}%"))
+                ->orderByDesc('id')->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($r) => ['id' => $r->id, 'created_at' => $r->created_at?->toDateTimeString(), 'actor' => $r->actor?->email ?? 'system', 'action' => $r->action, 'record_type' => $r->subject_type ? class_basename($r->subject_type) : null, 'record_id' => $r->subject_id, 'ip_address' => $r->ip_address, 'metadata' => json_encode($r->metadata)]),
+            'employees' => AttendanceEmployee::with(['department', 'manager'])->whereIn('id', $ids)->orderBy('name')
+                ->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($e) => ['employee_code' => $e->employee_code, 'name' => $e->name, 'email' => $e->email, 'designation' => $e->designation, 'department' => $e->department?->name, 'manager' => $e->manager?->name, 'joined_at' => $e->joined_at?->toDateString(), 'status' => $e->is_active ? 'active' : 'inactive']),
+            'expenses' => ExpenseClaim::with('employee')->whereIn('employee_id', $ids)
+                ->whereDate('spent_on', '>=', $from)->whereDate('spent_on', '<=', $to)->orderByDesc('spent_on')
+                ->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($r) => ['id' => $r->id, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'spent_on' => $r->spent_on?->toDateString(), 'category' => $r->category, 'amount' => (float) $r->amount, 'description' => $r->description, 'status' => $r->displayStatus(), 'receipt' => $r->receipt_path ? 'yes' : 'no', 'paid_in_payroll' => $r->payroll_item_id ? 'yes' : 'no']),
+            'training' => TrainingAssignment::with(['employee', 'course'])->whereIn('employee_id', $ids)
+                ->where(fn ($q) => $q->whereDate('created_at', '>=', $from)->whereDate('created_at', '<=', $to)->orWhere('status', '!=', 'completed'))
+                ->orderBy('employee_id')->orderBy('due_on')->when($limit, fn ($q) => $q->limit($limit))->get()
+                ->map(fn ($r) => ['employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'course' => $r->course?->title, 'mandatory' => $r->course?->is_mandatory ? 'yes' : 'no', 'assigned_on' => $r->created_at?->toDateString(), 'due_on' => $r->due_on?->toDateString(), 'status' => $r->displayStatus(), 'completed_at' => $r->completed_at?->toDateString()]),
+            default => collect(),
+        };
+
+        // A manager sees a report's rows only from the day they started managing each person.
+        $since = $this->managerSince($user, $type);
+        $dateColumn = ['attendance' => 'work_date', 'leave' => 'ends_on', 'overtime' => 'work_date', 'expenses' => 'spent_on', 'tasks' => 'due_on'][$type] ?? null;
+        if ($since && $dateColumn) {
+            $codes = AttendanceEmployee::whereIn('id', array_keys($since))->pluck('employee_code', 'id');
+            $sinceByCode = collect($since)->mapWithKeys(fn ($date, $id) => [$codes[$id] ?? '' => $date]);
+            $rows = $rows->filter(fn ($row) => ! isset($sinceByCode[$row['employee_code'] ?? '']) || ($row[$dateColumn] ?? '9999') >= $sinceByCode[$row['employee_code']]);
+        }
+
+        return $limit ? $rows->take($limit)->values() : $rows->values();
+    }
+
+    /** @return array<int, string> direct report id => date the current manager took over (non-org-wide users only) */
+    private function managerSince(User $user, string $type): array
+    {
+        if ($user->canAny(self::TYPES[$type][2] ?? ['-'])) return [];
+        $own = AttendanceEmployee::where('user_id', $user->id)->first();
+        if (! $own) return [];
+
+        return \App\Models\EmployeeManagerHistory::where('manager_id', $own->id)->whereNull('ends_on')->pluck('starts_on', 'employee_id')
+            ->map(fn ($date) => \Illuminate\Support\Carbon::parse($date)->toDateString())->all();
+    }
+
+    /** Employees in scope for this user + report, after employee/department/team/search filters. */
+    public function employeeIds(User $user, string $type, array $filters): Collection
+    {
+        $orgWide = $user->canAny(self::TYPES[$type][2] ?? ['-']);
+        $own = AttendanceEmployee::where('user_id', $user->id)->first();
+
+        return AttendanceEmployee::query()
+            ->when(! in_array($type, ['employees', 'payroll', 'audit', 'compliance', 'leave', 'overtime', 'tasks', 'salary'], true), fn ($q) => $q->where('is_active', true))
+            ->when(! $orgWide, fn ($q) => $q->where(fn ($q) => $q->whereKey($own?->id ?? 0)->orWhere('manager_id', $own?->id ?? 0)))
+            ->when($filters['employee_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
+            ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('department_id', $id))
+            ->when($filters['team_id'] ?? null, fn ($q, $id) => $q->whereHas('teams', fn ($t) => $t->whereKey($id)))
+            ->when(($filters['search'] ?? null) && ! in_array($type, ['tasks', 'audit'], true), fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$filters['search'].'%')->orWhere('employee_code', 'like', '%'.$filters['search'].'%')))
+            ->pluck('id');
+    }
+
+    private function performanceRows(Collection $ids, string $from, string $to): Collection
+    {
+        $metrics = $this->work->productivity(AttendanceEmployee::whereIn('id', $ids)->orderBy('name')->get(), $from, $to);
+        $ratings = PerformanceReview::whereIn('employee_id', $ids)->whereDate('period_ends_on', '>=', $from)->whereDate('period_starts_on', '<=', $to)
+            ->selectRaw('employee_id, AVG(rating) as rating')->groupBy('employee_id')->pluck('rating', 'employee_id');
+
+        return $metrics->map(fn ($m) => [
+            'employee_code' => $m->employee->employee_code,
+            'employee_name' => $m->employee->name,
+            'completed_tasks' => $m->completed_tasks,
+            'attendance_days' => $m->attendance_days,
+            'approved_leave_days' => (float) LeaveRequest::where('employee_id', $m->employee->id)->where('status', 'approved')->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->sum('days'),
+            'completed_late' => $m->completed_late,
+            'overdue_tasks' => $m->overdue_tasks,
+            'logged_hours' => $m->logged_hours,
+            'average_rating' => isset($ratings[$m->employee->id]) ? round((float) $ratings[$m->employee->id], 2) : null,
+        ]);
+    }
+
+    private function hours(mixed $seconds): float
+    {
+        return round(((int) $seconds) / 3600, 2);
+    }
+}
