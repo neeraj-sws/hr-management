@@ -30,6 +30,16 @@ class EmployeeProfile extends Component
         $this->toast('Employment confirmed.');
     }
 
+    /** Admin sets which ways this employee may mark attendance (web / mobile / desktop). */
+    public function setAttendanceSources(array $sources, \App\Services\PeopleOperationsService $people, \App\Services\AttendanceService $attendance): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        $sources = array_values(array_intersect(array_keys(\App\Services\AttendanceService::SOURCES), $sources));
+        if (! $sources) { $this->toast('Keep at least one way to mark attendance.'); return; }
+        $people->setPolicy('attendance.sources', 'attendance', 'Attendance methods', ['allowed' => $sources], $this->employee->id, $this->user()->id, today()->toDateString());
+        $this->toast('Attendance methods updated.');
+    }
+
     public function toggleCapture(\App\Services\ScreenCaptureService $captures): void
     {
         $on = ! $captures->policy($this->employee)['enabled'];
@@ -59,6 +69,7 @@ class EmployeeProfile extends Component
             'showSalary' => $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']),
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
+            'attendanceSources' => app(\App\Services\AttendanceService::class)->allowedSources($employee),
             'teamHistory' => \App\Models\EmployeeTeamHistory::with('team')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'managerHistory' => \App\Models\EmployeeManagerHistory::with('manager')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'history' => $user->canAny(['employees.manage', 'hr.manage', 'audit.view']) ? \App\Models\AuditLog::with('actor')->where('subject_type', $employee::class)->where('subject_id', $employee->id)->latest('id')->limit(15)->get() : collect(),

@@ -30,7 +30,7 @@ export type Me = {
   today: AttendanceSession | null;
   unread_notifications: number;
   schedule: { shift: string | null; starts_at: string | null; grace_minutes: number } | null;
-  policies: { location_required: boolean; away_prompt_minutes: number };
+  policies: { location_required: boolean; away_prompt_minutes: number; attendance_sources?: string[] };
 };
 
 export type Task = {

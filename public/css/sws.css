@@ -274,3 +274,7 @@ details.nav-group[open]{padding-bottom:6px}
 .linklike{background:none;border:0;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
 .linklike:hover strong,.linklike:hover{color:var(--blue)}
 .nav-link[hidden],.nav-group[hidden]{display:none}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line,#e4e9f0);background:#fff;color:#334258;padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer}
+.chip:hover{border-color:#8eb0ff}
+.chip-on{background:#14284b;border-color:#14284b;color:#fff}

@@ -60,9 +60,30 @@ class AttendanceService
      * $at lets offline clients replay an action with the time it happened
      * (validated by the sync endpoint); live actions use the server clock.
      */
+    /** Ways an employee may mark attendance. Admins pick these per employee; empty/absent means all are allowed. */
+    public const SOURCES = ['web' => 'Website', 'mobile' => 'Mobile app', 'desktop' => 'Desktop app'];
+
+    /** The sources this employee may use (defaults to all three). */
+    public function allowedSources(AttendanceEmployee $employee): array
+    {
+        $set = $this->policies->forEmployee($employee, 'attendance.sources', today()->toDateString(), [])['allowed'] ?? null;
+        $set = is_array($set) ? array_values(array_intersect(array_keys(self::SOURCES), $set)) : [];
+
+        return $set ?: array_keys(self::SOURCES);
+    }
+
+    private function guardSource(AttendanceEmployee $employee, string $source): void
+    {
+        // 'admin' is an HR/manager correction and is always allowed.
+        if ($source === 'admin' || in_array($source, $this->allowedSources($employee), true)) return;
+        $allowed = implode(', ', array_map(fn ($s) => self::SOURCES[$s], $this->allowedSources($employee)));
+        throw ValidationException::withMessages(['attendance' => 'Attendance from the '.(self::SOURCES[$source] ?? $source).' is turned off for you. Use: '.$allowed.'.']);
+    }
+
     public function checkIn(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null, ?array $location = null): AttendanceSession
     {
         if (! $employee->is_active) throw ValidationException::withMessages(['attendance' => 'Inactive employees cannot check in.']);
+        $this->guardSource($employee, $source);
         $place = $this->locate($employee, $source, $location, 'check in');
 
         return DB::transaction(function () use ($employee, $source, $at, $place) {
@@ -111,6 +132,7 @@ class AttendanceService
 
     public function checkOut(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null, ?array $location = null): AttendanceSession
     {
+        $this->guardSource($employee, $source);
         $place = $this->locate($employee, $source, $location, 'check out');
 
         return DB::transaction(function () use ($employee, $source, $at, $place) {

@@ -181,4 +181,31 @@ class RemainingFeaturesTest extends TestCase
         $this->app['auth']->forgetGuards();
         $this->getJson('/api/me', ['Authorization' => "Bearer {$token}"])->assertUnauthorized();
     }
+    public function test_admin_controls_which_sources_an_employee_may_mark_attendance_from(): void
+    {
+        $attendance = app(\App\Services\AttendanceService::class);
+        $people = app(PeopleOperationsService::class);
+        // Default: all three allowed.
+        $this->assertEqualsCanonicalizing(['web', 'mobile', 'desktop'], $attendance->allowedSources($this->employee));
+
+        // Admin restricts this employee to desktop only.
+        $people->setPolicy('attendance.sources', 'attendance', 'Attendance methods', ['allowed' => ['desktop']], $this->employee->id, $this->admin->id, '2026-01-01');
+        $this->assertSame(['desktop'], $attendance->allowedSources($this->employee->fresh()));
+
+        Carbon::setTestNow('2026-10-12 09:30:00');
+        try {
+            $attendance->checkIn($this->employee->fresh(), 'mobile');
+            $this->fail('Mobile check-in should be blocked.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('turned off', implode(' ', $e->validator->errors()->all()));
+        }
+        // Desktop still works, and an HR/manager correction (admin) is always allowed.
+        $session = $attendance->checkIn($this->employee->fresh(), 'desktop');
+        $this->assertSame('working', $session->status);
+        $attendance->checkOut($this->employee->fresh(), 'admin');
+
+        // The mobile API advertises the allowed set so the app can hide the buttons.
+        Sanctum::actingAs($this->employeeUser, ['*']);
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('data.policies.attendance_sources', ['desktop']);
+    }
 }
