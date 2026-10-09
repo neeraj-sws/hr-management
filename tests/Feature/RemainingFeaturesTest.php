@@ -202,6 +202,15 @@ class RemainingFeaturesTest extends TestCase
         // Desktop still works, and an HR/manager correction (admin) is always allowed.
         $session = $attendance->checkIn($this->employee->fresh(), 'desktop');
         $this->assertSame('working', $session->status);
+        // A break from a blocked source is refused too (all three actions follow the setting).
+        try {
+            $attendance->startBreak($this->employee->fresh(), 'mobile');
+            $this->fail('Mobile break should be blocked.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('turned off', implode(' ', $e->validator->errors()->all()));
+        }
+        $attendance->startBreak($this->employee->fresh(), 'desktop');
+        $attendance->endBreak($this->employee->fresh(), 'desktop');
         $attendance->checkOut($this->employee->fresh(), 'admin');
 
         // The mobile API advertises the allowed set so the app can hide the buttons.
