@@ -45,7 +45,7 @@
                             @if(in_array($settlement->status, ['approved', 'partially_paid'], true) && auth()->user()->can('payroll.manage'))
                                 <form class="form-grid mt" wire:submit="pay">
                                     <x-field label="Amount" name="paymentAmount"><input type="number" step="0.01" min="0.01" wire:model="paymentAmount"></x-field>
-                                    <x-field label="Reference" name="paymentReference"><input wire:model="paymentReference"></x-field>
+                                    <x-field label="Payment date" name="paymentDate"><input type="date" wire:model="paymentDate" max="{{ today()->toDateString() }}"></x-field><x-field label="Method" name="paymentMethod"><select wire:model="paymentMethod">@foreach(\App\Models\SalaryPayment::METHODS as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field><x-field label="Reference" name="paymentReference"><input wire:model="paymentReference"></x-field>
                                     <div class="full"><button class="btn btn-primary">Record payment</button></div>
                                 </form>
                             @endif

@@ -48,7 +48,7 @@
     </div>
     <h2 class="mt" style="font-size:15px">Payments</h2>
     <table class="table"><thead><tr><th>Date</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>
-        @forelse($item->payments as $payment)<tr><td>{{ $payment->paid_on->format('d M Y') }}</td><td>{{ $payment->reference ?: '—' }}</td><td class="num">{{ number_format((float) $payment->amount, 2) }}</td></tr>@empty<tr><td colspan="3">No payments recorded.</td></tr>@endforelse
+        @forelse($item->payments as $payment)<tr><td>{{ $payment->paid_on->format('d M Y') }}</td><td>{{ \App\Models\SalaryPayment::METHODS[$payment->method] ?? '' }} {{ $payment->reference ?: '—' }}</td><td class="num">{{ number_format((float) $payment->amount, 2) }}</td></tr>@empty<tr><td colspan="3">No payments recorded.</td></tr>@endforelse
         <tr><th colspan="2">Total paid</th><th class="num">{{ number_format($paid, 2) }}</th></tr>
         <tr><th colspan="2">Remaining</th><th class="num">{{ number_format(max(0, (float) $item->net_amount - $paid), 2) }}</th></tr>
     </tbody></table>

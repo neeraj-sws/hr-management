@@ -172,14 +172,14 @@ class FinalSettlementService
         });
     }
 
-    public function recordPayment(EmployeeFinalSettlement $settlement, float $amount, ?string $reference, int $userId): EmployeeFinalSettlementPayment
+    public function recordPayment(EmployeeFinalSettlement $settlement, float $amount, ?string $reference, int $userId, ?string $method = null, ?string $paidOn = null): EmployeeFinalSettlementPayment
     {
-        return DB::transaction(function () use ($settlement, $amount, $reference, $userId) {
+        return DB::transaction(function () use ($settlement, $amount, $reference, $userId, $method, $paidOn) {
             $settlement = EmployeeFinalSettlement::whereKey($settlement->id)->lockForUpdate()->firstOrFail();
             if (! in_array($settlement->status, ['approved', 'partially_paid'], true)) throw ValidationException::withMessages(['settlementPaymentAmount' => 'The settlement must be approved before payment.']);
             $remaining = round(max(0, (float) $settlement->net_amount - (float) $settlement->payments()->sum('amount')), 2);
             if ($amount <= 0 || $amount > $remaining) throw ValidationException::withMessages(['settlementPaymentAmount' => 'Payment must be positive and cannot exceed the remaining '.number_format($remaining, 2).'.']);
-            $payment = $settlement->payments()->create(['amount' => $amount, 'paid_on' => today(), 'reference' => $reference ?: null, 'recorded_by' => $userId]);
+            $payment = $settlement->payments()->create(['amount' => $amount, 'paid_on' => $paidOn ?? today(), 'method' => $method, 'reference' => $reference ?: null, 'recorded_by' => $userId]);
             $settlement->update(['status' => $amount >= $remaining ? 'paid' : 'partially_paid']);
             app(AuditLogger::class)->record('employee.final_settlement_payment_recorded', $payment, ['settlement_id' => $settlement->id]);
             $settlement->lifecycleCase?->employee?->user?->notify(new ApprovalRequested('EmployeeFinalSettlementPayment', $payment->id, 'A final settlement payment of '.number_format($amount, 2).' has been recorded.'));

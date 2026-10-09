@@ -52,6 +52,10 @@ return [
 
     'expiration' => null,
 
+    // Sign-in tokens of the mobile and desktop apps (not attendance device tokens) expire after this many days;
+    // the app then asks the person to sign in again.
+    'user_token_days' => (int) env('API_TOKEN_DAYS', 30),
+
     /*
     |--------------------------------------------------------------------------
     | Token Prefix
