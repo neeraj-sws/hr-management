@@ -1,11 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { useAttendance } from '../lib/useAttendance';
-import { Badge, Button, Card, colors, confirmAction, Eyebrow, formatTime, Notice } from './ui';
+import { useAuth } from '../lib/auth';
+import { Badge, Button, Card, colors, confirmAction, Eyebrow, formatTime, Muted, Notice } from './ui';
 
 /** Today's attendance with a live worked-time counter and the next allowed actions. */
 export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof useAttendance> }) {
   const { session, busy, message, act } = attendance;
+  const { me } = useAuth();
+  const mobileAllowed = (me?.policies?.attendance_sources ?? ['mobile']).includes('mobile');
+
+  if (!mobileAllowed) {
+    return (
+      <Card>
+        <Eyebrow>Today</Eyebrow>
+        <Muted style={{ marginTop: 6 }}>Attendance from the phone is turned off for you. Please check in, take breaks and check out on the website or desktop app. Contact HR if this is wrong.</Muted>
+      </Card>
+    );
+  }
   const [tick, setTick] = useState(Date.now());
   // worked_seconds is computed by the server when the session was fetched; count up from then.
   const fetchedAt = useRef(Date.now());

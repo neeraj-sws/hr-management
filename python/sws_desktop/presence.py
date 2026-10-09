@@ -95,6 +95,32 @@ def foreground_app() -> str | None:
     return _APP_NAMES.get(key, stem[:1].upper() + stem[1:] if stem else None)
 
 
+def foreground_window_title() -> str | None:
+    """
+    The title bar text of the foreground window (for a browser this is the
+    active tab). Recorded only when an administrator has turned window-title
+    tracking on for the employee; it can contain content such as a site name,
+    document name or e-mail subject, so it is a separate, more sensitive opt-in.
+    None off Windows, on the lock screen, or when empty.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return None
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        title = buf.value.strip()
+        return title[:255] or None
+    except Exception:
+        return None
+
+
 def is_locked() -> bool:
     """True while the lock screen (or another secure desktop) is shown."""
     if sys.platform != "win32":

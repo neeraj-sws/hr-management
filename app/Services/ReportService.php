@@ -44,6 +44,7 @@ class ReportService
         'teams' => ['Teams', ['reports.view', 'hr.manage', 'teams.manage'], ['hr.manage', 'employees.manage', 'teams.manage']],
         'screenshots' => ['Screen captures', ['monitoring.view'], ['monitoring.view']],
         'app_usage' => ['Application usage', ['monitoring.view'], ['monitoring.view']],
+        'window_titles' => ['Window titles', ['monitoring.view'], ['monitoring.view']],
     ];
 
     public function __construct(private readonly AttendanceService $attendance, private readonly WorkService $work) {}
@@ -84,6 +85,7 @@ class ReportService
             'teams' => ['team', 'department', 'manager', 'members', 'attendance_days', 'late_days', 'leave_days', 'active_hours', 'tasks_completed', 'tasks_completed_late', 'tasks_overdue'],
             'screenshots' => ['employee_code', 'employee_name', 'date', 'captures', 'first_at', 'last_at', 'size_mb'],
             'app_usage' => ['employee_code', 'employee_name', 'date', 'application', 'hours', 'minutes'],
+            'window_titles' => ['employee_code', 'employee_name', 'date', 'application', 'title', 'minutes'],
             default => [],
         };
     }
@@ -163,6 +165,10 @@ class ReportService
                 ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')->orderByDesc('seconds')->get()
                 ->map(fn ($u) => ['employee_code' => $u->employee?->employee_code, 'employee_name' => $u->employee?->name, 'date' => $u->work_date->toDateString(), 'application' => $u->app_name, 'hours' => round($u->seconds / 3600, 2), 'minutes' => (int) round($u->seconds / 60)])
                 ->values(),
+            'window_titles' => \App\Models\ActivityTitle::with('employee')->whereIn('employee_id', $ids)
+                ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')->orderByDesc('seconds')->get()
+                ->map(fn ($u) => ['employee_code' => $u->employee?->employee_code, 'employee_name' => $u->employee?->name, 'date' => $u->work_date->toDateString(), 'application' => $u->app_name, 'title' => $u->title, 'minutes' => (int) round($u->seconds / 60)])
+                ->values(),
             default => collect(),
         };
 
@@ -196,7 +202,7 @@ class ReportService
         $own = AttendanceEmployee::where('user_id', $user->id)->first();
 
         return AttendanceEmployee::query()
-            ->when(! in_array($type, ['employees', 'payroll', 'payments', 'screenshots', 'app_usage', 'audit', 'compliance', 'leave', 'overtime', 'tasks', 'salary'], true), fn ($q) => $q->where('is_active', true))
+            ->when(! in_array($type, ['employees', 'payroll', 'payments', 'screenshots', 'app_usage', 'window_titles', 'audit', 'compliance', 'leave', 'overtime', 'tasks', 'salary'], true), fn ($q) => $q->where('is_active', true))
             ->when(! $orgWide, fn ($q) => $q->where(fn ($q) => $q->whereKey($own?->id ?? 0)->orWhere('manager_id', $own?->id ?? 0)))
             ->when($filters['employee_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('department_id', $id))

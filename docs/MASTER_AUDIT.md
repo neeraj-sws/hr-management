@@ -179,3 +179,9 @@ Inno Setup 6.7.3 installed; `python\build-desktop.bat` produced `dist\SWS-HR-Set
 - Admin report: **Reports → App Usage** (`app_usage`), on screen + CSV, per employee / day / application with hours and minutes. Only `monitoring.view` can see it.
 - Tables: `app_usage_daily` (employee_id, work_date, app_name, seconds; unique per employee/day/app). Desktop 1.3.0.
 - Tests: `test_application_usage_...` (admin-only enable, per-app/day totals, report visibility). Full suite **102 passed (1,554 assertions)**; desktop unittest OK; mobile tsc clean.
+
+### Active window/tab titles (2026-10-09, owner request) + mobile guard fix
+- Optional, separate, more-sensitive opt-in on top of application usage: desktop records the **active window title** (for a browser, the current tab) with time. Captures content (site/document/email subject), so it is a distinct admin switch, off by default, shown under the employee's App Usage card only once app usage is on. Employee sees an updated desktop notice.
+- Report: **Reports → Window Titles** (`window_titles`), admin-only (`monitoring.view`), on screen + CSV (employee / date / application / title / minutes). Table `activity_titles_daily`. Desktop 1.4.0.
+- Fix: the mobile attendance guard now lives inside `AttendanceCard`, so check-in/break/check-out are hidden on **every** screen (Home and the Attendance tab) when an admin has turned mobile off — previously the Attendance tab still showed them.
+- Tests: `test_application_usage_...` extended for titles. Full suite **102 passed (1,571 assertions)**; mobile tsc clean.

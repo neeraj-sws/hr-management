@@ -31,6 +31,7 @@ class MeController extends ApiController
                 'location_required' => (bool) ($policies->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_mobile'] ?? false),
                 'attendance_sources' => $employee ? app(\App\Services\AttendanceService::class)->allowedSources($employee) : ['web', 'mobile', 'desktop'],
                 'app_usage' => $employee ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : false,
+                'window_titles' => $employee ? app(\App\Services\AppUsageService::class)->titlesEnabledFor($employee) : false,
                 'screen_capture' => $employee ? [...app(\App\Services\ScreenCaptureService::class)->policy($employee), 'acknowledged' => true] : null,
                 'away_prompt_minutes' => (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['away_prompt_minutes' => 10])['away_prompt_minutes'] ?? 10),
             ],

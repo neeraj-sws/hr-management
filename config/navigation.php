@@ -107,6 +107,7 @@ return [
         ['label' => 'Screenshots', 'route' => 'monitoring.screenshots', 'icon' => 'monitor'],
         ['label' => 'Capture Report', 'route' => 'reports.show', 'params' => ['type' => 'screenshots'], 'icon' => 'chart'],
         ['label' => 'App Usage', 'route' => 'reports.show', 'params' => ['type' => 'app_usage'], 'icon' => 'chart'],
+        ['label' => 'Window Titles', 'route' => 'reports.show', 'params' => ['type' => 'window_titles'], 'icon' => 'chart'],
     ]],
     ['heading' => 'Security', 'items' => [
         ['label' => 'Credential Vault', 'route' => 'security.vault', 'icon' => 'key'],

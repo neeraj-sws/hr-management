@@ -244,6 +244,17 @@ class RemainingFeaturesTest extends TestCase
         $this->assertFalse(app(ReportService::class)->canView($this->employeeUser, 'app_usage'));
 
         // The phone/desktop learns the flag from /me.
-        $this->getJson('/api/me')->assertOk()->assertJsonPath('data.policies.app_usage', true);
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('data.policies.app_usage', true)->assertJsonPath('data.policies.window_titles', false);
+
+        // Window titles are a separate, more sensitive opt-in; off until an admin enables them.
+        $this->postJson('/api/monitoring/app-usage', ['apps' => ['Google Chrome' => 60], 'titles' => [['app' => 'Google Chrome', 'title' => 'github.com - Chrome', 'seconds' => 60]]])->assertOk()->assertJsonPath('titles_enabled', false)->assertJsonPath('recorded_titles', 0);
+        $this->assertSame(0, \App\Models\ActivityTitle::count());
+        app(\App\Services\AppUsageService::class)->setTitlesForEmployee($this->employee, true, $this->admin);
+        $this->postJson('/api/monitoring/app-usage', ['apps' => ['Google Chrome' => 120], 'titles' => [['app' => 'Google Chrome', 'title' => 'github.com - Chrome', 'seconds' => 120]]])->assertOk()->assertJsonPath('titles_enabled', true)->assertJsonPath('recorded_titles', 1);
+        $this->postJson('/api/monitoring/app-usage', ['apps' => ['Google Chrome' => 60], 'titles' => [['app' => 'Google Chrome', 'title' => 'github.com - Chrome', 'seconds' => 60]]])->assertOk();
+        $this->assertSame(180, (int) \App\Models\ActivityTitle::where('title', 'github.com - Chrome')->value('seconds'));
+        $this->getJson('/api/me')->assertJsonPath('data.policies.window_titles', true);
+        $titleRow = app(ReportService::class)->rows($this->admin, 'window_titles', ['from' => today()->toDateString(), 'to' => today()->toDateString()])->firstWhere('title', 'github.com - Chrome');
+        $this->assertSame(3, $titleRow['minutes']);
     }
 }
