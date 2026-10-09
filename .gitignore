@@ -33,5 +33,5 @@ Thumbs.db
 /python/dist/
 /python/build/
 *.spec.bak
-/.build-venv/
+/python/.build-venv/
 /python/*.spec
