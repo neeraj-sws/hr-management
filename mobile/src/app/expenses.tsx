@@ -5,6 +5,7 @@ import { Image, Platform, View } from 'react-native';
 import { DateField, todayYmd } from '../components/DateField';
 import { Badge, Button, Card, Chips, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen, money } from '../components/ui';
 import { ApiError, get, post, upload } from '../lib/api';
+import { enqueue } from '../lib/queue';
 import type { ExpenseClaim, Paginated } from '../lib/types';
 
 type Receipt = { uri: string; name: string; type: string; file?: File };
@@ -19,7 +20,7 @@ export default function ExpensesScreen() {
   const [description, setDescription] = useState('');
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -29,7 +30,7 @@ export default function ExpensesScreen() {
       setCategories(response.categories);
       setLoaded(true);
     } catch (e) {
-      if (e instanceof ApiError) setMessage({ tone: 'error', text: e.firstMessage });
+      if (e instanceof ApiError) setMessage({ tone: e.isNetwork ? 'info' : 'error', text: e.isNetwork ? 'Offline — you can still add a claim; it is sent when you are back online.' : e.firstMessage });
     }
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -72,7 +73,16 @@ export default function ExpensesScreen() {
       setMessage({ tone: 'success', text: 'Claim submitted. Approved claims are paid with your salary.' });
       setAmount(''); setDescription(''); setReceipt(null);
     } catch (e) {
-      if (e instanceof ApiError) {
+      if (e instanceof ApiError && e.isNetwork) {
+        // A browser File cannot be kept after the page closes; the phone keeps the photo's file path.
+        if (receipt && Platform.OS === 'web') {
+          setMessage({ tone: 'error', text: 'You are offline. Remove the bill photo to save the claim for later, or try again when online.' });
+          return;
+        }
+        await enqueue({ type: 'expense.submit', payload: { category, spent_on: spentOn, amount, description, ...(receipt ? { receipt: { uri: receipt.uri, name: receipt.name, type: receipt.type } } : {}) }, label: `Expense ${category} · ${money(Number(amount))}` });
+        setMessage({ tone: 'info', text: 'You are offline. The claim is saved on this phone and will be sent automatically.' });
+        setAmount(''); setDescription(''); setReceipt(null);
+      } else if (e instanceof ApiError) {
         setErrors(Object.fromEntries(Object.entries(e.errors).map(([k, v]) => [k, v[0]])));
         setMessage({ tone: 'error', text: e.firstMessage });
       }

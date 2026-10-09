@@ -1,0 +1,123 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\AttendanceEmployee;
+use App\Models\AttendanceSession;
+use App\Models\EmployeeTeamHistory;
+use App\Models\LeaveRequest;
+use App\Models\LeaveType;
+use App\Models\PayrollItem;
+use App\Models\PayrollRun;
+use App\Models\SalaryPayment;
+use App\Models\Screenshot;
+use App\Models\Team;
+use App\Models\User;
+use App\Services\EmployeeService;
+use App\Services\PeopleOperationsService;
+use App\Services\PolicyConfigurationService;
+use App\Services\ReportService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+/** Offline submissions from the phone, dated team membership and the payment / team / capture reports. */
+class RemainingFeaturesTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $admin;
+    private User $employeeUser;
+    private AttendanceEmployee $employee;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed();
+        Carbon::setTestNow('2026-10-07 09:00:00');
+        $this->admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $this->employeeUser = User::factory()->create(['email' => 'remp@example.com', 'name' => 'Rem Employee']);
+        $this->employeeUser->assignRole('Employee');
+        $this->employee = AttendanceEmployee::create(['employee_code' => 'REMP', 'name' => 'Rem Employee', 'is_active' => true, 'user_id' => $this->employeeUser->id, 'work_start' => '09:30:00', 'work_end' => '18:30:00', 'joined_at' => '2026-01-01']);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    public function test_offline_leave_expense_and_status_are_created_once_per_action_id(): void
+    {
+        Sanctum::actingAs($this->employeeUser, ['*']);
+        $leave = ['leave_type_id' => LeaveType::where('name', 'Unpaid Leave')->value('id'), 'starts_on' => '2026-10-12', 'ends_on' => '2026-10-12', 'reason' => 'Family function'];
+        $first = $this->postJson('/api/leave/requests', $leave, ['X-Action-Id' => 'leave-1'])->assertCreated()->json('data.id');
+        $this->postJson('/api/leave/requests', $leave, ['X-Action-Id' => 'leave-1'])->assertOk()->assertJsonPath('replayed', true)->assertJsonPath('data.id', $first);
+        $this->postJson('/api/leave/requests', [...$leave, 'reason' => 'Changed'], ['X-Action-Id' => 'leave-1'])->assertStatus(409);
+        $this->assertSame(1, LeaveRequest::where('employee_id', $this->employee->id)->count());
+
+        Storage::fake('local');
+        $claim = ['category' => 'Travel', 'spent_on' => '2026-10-06', 'amount' => '250', 'description' => 'Cab to client'];
+        $this->post('/api/expenses', [...$claim, 'receipt' => UploadedFile::fake()->image('bill.jpg')], ['X-Action-Id' => 'exp-1', 'Accept' => 'application/json'])->assertCreated();
+        $this->post('/api/expenses', [...$claim, 'receipt' => UploadedFile::fake()->image('bill.jpg')], ['X-Action-Id' => 'exp-1', 'Accept' => 'application/json'])->assertOk()->assertJsonPath('replayed', true);
+        $this->assertSame(1, \App\Models\ExpenseClaim::where('employee_id', $this->employee->id)->count());
+
+        // Written offline yesterday, synced today: stored against yesterday.
+        $this->postJson('/api/daily-status', ['summary' => 'Finished the report', 'work_date' => '2026-10-06'], ['X-Action-Id' => 'ds-1'])->assertCreated()->assertJsonPath('data.work_date', '2026-10-06');
+        $this->postJson('/api/daily-status', ['summary' => 'Too old to sync', 'work_date' => '2026-10-01'])->assertUnprocessable();
+        $this->postJson('/api/daily-status', ['summary' => 'Today as usual'])->assertCreated()->assertJsonPath('data.work_date', '2026-10-07');
+    }
+
+    public function test_team_membership_is_dated_and_drives_team_policy_on_each_day(): void
+    {
+        $service = app(EmployeeService::class);
+        $alpha = Team::create(['name' => 'Alpha', 'is_active' => true]);
+        $beta = Team::create(['name' => 'Beta', 'is_active' => true]);
+        $service->syncTeams($this->employee, [$alpha->id], $this->admin, '2026-01-01');
+        Carbon::setTestNow('2026-10-07 10:00:00');
+        $service->syncTeams($this->employee, [$beta->id], $this->admin);
+
+        $rows = EmployeeTeamHistory::where('employee_id', $this->employee->id)->orderBy('starts_on')->get();
+        $this->assertSame([[$alpha->id, '2026-01-01', '2026-10-06'], [$beta->id, '2026-10-07', null]], $rows->map(fn ($r) => [$r->team_id, $r->starts_on->toDateString(), $r->ends_on?->toDateString()])->all());
+
+        $people = app(PeopleOperationsService::class);
+        $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['multiplier' => 1.5], null, $this->admin->id, '2026-01-01');
+        $people->setTeamPolicy('overtime.multiplier', ['multiplier' => 2.0], $alpha->id, $this->admin->id, '2026-01-01');
+        $policies = app(PolicyConfigurationService::class);
+        $this->assertEquals(2.0, $policies->forEmployee($this->employee, 'overtime.multiplier', '2026-09-15')['multiplier'], 'In Alpha in September');
+        $this->assertEquals(1.5, $policies->forEmployee($this->employee, 'overtime.multiplier', '2026-10-07')['multiplier'], 'Moved to Beta (no override) today');
+
+        // Team-side edit keeps the same history.
+        $service->syncTeamMembers($beta, [], $this->admin);
+        $this->assertNull(EmployeeTeamHistory::where('employee_id', $this->employee->id)->where('team_id', $beta->id)->first(), 'Added and removed on the same day leaves no history');
+    }
+
+    public function test_payment_team_and_capture_reports(): void
+    {
+        $reports = app(ReportService::class);
+        $run = PayrollRun::create(['period_starts_on' => '2026-09-01', 'period_ends_on' => '2026-09-30', 'status' => 'approved']);
+        $item = PayrollItem::create(['payroll_run_id' => $run->id, 'employee_id' => $this->employee->id, 'net_amount' => 30000, 'gross_amount' => 30000, 'calculation_data' => []]);
+        SalaryPayment::create(['payroll_item_id' => $item->id, 'amount' => 30000, 'paid_on' => '2026-10-01', 'reference' => 'NEFT-1', 'recorded_by' => $this->admin->id]);
+        $rows = $reports->rows($this->admin, 'payments', ['from' => '2026-10-01', 'to' => '2026-10-07']);
+        $this->assertSame(['2026-10-01', 'salary', 'REMP', 'Sep 2026', 30000.0, 'NEFT-1', $this->admin->name], [$rows[0]['paid_on'], $rows[0]['kind'], $rows[0]['employee_code'], $rows[0]['for_period'], $rows[0]['amount'], $rows[0]['reference'], $rows[0]['recorded_by']]);
+
+        $team = Team::create(['name' => 'Gamma', 'is_active' => true]);
+        app(EmployeeService::class)->syncTeams($this->employee, [$team->id], $this->admin, '2026-01-01');
+        AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-06', 'check_in' => '2026-10-06 09:50:00', 'check_out' => '2026-10-06 18:30:00', 'active_seconds' => 7200, 'status' => 'completed']);
+        $teamRow = $reports->rows($this->admin, 'teams', ['from' => '2026-10-01', 'to' => '2026-10-07', 'team_id' => $team->id])->first();
+        $this->assertSame(['Gamma', 1, 1, 1, 2.0], [$teamRow['team'], $teamRow['members'], $teamRow['attendance_days'], $teamRow['late_days'], $teamRow['active_hours']]);
+
+        Screenshot::create(['employee_id' => $this->employee->id, 'captured_at' => '2026-10-06 10:00:00', 'path' => 'x/1.jpg', 'bytes' => 1048576]);
+        Screenshot::create(['employee_id' => $this->employee->id, 'captured_at' => '2026-10-06 16:30:00', 'path' => 'x/2.jpg', 'bytes' => 1048576]);
+        $capture = $reports->rows($this->admin, 'screenshots', ['from' => '2026-10-01', 'to' => '2026-10-07'])->firstWhere('employee_code', 'REMP');
+        $this->assertSame([2, '10:00', '16:30', 2.0], [$capture['captures'], $capture['first_at'], $capture['last_at'], $capture['size_mb']]);
+
+        $this->assertFalse($reports->canView($this->employeeUser, 'screenshots'));
+        $this->assertFalse($reports->canView($this->employeeUser, 'payments'));
+        $this->actingAs($this->admin)->get('/reports/payments')->assertOk()->assertSee('NEFT-1');
+        $this->actingAs($this->admin)->get('/reports/teams/export?from=2026-10-01&to=2026-10-07')->assertOk();
+    }
+}

@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Models\PushToken;
+use App\Notifications\Channels\ExpoPushChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -71,6 +73,8 @@ class ApprovalRequested extends Notification implements ShouldQueue
         $prefs = (array) (($notifiable->notification_preferences ?? [])[$group] ?? []);
         $channels = [];
         if (! self::GROUPS[$group][1] || ($prefs['in_app'] ?? true)) $channels[] = 'database';
+        // Phone push goes with the in-app notification unless switched off for the group.
+        if (in_array('database', $channels, true) && ($prefs['push'] ?? true) && ExpoPushChannel::enabled() && PushToken::where('user_id', $notifiable->getKey())->exists()) $channels[] = ExpoPushChannel::class;
         if (($prefs['email'] ?? false) && ! empty($notifiable->email)) $channels[] = 'mail';
 
         return $channels;
@@ -81,6 +85,12 @@ class ApprovalRequested extends Notification implements ShouldQueue
         $url = $this->url ?? self::urlFor($this->kind, $this->message);
 
         return (new MailMessage)->subject('SWS HR: '.\Illuminate\Support\Str::limit($this->message, 70))->line($this->message)->action('Open SWS HR', url($url));
+    }
+
+    /** @return array{title: string, body: string, data: array} */
+    public function toPush(object $notifiable): array
+    {
+        return ['title' => 'SWS HR', 'body' => \Illuminate\Support\Str::limit($this->message, 180), 'data' => ['kind' => $this->kind, 'record_id' => $this->recordId]];
     }
 
     public function toDatabase(object $notifiable): array

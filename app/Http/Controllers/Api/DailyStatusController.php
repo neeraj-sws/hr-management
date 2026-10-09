@@ -7,6 +7,7 @@ use App\Services\AuditLogger;
 use App\Services\WorkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /** Today's daily status (plan / completed / blockers / notes) and history for the signed-in employee. */
@@ -23,22 +24,28 @@ class DailyStatusController extends ApiController
     public function store(Request $request, AuditLogger $audit, WorkService $work): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $data = $request->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000']]);
-        $status = DB::transaction(function () use ($employee, $data, $request) {
-            $status = DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', today())->lockForUpdate()->first();
-            $fields = [...$data, 'submitted_at' => now(), 'submitted_by' => $request->user()->id];
-            if ($status) {
-                $status->update([...$fields, 'server_version' => (int) $status->server_version + 1]);
+        $data = $request->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000'], 'work_date' => ['nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.today()->subDays(2)->toDateString()]]);
+        // Offline submissions carry the day they were written for (up to 2 days late).
+        $day = isset($data['work_date']) ? Carbon::parse($data['work_date'])->toDateString() : today()->toDateString();
+        unset($data['work_date']);
 
-                return $status;
-            }
+        return $this->once($request, function () use ($employee, $data, $day, $request, $audit, $work) {
+            $status = DB::transaction(function () use ($employee, $data, $day, $request) {
+                $status = DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', $day)->lockForUpdate()->first();
+                $fields = [...$data, 'submitted_at' => now(), 'submitted_by' => $request->user()->id];
+                if ($status) {
+                    $status->update([...$fields, 'server_version' => (int) $status->server_version + 1]);
 
-            return DailyWorkStatus::create([...$fields, 'employee_id' => $employee->id, 'work_date' => today()->toDateString(), 'server_version' => 1]);
+                    return $status;
+                }
+
+                return DailyWorkStatus::create([...$fields, 'employee_id' => $employee->id, 'work_date' => $day, 'server_version' => 1]);
         });
         $audit->record('work_status.submitted', $status, ['has_blockers' => (bool) $status->blockers]);
         $work->notifyBlocker($employee, $status);
 
         return response()->json(['data' => $this->present($status)], 201);
+        });
     }
 
     private function present(DailyWorkStatus $s): array

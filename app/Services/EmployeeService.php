@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ApprovalRequest;
 use App\Models\AttendanceEmployee;
 use App\Models\EmployeeManagerHistory;
+use App\Models\EmployeeTeamHistory;
 use App\Notifications\ApprovalRequested;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -37,7 +38,7 @@ class EmployeeService
                 'daily_work_hours' => $data['daily_work_hours'] ?? 8,
                 'monthly_salary' => $data['monthly_salary'] ?? 0,
             ], $actor->id);
-            $employee->teams()->sync($data['team_ids'] ?? []);
+            $this->syncTeams($employee, $data['team_ids'] ?? [], $actor, ($employee->joined_at ?? today())->toDateString());
             if ($employee->manager_id) EmployeeManagerHistory::create(['employee_id' => $employee->id, 'manager_id' => $employee->manager_id, 'starts_on' => $employee->joined_at ?? today(), 'changed_by' => $actor->id]);
             $this->audit->record('user.employee_account_created', $user, ['employee_id' => $employee->id]);
 
@@ -52,7 +53,7 @@ class EmployeeService
             $previousManager = $employee->manager_id;
             $employee->update(array_intersect_key($data, array_flip(self::PROFILE_FIELDS)));
             if (array_key_exists('manager_id', $data) && (int) $previousManager !== (int) $employee->manager_id) $this->managerChanged($employee, $previousManager, $actor);
-            if (array_key_exists('team_ids', $data)) $employee->teams()->sync($data['team_ids'] ?? []);
+            if (array_key_exists('team_ids', $data)) $this->syncTeams($employee, $data['team_ids'] ?? [], $actor);
             if ($employee->user) {
                 $employee->user->update(['name' => $employee->name, 'email' => $employee->email ?? $employee->user->email]);
                 if (array_key_exists('is_manager', $data)) {
@@ -63,6 +64,40 @@ class EmployeeService
 
             return $employee->fresh();
         });
+    }
+
+    /**
+     * Sets the employee's teams and keeps the dated membership history:
+     * a team that is removed ends yesterday, a team that is added starts today.
+     */
+    public function syncTeams(AttendanceEmployee $employee, array $teamIds, User $actor, ?string $startsOn = null): void
+    {
+        $startsOn ??= today()->toDateString();
+        $changes = $employee->teams()->sync(array_map('intval', $teamIds));
+        if (! $changes['attached'] && ! $changes['detached']) return;
+        foreach ($changes['detached'] as $teamId) $this->endMembership($employee->id, $teamId, $startsOn);
+        foreach ($changes['attached'] as $teamId) {
+            EmployeeTeamHistory::create(['employee_id' => $employee->id, 'team_id' => $teamId, 'starts_on' => $startsOn, 'changed_by' => $actor->id]);
+        }
+        $this->audit->record('employee.teams_changed', $employee, ['added' => $changes['attached'], 'removed' => $changes['detached'], 'effective_from' => $startsOn]);
+    }
+
+    /** Same as syncTeams, from the team's side (team edit screen / API). */
+    public function syncTeamMembers(\App\Models\Team $team, array $employeeIds, User $actor): void
+    {
+        $today = today()->toDateString();
+        $changes = $team->members()->sync(array_map('intval', $employeeIds));
+        foreach ($changes['detached'] as $employeeId) $this->endMembership($employeeId, $team->id, $today);
+        foreach ($changes['attached'] as $employeeId) {
+            EmployeeTeamHistory::create(['employee_id' => $employeeId, 'team_id' => $team->id, 'starts_on' => $today, 'changed_by' => $actor->id]);
+        }
+    }
+
+    private function endMembership(int $employeeId, int $teamId, string $from): void
+    {
+        // Added and removed on the same day: it never really started.
+        EmployeeTeamHistory::where('employee_id', $employeeId)->where('team_id', $teamId)->whereNull('ends_on')->whereDate('starts_on', '>=', $from)->delete();
+        EmployeeTeamHistory::where('employee_id', $employeeId)->where('team_id', $teamId)->whereNull('ends_on')->update(['ends_on' => \Illuminate\Support\Carbon::parse($from)->subDay()->toDateString()]);
     }
 
     /**

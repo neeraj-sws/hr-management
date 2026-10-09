@@ -3,6 +3,8 @@ import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, Card, colors, Empty, Field, formatDate, H2, Muted, Notice, Screen } from '../components/ui';
 import { ApiError, get, post } from '../lib/api';
+import { enqueue } from '../lib/queue';
+import { todayYmd } from '../components/DateField';
 
 type Status = { id: number; work_date: string; plan: string | null; summary: string; blockers: string | null; notes: string | null; submitted_at: string | null };
 
@@ -14,7 +16,7 @@ export default function DailyStatusScreen() {
   const [blockers, setBlockers] = useState('');
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -28,7 +30,7 @@ export default function DailyStatusScreen() {
         setNotes(response.today.notes ?? '');
       }
     } catch (e) {
-      if (e instanceof ApiError) setMessage({ tone: 'error', text: e.firstMessage });
+      if (e instanceof ApiError) setMessage({ tone: e.isNetwork ? 'info' : 'error', text: e.isNetwork ? 'Offline — you can still write today’s status; it is sent when you are back online.' : e.firstMessage });
     } finally {
       setLoaded(true);
     }
@@ -48,7 +50,11 @@ export default function DailyStatusScreen() {
       setHistory((current) => [saved, ...current.filter((s) => s.work_date !== saved.work_date)]);
       setMessage({ tone: 'success', text: blockers ? 'Saved. Your manager was told about the blocker.' : 'Daily status saved.' });
     } catch (e) {
-      if (e instanceof ApiError) {
+      if (e instanceof ApiError && e.isNetwork) {
+        const day = todayYmd();
+        await enqueue({ type: 'daily_status.submit', payload: { plan: plan || null, summary, blockers: blockers || null, notes: notes || null, work_date: day }, label: `Daily status ${formatDate(day)}` });
+        setMessage({ tone: 'info', text: 'You are offline. Your status is saved on this phone and will be sent automatically.' });
+      } else if (e instanceof ApiError) {
         setErrors(Object.fromEntries(Object.entries(e.errors).map(([k, v]) => [k, v[0]])));
         setMessage({ tone: 'error', text: e.firstMessage });
       }

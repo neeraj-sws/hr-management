@@ -42,9 +42,11 @@ class LeaveController extends ApiController
     {
         $employee = $this->apiEmployee($request);
         $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'starts_on' => ['required', 'date'], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000']]);
-        $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
+        return $this->once($request, function () use ($workflow, $employee, $data) {
+            $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
 
-        return response()->json(['data' => $this->present($leave->load('leaveType'))], 201);
+            return response()->json(['data' => $this->present($leave->load('leaveType'))], 201);
+        });
     }
 
     public function cancel(Request $request, LeaveRequest $leave, AuditLogger $audit): JsonResponse

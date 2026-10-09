@@ -4,7 +4,11 @@ import { View } from 'react-native';
 import { DateField } from '../../components/DateField';
 import { Badge, Button, Card, Chips, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen } from '../../components/ui';
 import { ApiError, get, post } from '../../lib/api';
+import { enqueue } from '../../lib/queue';
+import { store } from '../../lib/storage';
 import type { LeaveBalance, LeaveRequest, LeaveType, Paginated } from '../../lib/types';
+
+const TYPES_CACHE = 'sws.cache.leave_types';
 
 export default function Leave() {
   const [types, setTypes] = useState<LeaveType[]>([]);
@@ -28,11 +32,14 @@ export default function Leave() {
         get<Paginated<LeaveRequest>>('/leave/requests'),
       ]);
       setTypes(t.data);
+      store.setJson(TYPES_CACHE, t.data);
       setBalances(b.data);
       setRequests(r.data);
       setLoaded(true);
     } catch (e) {
-      if (e instanceof ApiError) setMessage({ tone: e.isNetwork ? 'info' : 'error', text: e.isNetwork ? 'Offline — leave needs a connection.' : e.firstMessage });
+      if (!(e instanceof ApiError)) return;
+      if (e.isNetwork) setTypes(await store.getJson<LeaveType[]>(TYPES_CACHE, []));
+      setMessage({ tone: e.isNetwork ? 'info' : 'error', text: e.isNetwork ? 'Offline — you can still request leave; it is sent for approval when you are back online.' : e.firstMessage });
     }
   }, []);
 
@@ -57,7 +64,11 @@ export default function Leave() {
       setStartsOn(''); setEndsOn(''); setReason('');
       load();
     } catch (e) {
-      if (e instanceof ApiError) {
+      if (e instanceof ApiError && e.isNetwork) {
+        await enqueue({ type: 'leave.request', payload: { leave_type_id: typeId, starts_on: startsOn, ends_on: endsOn, reason }, label: `Leave ${formatDate(startsOn)} – ${formatDate(endsOn)}` });
+        setMessage({ tone: 'info', text: 'You are offline. The request is saved on this phone and will be sent for approval automatically.' });
+        setStartsOn(''); setEndsOn(''); setReason('');
+      } else if (e instanceof ApiError) {
         setErrors(Object.fromEntries(Object.entries(e.errors).map(([k, v]) => [k, v[0]])));
         setMessage({ tone: 'error', text: e.firstMessage });
       }

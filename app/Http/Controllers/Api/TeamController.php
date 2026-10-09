@@ -27,7 +27,7 @@ class TeamController extends Controller
         abort_unless($request->user()->can('teams.manage'),403);
         $data=$request->validate(['name'=>['required','string','max:255','unique:teams,name'],'description'=>['nullable','string'],'department_id'=>['nullable','exists:departments,id'],'manager_employee_id'=>['nullable','exists:attendance_employees,id'],'employee_ids'=>['array'],'employee_ids.*'=>['integer','exists:attendance_employees,id']]);
         $team=Team::create(['name'=>$data['name'],'description'=>$data['description']??null,'department_id'=>$data['department_id']??null,'manager_employee_id'=>$data['manager_employee_id']??null,'is_active'=>true]);
-        $team->members()->sync($data['employee_ids']??[]);$audit->record('team.created',$team,['members'=>$team->members()->count()]);
+        app(\App\Services\EmployeeService::class)->syncTeamMembers($team,$data['employee_ids']??[],$request->user());$audit->record('team.created',$team,['members'=>$team->members()->count()]);
         return (new TeamResource($team->load(['department','manager','members'])))->response()->setStatusCode(201);
     }
 }

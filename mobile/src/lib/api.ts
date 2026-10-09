@@ -56,7 +56,7 @@ export function getBaseUrl(): string {
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 /** body may be a FormData (file uploads); anything else is sent as JSON. */
-export async function api<T = any>(method: Method, path: string, body?: unknown, timeoutMs = 15000): Promise<T> {
+export async function api<T = any>(method: Method, path: string, body?: unknown, timeoutMs = 15000, extraHeaders: Record<string, string> = {}): Promise<T> {
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -68,6 +68,7 @@ export async function api<T = any>(method: Method, path: string, body?: unknown,
         Accept: 'application/json',
         ...(isForm ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...extraHeaders,
       },
       body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
       signal: controller.signal,
@@ -96,5 +97,5 @@ export async function api<T = any>(method: Method, path: string, body?: unknown,
 }
 
 export const get = <T = any>(path: string) => api<T>('GET', path);
-export const post = <T = any>(path: string, body?: unknown) => api<T>('POST', path, body ?? {});
-export const upload = <T = any>(path: string, form: FormData) => api<T>('POST', path, form, 60000);
+export const post = <T = any>(path: string, body?: unknown, headers?: Record<string, string>) => api<T>('POST', path, body ?? {}, 15000, headers);
+export const upload = <T = any>(path: string, form: FormData, headers?: Record<string, string>) => api<T>('POST', path, form, 60000, headers);

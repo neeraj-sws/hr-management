@@ -56,8 +56,9 @@
             </section>
         @endif
 
-        @if($managerHistory->isNotEmpty() || $history->isNotEmpty())
+        @if($managerHistory->isNotEmpty() || $teamHistory->isNotEmpty() || $history->isNotEmpty())
             <section class="card"><div class="card-head"><h2>History</h2></div><div class="list">
+                @foreach($teamHistory as $h)<div class="list-row"><div><strong>Team {{ $h->team?->name ?? 'removed team' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@endforeach
                 @foreach($managerHistory as $h)<div class="list-row"><div><strong>Reports to {{ $h->manager?->name ?? 'nobody' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@endforeach
                 @foreach($history as $event)<div class="list-row"><div><strong>{{ str($event->action)->after('.')->replace('_', ' ')->ucfirst() }}</strong><small>{{ $event->actor?->name ?? 'System' }} · {{ $event->created_at->format('d M Y, h:i A') }}</small></div></div>@endforeach
             </div></section>

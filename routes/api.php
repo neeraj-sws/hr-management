@@ -101,6 +101,8 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/payslips', [PayslipController::class, 'index'])->name('api.payslips.index');
     Route::get('/payslips/{payslip}', [PayslipController::class, 'show'])->name('api.payslips.show');
 
+    Route::post('/push-tokens', [\App\Http\Controllers\Api\PushTokenController::class, 'store'])->name('api.push-tokens.store');
+    Route::post('/push-tokens/remove', [\App\Http\Controllers\Api\PushTokenController::class, 'destroy'])->name('api.push-tokens.destroy');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
     Route::get('/notifications/preferences', [NotificationController::class, 'preferences'])->name('api.notifications.preferences');
     Route::post('/notifications/preferences', [NotificationController::class, 'savePreferences'])->name('api.notifications.preferences.save');

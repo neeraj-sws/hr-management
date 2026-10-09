@@ -101,6 +101,8 @@ return [
         ['label' => 'Training', 'route' => 'reports.show', 'params' => ['type' => 'training'], 'icon' => 'chart'],
         ['label' => 'Payroll', 'route' => 'reports.show', 'params' => ['type' => 'payroll'], 'icon' => 'chart'],
         ['label' => 'Salary', 'route' => 'reports.show', 'params' => ['type' => 'salary'], 'icon' => 'chart'],
+        ['label' => 'Payments', 'route' => 'reports.show', 'params' => ['type' => 'payments'], 'icon' => 'chart'],
+        ['label' => 'Teams', 'route' => 'reports.show', 'params' => ['type' => 'teams'], 'icon' => 'chart'],
         ['label' => 'Performance', 'route' => 'reports.show', 'params' => ['type' => 'performance'], 'icon' => 'chart'],
         ['label' => 'Compliance', 'route' => 'reports.show', 'params' => ['type' => 'compliance'], 'icon' => 'chart'],
         ['label' => 'Audit', 'route' => 'reports.show', 'params' => ['type' => 'audit'], 'icon' => 'chart'],
@@ -108,6 +110,7 @@ return [
     ]],
     ['heading' => 'Monitoring', 'items' => [
         ['label' => 'Screenshots', 'route' => 'monitoring.screenshots', 'icon' => 'monitor'],
+        ['label' => 'Capture Report', 'route' => 'reports.show', 'params' => ['type' => 'screenshots'], 'icon' => 'chart'],
     ]],
     ['heading' => 'Security', 'items' => [
         ['label' => 'Credential Vault', 'route' => 'security.vault', 'icon' => 'key'],

@@ -51,6 +51,7 @@ class EmployeeProfile extends Component
             'documents' => ($isSelf || $user->can('lifecycle.manage')) ? $employee->documents()->latest()->get() : collect(),
             'showSalary' => $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']),
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
+            'teamHistory' => \App\Models\EmployeeTeamHistory::with('team')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'managerHistory' => \App\Models\EmployeeManagerHistory::with('manager')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'history' => $user->canAny(['employees.manage', 'hr.manage', 'audit.view']) ? \App\Models\AuditLog::with('actor')->where('subject_type', $employee::class)->where('subject_id', $employee->id)->latest('id')->limit(15)->get() : collect(),
         ], $employee->name);
