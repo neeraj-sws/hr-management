@@ -8,16 +8,6 @@ import { Badge, Button, Card, colors, confirmAction, Eyebrow, formatTime, Muted,
 export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof useAttendance> }) {
   const { session, busy, message, act } = attendance;
   const { me } = useAuth();
-  const mobileAllowed = (me?.policies?.attendance_sources ?? ['mobile']).includes('mobile');
-
-  if (!mobileAllowed) {
-    return (
-      <Card>
-        <Eyebrow>Today</Eyebrow>
-        <Muted style={{ marginTop: 6 }}>Attendance from the phone is turned off for you. Please check in, take breaks and check out on the website or desktop app. Contact HR if this is wrong.</Muted>
-      </Card>
-    );
-  }
   const [tick, setTick] = useState(Date.now());
   // worked_seconds is computed by the server when the session was fetched; count up from then.
   const fetchedAt = useRef(Date.now());
@@ -36,6 +26,17 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
   const live = session?.status === 'working' ? Math.floor((tick - fetchedAt.current) / 1000) : 0;
   const worked = Math.max(0, (session?.worked_seconds ?? session?.active_seconds ?? 0) + Math.max(0, live));
   const clock = `${String(Math.floor(worked / 3600)).padStart(2, '0')}:${String(Math.floor((worked % 3600) / 60)).padStart(2, '0')}:${String(worked % 60).padStart(2, '0')}`;
+
+  // Hooks above always run (React rule); decide what to show afterwards.
+  const mobileAllowed = (me?.policies?.attendance_sources ?? ['mobile']).includes('mobile');
+  if (!mobileAllowed) {
+    return (
+      <Card>
+        <Eyebrow>Today</Eyebrow>
+        <Muted style={{ marginTop: 6 }}>Attendance from the phone is turned off for you. Please check in, take breaks and check out on the website or desktop app. Contact HR if this is wrong.</Muted>
+      </Card>
+    );
+  }
 
   return (
     <Card>
