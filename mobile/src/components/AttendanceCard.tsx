@@ -29,14 +29,6 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
 
   // Hooks above always run (React rule); decide what to show afterwards.
   const mobileAllowed = (me?.policies?.attendance_sources ?? ['mobile']).includes('mobile');
-  if (!mobileAllowed) {
-    return (
-      <Card>
-        <Eyebrow>Today</Eyebrow>
-        <Muted style={{ marginTop: 6 }}>Attendance from the phone is turned off for you. Please check in, take breaks and check out on the website or desktop app. Contact HR if this is wrong.</Muted>
-      </Card>
-    );
-  }
 
   return (
     <Card>
@@ -54,13 +46,17 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
         )}
       </View>
       {message ? <View style={{ marginBottom: 10 }}><Notice tone={message.tone} text={message.text} /></View> : null}
-      <View style={{ gap: 8 }}>
-        {!session && <Button title="Check in" tone="primary" onPress={() => act('check-in')} loading={busy === 'check-in'} />}
-        {session && !session.check_out && session.status !== 'on_break' && <Button title="Start break" onPress={() => act('break-start')} loading={busy === 'break-start'} />}
-        {session && session.status === 'on_break' && <Button title="Resume work" tone="success" onPress={() => act('break-end')} loading={busy === 'break-end'} />}
-        {session && !session.check_out && <Button title="Check out" tone="danger" onPress={async () => { if (await confirmAction('Check out?', 'This ends your work day. You cannot check in again today.', 'Check out')) act('check-out'); }} loading={busy === 'check-out'} />}
-        {session?.check_out ? <Badge label="Day completed" tone="green" /> : null}
-      </View>
+      {mobileAllowed ? (
+        <View style={{ gap: 8 }}>
+          {!session && <Button title="Check in" tone="primary" onPress={() => act('check-in')} loading={busy === 'check-in'} />}
+          {session && !session.check_out && session.status !== 'on_break' && <Button title="Start break" onPress={() => act('break-start')} loading={busy === 'break-start'} />}
+          {session && session.status === 'on_break' && <Button title="Resume work" tone="success" onPress={() => act('break-end')} loading={busy === 'break-end'} />}
+          {session && !session.check_out && <Button title="Check out" tone="danger" onPress={async () => { if (await confirmAction('Check out?', 'This ends your work day. You cannot check in again today.', 'Check out')) act('check-out'); }} loading={busy === 'check-out'} />}
+          {session?.check_out ? <Badge label="Day completed" tone="green" /> : null}
+        </View>
+      ) : (
+        <Muted style={{ marginTop: 2 }}>Attendance from the phone is turned off for you. Please use the website or desktop app.</Muted>
+      )}
     </Card>
   );
 }
