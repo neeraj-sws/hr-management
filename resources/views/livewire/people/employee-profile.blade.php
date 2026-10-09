@@ -32,7 +32,9 @@
 
         @if($appUsageOn !== null)
             <section class="card"><div class="card-head"><div><h2>Application usage</h2><p>@if($appUsageOn)On â records which app is in front and for how long, while checked in and working. App name and time only; no titles or content.@else Off.@endif</p></div>
-                <button type="button" class="btn {{ $appUsageOn ? '' : 'btn-primary' }}" wire:click="toggleAppUsage" wire:loading.attr="disabled">{{ $appUsageOn ? 'Turn off' : 'Turn on' }}</button></div></section>
+                <button type="button" class="btn {{ $appUsageOn ? '' : 'btn-primary' }}" wire:click="toggleAppUsage" wire:loading.attr="disabled">{{ $appUsageOn ? 'Turn off' : 'Turn on' }}</button></div>
+                @if($appUsageOn)<div class="card-body"><label class="check"><input type="checkbox" {{ $windowTitlesOn ? 'checked' : '' }} wire:click="toggleWindowTitles"> Also record the active window/tab title (shows the website, document or email subject that is in front â more detail, more sensitive)</label></div>@endif
+            </section>
         @endif
         @if($capture)
             <section class="card"><div class="card-head"><div><h2>Screen capture</h2><p>@if($capture['enabled'])On — every {{ $capture['interval_minutes'] }} min while checked in and working.@else Off. @endif</p></div>

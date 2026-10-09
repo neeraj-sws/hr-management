@@ -105,9 +105,12 @@ class HrClient:
         """Keeps the session alive and reports screen time (seconds in use / untouched) since the last call."""
         return self.request("POST", "/attendance/heartbeat", {"screen_active_seconds": screen_active, "screen_idle_seconds": screen_idle})["data"]
 
-    def report_app_usage(self, apps: dict[str, int]) -> dict:
-        """Reports application-usage totals (app name -> seconds). Only sent when the admin enabled it."""
-        return self.request("POST", "/monitoring/app-usage", {"apps": apps})
+    def report_app_usage(self, apps: dict[str, int], titles: list[dict] | None = None) -> dict:
+        """Reports application-usage totals (app name -> seconds) and, when enabled, active-window titles."""
+        payload = {"apps": apps}
+        if titles:
+            payload["titles"] = titles
+        return self.request("POST", "/monitoring/app-usage", payload)
 
     # Tasks ----------------------------------------------------------------
     def tasks(self, status: str = "open") -> list[dict]:
