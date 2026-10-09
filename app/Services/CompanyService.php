@@ -1,0 +1,131 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Announcement;
+use App\Models\AttendanceEmployee;
+use App\Models\User;
+use App\Notifications\ApprovalRequested;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+/** Company-wide information: announcements, birthdays/work anniversaries and the holiday calendar. */
+class CompanyService
+{
+    public function __construct(private readonly AuditLogger $audit, private readonly PolicyConfigurationService $policies) {}
+
+    /** Creates or updates an announcement; a newly published one notifies its audience. */
+    public function saveAnnouncement(array $data, User $author, ?Announcement $announcement = null): Announcement
+    {
+        return DB::transaction(function () use ($data, $author, $announcement) {
+            $data['department_id'] = $data['audience'] === 'department' ? $data['department_id'] : null;
+            $data['team_id'] = $data['audience'] === 'team' ? $data['team_id'] : null;
+            $isNew = ! $announcement;
+            $announcement ??= new Announcement(['created_by' => $author->id, 'published_at' => now()]);
+            $announcement->fill($data)->save();
+            $this->audit->record($isNew ? 'announcement.published' : 'announcement.updated', $announcement, ['audience' => $announcement->audience]);
+            if ($isNew) {
+                $notification = new ApprovalRequested('Announcement', $announcement->id, 'Announcement: '.$announcement->title);
+                foreach ($this->audienceUsers($announcement) as $user) {
+                    if ($user->id !== $author->id) $user->notify($notification);
+                }
+            }
+
+            return $announcement;
+        });
+    }
+
+    public function deleteAnnouncement(Announcement $announcement): void
+    {
+        $this->audit->record('announcement.deleted', $announcement, ['title' => $announcement->title]);
+        $announcement->delete();
+    }
+
+    /** @return Collection<int, User> */
+    public function audienceUsers(Announcement $announcement): Collection
+    {
+        $employees = AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id');
+        if ($announcement->audience === 'department') $employees->where('department_id', $announcement->department_id);
+        if ($announcement->audience === 'team') $employees->whereHas('teams', fn ($q) => $q->where('teams.id', $announcement->team_id));
+        $users = $employees->get()->pluck('user')->filter(fn ($user) => $user?->is_active);
+        if ($announcement->audience === 'all') $users = $users->merge(User::where('is_active', true)->doesntHave('employeeProfile')->get());
+
+        return $users->unique('id')->values();
+    }
+
+    /**
+     * Birthdays (for employees who share them) and work anniversaries in the
+     * next $days days, soonest first. Birth years are never exposed.
+     *
+     * @return Collection<int, array{employee: AttendanceEmployee, type: string, date: Carbon, years: ?int, today: bool}>
+     */
+    public function celebrations(int $days = 7, ?Carbon $from = null): Collection
+    {
+        $from = ($from ?? today())->copy()->startOfDay();
+        $until = $from->copy()->addDays($days);
+        $events = collect();
+        foreach (AttendanceEmployee::where('is_active', true)->where(fn ($q) => $q->whereNotNull('date_of_birth')->orWhereNotNull('joined_at'))->get() as $employee) {
+            if ($employee->date_of_birth && $employee->share_birthday) {
+                $next = $this->nextOccurrence($employee->date_of_birth, $from);
+                if ($next->lte($until)) $events->push(['employee' => $employee, 'type' => 'birthday', 'date' => $next, 'years' => null, 'today' => $next->isSameDay($from)]);
+            }
+            if ($employee->joined_at) {
+                $next = $this->nextOccurrence($employee->joined_at, $from);
+                $years = $next->year - $employee->joined_at->year;
+                if ($years >= 1 && $next->lte($until)) $events->push(['employee' => $employee, 'type' => 'anniversary', 'date' => $next, 'years' => $years, 'today' => $next->isSameDay($from)]);
+            }
+        }
+
+        return $events->sortBy(fn ($event) => $event['date']->timestamp)->values();
+    }
+
+    /** Sends today's birthday/anniversary greetings to everyone once (scheduled daily). */
+    public function notifyTodaysCelebrations(): int
+    {
+        $today = $this->celebrations(0)->where('today', true);
+        if ($today->isEmpty()) return 0;
+        $users = User::where('is_active', true)->get();
+        foreach ($today as $event) {
+            $first = explode(' ', $event['employee']->name)[0];
+            $message = $event['type'] === 'birthday'
+                ? "Today is {$event['employee']->name}'s birthday. Wish {$first} a happy birthday!"
+                : "{$event['employee']->name} completes {$event['years']} ".str('year')->plural($event['years'])." with us today. Congratulations, {$first}!";
+            foreach ($users as $user) {
+                if ($user->id === $event['employee']->user_id) continue;
+                $alreadySent = $user->notifications()->where('data->kind', 'Celebration')->where('data->record_id', $event['employee']->id)->whereDate('created_at', today())->exists();
+                if (! $alreadySent) $user->notify(new ApprovalRequested('Celebration', $event['employee']->id, $message));
+            }
+        }
+
+        return $today->count();
+    }
+
+    /**
+     * Holidays from the working calendar (Settings > Calendar) with their names.
+     *
+     * @return Collection<int, array{date: Carbon, name: string}>
+     */
+    public function holidays(?AttendanceEmployee $employee, int $year): Collection
+    {
+        $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', "{$year}-12-31", ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+        $names = $calendar['holiday_names'] ?? [];
+
+        return collect($calendar['holidays'] ?? [])->filter(fn ($date) => str_starts_with((string) $date, (string) $year))->sort()->values()
+            ->map(fn ($date) => ['date' => Carbon::parse($date), 'name' => (string) ($names[$date] ?? 'Holiday')]);
+    }
+
+    /** ISO weekdays (1 = Monday) that are working days. */
+    public function workingDays(?AttendanceEmployee $employee): array
+    {
+        return array_map('intval', $this->policies->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5]])['days'] ?? [1, 2, 3, 4, 5]);
+    }
+
+    private function nextOccurrence(Carbon $date, Carbon $from): Carbon
+    {
+        $build = fn (int $year) => Carbon::create($year, $date->month, min($date->day, Carbon::create($year, $date->month, 1)->daysInMonth))->startOfDay();
+        $next = $build($from->year);
+
+        return $next->lt($from) ? $build($from->year + 1) : $next;
+    }
+}

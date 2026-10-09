@@ -1,0 +1,43 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sws-hr-uat",
+      "runtimeExecutable": "php",
+      "runtimeArgs": [
+        "artisan",
+        "serve",
+        "--host=0.0.0.0",
+        "--port=8020"
+      ],
+      "port": 8020,
+      "env": {
+        "DB_DATABASE": "sws_hr_uat",
+        "QUEUE_CONNECTION": "sync",
+        "APP_TIMEZONE": "Asia/Kolkata",
+        "APP_URL": "http://localhost:8020"
+      }
+    },
+    {
+      "name": "sws-mobile-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8082",
+        "--clear"
+      ],
+      "cwd": "mobile",
+      "port": 8082,
+      "env": {
+        "CI": "1",
+        "BROWSER": "none",
+        "npm_config_cache": "E:/devcache/npm",
+        "TEMP": "E:/devcache/tmp",
+        "TMP": "E:/devcache/tmp"
+      }
+    }
+  ]
+}
