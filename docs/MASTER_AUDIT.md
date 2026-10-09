@@ -133,3 +133,26 @@ Evidence: `php artisan test` **95 passed (1,456 assertions)** incl. `CompletionT
 
 ### Result after this pass
 Backend 92 % · Web 92 % · Database 92 % · Automation 95 % · Mobile 85 % (device not verified) · Desktop 85 % · Security 90 % · Performance NOT VERIFIED → **Overall ≈ 90 % — ⚠️ PASS WITH ISSUES** (remaining items above).
+
+---
+
+## Update — remaining items pass (2026-10-09, evening)
+
+Evidence: `php artisan test` **99 passed (1,512 assertions)** incl. `RemainingFeaturesTest` (4); desktop `unittest` 15 OK (2 live tests skipped); mobile `tsc` clean; `SWS HR.exe` built with PyInstaller and opened on this PC; new API endpoints and report pages checked against the UAT server (HTTP 200, no errors).
+
+| Item | Now | Where |
+|---|---|---|
+| Mobile offline for leave / expense / daily status | ✅ queued on the phone, sent automatically; server de-duplicates by `X-Action-Id` (replay → same record, changed body → 409); daily status keeps the day it was written for (≤ 2 days late) | `mobile/src/lib/queue.ts`, `ApiController::once` |
+| Team membership history | ✅ dated history on every team change (employee or team screen, API); team policies and the Teams report use the team on that date | `EmployeeTeamHistory`, `EmployeeService::syncTeams` |
+| Reports | ✅ Payments (salary + full & final), Teams, Screen captures (counts only, `monitoring.view`) — on screen + CSV | `ReportService` |
+| Phone push | ✅ token register/remove, Expo push channel (off until `EXPO_PUSH_ENABLED`), per-group push switch, dead phones forgotten, tap opens Notifications | `ExpoPushChannel`, `mobile/src/lib/push.ts` |
+| Desktop installer + auto-update | ✅ PyInstaller exe (no Python needed), Inno Setup per-user installer script, update check with mandatory https + SHA-256 match, autostart works for the installed exe | `python/build-desktop.bat`, `installer/sws-hr.iss`, `sws_desktop/updater.py` |
+| Go-live guide | ✅ | `docs/DEPLOYMENT.md` |
+
+### Still NOT VERIFIED (needs the real environment)
+- Push delivery to a phone (needs an EAS build + project id), biometric / camera / GPS on a phone.
+- Installer `.exe` (Inno Setup not installed here) and an end-to-end update from a published https URL.
+- Windows display scaling 125/150 %, load test, real SMTP e-mail.
+
+### Result after this pass
+Backend 95 % · Web 94 % · Database 95 % · Automation 95 % · Mobile 90 % (device not verified) · Desktop 90 % (installer not built here) · Security 90 % · Performance NOT VERIFIED → **Overall ≈ 93 % — ⚠️ PASS WITH ISSUES** (only environment-dependent checks remain).
