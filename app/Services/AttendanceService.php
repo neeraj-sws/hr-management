@@ -103,6 +103,8 @@ class AttendanceService
 
     public function startBreak(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null): AttendanceSession
     {
+        $this->guardSource($employee, $source);
+
         return DB::transaction(function () use ($employee, $source, $at) {
             $now = $at ? $this->local($at) : now();
             $session = $this->lockedOpenSession($employee, $now);
@@ -120,6 +122,8 @@ class AttendanceService
 
     public function endBreak(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null): AttendanceSession
     {
+        $this->guardSource($employee, $source);
+
         return DB::transaction(function () use ($employee, $source, $at) {
             $now = $at ? $this->local($at) : now();
             $session = $this->lockedOpenSession($employee, $now);
