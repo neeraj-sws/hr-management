@@ -32,7 +32,6 @@ class Policies extends Component
     public const OVERRIDABLE = self::RULES + [
         'overtime.multiplier' => ['Overtime', ['multiplier' => 'Multiplier', 'holiday_multiplier' => 'Holiday / weekly-off multiplier', 'max_minutes_per_day' => 'Max minutes per day', 'max_minutes_per_month' => 'Max minutes per month']],
         'leave.advance_limit' => ['Advance paid leave', ['max_days' => 'Maximum advance days']],
-        'monitoring.screenshots' => ['Screen capture', ['enabled' => 'Enabled (1 = yes, 0 = no)', 'interval_minutes' => 'Interval minutes (5/10/15/30)', 'active_only' => 'Only when in use (1/0)', 'retention_days' => 'Keep for days']],
     ];
 
     public array $values = [];

@@ -30,6 +30,13 @@ class EmployeeProfile extends Component
         $this->toast('Employment confirmed.');
     }
 
+    public function toggleCapture(\App\Services\ScreenCaptureService $captures): void
+    {
+        $on = ! $captures->policy($this->employee)['enabled'];
+        $captures->setForEmployee($this->employee, $on, $this->user());
+        $this->toast($on ? 'Screen capture turned on.' : 'Screen capture turned off.');
+    }
+
     public function render(AttendanceService $attendance, LeaveAccrualService $leave, WorkService $work)
     {
         $employee = $this->employee->load(['department', 'manager', 'teams', 'user.roles', 'directReports', 'salaryProfiles' => fn ($q) => $q->orderByDesc('effective_from')]);
@@ -51,6 +58,7 @@ class EmployeeProfile extends Component
             'documents' => ($isSelf || $user->can('lifecycle.manage')) ? $employee->documents()->latest()->get() : collect(),
             'showSalary' => $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']),
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
+            'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
             'teamHistory' => \App\Models\EmployeeTeamHistory::with('team')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'managerHistory' => \App\Models\EmployeeManagerHistory::with('manager')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'history' => $user->canAny(['employees.manage', 'hr.manage', 'audit.view']) ? \App\Models\AuditLog::with('actor')->where('subject_type', $employee::class)->where('subject_id', $employee->id)->latest('id')->limit(15)->get() : collect(),

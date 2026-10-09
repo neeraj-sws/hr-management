@@ -30,6 +30,10 @@
             <dt>Schedule</dt><dd>{{ $employee->work_start ? substr($employee->work_start, 0, 5).' – '.substr((string) $employee->work_end, 0, 5) : 'Not scheduled' }} · {{ (float) $employee->daily_work_hours }} h/day</dd>
         </dl></div></section>
 
+        @if($capture)
+            <section class="card"><div class="card-head"><div><h2>Screen capture</h2><p>@if($capture['enabled'])On — every {{ $capture['interval_minutes'] }} min while checked in and working.@else Off. @endif</p></div>
+                <button type="button" class="btn {{ $capture['enabled'] ? '' : 'btn-primary' }}" wire:click="toggleCapture" wire:loading.attr="disabled">{{ $capture['enabled'] ? 'Turn off' : 'Turn on' }}</button></div></section>
+        @endif
         <section class="card"><div class="card-head"><h2>Leave balance {{ today()->year }}</h2></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th class="num">Entitled + accrued</th><th class="num">Carried</th><th class="num">Used</th><th class="num">Pending</th><th class="num">Remaining</th></tr></thead><tbody>
                 @foreach($balances as $b)<tr><td><strong>{{ $b['type']->name }}</strong><small>{{ $b['type']->paid ? 'Paid' : 'Unpaid' }}</small></td><td class="num">{{ $b['entitled'] + $b['accrued'] }}</td><td class="num">{{ $b['carried'] }}</td><td class="num">{{ $b['used'] }}</td><td class="num">{{ $b['booked'] }}</td><td class="num"><strong>{{ round($b['remaining'], 2) }}</strong></td></tr>@endforeach

@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Optional screen capture from the desktop app (off unless HR turns it on).
- * Rules enforced here, not only in the app: the employee acknowledged it,
+ * Rules enforced here, not only in the app: an administrator turned it on for the employee (or everyone),
  * was checked in and working (not on break, not checked out), inside the
  * work window, no faster than the interval. Files are private; only the
  * employee, their current manager and people with monitoring.view can open
@@ -42,6 +42,17 @@ class ScreenCaptureService
         ];
     }
 
+    /**
+     * Turns capture on/off for one employee (admin only, monitoring.manage).
+     * Interval, work window and retention stay as set company-wide in Settings.
+     */
+    public function setForEmployee(AttendanceEmployee $employee, bool $enabled, User $actor): void
+    {
+        abort_unless($actor->can('monitoring.manage'), 403, 'Only an administrator can change screen capture.');
+        app(PeopleOperationsService::class)->setPolicy('monitoring.screenshots', 'monitoring', 'Screen capture', ['enabled' => $enabled], $employee->id, $actor->id, today()->toDateString());
+        $this->audit->record($enabled ? 'screen_capture.enabled_for_employee' : 'screen_capture.disabled_for_employee', $employee, ['by' => $actor->id]);
+    }
+
     public function acknowledge(User $user): void
     {
         if (! $user->screen_capture_acknowledged_at) {
@@ -55,7 +66,6 @@ class ScreenCaptureService
         $policy = $this->policy($employee);
         $reject = fn (string $message) => throw ValidationException::withMessages(['screenshot' => $message]);
         if (! $policy['enabled']) $reject('Screen capture is turned off.');
-        if (! $employee->user?->screen_capture_acknowledged_at) $reject('The employee has not acknowledged screen capture yet.');
         $capturedAt = $capturedAt->copy()->setTimezone(config('app.timezone'));
         if ($capturedAt->gt(now()->addMinute()) || $capturedAt->lt(now()->subMinutes(15))) $reject('Captures must be uploaded within 15 minutes.');
         $session = $this->attendance->openSession($employee, $capturedAt);

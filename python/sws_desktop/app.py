@@ -3,7 +3,7 @@
 Network calls run on a worker thread; results come back to the Tk thread via
 `root.after`, so the window never freezes while the server is slow or down.
 No keystrokes, webcam, microphone or clipboard are recorded. Screenshots are taken
-only if HR turns screen capture on and the employee acknowledges it (see presence.should_capture).
+only if an administrator turns screen capture on for this employee (see presence.should_capture).
 """
 
 from __future__ import annotations
@@ -50,7 +50,6 @@ class DesktopApp:
         self.last_presence_poll: datetime | None = None
         self.capture_policy: dict | None = None
         self.last_capture: datetime | None = None
-        self.capture_prompted = False
         self.prefs = settings.load_settings()
         settings.ensure_dir()
         self.client = HrClient(self.prefs.get("server", settings.DEFAULT_SERVER), settings.load_token())
@@ -393,39 +392,8 @@ class DesktopApp:
         if not policy or not policy.get("enabled"):
             self.capture_label.config(text="")
             return
-        if not policy.get("acknowledged"):
-            self.capture_label.config(text="Screen capture is required by your company - waiting for your acknowledgement.")
-            if not self.capture_prompted:
-                self.capture_prompted = True
-                self.root.after(300, self._ask_capture_acknowledgement)
-            return
         window = f", {policy['window_start']}-{policy['window_end']}" if policy.get("window_start") else ""
         self.capture_label.config(text=f"Screen capture on: every {policy['interval_minutes']} min while working{window}. Not during breaks or after check-out.")
-
-    def _ask_capture_acknowledgement(self):
-        policy = self.capture_policy or {}
-        lines = [
-            "Your company has turned on screen capture.",
-            "",
-            f"- A picture of your screen is taken every {policy.get('interval_minutes', 10)} minutes, only while you are checked in and working"
-            + (" and using the computer." if policy.get("active_only", True) else "."),
-            "- Nothing is captured before check-in, during breaks or after check-out.",
-            "- Keystrokes, passwords, webcam, microphone and clipboard are never recorded.",
-            f"- You can see your own screenshots on the website (Monitoring > Screenshots). They are deleted after {policy.get('retention_days', 30)} days.",
-            "",
-            "Do you acknowledge this?",
-        ]
-        self.root.deiconify()
-        self.root.lift()
-        if not messagebox.askyesno("Screen capture", "\n".join(lines), parent=self.root):
-            self._flash("Screen capture was not acknowledged; nothing will be captured. Talk to HR if you have concerns.", AMBER)
-            return
-
-        def done(_):
-            self._flash("Thank you - screen capture acknowledged.", GREEN)
-            self.refresh()
-
-        self._run(self.client.acknowledge_screen_capture, done, lambda e: self._flash(e.first_message if isinstance(e, ApiError) else str(e), RED))
 
     def _capture(self, at: datetime):
         def work():

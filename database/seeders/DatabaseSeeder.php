@@ -22,7 +22,7 @@ class DatabaseSeeder extends Seeder
         'payroll.manage', 'payroll.approve', 'salary.adjust', 'salary.advance',
         'penalties.manage', 'policies.manage', 'performance.review', 'reports.view', 'audit.view',
         'notes.manage', 'credentials.manage', 'credentials.view', 'lifecycle.manage', 'roles.manage',
-        'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view',
+        'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view', 'monitoring.manage',
     ];
 
     public const ROLE_PERMISSIONS = [
