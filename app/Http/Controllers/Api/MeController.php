@@ -29,7 +29,7 @@ class MeController extends ApiController
             'schedule' => $employee ? (fn ($rules) => ['shift' => $rules['shift'], 'starts_at' => $rules['work_start'] ? substr($rules['work_start'], 0, 5) : null, 'grace_minutes' => $rules['grace_minutes']])($attendance->rules($employee, today()->toDateString())) : null,
             'policies' => [
                 'location_required' => (bool) ($policies->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_mobile'] ?? false),
-                'screen_capture' => $employee ? [...app(\App\Services\ScreenCaptureService::class)->policy($employee), 'acknowledged' => (bool) $user->screen_capture_acknowledged_at] : null,
+                'screen_capture' => $employee ? [...app(\App\Services\ScreenCaptureService::class)->policy($employee), 'acknowledged' => true] : null,
                 'away_prompt_minutes' => (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['away_prompt_minutes' => 10])['away_prompt_minutes'] ?? 10),
             ],
         ]]);

@@ -166,3 +166,9 @@ Four gaps found against the checklist and closed (test `test_checklist_gaps_*`, 
 
 ### Desktop installer verified (2026-10-09)
 Inno Setup 6.7.3 installed; `python\build-desktop.bat` produced `dist\SWS-HR-Setup-1.1.0.exe` (14.5 MB, SHA-256 `cd9d73d39da186f9fe3fe05d196946d49679b9326cfb63c3a44eb4605a92ce4a`). Silent per-user install on this PC: app in `%LOCALAPPDATA%\Programs\SWS HR`, Start Menu shortcut and uninstaller created, app started after install. Checklist 19 "Install" → PASS. Update from a published https URL → still NOT VERIFIED (needs hosting).
+
+### Screen capture: administrator-controlled (2026-10-09, owner's decision)
+- Only users with the new `monitoring.manage` permission (Master Admin) switch capture on — for everyone (Settings → Screen capture) or per employee (that tab's list, or the employee profile). HR can no longer change it through Compliance → Policies.
+- The employee is no longer asked to acknowledge; the desktop app still shows a visible "Screen capture on: every N min…" line (spec §48: no hidden surveillance).
+- Unchanged: only while checked in and working, never during breaks or after check-out, private storage, audited viewing, retention purge.
+- Desktop app 1.2.0 built and installed (`SWS-HR-Setup-1.2.0.exe`).

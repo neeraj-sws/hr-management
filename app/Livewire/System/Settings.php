@@ -262,12 +262,20 @@ class Settings extends Component
         $this->toast($percent < 100 && $percent > 0 ? 'Template saved. The remaining '.(100 - $percent).'% is paid as "Balance allowance".' : 'Salary structure template saved.');
     }
 
+    public function toggleEmployeeCapture(int $employeeId, \App\Services\ScreenCaptureService $captures): void
+    {
+        $employee = \App\Models\AttendanceEmployee::findOrFail($employeeId);
+        $on = ! $captures->policy($employee)['enabled'];
+        $captures->setForEmployee($employee, $on, $this->user());
+        $this->toast($on ? "Screen capture on for {$employee->name}." : "Screen capture off for {$employee->name}.");
+    }
+
     public function saveCapturePolicy(PeopleOperationsService $people): void
     {
-        $this->authorizeSettings();
+        abort_unless($this->user()->can('monitoring.manage'), 403);
         $this->validate(['captureInterval' => ['required', Rule::in(array_map('strval', \App\Services\ScreenCaptureService::INTERVALS))], 'captureWindowStart' => ['nullable', 'date_format:H:i', 'required_with:captureWindowEnd'], 'captureWindowEnd' => ['nullable', 'date_format:H:i', 'required_with:captureWindowStart'], 'captureRetention' => ['required', 'integer', 'min:1', 'max:365']], [], ['captureInterval' => 'interval', 'captureWindowStart' => 'window start', 'captureWindowEnd' => 'window end', 'captureRetention' => 'retention']);
         $people->setPolicy('monitoring.screenshots', 'monitoring', 'Screen capture', array_filter(['enabled' => $this->captureEnabled, 'interval_minutes' => (int) $this->captureInterval, 'active_only' => $this->captureActiveOnly, 'window_start' => $this->captureWindowStart ?: null, 'window_end' => $this->captureWindowEnd ?: null, 'retention_days' => (int) $this->captureRetention], fn ($v) => $v !== null), null, auth()->id(), today()->toDateString());
-        $this->toast($this->captureEnabled ? 'Screen capture is on. Employees are asked to acknowledge it in the desktop app first.' : 'Screen capture is off.');
+        $this->toast($this->captureEnabled ? 'Screen capture is on for all employees.' : 'Saved. Capture runs only for employees you switch on below.');
     }
 
     public function saveLocationPolicy(PeopleOperationsService $people): void
@@ -285,6 +293,11 @@ class Settings extends Component
 
     public function render()
     {
-        return $this->page('livewire.system.settings', ['leaveTypes' => LeaveType::orderBy('name')->get(), 'offices' => OfficeLocation::orderBy('name')->get()], 'Settings');
+        $canCapture = $this->user()->can('monitoring.manage');
+        $captureEmployees = $canCapture && $this->tab === 'capture'
+            ? \App\Models\AttendanceEmployee::with('department')->where('is_active', true)->orderBy('name')->get()->map(fn ($e) => ['employee' => $e, 'on' => app(\App\Services\ScreenCaptureService::class)->policy($e)['enabled']])
+            : collect();
+
+        return $this->page('livewire.system.settings', ['leaveTypes' => LeaveType::orderBy('name')->get(), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees], 'Settings');
     }
 }

@@ -54,10 +54,24 @@
             </div><div class="form-actions"><button class="btn btn-primary">Save</button></div></form>
         </section>
     @elseif($tab === 'capture')
+        @if(! $canCapture)
+            <section class="card"><div class="card-body"><p class="muted">Only an administrator can change screen capture.</p></div></section>
+        @else
         <section class="card">
+            <div class="card-head"><div><h2>Employees</h2><p>Switch screen capture on only for the people you choose. Nothing is captured for anyone else.</p></div></div>
+            <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Department</th><th>Screen capture</th><th></th></tr></thead><tbody>
+                @foreach($captureEmployees as $row)
+                    <tr><td><strong>{{ $row['employee']->name }}</strong> <span class="small muted">{{ $row['employee']->employee_code }}</span></td><td>{{ $row['employee']->department?->name ?? '—' }}</td>
+                        <td>@if($row['on'])<x-badge tone="green">on</x-badge>@else<x-badge tone="gray">off</x-badge>@endif</td>
+                        <td class="num"><button type="button" class="btn btn-sm {{ $row['on'] ? '' : 'btn-primary' }}" wire:click="toggleEmployeeCapture({{ $row['employee']->id }})" wire:loading.attr="disabled">{{ $row['on'] ? 'Turn off' : 'Turn on' }}</button></td></tr>
+                @endforeach
+            </tbody></table></div>
+        </section>
+        <section class="card">
+            <div class="card-head"><div><h2>Capture rules</h2><p>Apply to everyone who has capture on.</p></div></div>
             <form class="card-body" wire:submit="saveCapturePolicy">
-                <label class="check"><input type="checkbox" wire:model="captureEnabled"> Capture the screen from the desktop app</label>
-                <p class="small muted">Off by default. Each employee sees a notice in the desktop app and must acknowledge it before anything is captured. Captures are taken only while checked in and working — never before check-in, during a break or after check-out — and only the employee, their manager and people with the "monitoring.view" permission can open them. Keystrokes, passwords, webcam, microphone and clipboard are never recorded.</p>
+                <label class="check"><input type="checkbox" wire:model="captureEnabled"> Turn on for <strong>all</strong> employees</label>
+                <p class="small muted">Off by default — use the list above to choose people. Captures are taken only while the employee is checked in and working — never before check-in, during a break or after check-out. The desktop app shows the employee that capture is on. Only the employee, their manager and people with the "monitoring.view" permission can open the pictures. Keystrokes, passwords, webcam, microphone and clipboard are never recorded.</p>
                 <div class="form-grid mt">
                     <x-field label="Every" name="captureInterval"><select wire:model="captureInterval">@foreach(\App\Services\ScreenCaptureService::INTERVALS as $m)<option value="{{ $m }}">{{ $m }} minutes</option>@endforeach</select></x-field>
                     <x-field label="Keep captures for (days)" name="captureRetention"><input type="number" min="1" max="365" wire:model="captureRetention"></x-field>
@@ -65,9 +79,10 @@
                     <x-field label="and (end)" name="captureWindowEnd"><input type="time" wire:model="captureWindowEnd"></x-field>
                     <label class="check full"><input type="checkbox" wire:model="captureActiveOnly"> Only when the computer is in use (skip if idle or screen locked)</label>
                 </div>
-                <div class="form-actions"><button class="btn btn-primary">Save</button></div>
+                <div class="form-actions"><button class="btn btn-primary">Save rules</button></div>
             </form>
         </section>
+        @endif
     @elseif($tab === 'locations')
         <section class="card">
             <form class="card-body" wire:submit="saveLocationPolicy">

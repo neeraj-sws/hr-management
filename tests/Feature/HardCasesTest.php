@@ -418,11 +418,15 @@ class HardCasesTest extends TestCase
         $this->at('2026-10-07 09:30:00');
         $this->attendance->checkIn($this->employee, 'desktop');
         $this->expectFailure(fn () => $captures->store($this->employee->fresh('user'), $shot(), now()), null, 'turned off');
-        $people->setPolicy('monitoring.screenshots', 'monitoring', 'Screen capture', ['enabled' => true, 'interval_minutes' => 10, 'active_only' => true], null, $this->admin->id, '2026-10-01');
-        $this->expectFailure(fn () => $captures->store($this->employee->fresh('user'), $shot(), now()), null, 'acknowledged');
+        // Company rules (interval etc.) without switching it on for everyone; only an administrator picks the employee.
+        $people->setPolicy('monitoring.screenshots', 'monitoring', 'Screen capture', ['enabled' => false, 'interval_minutes' => 10, 'active_only' => true], null, $this->admin->id, '2026-10-01');
+        $hr = User::factory()->create();
+        $hr->assignRole('HR');
+        try { $captures->setForEmployee($this->employee, true, $hr); $this->fail('HR must not switch capture on'); } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(403, $e->getStatusCode()); }
+        $captures->setForEmployee($this->employee, true, $this->admin);
+        $this->assertFalse($captures->policy($this->manager)['enabled'], 'Only the chosen employee');
         Sanctum::actingAs($this->employeeUser, ['*']);
-        $this->postJson('/api/monitoring/acknowledge')->assertOk();
-        $this->getJson('/api/me')->assertJsonPath('data.policies.screen_capture.acknowledged', true);
+        $this->getJson('/api/me')->assertJsonPath('data.policies.screen_capture.enabled', true)->assertJsonPath('data.policies.screen_capture.interval_minutes', 10);
 
         $upload = fn (string $time) => $this->at($time) ?? $this->post('/api/monitoring/screenshots', ['image' => $shot(), 'captured_at' => now()->toIso8601String()], ['Accept' => 'application/json']);
         $upload('2026-10-07 09:40:00')->assertCreated();
