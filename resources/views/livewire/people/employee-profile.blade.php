@@ -30,6 +30,10 @@
             <dt>Schedule</dt><dd>{{ $employee->work_start ? substr($employee->work_start, 0, 5).' – '.substr((string) $employee->work_end, 0, 5) : 'Not scheduled' }} · {{ (float) $employee->daily_work_hours }} h/day</dd>
         </dl></div></section>
 
+        @if($appUsageOn !== null)
+            <section class="card"><div class="card-head"><div><h2>Application usage</h2><p>@if($appUsageOn)On â records which app is in front and for how long, while checked in and working. App name and time only; no titles or content.@else Off.@endif</p></div>
+                <button type="button" class="btn {{ $appUsageOn ? '' : 'btn-primary' }}" wire:click="toggleAppUsage" wire:loading.attr="disabled">{{ $appUsageOn ? 'Turn off' : 'Turn on' }}</button></div></section>
+        @endif
         @if($capture)
             <section class="card"><div class="card-head"><div><h2>Screen capture</h2><p>@if($capture['enabled'])On — every {{ $capture['interval_minutes'] }} min while checked in and working.@else Off. @endif</p></div>
                 <button type="button" class="btn {{ $capture['enabled'] ? '' : 'btn-primary' }}" wire:click="toggleCapture" wire:loading.attr="disabled">{{ $capture['enabled'] ? 'Turn off' : 'Turn on' }}</button></div></section>

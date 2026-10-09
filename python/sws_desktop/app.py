@@ -47,6 +47,8 @@ class DesktopApp:
         self.away_prompt_open = False
         self.screen_active = 0.0  # not yet sent to the server
         self.screen_idle = 0.0
+        self.app_usage: dict[str, float] = {}  # app name -> seconds not yet sent
+        self.app_usage_on = False
         self.last_presence_poll: datetime | None = None
         self.capture_policy: dict | None = None
         self.last_capture: datetime | None = None
@@ -213,6 +215,8 @@ class DesktopApp:
         self.screen_label.grid(row=3, column=0, sticky="w")
         self.capture_label = tk.Label(att, text="", fg=AMBER, bg="white", wraplength=440, justify="left")
         self.capture_label.grid(row=4, column=0, sticky="w")
+        self.app_usage_label = tk.Label(att, text="", fg=MUTED, bg="white", wraplength=440, justify="left")
+        self.app_usage_label.grid(row=5, column=0, sticky="w")
         buttons = tk.Frame(att, bg="white")
         buttons.grid(row=0, column=1, rowspan=3, sticky="e", padx=(20, 0))
         att.columnconfigure(0, weight=1)
@@ -275,6 +279,10 @@ class DesktopApp:
                     self.screen_idle += elapsed
                 else:
                     self.screen_active += elapsed
+                    if self.app_usage_on:
+                        app_name = presence.foreground_app()
+                        if app_name:
+                            self.app_usage[app_name] = self.app_usage.get(app_name, 0.0) + elapsed
             self.last_presence_poll = now if working else None
             if not working:
                 self.last_capture = None
@@ -444,6 +452,9 @@ class DesktopApp:
             self.me, session, self.tasks = result
             minutes = int((self.me.get("policies") or {}).get("away_prompt_minutes", 10))
             self._apply_capture_policy((self.me.get("policies") or {}).get("screen_capture"))
+            self.app_usage_on = bool((self.me.get("policies") or {}).get("app_usage"))
+            if hasattr(self, "app_usage_label") and self.app_usage_label.winfo_exists():
+                self.app_usage_label.config(text="Application usage is recorded while you work: app name and time only, no titles or content." if self.app_usage_on else "")
             if self.away_tracker.threshold.total_seconds() != minutes * 60:
                 self.away_tracker = presence.AwayTracker(minutes)
             self._set_session(session)
@@ -642,11 +653,16 @@ class DesktopApp:
             self.sync_now()
         elif self.session and self.session.get("id") and not self.session.get("check_out"):
             active, idle = int(self.screen_active), int(self.screen_idle)
+            apps = {name: int(sec) for name, sec in self.app_usage.items() if int(sec) > 0}
 
             def sent(session):
                 self.online = True
                 self.screen_active -= active
                 self.screen_idle -= idle
+                for name, sec in apps.items():
+                    self.app_usage[name] = max(0.0, self.app_usage.get(name, 0.0) - sec)
+                if apps and self.app_usage_on:
+                    self._run(lambda: self.client.report_app_usage(apps), lambda _r: None, lambda _e: None)
                 if session:
                     self.session = {**(self.session or {}), "screen_active_seconds": session.get("screen_active_seconds", 0), "screen_idle_seconds": session.get("screen_idle_seconds", 0)}
 

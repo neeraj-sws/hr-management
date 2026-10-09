@@ -71,6 +71,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/holidays', [CompanyController::class, 'holidays'])->name('api.holidays');
 
     Route::post('/monitoring/acknowledge', [ScreenCaptureController::class, 'acknowledge'])->name('api.monitoring.acknowledge');
+    Route::post('/monitoring/app-usage', [\App\Http\Controllers\Api\AppUsageController::class, 'store'])->name('api.monitoring.app-usage');
     Route::post('/monitoring/screenshots', [ScreenCaptureController::class, 'store'])->name('api.monitoring.screenshots');
 
     Route::get('/training', [TrainingController::class, 'index'])->name('api.training.index');
