@@ -113,6 +113,9 @@ class HrClient:
         return self.request("POST", f"/tasks/{task_id}/{action}", {})["data"]
 
     # Misc -----------------------------------------------------------------
+    def latest_desktop(self) -> dict | None:
+        return self.request("GET", "/desktop/latest").get("data")
+
     def notifications(self) -> dict:
         return self.request("GET", "/notifications?unread=1")
 

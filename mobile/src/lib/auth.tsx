@@ -2,6 +2,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { AppState } from 'react-native';
 import { configureApi, DEFAULT_API_URL, get, post } from './api';
 import { authenticate, biometricEnabled } from './biometric';
+import { listenForTaps, registerForPush, unregisterPush } from './push';
 import { clearQueue, flush, startAutoSync } from './queue';
 import { secure, store } from './storage';
 import type { Me } from './types';
@@ -56,11 +57,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (await biometricEnabled()) setLocked(true);
         try {
           await refreshMe();
+          registerForPush().catch(() => undefined);
         } catch {
           // Offline: keep the session and show the last known profile.
           setMe(await store.getJson<Me | null>('sws.me', null));
         }
         startAutoSync();
+        listenForTaps();
       }
       setReady(true);
     })();
@@ -90,10 +93,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configureApi({ token: response.token });
     await refreshMe();
     startAutoSync();
+    listenForTaps();
     flush().catch(() => undefined);
+    registerForPush().catch(() => undefined);
   }, [refreshMe]);
 
   const signOut = useCallback(async () => {
+    try {
+      await unregisterPush();
+    } catch {
+      // The server forgets the phone anyway once the token is revoked.
+    }
     try {
       await post('/auth/revoke');
     } catch {

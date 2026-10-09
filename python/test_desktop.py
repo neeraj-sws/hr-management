@@ -198,5 +198,34 @@ class LiveServerTests(unittest.TestCase):
         self.assertEqual(caught.exception.status, 401)
 
 
+class UpdaterTests(unittest.TestCase):
+    def test_only_newer_https_releases_with_a_checksum_are_offered(self):
+        from sws_desktop import updater
+        good = {"version": "99.0.0", "url": "https://example.com/setup.exe", "sha256": "a" * 64}
+        self.assertEqual(updater.available_update(good), good)
+        self.assertIsNone(updater.available_update(None))
+        self.assertIsNone(updater.available_update({**good, "version": "0.9"}))
+        self.assertIsNone(updater.available_update({**good, "sha256": ""}))
+        self.assertIsNone(updater.available_update({**good, "url": "http://example.com/setup.exe"}))
+        self.assertTrue(updater.is_newer("1.10.0", "1.9.3"))
+        self.assertFalse(updater.is_newer("1.1.0", "1.1.0"))
+
+    def test_download_keeps_the_file_only_when_the_checksum_matches(self):
+        import hashlib
+        from sws_desktop import updater
+        body = b"installer-bytes"
+        response = Mock(iter_content=lambda chunk_size: [body], raise_for_status=Mock())
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        session = Mock(get=Mock(return_value=response))
+        with tempfile.TemporaryDirectory() as folder:
+            update = {"version": "2.0.0", "url": "https://example.com/s.exe", "sha256": hashlib.sha256(body).hexdigest()}
+            path = updater.download(update, session=session, folder=Path(folder))
+            self.assertEqual(path.read_bytes(), body)
+            with self.assertRaises(ValueError):
+                updater.download({**update, "sha256": "0" * 64}, session=session, folder=Path(folder))
+            self.assertFalse((Path(folder) / "SWS-HR-Setup-2.0.0.exe").exists(), "A tampered download is deleted")
+
+
 if __name__ == "__main__":
     unittest.main()
