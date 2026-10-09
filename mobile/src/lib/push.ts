@@ -1,6 +1,5 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { Platform } from 'react-native';
 import { post } from './api';
@@ -11,14 +10,14 @@ import { store } from './storage';
  * sends its Expo push token to the server; sign-out removes it again.
  *
  * Needs a real phone and an app build with an EAS project id
- * (app.json → extra.eas.projectId). Expo Go on Android cannot receive remote
- * pushes, so there it quietly does nothing — in-app notifications still work.
+ * (app.json → extra.eas.projectId). In Expo Go on Android, expo-notifications
+ * throws as soon as it is imported, so it is only loaded when push can work —
+ * in-app notifications keep working everywhere.
  */
 const TOKEN_KEY = 'sws.push.token';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
-});
+type NotificationsModule = typeof import('expo-notifications');
+let notifications: NotificationsModule | null = null;
 
 function projectId(): string | undefined {
   const extra = Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined;
@@ -28,14 +27,27 @@ function projectId(): string | undefined {
 /** Why push cannot work on this phone/build, or null when it can. */
 export function pushUnavailableReason(): string | null {
   if (Platform.OS === 'web') return 'Phone notifications work in the phone app only.';
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return 'Expo Go cannot receive phone notifications; the installed SWS HR app can.';
   if (!Device.isDevice) return 'Phone notifications need a real phone, not an emulator.';
-  if (Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return 'Expo Go cannot receive phone notifications; the installed SWS HR app can.';
   if (!projectId()) return 'This app build is not set up for phone notifications yet.';
   return null;
 }
 
+/** Loads expo-notifications on first use, only where push is supported. */
+function load(): NotificationsModule | null {
+  if (pushUnavailableReason()) return null;
+  if (!notifications) {
+    notifications = require('expo-notifications') as NotificationsModule;
+    notifications.setNotificationHandler({
+      handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
+    });
+  }
+  return notifications;
+}
+
 export async function registerForPush(): Promise<void> {
-  if (pushUnavailableReason()) return;
+  const Notifications = load();
+  if (!Notifications) return;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', { name: 'SWS HR', importance: Notifications.AndroidImportance.DEFAULT });
   }
@@ -61,7 +73,8 @@ export async function unregisterPush(): Promise<void> {
 let listening = false;
 /** Tapping a notification opens the notifications screen. */
 export function listenForTaps() {
-  if (listening || Platform.OS === 'web') return;
+  const Notifications = load();
+  if (listening || !Notifications) return;
   listening = true;
   Notifications.addNotificationResponseReceivedListener(() => router.push('/notifications'));
 }
