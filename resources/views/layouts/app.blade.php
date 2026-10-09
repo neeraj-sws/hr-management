@@ -24,19 +24,68 @@
             <span class="brand-mark">SW</span>
             <span><span class="brand-name">SWS HR</span><span class="brand-sub">HR &amp; Work Management</span></span>
         </a>
-        <nav class="nav-scroll">
+        <div class="nav-find">
+            <x-icon name="search" class="icon-sm" />
+            <input type="search" id="nav-find" placeholder="Find a page…" aria-label="Find a page in the menu" autocomplete="off">
+        </div>
+        {{-- Groups fold: only the current page's group starts open, opening one closes the others. --}}
+        <nav class="nav-scroll" id="nav-menu">
             @foreach(\App\Support\Navigation::for($user) as $group)
-                <div class="nav-group">
-                    <span class="nav-heading">{{ $group['heading'] }}</span>
-                    @foreach($group['items'] as $item)
-                        <a class="nav-link {{ $item['active'] ? 'active' : '' }}" href="{{ $item['url'] }}" @if($item['active']) aria-current="page" @endif>
-                            <x-icon :name="$item['icon']" />{{ $item['label'] }}
-                            @if($item['route'] === 'system.notifications' && $unreadCount)<span class="nav-count">{{ $unreadCount }}</span>@endif
-                        </a>
-                    @endforeach
-                </div>
+                @php($hasActive = collect($group['items'])->contains('active', true))
+                @if(count($group['items']) === 1 && $group['heading'] === $group['items'][0]['label'])
+                    <div class="nav-group nav-single">
+                        @php($item = $group['items'][0])
+                        <a class="nav-link {{ $item['active'] ? 'active' : '' }}" href="{{ $item['url'] }}" @if($item['active']) aria-current="page" @endif><x-icon :name="$item['icon']" />{{ $item['label'] }}</a>
+                    </div>
+                @else
+                    <details class="nav-group" @if($hasActive) open data-current @endif>
+                        <summary class="nav-heading">{{ $group['heading'] }}@if($group['heading'] === 'System' && $unreadCount)<span class="nav-count">{{ $unreadCount }}</span>@endif</summary>
+                        @foreach($group['items'] as $item)
+                            <a class="nav-link {{ $item['active'] ? 'active' : '' }}" href="{{ $item['url'] }}" @if($item['active']) aria-current="page" @endif>
+                                <x-icon :name="$item['icon']" />{{ $item['label'] }}
+                                @if($item['route'] === 'system.notifications' && $unreadCount)<span class="nav-count">{{ $unreadCount }}</span>@endif
+                            </a>
+                        @endforeach
+                    </details>
+                @endif
             @endforeach
+            <p class="nav-empty" hidden>No page matches.</p>
         </nav>
+        <script>
+            (() => {
+                const menu = document.getElementById('nav-menu');
+                const find = document.getElementById('nav-find');
+                const groups = [...menu.querySelectorAll('details.nav-group')];
+                let filtering = false;
+                groups.forEach((group) => group.addEventListener('toggle', () => {
+                    if (group.open && !filtering) groups.forEach((other) => { if (other !== group) other.open = false; });
+                }));
+                menu.querySelector('.nav-link.active')?.scrollIntoView({ block: 'center' });
+                find.addEventListener('input', () => {
+                    const term = find.value.trim().toLowerCase();
+                    filtering = term !== '';
+                    let shown = 0;
+                    menu.querySelectorAll('.nav-group').forEach((group) => {
+                        const heading = group.querySelector('summary')?.textContent.toLowerCase() ?? '';
+                        let matches = 0;
+                        group.querySelectorAll('.nav-link').forEach((link) => {
+                            const hit = !term || heading.includes(term) || link.textContent.toLowerCase().includes(term);
+                            link.hidden = !hit;
+                            if (hit) matches++;
+                        });
+                        group.hidden = matches === 0;
+                        shown += matches;
+                        if (group.tagName === 'DETAILS') group.open = term ? matches > 0 : group.hasAttribute('data-current');
+                    });
+                    menu.querySelector('.nav-empty').hidden = shown > 0;
+                    if (term) menu.scrollTop = 0;
+                });
+                find.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') { event.preventDefault(); menu.querySelector('.nav-link:not([hidden])')?.click(); }
+                    if (event.key === 'Escape') { find.value = ''; find.dispatchEvent(new Event('input')); }
+                });
+            })();
+        </script>
     </aside>
     <label class="scrim" for="nav-toggle" aria-hidden="true"></label>
 

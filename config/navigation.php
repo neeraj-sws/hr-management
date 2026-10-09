@@ -30,7 +30,6 @@ return [
         ['label' => 'Corrections', 'route' => 'attendance.corrections', 'icon' => 'edit'],
         ['label' => 'Leave Conflicts', 'route' => 'attendance.conflicts', 'icon' => 'alert'],
         ['label' => 'Shifts & Roster', 'route' => 'attendance.shifts', 'icon' => 'layers'],
-        ['label' => 'Attendance Reports', 'route' => 'reports.show', 'params' => ['type' => 'attendance'], 'icon' => 'chart'],
     ]],
     ['heading' => 'Work', 'items' => [
         ['label' => 'Projects', 'route' => 'work.projects', 'icon' => 'folder'],
@@ -43,11 +42,9 @@ return [
         ['label' => 'Leave Requests', 'route' => 'leave.requests', 'icon' => 'calendar'],
         ['label' => 'Leave Balance', 'route' => 'leave.balances', 'icon' => 'pie'],
         ['label' => 'Overtime', 'route' => 'leave.overtime', 'icon' => 'timer'],
-        ['label' => 'Leave Reports', 'route' => 'reports.show', 'params' => ['type' => 'leave'], 'icon' => 'chart'],
     ]],
     ['heading' => 'Expenses', 'items' => [
         ['label' => 'Expense Claims', 'route' => 'expenses.index', 'icon' => 'receipt'],
-        ['label' => 'Expense Reports', 'route' => 'reports.show', 'params' => ['type' => 'expenses'], 'icon' => 'chart'],
     ]],
     ['heading' => 'Payroll', 'items' => [
         ['label' => 'Salary', 'route' => 'payroll.salary', 'icon' => 'wallet'],
@@ -60,12 +57,10 @@ return [
     ['heading' => 'Performance', 'items' => [
         ['label' => 'Performance', 'route' => 'performance.reviews', 'icon' => 'star'],
         ['label' => 'Productivity', 'route' => 'performance.productivity', 'icon' => 'activity'],
-        ['label' => 'Performance Reports', 'route' => 'reports.show', 'params' => ['type' => 'performance'], 'icon' => 'chart'],
     ]],
     ['heading' => 'Training', 'items' => [
         ['label' => 'My Training', 'route' => 'training.my', 'icon' => 'star'],
         ['label' => 'Courses', 'route' => 'training.courses', 'icon' => 'list'],
-        ['label' => 'Training Reports', 'route' => 'reports.show', 'params' => ['type' => 'training'], 'icon' => 'chart'],
     ]],
     ['heading' => 'Recruitment', 'items' => [
         ['label' => 'Job Openings', 'route' => 'recruitment.jobs', 'icon' => 'briefcase'],
