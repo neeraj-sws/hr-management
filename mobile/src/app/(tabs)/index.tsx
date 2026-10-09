@@ -57,7 +57,9 @@ export default function Home() {
         <Muted>{me?.employee ? `${me.employee.employee_code} · ${me.employee.department?.name ?? 'No department'}` : 'No employee profile is linked to this account.'}</Muted>
       </View>
       {queued > 0 && <Card><Row title={`${queued} action(s) waiting to sync`} subtitle="They will be sent automatically when you are online." right={<Badge label="queued" />} onPress={() => router.push('/sync')} /></Card>}
-      {me?.employee ? <AttendanceCard attendance={attendance} /> : null}
+      {me?.employee && (me.policies?.attendance_sources ?? ['mobile']).includes('mobile')
+        ? <AttendanceCard attendance={attendance} />
+        : me?.employee ? <Card><Row title="Attendance is not on the phone for you" subtitle="Mark your attendance on the website or desktop app. Ask HR if this is wrong." /></Card> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         <Stat label="Open tasks" value={tasks.length} hint={`${tasks.filter((t) => t.overdue).length} overdue`} />
         <Stat label="Notifications" value={me?.unread_notifications ?? 0} hint="unread" />

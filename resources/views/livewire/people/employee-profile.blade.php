@@ -34,6 +34,16 @@
             <section class="card"><div class="card-head"><div><h2>Screen capture</h2><p>@if($capture['enabled'])On — every {{ $capture['interval_minutes'] }} min while checked in and working.@else Off. @endif</p></div>
                 <button type="button" class="btn {{ $capture['enabled'] ? '' : 'btn-primary' }}" wire:click="toggleCapture" wire:loading.attr="disabled">{{ $capture['enabled'] ? 'Turn off' : 'Turn on' }}</button></div></section>
         @endif
+        @if($canEdit)
+            <section class="card"><div class="card-head"><div><h2>Attendance methods</h2><p>Where this employee may check in, break and check out. Managers can always correct attendance.</p></div></div><div class="card-body">
+                <div class="chips" wire:ignore.self>
+                    @foreach(\App\Services\AttendanceService::SOURCES as $key => $label)
+                        @php($on = in_array($key, $attendanceSources, true))
+                        <button type="button" class="chip {{ $on ? 'chip-on' : '' }}" wire:click="setAttendanceSources({{ \Illuminate\Support\Js::from($on ? array_values(array_diff($attendanceSources, [$key])) : array_merge($attendanceSources, [$key])) }})">{{ $label }}</button>
+                    @endforeach
+                </div>
+            </div></section>
+        @endif
         <section class="card"><div class="card-head"><h2>Leave balance {{ today()->year }}</h2></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th class="num">Entitled + accrued</th><th class="num">Carried</th><th class="num">Used</th><th class="num">Pending</th><th class="num">Remaining</th></tr></thead><tbody>
                 @foreach($balances as $b)<tr><td><strong>{{ $b['type']->name }}</strong><small>{{ $b['type']->paid ? 'Paid' : 'Unpaid' }}</small></td><td class="num">{{ $b['entitled'] + $b['accrued'] }}</td><td class="num">{{ $b['carried'] }}</td><td class="num">{{ $b['used'] }}</td><td class="num">{{ $b['booked'] }}</td><td class="num"><strong>{{ round($b['remaining'], 2) }}</strong></td></tr>@endforeach
