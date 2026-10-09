@@ -27,6 +27,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'PayrollRun' => 'payroll.payslips',
         'SalaryPayment' => 'payroll.payslips',
         'TaskAssignment' => 'work.my-tasks',
+        'TaskOverdue' => 'work.my-tasks',
         'EmployeeFinalSettlement' => 'lifecycle.settlements',
         'EmployeeFinalSettlementPayment' => 'lifecycle.settlements',
         'PerformanceReview' => 'performance.reviews',
@@ -47,7 +48,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     ];
 
     private const KIND_GROUP = [
-        'TaskAssignment' => 'work', 'TaskComment' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
+        'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
         'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders',
         'Announcement' => 'company', 'Celebration' => 'company',
     ];

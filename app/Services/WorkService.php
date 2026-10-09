@@ -128,6 +128,25 @@ class WorkService
      *
      * @param  array<int>|null  $employeeIds  null = everyone
      */
+    /** One alert per overdue open task, to the assignee and their manager; it re-arms when the due date moves. */
+    public function notifyOverdueTasks(): int
+    {
+        $count = 0;
+        Task::with('assignee.manager.user', 'assignee.user')->whereNull('overdue_notified_at')->whereNotNull('assignee_id')
+            ->where('status', '!=', 'completed')->whereDate('due_on', '<', today())
+            ->chunkById(200, function ($tasks) use (&$count) {
+                foreach ($tasks as $task) {
+                    $due = $task->due_on->format('d M');
+                    $task->assignee?->user?->notify(new \App\Notifications\ApprovalRequested('TaskOverdue', $task->id, "Task \"{$task->title}\" was due on {$due} and is not completed."));
+                    $task->assignee?->manager?->user?->notify(new \App\Notifications\ApprovalRequested('TaskOverdue', $task->id, "{$task->assignee->name}'s task \"{$task->title}\" is overdue (due {$due})."));
+                    $task->forceFill(['overdue_notified_at' => now()])->saveQuietly();
+                    $count++;
+                }
+            });
+
+        return $count;
+    }
+
     public function remindDailyStatus(string $date, ?array $employeeIds = null): int
     {
         $submitted = \App\Models\DailyWorkStatus::whereDate('work_date', $date)->pluck('employee_id');

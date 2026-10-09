@@ -327,10 +327,10 @@ class DesktopApp:
         win = tk.Toplevel(self.root, bg="white", padx=18, pady=14)
         win.title("Daily status")
         win.transient(self.root)
-        win.geometry("460x520")
+        win.geometry("460x600")
         tk.Label(win, text="Today's status", font=("Segoe UI", 13, "bold"), fg=NAVY, bg="white").pack(anchor="w")
         boxes = {}
-        for key, label, height in (("plan", "Plan for today", 3), ("summary", "Completed *", 5), ("blockers", "Blockers (your manager is notified)", 3), ("notes", "Notes", 2)):
+        for key, label, height in (("yesterday", "Yesterday", 2), ("plan", "Plan for today", 3), ("summary", "Completed *", 5), ("blockers", "Blockers (your manager is notified)", 3), ("notes", "Notes", 2)):
             tk.Label(win, text=label, bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 2))
             box = tk.Text(win, height=height, wrap="word", font=("Segoe UI", 10), relief="solid", bd=1, highlightthickness=0)
             box.pack(fill="x")
@@ -355,7 +355,7 @@ class DesktopApp:
                 self._flash("Daily status saved." + (" Your manager was told about the blocker." if values["blockers"] else ""), GREEN)
                 win.destroy()
 
-            self._run(lambda: self.client.save_daily_status(values["plan"], values["summary"], values["blockers"], values["notes"]), done,
+            self._run(lambda: self.client.save_daily_status(values["plan"], values["summary"], values["blockers"], values["notes"], values["yesterday"]), done,
                       lambda e: note.config(text=("You are offline; try again when connected." if isinstance(e, ApiError) and e.is_network else (e.first_message if isinstance(e, ApiError) else str(e))), fg=RED))
 
         ttk.Button(win, text="Save status", style="Primary.TButton", command=save).pack(fill="x", pady=(12, 0))

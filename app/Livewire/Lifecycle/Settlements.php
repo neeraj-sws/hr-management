@@ -19,6 +19,8 @@ class Settlements extends Component
     #[Url] public ?int $case = null;
     public string $paymentAmount = '';
     public string $paymentReference = '';
+    public string $paymentMethod = 'bank_transfer';
+    public string $paymentDate = '';
     public string $rejectNote = '';
 
     public function prepare(FinalSettlementService $settlements): void
@@ -45,10 +47,10 @@ class Settlements extends Component
     public function pay(FinalSettlementService $settlements): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
-        $this->validate(['paymentAmount' => ['required', 'numeric', 'gt:0'], 'paymentReference' => ['nullable', 'string', 'max:255']], [], ['paymentAmount' => 'amount']);
+        $this->validate(['paymentAmount' => ['required', 'numeric', 'gt:0'], 'paymentMethod' => ['required', \Illuminate\Validation\Rule::in(array_keys(\App\Models\SalaryPayment::METHODS))], 'paymentDate' => ['nullable', 'date', 'before_or_equal:today'], 'paymentReference' => ['nullable', 'string', 'max:255']], [], ['paymentAmount' => 'amount', 'paymentDate' => 'payment date']);
         $settlement = EmployeeFinalSettlement::where('lifecycle_case_id', $this->case)->firstOrFail();
-        $settlements->recordPayment($settlement, (float) $this->paymentAmount, $this->paymentReference ?: null, auth()->id());
-        $this->reset('paymentAmount', 'paymentReference');
+        $settlements->recordPayment($settlement, (float) $this->paymentAmount, $this->paymentReference ?: null, auth()->id(), $this->paymentMethod, $this->paymentDate ?: null);
+        $this->reset('paymentAmount', 'paymentReference', 'paymentDate');
         $this->toast('Settlement payment recorded.');
     }
 

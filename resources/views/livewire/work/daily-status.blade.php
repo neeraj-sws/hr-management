@@ -6,6 +6,7 @@
                 <section class="card">
                     <div class="card-head"><div><h2>Today · {{ today()->format('d M Y') }}</h2><p>You can update it until the end of the day.</p></div></div>
                     <form class="card-body" wire:submit="save">
+                        <x-field label="Yesterday" name="yesterday"><textarea wire:model="yesterday" rows="2" placeholder="What you did yesterday"></textarea></x-field>
                         <x-field label="Plan for today" name="plan"><textarea wire:model="plan" rows="2" placeholder="What you intend to do"></textarea></x-field>
                         <x-field label="Completed" name="summary"><textarea id="daily-summary-field" wire:model="summary" rows="4" placeholder="What you finished or moved forward"></textarea></x-field>
                         <x-field label="Blockers" name="blockers" hint="your manager is notified"><textarea wire:model="blockers" rows="2" placeholder="Anything stopping you"></textarea></x-field>
@@ -30,7 +31,7 @@
                 @endif
                 <div class="list">
                     @forelse($statuses as $status)
-                        <div class="list-row" style="align-items:flex-start"><div style="min-width:160px"><strong>{{ $status->employee?->name }}</strong><small>{{ $status->work_date->format('D, d M Y') }}</small></div><div class="small" style="flex:1;white-space:pre-line">@if($status->plan)<div><span class="muted">Plan:</span> {{ $status->plan }}</div>@endif<div><span class="muted">Completed:</span> {{ $status->summary }}</div>@if($status->blockers)<div style="color:var(--red)"><span class="muted">Blockers:</span> {{ $status->blockers }}</div>@endif@if($status->notes)<div><span class="muted">Notes:</span> {{ $status->notes }}</div>@endif@if($status->submitted_at)<small>submitted {{ $status->submitted_at->format('d M, h:i A') }}</small>@endif</div></div>
+                        <div class="list-row" style="align-items:flex-start"><div style="min-width:160px"><strong>{{ $status->employee?->name }}</strong><small>{{ $status->work_date->format('D, d M Y') }}</small></div><div class="small" style="flex:1;white-space:pre-line">@if($status->yesterday)<div><span class="muted">Yesterday:</span> {{ $status->yesterday }}</div>@endif@if($status->plan)<div><span class="muted">Plan:</span> {{ $status->plan }}</div>@endif<div><span class="muted">Completed:</span> {{ $status->summary }}</div>@if($status->blockers)<div style="color:var(--red)"><span class="muted">Blockers:</span> {{ $status->blockers }}</div>@endif@if($status->notes)<div><span class="muted">Notes:</span> {{ $status->notes }}</div>@endif@if($status->submitted_at)<small>submitted {{ $status->submitted_at->format('d M, h:i A') }}</small>@endif</div></div>
                     @empty
                         <x-empty title="No status updates" icon="edit" />
                     @endforelse

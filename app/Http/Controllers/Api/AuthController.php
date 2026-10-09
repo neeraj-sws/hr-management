@@ -17,7 +17,7 @@ class AuthController extends Controller
         if(!$user||!$user->is_active||!Hash::check($data['password'],$user->password))throw ValidationException::withMessages(['email'=>'These credentials do not match our records.']);
         $abilities=$user->getAllPermissions()->pluck('name')->values()->all();
         if($user->hasRole('Master Admin'))$abilities=['*'];
-        return response()->json(['token'=>$user->createToken($data['device_name'],$abilities)->plainTextToken,'token_type'=>'Bearer','abilities'=>$abilities]);
+        return response()->json(['token'=>$user->createToken($data['device_name'],$abilities,now()->addDays((int) config('sanctum.user_token_days', 30)))->plainTextToken,'token_type'=>'Bearer','abilities'=>$abilities]);
     }
 
     public function revoke(Request $request)

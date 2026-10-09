@@ -142,4 +142,43 @@ class RemainingFeaturesTest extends TestCase
         $this->postJson('/api/push-tokens/remove', ['token' => 'ExponentPushToken[xyz]'])->assertOk();
         $this->assertSame(0, \App\Models\PushToken::count());
     }
+    public function test_checklist_gaps_yesterday_payment_method_overdue_alerts_and_token_expiry(): void
+    {
+        // Daily status keeps "yesterday".
+        Sanctum::actingAs($this->employeeUser, ['*']);
+        $this->postJson('/api/daily-status', ['yesterday' => 'Fixed login bug', 'plan' => 'Reports', 'summary' => 'Reports half done'])->assertCreated()->assertJsonPath('data.yesterday', 'Fixed login bug');
+
+        // Salary payment records method and the date it was paid.
+        $run = PayrollRun::create(['period_starts_on' => '2026-09-01', 'period_ends_on' => '2026-09-30', 'status' => 'locked']);
+        $item = PayrollItem::create(['payroll_run_id' => $run->id, 'employee_id' => $this->employee->id, 'net_amount' => 50000, 'gross_amount' => 50000, 'calculation_data' => []]);
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Payments::class)
+            ->call('openPayment', $item->id)->set('amount', '20000')->set('method', 'telepathy')->call('pay')->assertHasErrors('method')
+            ->set('method', 'upi')->set('paidOn', '2026-10-05')->set('reference', 'UTR-1')->call('pay')->assertHasNoErrors();
+        $payment = SalaryPayment::firstOrFail();
+        $this->assertSame(['upi', '2026-10-05', 'UTR-1'], [$payment->method, $payment->paid_on->toDateString(), $payment->reference]);
+        $this->assertSame('upi', app(ReportService::class)->rows($this->admin, 'payments', ['from' => '2026-10-01', 'to' => '2026-10-07'])[0]['method']);
+
+        // Overdue task: one alert to the employee and the manager, re-armed when the due date moves.
+        $managerUser = User::factory()->create(['email' => 'rmgr@example.com']);
+        $manager = AttendanceEmployee::create(['employee_code' => 'RMGR', 'name' => 'Rem Manager', 'is_active' => true, 'user_id' => $managerUser->id]);
+        $this->employee->update(['manager_id' => $manager->id]);
+        $task = \App\Models\Task::create(['title' => 'Quarterly report', 'assignee_id' => $this->employee->id, 'created_by' => $this->admin->id, 'priority' => 'medium', 'status' => 'pending', 'due_on' => '2026-10-05']);
+        $this->artisan('work:notify-overdue-tasks')->assertSuccessful();
+        $this->artisan('work:notify-overdue-tasks')->assertSuccessful();
+        $this->assertSame(1, $this->employeeUser->notifications()->where('data->kind', 'TaskOverdue')->count());
+        $this->assertSame(1, $managerUser->notifications()->where('data->kind', 'TaskOverdue')->count());
+        $task->update(['due_on' => '2026-10-06']);
+        $this->assertNull($task->fresh()->overdue_notified_at, 'New due date, new alert later');
+
+        // Sign-in tokens from the apps expire.
+        $this->app['auth']->forgetGuards();
+        $pw = 'Uniq-Test-Password-42!';
+        $this->employeeUser->forceFill(['password' => \Illuminate\Support\Facades\Hash::make($pw)])->save();
+        $token = $this->postJson('/api/auth/token', ['email' => 'remp@example.com', 'password' => $pw, 'device_name' => 'phone'])->assertOk()->json('token');
+        $this->assertTrue(\Laravel\Sanctum\PersonalAccessToken::findToken($token)->expires_at->between(now()->addDays(29), now()->addDays(31)));
+        $this->getJson('/api/me', ['Authorization' => "Bearer {$token}"])->assertOk();
+        $this->travel(31)->days();
+        $this->app['auth']->forgetGuards();
+        $this->getJson('/api/me', ['Authorization' => "Bearer {$token}"])->assertUnauthorized();
+    }
 }

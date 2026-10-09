@@ -21,6 +21,8 @@ class Payments extends Component
     public ?int $payingItemId = null;
     public string $amount = '';
     public string $reference = '';
+    public string $method = 'bank_transfer';
+    public string $paidOn = '';
 
     public function mount(): void
     {
@@ -32,15 +34,15 @@ class Payments extends Component
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $item = PayrollItem::with('payments')->findOrFail($itemId);
-        $this->fill(['payingItemId' => $itemId, 'amount' => number_format(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2, '.', ''), 'reference' => '']);
+        $this->fill(['payingItemId' => $itemId, 'amount' => number_format(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2, '.', ''), 'reference' => '', 'method' => 'bank_transfer', 'paidOn' => today()->toDateString()]);
         $this->resetValidation();
     }
 
     public function pay(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
-        $this->validate(['amount' => ['required', 'numeric', 'gt:0'], 'reference' => ['nullable', 'string', 'max:255']]);
-        $workflow->pay(PayrollItem::findOrFail($this->payingItemId), ['amount' => $this->amount, 'paid_on' => today(), 'reference' => $this->reference ?: null], auth()->id());
+        $this->validate(['amount' => ['required', 'numeric', 'gt:0'], 'method' => ['required', \Illuminate\Validation\Rule::in(array_keys(\App\Models\SalaryPayment::METHODS))], 'paidOn' => ['required', 'date', 'before_or_equal:today'], 'reference' => ['nullable', 'string', 'max:255']], [], ['paidOn' => 'payment date']);
+        $workflow->pay(PayrollItem::findOrFail($this->payingItemId), ['amount' => $this->amount, 'paid_on' => $this->paidOn, 'method' => $this->method, 'reference' => $this->reference ?: null], auth()->id());
         $this->payingItemId = null;
         $this->toast('Payment recorded.');
     }

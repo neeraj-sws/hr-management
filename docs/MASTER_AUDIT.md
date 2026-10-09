@@ -156,3 +156,10 @@ Evidence: `php artisan test` **99 passed (1,512 assertions)** incl. `RemainingFe
 
 ### Result after this pass
 Backend 95 % · Web 94 % · Database 95 % · Automation 95 % · Mobile 90 % (device not verified) · Desktop 90 % (installer not built here) · Security 90 % · Performance NOT VERIFIED → **Overall ≈ 93 % — ⚠️ PASS WITH ISSUES** (only environment-dependent checks remain).
+
+### Checklist cross-check (testing checklist, 21 sections)
+Four gaps found against the checklist and closed (test `test_checklist_gaps_*`, 100 tests / 1,529 assertions pass):
+- Daily status **Yesterday** field (web, API, offline sync, mobile, desktop).
+- Payment **method** and **payment date** on salary and final-settlement payments (payments page, payslip, Payments report).
+- **Task overdue** notification to employee + manager, once per due date (`work:notify-overdue-tasks`, daily 09:45).
+- **Expired token**: mobile/desktop sign-in tokens expire after `API_TOKEN_DAYS` (30); expired tokens pruned daily. Attendance device tokens are unchanged.

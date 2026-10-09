@@ -17,9 +17,9 @@
             <label class="field"><span>To</span><input type="date" wire:model.live="to" x-bind:min="$wire.from"></label>
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Employee or reference"></label>
         </div>
-        <div class="table-wrap"><table class="table"><thead><tr><th>Paid on</th><th>Employee</th><th>Payroll period</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Paid on</th><th>Employee</th><th>Payroll period</th><th>Method</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>
             @forelse($payments as $p)
-                <tr><td>{{ $p->paid_on->format('d M Y') }}</td><td>{{ $p->payrollItem?->employee?->name }}</td><td>{{ $p->payrollItem?->run?->period_starts_on->format('d M') }} – {{ $p->payrollItem?->run?->period_ends_on->format('d M Y') }}</td><td>{{ $p->reference ?? '—' }}</td><td class="num">{{ number_format((float) $p->amount, 2) }}</td></tr>
+                <tr><td>{{ $p->paid_on->format('d M Y') }}</td><td>{{ $p->payrollItem?->employee?->name }}</td><td>{{ $p->payrollItem?->run?->period_starts_on->format('d M') }} – {{ $p->payrollItem?->run?->period_ends_on->format('d M Y') }}</td><td>{{ \App\Models\SalaryPayment::METHODS[$p->method] ?? '—' }}</td><td>{{ $p->reference ?? '—' }}</td><td class="num">{{ number_format((float) $p->amount, 2) }}</td></tr>
             @empty<tr><td colspan="5"><x-empty title="No payments in this range" icon="credit-card" /></td></tr>@endforelse
         </tbody></table></div>
         {{ $payments->links() }}
@@ -28,7 +28,9 @@
         <x-modal title="Record payment · {{ $paying->employee?->name }}">
             <form wire:submit="pay"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Amount" name="amount"><input type="number" step="0.01" min="0.01" wire:model="amount"></x-field>
-                <x-field label="Bank / reference" name="reference"><input wire:model="reference"></x-field>
+                <x-field label="Payment date" name="paidOn"><input type="date" wire:model="paidOn" max="{{ today()->toDateString() }}"></x-field>
+                <x-field label="Method" name="method"><select wire:model="method">@foreach(\App\Models\SalaryPayment::METHODS as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
+                <x-field label="Bank / UTR / cheque no." name="reference"><input wire:model="reference"></x-field>
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Record payment</button></div></form>
         </x-modal>

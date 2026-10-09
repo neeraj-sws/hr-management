@@ -17,6 +17,7 @@ class DailyStatus extends Component
     use InteractsWithHr, WithPagination;
 
     public string $summary = '';
+    public string $yesterday = '';
     public string $plan = '';
     public string $blockers = '';
     public string $notes = '';
@@ -26,14 +27,14 @@ class DailyStatus extends Component
     public function mount(): void
     {
         $today = $this->ownEmployee() ? DailyWorkStatus::where('employee_id', $this->ownEmployee()->id)->whereDate('work_date', today())->first() : null;
-        $this->fill(['summary' => (string) $today?->summary, 'plan' => (string) $today?->plan, 'blockers' => (string) $today?->blockers, 'notes' => (string) $today?->notes]);
+        $this->fill(['summary' => (string) $today?->summary, 'yesterday' => (string) $today?->yesterday, 'plan' => (string) $today?->plan, 'blockers' => (string) $today?->blockers, 'notes' => (string) $today?->notes]);
     }
 
     public function save(AuditLogger $audit): void
     {
         $employee = $this->requireEmployee();
-        $this->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000']], ['summary.required' => 'Write what you completed today.'], ['summary' => 'completed work']);
-        $fields = ['summary' => $this->summary, 'plan' => $this->plan ?: null, 'blockers' => $this->blockers ?: null, 'notes' => $this->notes ?: null, 'submitted_at' => now()];
+        $this->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'yesterday' => ['nullable', 'string', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000']], ['summary.required' => 'Write what you completed today.'], ['summary' => 'completed work']);
+        $fields = ['summary' => $this->summary, 'yesterday' => $this->yesterday ?: null, 'plan' => $this->plan ?: null, 'blockers' => $this->blockers ?: null, 'notes' => $this->notes ?: null, 'submitted_at' => now()];
         $status = DB::transaction(function () use ($employee, $fields) {
             $status = DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', today())->lockForUpdate()->first();
             if ($status) {
