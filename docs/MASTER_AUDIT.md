@@ -163,3 +163,6 @@ Four gaps found against the checklist and closed (test `test_checklist_gaps_*`, 
 - Payment **method** and **payment date** on salary and final-settlement payments (payments page, payslip, Payments report).
 - **Task overdue** notification to employee + manager, once per due date (`work:notify-overdue-tasks`, daily 09:45).
 - **Expired token**: mobile/desktop sign-in tokens expire after `API_TOKEN_DAYS` (30); expired tokens pruned daily. Attendance device tokens are unchanged.
+
+### Desktop installer verified (2026-10-09)
+Inno Setup 6.7.3 installed; `python\build-desktop.bat` produced `dist\SWS-HR-Setup-1.1.0.exe` (14.5 MB, SHA-256 `cd9d73d39da186f9fe3fe05d196946d49679b9326cfb63c3a44eb4605a92ce4a`). Silent per-user install on this PC: app in `%LOCALAPPDATA%\Programs\SWS HR`, Start Menu shortcut and uninstaller created, app started after install. Checklist 19 "Install" → PASS. Update from a published https URL → still NOT VERIFIED (needs hosting).
