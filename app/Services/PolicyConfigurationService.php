@@ -38,7 +38,10 @@ class PolicyConfigurationService
             ->orderByDesc('id')
             ->first()?->configuration ?? [];
 
-        $teamIds = $employee->teams()->pluck('teams.id')->sort()->values()->all();
+        // The teams the employee belonged to on that date; current teams when no history was recorded.
+        $teamIds = \App\Models\EmployeeTeamHistory::where('employee_id', $employee->id)->exists()
+            ? \App\Models\EmployeeTeamHistory::where('employee_id', $employee->id)->on(\Illuminate\Support\Carbon::parse($asOf)->toDateString())->pluck('team_id')->unique()->sort()->values()->all()
+            : $employee->teams()->pluck('teams.id')->sort()->values()->all();
         $team = $teamIds ? TeamPolicyOverride::query()
             ->whereIn('team_id', $teamIds)
             ->where('rule_key', $key)

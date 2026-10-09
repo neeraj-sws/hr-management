@@ -27,7 +27,7 @@ class Profile extends Component
         $this->shareBirthday = (bool) ($this->ownEmployee()?->share_birthday ?? true);
         $saved = (array) ($this->user()->notification_preferences ?? []);
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => $definition) {
-            $this->prefs[$group] = ['in_app' => (bool) ($saved[$group]['in_app'] ?? true), 'email' => (bool) ($saved[$group]['email'] ?? false)];
+            $this->prefs[$group] = ['in_app' => (bool) ($saved[$group]['in_app'] ?? true), 'email' => (bool) ($saved[$group]['email'] ?? false), 'push' => (bool) ($saved[$group]['push'] ?? true)];
         }
     }
 
@@ -44,7 +44,7 @@ class Profile extends Component
     {
         $clean = [];
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => [, $mutable]) {
-            $clean[$group] = ['in_app' => $mutable ? (bool) ($this->prefs[$group]['in_app'] ?? true) : true, 'email' => (bool) ($this->prefs[$group]['email'] ?? false)];
+            $clean[$group] = ['in_app' => $mutable ? (bool) ($this->prefs[$group]['in_app'] ?? true) : true, 'email' => (bool) ($this->prefs[$group]['email'] ?? false), 'push' => (bool) ($this->prefs[$group]['push'] ?? true)];
         }
         $this->user()->forceFill(['notification_preferences' => $clean])->save();
         $this->prefs = $clean;

@@ -28,9 +28,7 @@ class ExpenseController extends ApiController
             'description' => ['required', 'string', 'min:3', 'max:2000'],
             'receipt' => ExpenseService::RECEIPT_RULES,
         ]);
-        $claim = $expenses->submit($this->apiEmployee($request), $data, $request->file('receipt'));
-
-        return response()->json(['data' => $this->present($claim)], 201);
+        return $this->once($request, fn () => response()->json(['data' => $this->present($expenses->submit($this->apiEmployee($request), $data, $request->file('receipt')))], 201));
     }
 
     public function cancel(Request $request, ExpenseClaim $claim, ExpenseService $expenses): JsonResponse

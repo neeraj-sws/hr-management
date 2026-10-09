@@ -54,7 +54,7 @@ class Teams extends Component
         ]);
         $team = Team::updateOrCreate(['id' => $this->editingId], ['name' => $this->name, 'description' => $this->description ?: null, 'department_id' => $this->departmentId ?: null, 'manager_employee_id' => $this->managerId ?: null, 'is_active' => true]);
         $members = collect($this->memberIds)->map(fn ($id) => (int) $id)->when($this->managerId, fn ($ids) => $ids->push((int) $this->managerId))->unique()->all();
-        $team->members()->sync($members);
+        app(\App\Services\EmployeeService::class)->syncTeamMembers($team, $members, auth()->user());
         $audit->record($this->editingId ? 'team.updated' : 'team.created', $team, ['members' => count($members)]);
         $this->toast($this->editingId ? 'Team updated.' : 'Team created.');
         $this->closeModal();

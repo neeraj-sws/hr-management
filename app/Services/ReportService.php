@@ -40,6 +40,9 @@ class ReportService
         'employees' => ['Employees', ['employees.manage', 'hr.manage'], ['employees.manage', 'hr.manage']],
         'expenses' => ['Expenses', ['expenses.manage', 'hr.manage', 'approvals.manage'], ['expenses.manage', 'hr.manage']],
         'training' => ['Training', ['training.manage', 'training.assign', 'hr.manage'], ['training.manage', 'hr.manage']],
+        'payments' => ['Payments', ['payroll.manage', 'payroll.approve'], ['payroll.manage', 'payroll.approve']],
+        'teams' => ['Teams', ['reports.view', 'hr.manage', 'teams.manage'], ['hr.manage', 'employees.manage', 'teams.manage']],
+        'screenshots' => ['Screen captures', ['monitoring.view'], ['monitoring.view']],
     ];
 
     public function __construct(private readonly AttendanceService $attendance, private readonly WorkService $work) {}
@@ -76,6 +79,9 @@ class ReportService
             'employees' => ['employee_code', 'name', 'email', 'designation', 'department', 'manager', 'joined_at', 'status'],
             'expenses' => ['id', 'employee_code', 'employee_name', 'spent_on', 'category', 'amount', 'description', 'status', 'receipt', 'paid_in_payroll'],
             'training' => ['employee_code', 'employee_name', 'course', 'mandatory', 'assigned_on', 'due_on', 'status', 'completed_at'],
+            'payments' => ['paid_on', 'kind', 'employee_code', 'employee_name', 'for_period', 'amount', 'reference', 'recorded_by'],
+            'teams' => ['team', 'department', 'manager', 'members', 'attendance_days', 'late_days', 'leave_days', 'active_hours', 'tasks_completed', 'tasks_completed_late', 'tasks_overdue'],
+            'screenshots' => ['employee_code', 'employee_name', 'date', 'captures', 'first_at', 'last_at', 'size_mb'],
             default => [],
         };
     }
@@ -144,6 +150,13 @@ class ReportService
                 ->where(fn ($q) => $q->whereDate('created_at', '>=', $from)->whereDate('created_at', '<=', $to)->orWhere('status', '!=', 'completed'))
                 ->orderBy('employee_id')->orderBy('due_on')->when($limit, fn ($q) => $q->limit($limit))->get()
                 ->map(fn ($r) => ['employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'course' => $r->course?->title, 'mandatory' => $r->course?->is_mandatory ? 'yes' : 'no', 'assigned_on' => $r->created_at?->toDateString(), 'due_on' => $r->due_on?->toDateString(), 'status' => $r->displayStatus(), 'completed_at' => $r->completed_at?->toDateString()]),
+            'payments' => $this->paymentRows($ids, $from, $to),
+            'teams' => $this->teamRows($ids, $from, $to, $filters),
+            'screenshots' => \App\Models\Screenshot::with('employee')->whereIn('employee_id', $ids)
+                ->whereBetween('captured_at', [$from.' 00:00:00', $to.' 23:59:59'])->orderBy('captured_at')->get()
+                ->groupBy(fn ($c) => $c->employee_id.'|'.$c->captured_at->toDateString())
+                ->map(fn ($day) => ['employee_code' => $day->first()->employee?->employee_code, 'employee_name' => $day->first()->employee?->name, 'date' => $day->first()->captured_at->toDateString(), 'captures' => $day->count(), 'first_at' => $day->first()->captured_at->format('H:i'), 'last_at' => $day->last()->captured_at->format('H:i'), 'size_mb' => round($day->sum('bytes') / 1048576, 2)])
+                ->sortByDesc('date')->values(),
             default => collect(),
         };
 
@@ -177,13 +190,55 @@ class ReportService
         $own = AttendanceEmployee::where('user_id', $user->id)->first();
 
         return AttendanceEmployee::query()
-            ->when(! in_array($type, ['employees', 'payroll', 'audit', 'compliance', 'leave', 'overtime', 'tasks', 'salary'], true), fn ($q) => $q->where('is_active', true))
+            ->when(! in_array($type, ['employees', 'payroll', 'payments', 'screenshots', 'audit', 'compliance', 'leave', 'overtime', 'tasks', 'salary'], true), fn ($q) => $q->where('is_active', true))
             ->when(! $orgWide, fn ($q) => $q->where(fn ($q) => $q->whereKey($own?->id ?? 0)->orWhere('manager_id', $own?->id ?? 0)))
             ->when($filters['employee_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('department_id', $id))
             ->when($filters['team_id'] ?? null, fn ($q, $id) => $q->whereHas('teams', fn ($t) => $t->whereKey($id)))
             ->when(($filters['search'] ?? null) && ! in_array($type, ['tasks', 'audit'], true), fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$filters['search'].'%')->orWhere('employee_code', 'like', '%'.$filters['search'].'%')))
             ->pluck('id');
+    }
+
+    /** Salary payments and final-settlement payments made in the period. */
+    private function paymentRows(Collection $ids, string $from, string $to): Collection
+    {
+        $salary = \App\Models\SalaryPayment::with(['payrollItem.employee', 'payrollItem.run'])
+            ->whereHas('payrollItem', fn ($q) => $q->whereIn('employee_id', $ids))
+            ->whereDate('paid_on', '>=', $from)->whereDate('paid_on', '<=', $to)->get()
+            ->map(fn ($p) => ['paid_on' => $p->paid_on?->toDateString(), 'kind' => 'salary', 'employee_code' => $p->payrollItem?->employee?->employee_code, 'employee_name' => $p->payrollItem?->employee?->name, 'for_period' => $p->payrollItem?->run?->period_starts_on?->format('M Y'), 'amount' => (float) $p->amount, 'reference' => $p->reference, 'recorded_by' => $p->recorded_by]);
+        $settlement = \App\Models\EmployeeFinalSettlementPayment::with('settlement.lifecycleCase.employee')
+            ->whereHas('settlement.lifecycleCase', fn ($q) => $q->whereIn('employee_id', $ids))
+            ->whereDate('paid_on', '>=', $from)->whereDate('paid_on', '<=', $to)->get()
+            ->map(fn ($p) => ['paid_on' => $p->paid_on ? \Illuminate\Support\Carbon::parse($p->paid_on)->toDateString() : null, 'kind' => 'final_settlement', 'employee_code' => $p->settlement?->lifecycleCase?->employee?->employee_code, 'employee_name' => $p->settlement?->lifecycleCase?->employee?->name, 'for_period' => 'full & final', 'amount' => (float) $p->amount, 'reference' => $p->reference, 'recorded_by' => $p->recorded_by]);
+        $rows = $salary->concat($settlement);
+        $names = User::whereIn('id', $rows->pluck('recorded_by')->filter()->unique())->pluck('name', 'id');
+
+        return $rows->map(fn ($row) => array_merge($row, ['recorded_by' => $names[$row['recorded_by']] ?? null]))->sortByDesc('paid_on')->values();
+    }
+
+    /** One row per team: members on the last day of the period (from the dated history) and what they did in it. */
+    private function teamRows(Collection $ids, string $from, string $to, array $filters): Collection
+    {
+        $teams = \App\Models\Team::with(['department', 'manager'])->where('is_active', true)->when($filters['team_id'] ?? null, fn ($q, $id) => $q->whereKey($id))->orderBy('name')->get();
+
+        return $teams->map(function ($team) use ($ids, $from, $to) {
+            $history = \App\Models\EmployeeTeamHistory::where('team_id', $team->id)->on($to)->pluck('employee_id');
+            $members = ($history->isNotEmpty() ? $history : $team->members()->pluck('attendance_employees.id'))->intersect($ids)->values();
+            $sessions = AttendanceSession::whereIn('employee_id', $members)->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->get();
+            $tasks = Task::whereIn('assignee_id', $members)->get();
+            $completed = $tasks->filter(fn ($t) => $t->completed_at && $t->completed_at->toDateString() >= $from && $t->completed_at->toDateString() <= $to);
+
+            return [
+                'team' => $team->name, 'department' => $team->department?->name, 'manager' => $team->manager?->name, 'members' => $members->count(),
+                'attendance_days' => $sessions->count(),
+                'late_days' => $sessions->filter(fn ($s) => $this->attendance->isLate($s))->count(),
+                'leave_days' => (float) LeaveRequest::whereIn('employee_id', $members)->where('status', 'approved')->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->sum('days'),
+                'active_hours' => $this->hours($sessions->sum('active_seconds')),
+                'tasks_completed' => $completed->count(),
+                'tasks_completed_late' => $completed->filter(fn ($t) => $t->wasCompletedLate())->count(),
+                'tasks_overdue' => $tasks->filter(fn ($t) => $t->isOverdue())->count(),
+            ];
+        })->filter(fn ($row) => $row['members'] > 0)->values();
     }
 
     private function performanceRows(Collection $ids, string $from, string $to): Collection
