@@ -345,7 +345,8 @@ class DesktopApp:
         win = tk.Toplevel(self.root, bg="white", padx=18, pady=14)
         win.title("Add task")
         win.transient(self.root)
-        win.geometry("420x260")
+        win.resizable(False, False)
+        win.geometry("420x380")
         tk.Label(win, text="New task", font=("Segoe UI", 13, "bold"), fg=NAVY, bg="white").pack(anchor="w")
         tk.Label(win, text="What are you working on? *", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
         title_entry = tk.Entry(win, font=("Segoe UI", 10), relief="solid", bd=1)
@@ -353,18 +354,43 @@ class DesktopApp:
         tk.Label(win, text="Priority", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
         priority = tk.StringVar(value="medium")
         ttk.Combobox(win, textvariable=priority, values=["low", "medium", "high", "urgent"], state="readonly").pack(fill="x")
-        tk.Label(win, text="Due date (YYYY-MM-DD, optional)", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
-        due_entry = tk.Entry(win, font=("Segoe UI", 10), relief="solid", bd=1)
-        due_entry.pack(fill="x")
+
+        # Due date picker (optional): day / month / year drop-downs, no typing.
+        today = datetime.now()
+        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        set_due = tk.BooleanVar(value=False)
+        day_v = tk.StringVar(value=str(today.day))
+        mon_v = tk.StringVar(value=months[today.month - 1])
+        year_v = tk.StringVar(value=str(today.year))
+
+        tk.Checkbutton(win, text="Set a due date", variable=set_due, bg="white", fg=INK,
+                       font=("Segoe UI", 9, "bold"), activebackground="white",
+                       command=lambda: _toggle_due()).pack(anchor="w", pady=(10, 2))
+        picker = tk.Frame(win, bg="white")
+        picker.pack(fill="x")
+        day_cb = ttk.Combobox(picker, textvariable=day_v, values=[str(d) for d in range(1, 32)], state="disabled", width=4)
+        mon_cb = ttk.Combobox(picker, textvariable=mon_v, values=months, state="disabled", width=6)
+        year_cb = ttk.Combobox(picker, textvariable=year_v, values=[str(y) for y in range(today.year, today.year + 3)], state="disabled", width=7)
+        day_cb.pack(side="left")
+        mon_cb.pack(side="left", padx=6)
+        year_cb.pack(side="left")
+
+        def _toggle_due():
+            state = "readonly" if set_due.get() else "disabled"
+            for cb in (day_cb, mon_cb, year_cb):
+                cb.config(state=state)
+
         note = tk.Label(win, text="", bg="white", fg=MUTED, wraplength=380, justify="left")
-        note.pack(anchor="w", pady=(8, 0))
+        note.pack(anchor="w", pady=(10, 0))
 
         def save():
             title = title_entry.get().strip()
             if not title:
                 note.config(text="Give the task a title.", fg=RED)
                 return
-            due = due_entry.get().strip() or None
+            due = None
+            if set_due.get():
+                due = f"{int(year_v.get()):04d}-{months.index(mon_v.get()) + 1:02d}-{int(day_v.get()):02d}"
             note.config(text="Saving...", fg=MUTED)
 
             def done(_):
@@ -375,7 +401,10 @@ class DesktopApp:
             self._run(lambda: self.client.create_task(title, priority.get(), due), done,
                       lambda e: note.config(text=(e.first_message if isinstance(e, ApiError) else str(e)), fg=RED))
 
-        ttk.Button(win, text="Add task", style="Primary.TButton", command=save).pack(fill="x", pady=(14, 0))
+        buttons = tk.Frame(win, bg="white")
+        buttons.pack(fill="x", side="bottom", pady=(14, 0))
+        ttk.Button(buttons, text="Cancel", command=win.destroy).pack(side="right")
+        ttk.Button(buttons, text="Add task", style="Primary.TButton", command=save).pack(side="right", padx=8)
         title_entry.focus_set()
 
     # Daily status -----------------------------------------------------------
