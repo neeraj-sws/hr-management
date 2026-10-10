@@ -42,6 +42,23 @@ return [
         'notes' => env('DESKTOP_RELEASE_NOTES'),
     ],
 
+    // WhatsApp alerts for check-in / check-out / leave (off until configured).
+    'whatsapp' => [
+        'enabled' => (bool) env('WHATSAPP_ENABLED', false),
+        'provider' => env('WHATSAPP_PROVIDER', 'meta'), // meta | webhook
+        'token' => env('WHATSAPP_TOKEN'),
+        'phone_id' => env('WHATSAPP_PHONE_ID'),
+        'template' => env('WHATSAPP_TEMPLATE'),
+        'template_lang' => env('WHATSAPP_TEMPLATE_LANG', 'en'),
+        'webhook_url' => env('WHATSAPP_WEBHOOK_URL'),
+        'webhook_token' => env('WHATSAPP_WEBHOOK_TOKEN'),
+        'notify_manager' => (bool) env('WHATSAPP_NOTIFY_MANAGER', true),
+        'permission' => env('WHATSAPP_NOTIFY_PERMISSION'),
+        'default_cc' => env('WHATSAPP_DEFAULT_CC', '91'),
+        'fixed' => array_filter(array_map('trim', explode(',', (string) env('WHATSAPP_FIXED_RECIPIENTS', '')))),
+        'events' => array_filter(array_map('trim', explode(',', (string) env('WHATSAPP_EVENTS', 'check_in,check_out,leave_applied')))),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

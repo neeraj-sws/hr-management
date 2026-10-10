@@ -86,7 +86,7 @@ class AttendanceService
         $this->guardSource($employee, $source);
         $place = $this->locate($employee, $source, $location, 'check in');
 
-        return DB::transaction(function () use ($employee, $source, $at, $place) {
+        $session = DB::transaction(function () use ($employee, $source, $at, $place) {
             AttendanceEmployee::whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $now = $at ? $this->local($at) : now();
             $open = $this->openSession($employee, $now);
@@ -99,6 +99,8 @@ class AttendanceService
 
             return $session;
         });
+        app(\App\Services\WhatsAppNotifier::class)->checkedIn($employee, $session->check_in->format('h:i A'));
+        return $session;
     }
 
     public function startBreak(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null): AttendanceSession
@@ -139,7 +141,7 @@ class AttendanceService
         $this->guardSource($employee, $source);
         $place = $this->locate($employee, $source, $location, 'check out');
 
-        return DB::transaction(function () use ($employee, $source, $at, $place) {
+        $session = DB::transaction(function () use ($employee, $source, $at, $place) {
             $checkOut = $at ? $this->local($at) : now();
             $session = $this->lockedOpenSession($employee, $checkOut);
             if ($checkOut->lt($session->check_in)) throw ValidationException::withMessages(['attendance' => 'Check-out cannot be before check-in.']);
@@ -156,6 +158,8 @@ class AttendanceService
 
             return $session->fresh();
         });
+        $w = $this->workedSeconds($session->fresh()); app(\App\Services\WhatsAppNotifier::class)->checkedOut($employee, now()->format('h:i A'), intdiv($w, 3600).'h '.intdiv($w % 3600, 60).'m');
+        return $session;
     }
 
     /**

@@ -129,6 +129,7 @@ class HrWorkflowService
             $notification=new \App\Notifications\ApprovalRequested('LeaveRequest',$leave->id,'A leave request needs review.');
             if($approverId) \App\Models\User::whereKey($approverId)->first()?->notify($notification);else foreach(\App\Models\User::permission('leave.manage')->get() as $approver)$approver->notify($notification);
             $this->audit->record('leave.requested', $leave, ['days' => $days]);
+            app(\App\Services\WhatsAppNotifier::class)->leaveApplied($leave->load(['employee.manager', 'leaveType']));
             return $leave;
         });
     }
