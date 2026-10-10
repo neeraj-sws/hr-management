@@ -1,4 +1,4 @@
-<div>
+<div x-data="{ tab: 'overview' }">
     <div class="page-head">
         <div class="profile-chip">
             <span class="avatar avatar-lg">{{ collect(explode(' ', $employee->name))->filter()->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->join('') }}</span>
@@ -14,7 +14,17 @@
         <div class="stat"><span class="stat-icon violet"><x-icon name="timer" /></span><div><span class="stat-label">Logged hours</span><span class="stat-value">{{ $metrics->logged_hours }}</span><small>{{ $metrics->active_hours }} h active attendance</small></div></div>
     </div>
 
-    <div class="grid grid-2">
+    @php($tabs = ['overview' => 'Overview', 'attendance' => 'Attendance', 'leave' => 'Leave & OT', 'work' => 'Work', 'payroll' => 'Payroll', 'docs' => 'Docs & assets', 'compliance' => 'Compliance'])
+    @if($canEdit || $capture !== null || $appUsageOn !== null)@php($tabs['admin'] = 'Settings & monitoring')@endif
+    @php($tabs['history'] = 'History')
+    <div class="tabbar" role="tablist">
+        @foreach($tabs as $key => $label)
+            <button type="button" class="tab" :class="{ 'tab-on': tab === '{{ $key }}' }" @click="tab = '{{ $key }}'" role="tab">{{ $label }}</button>
+        @endforeach
+    </div>
+
+    {{-- OVERVIEW --}}
+    <div x-show="tab === 'overview'" class="grid grid-2">
         <section class="card"><div class="card-head"><h2>Profile</h2></div><div class="card-body"><dl class="kv">
             <dt>Email</dt><dd>{{ $employee->email ?? '—' }}</dd>
             <dt>Phone</dt><dd>{{ $employee->phone ?? '—' }}</dd>
@@ -30,16 +40,96 @@
             <dt>Schedule</dt><dd>{{ $employee->work_start ? substr($employee->work_start, 0, 5).' – '.substr((string) $employee->work_end, 0, 5) : 'Not scheduled' }} · {{ (float) $employee->daily_work_hours }} h/day</dd>
         </dl></div></section>
 
-        @if($appUsageOn !== null)
-            <section class="card"><div class="card-head"><div><h2>Application usage</h2><p>@if($appUsageOn)On â records which app is in front and for how long, while checked in and working. App name and time only; no titles or content.@else Off.@endif</p></div>
-                <button type="button" class="btn {{ $appUsageOn ? '' : 'btn-primary' }}" wire:click="toggleAppUsage" wire:loading.attr="disabled">{{ $appUsageOn ? 'Turn off' : 'Turn on' }}</button></div>
-                @if($appUsageOn)<div class="card-body"><label class="check"><input type="checkbox" {{ $windowTitlesOn ? 'checked' : '' }} wire:click="toggleWindowTitles"> Also record the active window/tab title (shows the website, document or email subject that is in front â more detail, more sensitive)</label></div>@endif
+        <section class="card"><div class="card-head"><h2>Open tasks</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'tasks', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($tasks as $task)<div class="list-row"><div><strong>{{ $task->title }}</strong><small>{{ ucfirst($task->priority) }} · {{ $task->due_on ? 'due '.$task->due_on->format('d M') : 'no due date' }}</small></div>@if($task->isOverdue())<x-badge status="overdue" />@else<x-badge :status="$task->status" />@endif</div>
+            @empty<x-empty title="No open tasks" icon="check-square" />@endforelse
+        </div></section>
+    </div>
+
+    {{-- ATTENDANCE --}}
+    <div x-show="tab === 'attendance'" x-cloak>
+        <section class="card"><div class="card-head"><h2>Recent attendance</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'attendance', 'employee' => $employee->id]) }}">Full report →</a></div>
+            <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Status</th></tr></thead><tbody>
+                @foreach($recentDays as $day)<tr><td>{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D d M') }}</td><td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td><td><x-badge :status="$day['status']" /></td></tr>@endforeach
+            </tbody></table></div>
+        </section>
+    </div>
+
+    {{-- LEAVE & OT --}}
+    <div x-show="tab === 'leave'" x-cloak class="grid grid-2">
+        <section class="card"><div class="card-head"><h2>Leave balance {{ today()->year }}</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'leave', 'employee' => $employee->id]) }}">Full report →</a></div>
+            <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th class="num">Entitled + accrued</th><th class="num">Carried</th><th class="num">Used</th><th class="num">Pending</th><th class="num">Remaining</th></tr></thead><tbody>
+                @foreach($balances as $b)<tr><td><strong>{{ $b['type']->name }}</strong><small>{{ $b['type']->paid ? 'Paid' : 'Unpaid' }}</small></td><td class="num">{{ $b['entitled'] + $b['accrued'] }}</td><td class="num">{{ $b['carried'] }}</td><td class="num">{{ $b['used'] }}</td><td class="num">{{ $b['booked'] }}</td><td class="num"><strong>{{ round($b['remaining'], 2) }}</strong></td></tr>@endforeach
+            </tbody></table></div>
+        </section>
+        <section class="card"><div class="card-head"><h2>Recent leave requests</h2></div><div class="list">
+            @forelse($recentLeave as $lr)<div class="list-row"><div><strong>{{ $lr->leaveType?->name }}</strong><small>{{ $lr->starts_on?->format('d M') }} – {{ $lr->ends_on?->format('d M Y') }} · {{ (float) $lr->days }} day(s)</small></div><x-badge :status="$lr->status" /></div>
+            @empty<x-empty title="No leave requests" icon="calendar" />@endforelse
+        </div></section>
+        <section class="card"><div class="card-head"><h2>Overtime</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'overtime', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($overtime as $ot)<div class="list-row"><div><strong>{{ $ot->work_date?->format('d M Y') }}</strong><small>{{ $ot->approved_minutes ?? $ot->requested_minutes }} min · {{ $ot->reason }}</small></div><x-badge :status="$ot->status" /></div>
+            @empty<x-empty title="No overtime" icon="timer" />@endforelse
+        </div></section>
+    </div>
+
+    {{-- WORK --}}
+    <div x-show="tab === 'work'" x-cloak class="grid grid-2">
+        <section class="card"><div class="card-head"><h2>Open tasks</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'tasks', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($tasks as $task)<div class="list-row"><div><strong>{{ $task->title }}</strong><small>{{ ucfirst($task->priority) }} · {{ $task->due_on ? 'due '.$task->due_on->format('d M') : 'no due date' }}</small></div>@if($task->isOverdue())<x-badge status="overdue" />@else<x-badge :status="$task->status" />@endif</div>
+            @empty<x-empty title="No open tasks" icon="check-square" />@endforelse
+        </div></section>
+        <section class="card"><div class="card-head"><h2>Performance reviews</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'performance', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($reviews as $rev)<div class="list-row"><div><strong>{{ $rev->period_starts_on?->format('M Y') }} – {{ $rev->period_ends_on?->format('M Y') }}</strong><small>By {{ $rev->reviewer?->name ?? '—' }} {{ $rev->rating ? '· rating '.$rev->rating.'/5' : '' }}</small></div><x-badge :status="$rev->status" /></div>
+            @empty<x-empty title="No reviews" icon="star" />@endforelse
+        </div></section>
+        <section class="card"><div class="card-head"><h2>Training</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'training', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($training as $tr)<div class="list-row"><div><strong>{{ $tr->course?->title }}</strong><small>{{ $tr->course?->is_mandatory ? 'Mandatory' : 'Optional' }} {{ $tr->due_on ? '· due '.$tr->due_on->format('d M Y') : '' }}</small></div><x-badge :status="$tr->displayStatus()" /></div>
+            @empty<x-empty title="No training assigned" icon="list" />@endforelse
+        </div></section>
+    </div>
+
+    {{-- PAYROLL --}}
+    <div x-show="tab === 'payroll'" x-cloak class="grid grid-2">
+        @if($showSalary)
+            <section class="card"><div class="card-head"><h2>Salary history</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'salary', 'employee' => $employee->id]) }}">Full report →</a></div>
+                <div class="table-wrap"><table class="table"><thead><tr><th>Effective from</th><th class="num">Monthly</th><th class="num">Days/month</th><th class="num">Hours/day</th></tr></thead><tbody>
+                    @forelse($employee->salaryProfiles as $p)<tr><td>{{ $p->effective_from->format('d M Y') }}</td><td class="num">{{ number_format((float) $p->monthly_salary, 2) }}</td><td class="num">{{ $p->working_days_per_month }}</td><td class="num">{{ (float) $p->standard_daily_hours }}</td></tr>
+                    @empty<tr><td colspan="4"><x-empty title="No salary profile" icon="wallet" /></td></tr>@endforelse
+                </tbody></table></div>
             </section>
+            <section class="card"><div class="card-head"><h2>Payslips</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'payments', 'employee' => $employee->id]) }}">Payments →</a></div><div class="list">
+                @forelse($payslips as $ps)<div class="list-row"><div><strong>{{ $ps->item?->run?->period_starts_on?->format('M Y') ?? $ps->reference }}</strong><small>Net {{ number_format((float) ($ps->item?->net_amount ?? 0), 2) }} · {{ $ps->reference }}</small></div><a class="btn btn-sm" href="{{ route('hr.payslips.show', $ps) }}">Open</a></div>
+                @empty<x-empty title="No payslips" icon="file" />@endforelse
+            </div></section>
+        @else
+            <section class="card"><div class="card-body"><x-empty title="You do not have access to this employee's salary." icon="lock" /></div></section>
         @endif
-        @if($capture)
-            <section class="card"><div class="card-head"><div><h2>Screen capture</h2><p>@if($capture['enabled'])On — every {{ $capture['interval_minutes'] }} min while checked in and working.@else Off. @endif</p></div>
-                <button type="button" class="btn {{ $capture['enabled'] ? '' : 'btn-primary' }}" wire:click="toggleCapture" wire:loading.attr="disabled">{{ $capture['enabled'] ? 'Turn off' : 'Turn on' }}</button></div></section>
-        @endif
+    </div>
+
+    {{-- DOCS & ASSETS --}}
+    <div x-show="tab === 'docs'" x-cloak>
+        <section class="card"><div class="card-head"><h2>Assets & documents</h2></div><div class="list">
+            @foreach($assets as $asset)<div class="list-row"><div><strong>{{ $asset->name }}</strong><small>{{ $asset->asset_tag }} · since {{ $asset->assigned_on?->format('d M Y') }}</small></div><x-badge :status="$asset->status" /></div>@endforeach
+            @foreach($documents as $doc)<div class="list-row"><div><strong><a href="{{ route('hr.documents.download', $doc) }}">{{ $doc->original_name }}</a></strong><small>{{ ucfirst($doc->category) }} @if($doc->expires_on)· expires {{ $doc->expires_on->format('d M Y') }}@endif</small></div><x-icon name="file" class="icon-sm" /></div>@endforeach
+            @if($assets->isEmpty() && $documents->isEmpty())<x-empty title="No assets or documents" icon="monitor" />@endif
+        </div></section>
+    </div>
+
+    {{-- COMPLIANCE --}}
+    <div x-show="tab === 'compliance'" x-cloak class="grid grid-2">
+        <section class="card"><div class="card-head"><h2>Penalties</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'compliance', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($penalties as $pen)<div class="list-row"><div><strong>{{ number_format((float) $pen->amount, 2) }} · {{ $pen->reason }}</strong><small>{{ $pen->effective_on?->format('d M Y') }} · {{ $pen->policyRule?->rule_key ?? 'manual' }}</small></div><x-badge :status="$pen->status" /></div>
+            @empty<x-empty title="No penalties" icon="shield" />@endforelse
+        </div></section>
+        <section class="card"><div class="card-head"><h2>Expenses</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'expenses', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($expenses as $ex)<div class="list-row"><div><strong>{{ $ex->category }} · {{ number_format((float) $ex->amount, 2) }}</strong><small>{{ $ex->spent_on?->format('d M Y') }} · {{ $ex->description }}</small></div><x-badge :status="$ex->displayStatus()" /></div>
+            @empty<x-empty title="No expense claims" icon="receipt" />@endforelse
+        </div></section>
+    </div>
+
+    {{-- ADMIN: SETTINGS & MONITORING --}}
+    @if(isset($tabs['admin']))
+    <div x-show="tab === 'admin'" x-cloak class="grid grid-2">
         @if($canEdit)
             <section class="card"><div class="card-head"><div><h2>Attendance methods</h2><p>Where this employee may check in, break and check out. Managers can always correct attendance.</p></div></div><div class="card-body">
                 <div class="chips" wire:ignore.self>
@@ -50,43 +140,26 @@
                 </div>
             </div></section>
         @endif
-        <section class="card"><div class="card-head"><h2>Leave balance {{ today()->year }}</h2></div>
-            <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th class="num">Entitled + accrued</th><th class="num">Carried</th><th class="num">Used</th><th class="num">Pending</th><th class="num">Remaining</th></tr></thead><tbody>
-                @foreach($balances as $b)<tr><td><strong>{{ $b['type']->name }}</strong><small>{{ $b['type']->paid ? 'Paid' : 'Unpaid' }}</small></td><td class="num">{{ $b['entitled'] + $b['accrued'] }}</td><td class="num">{{ $b['carried'] }}</td><td class="num">{{ $b['used'] }}</td><td class="num">{{ $b['booked'] }}</td><td class="num"><strong>{{ round($b['remaining'], 2) }}</strong></td></tr>@endforeach
-            </tbody></table></div>
-        </section>
-
-        <section class="card"><div class="card-head"><h2>Recent attendance</h2></div>
-            <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Status</th></tr></thead><tbody>
-                @foreach($recentDays as $day)<tr><td>{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D d M') }}</td><td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td><td><x-badge :status="$day['status']" /></td></tr>@endforeach
-            </tbody></table></div>
-        </section>
-
-        <section class="card"><div class="card-head"><h2>Open tasks</h2></div><div class="list">
-            @forelse($tasks as $task)<div class="list-row"><div><strong>{{ $task->title }}</strong><small>{{ ucfirst($task->priority) }} · {{ $task->due_on ? 'due '.$task->due_on->format('d M') : 'no due date' }}</small></div>@if($task->isOverdue())<x-badge status="overdue" />@else<x-badge :status="$task->status" />@endif</div>
-            @empty<x-empty title="No open tasks" icon="check-square" />@endforelse
-        </div></section>
-
-        @if($showSalary)
-            <section class="card"><div class="card-head"><h2>Salary history</h2></div>
-                <div class="table-wrap"><table class="table"><thead><tr><th>Effective from</th><th class="num">Monthly</th><th class="num">Days/month</th><th class="num">Hours/day</th></tr></thead><tbody>
-                    @forelse($employee->salaryProfiles as $p)<tr><td>{{ $p->effective_from->format('d M Y') }}</td><td class="num">{{ number_format((float) $p->monthly_salary, 2) }}</td><td class="num">{{ $p->working_days_per_month }}</td><td class="num">{{ (float) $p->standard_daily_hours }}</td></tr>
-                    @empty<tr><td colspan="4"><x-empty title="No salary profile" icon="wallet" /></td></tr>@endforelse
-                </tbody></table></div>
+        @if($appUsageOn !== null)
+            <section class="card"><div class="card-head"><div><h2>Application usage</h2><p>@if($appUsageOn)On — records which app is in front and for how long, while checked in and working. App name and time only; no titles or content.@else Off.@endif</p></div>
+                <button type="button" class="btn {{ $appUsageOn ? '' : 'btn-primary' }}" wire:click="toggleAppUsage" wire:loading.attr="disabled">{{ $appUsageOn ? 'Turn off' : 'Turn on' }}</button></div>
+                @if($appUsageOn)<div class="card-body"><label class="check"><input type="checkbox" {{ $windowTitlesOn ? 'checked' : '' }} wire:click="toggleWindowTitles"> Also record the active window/tab title (shows the website, document or email subject that is in front — more detail, more sensitive)</label></div>@endif
             </section>
         @endif
-
-        @if($managerHistory->isNotEmpty() || $teamHistory->isNotEmpty() || $history->isNotEmpty())
-            <section class="card"><div class="card-head"><h2>History</h2></div><div class="list">
-                @foreach($teamHistory as $h)<div class="list-row"><div><strong>Team {{ $h->team?->name ?? 'removed team' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@endforeach
-                @foreach($managerHistory as $h)<div class="list-row"><div><strong>Reports to {{ $h->manager?->name ?? 'nobody' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@endforeach
-                @foreach($history as $event)<div class="list-row"><div><strong>{{ str($event->action)->after('.')->replace('_', ' ')->ucfirst() }}</strong><small>{{ $event->actor?->name ?? 'System' }} · {{ $event->created_at->format('d M Y, h:i A') }}</small></div></div>@endforeach
-            </div></section>
+        @if($capture)
+            <section class="card"><div class="card-head"><div><h2>Screen capture</h2><p>@if($capture['enabled'])On — every {{ $capture['interval_minutes'] }} min while checked in and working.@else Off. @endif</p></div>
+                <button type="button" class="btn {{ $capture['enabled'] ? '' : 'btn-primary' }}" wire:click="toggleCapture" wire:loading.attr="disabled">{{ $capture['enabled'] ? 'Turn off' : 'Turn on' }}</button></div></section>
         @endif
-        <section class="card"><div class="card-head"><h2>Assets & documents</h2></div><div class="list">
-            @foreach($assets as $asset)<div class="list-row"><div><strong>{{ $asset->name }}</strong><small>{{ $asset->asset_tag }} · since {{ $asset->assigned_on?->format('d M Y') }}</small></div><x-badge :status="$asset->status" /></div>@endforeach
-            @foreach($documents as $doc)<div class="list-row"><div><strong><a href="{{ route('hr.documents.download', $doc) }}">{{ $doc->original_name }}</a></strong><small>{{ ucfirst($doc->category) }} @if($doc->expires_on)· expires {{ $doc->expires_on->format('d M Y') }}@endif</small></div><x-icon name="file" class="icon-sm" /></div>@endforeach
-            @if($assets->isEmpty() && $documents->isEmpty())<x-empty title="No assets or documents" icon="monitor" />@endif
+    </div>
+    @endif
+
+    {{-- HISTORY --}}
+    <div x-show="tab === 'history'" x-cloak>
+        <section class="card"><div class="card-head"><h2>History</h2></div><div class="list">
+            @forelse($teamHistory as $h)<div class="list-row"><div><strong>Team {{ $h->team?->name ?? 'removed team' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@empty @endforelse
+            @foreach($managerHistory as $h)<div class="list-row"><div><strong>Reports to {{ $h->manager?->name ?? 'nobody' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@endforeach
+            @foreach($history as $event)<div class="list-row"><div><strong>{{ str($event->action)->after('.')->replace('_', ' ')->ucfirst() }}</strong><small>{{ $event->actor?->name ?? 'System' }} · {{ $event->created_at->format('d M Y, h:i A') }}</small></div></div>@endforeach
+            @if($teamHistory->isEmpty() && $managerHistory->isEmpty() && $history->isEmpty())<x-empty title="No history yet" icon="history" />@endif
         </div></section>
     </div>
 </div>

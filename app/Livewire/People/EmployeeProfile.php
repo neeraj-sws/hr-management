@@ -70,6 +70,7 @@ class EmployeeProfile extends Component
         $balances = LeaveType::where('is_active', true)->get()->map(fn ($type) => ['type' => $type, ...$leave->balance($employee, $type, today()->year)]);
         $metrics = $work->productivity(collect([$employee]), now()->startOfMonth()->toDateString(), today()->toDateString())->first();
         $isSelf = $employee->user_id === $user->id;
+        $showSalary = $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']);
 
         return $this->page('livewire.people.employee-profile', [
             'employee' => $employee,
@@ -80,7 +81,7 @@ class EmployeeProfile extends Component
             'tasks' => $employee->tasks()->where('status', '!=', 'completed')->latest()->limit(8)->get(),
             'assets' => $employee->assets()->latest()->get(),
             'documents' => ($isSelf || $user->can('lifecycle.manage')) ? $employee->documents()->latest()->get() : collect(),
-            'showSalary' => $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']),
+            'showSalary' => $showSalary,
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
             'attendanceSources' => app(\App\Services\AttendanceService::class)->allowedSources($employee),
@@ -89,6 +90,14 @@ class EmployeeProfile extends Component
             'teamHistory' => \App\Models\EmployeeTeamHistory::with('team')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'managerHistory' => \App\Models\EmployeeManagerHistory::with('manager')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'history' => $user->canAny(['employees.manage', 'hr.manage', 'audit.view']) ? \App\Models\AuditLog::with('actor')->where('subject_type', $employee::class)->where('subject_id', $employee->id)->latest('id')->limit(15)->get() : collect(),
+            'overtime' => $employee->overtimeRequests()->latest('work_date')->limit(10)->get(),
+            'expenses' => $employee->expenseClaims()->latest('spent_on')->limit(10)->get(),
+            'penalties' => \App\Models\EmployeePenalty::with('policyRule')->where('employee_id', $employee->id)->latest('effective_on')->limit(10)->get(),
+            'payslips' => $showSalary ? $employee->payslips()->with('item.run')->latest('issued_at')->limit(10)->get() : collect(),
+            'reviews' => $employee->reviews()->with('reviewer')->latest('period_ends_on')->limit(6)->get(),
+            'training' => $employee->trainingAssignments()->with('course')->latest()->limit(10)->get(),
+            'recentLeave' => $employee->leaveRequests()->with('leaveType')->latest('starts_on')->limit(10)->get(),
+
         ], $employee->name);
     }
 }
