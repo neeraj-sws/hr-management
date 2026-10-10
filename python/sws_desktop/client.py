@@ -119,6 +119,13 @@ class HrClient:
     def task(self, task_id: int, action: str) -> dict:
         return self.request("POST", f"/tasks/{task_id}/{action}", {})["data"]
 
+    def create_task(self, title: str, priority: str = "medium", due_on: str | None = None) -> dict:
+        """Employee adds a task for themselves (server forces assignee = self)."""
+        payload = {"title": title, "priority": priority}
+        if due_on:
+            payload["due_on"] = due_on
+        return self.request("POST", "/tasks", payload)["data"]
+
     # Misc -----------------------------------------------------------------
     def latest_desktop(self) -> dict | None:
         return self.request("GET", "/desktop/latest").get("data")

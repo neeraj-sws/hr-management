@@ -46,7 +46,7 @@
     ],
     "scheme": "swshr",
     "extra": {
-      "apiUrl": "http://localhost:8020"
+      "apiUrl": "https://hrms.sohamsolution.com"
     }
   }
 }

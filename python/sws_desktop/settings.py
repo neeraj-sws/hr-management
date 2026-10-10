@@ -12,7 +12,7 @@ APP_DIR = Path(os.environ.get("SWS_DESKTOP_HOME") or Path(os.environ.get("APPDAT
 SETTINGS_FILE = APP_DIR / "settings.json"
 TOKEN_FILE = APP_DIR / "user_token.bin"
 QUEUE_FILE = APP_DIR / "offline_queue.db"
-DEFAULT_SERVER = "http://localhost:8020"
+DEFAULT_SERVER = "https://hrms.sohamsolution.com"
 
 
 def ensure_dir() -> Path:

@@ -236,6 +236,7 @@ class DesktopApp:
         top = tk.Frame(tasks_frame, bg="white")
         top.pack(fill="x")
         tk.Label(top, text="My open tasks", font=("Segoe UI", 11, "bold"), fg=INK, bg="white").pack(side="left")
+        ttk.Button(top, text="+ Add task", command=self._open_add_task).pack(side="left", padx=10)
         self.task_buttons = {
             "complete": ttk.Button(top, text="Complete", command=lambda: self.task_action("complete")),
             "pause": ttk.Button(top, text="Pause", command=lambda: self.task_action("pause")),
@@ -338,6 +339,44 @@ class DesktopApp:
             self._flash(text, RED)
 
         self._run(lambda: self.client.away(period.start.isoformat(), period.end.isoformat(), period.reason), done, failed)
+
+    # Add task ---------------------------------------------------------------
+    def _open_add_task(self):
+        win = tk.Toplevel(self.root, bg="white", padx=18, pady=14)
+        win.title("Add task")
+        win.transient(self.root)
+        win.geometry("420x260")
+        tk.Label(win, text="New task", font=("Segoe UI", 13, "bold"), fg=NAVY, bg="white").pack(anchor="w")
+        tk.Label(win, text="What are you working on? *", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
+        title_entry = tk.Entry(win, font=("Segoe UI", 10), relief="solid", bd=1)
+        title_entry.pack(fill="x")
+        tk.Label(win, text="Priority", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
+        priority = tk.StringVar(value="medium")
+        ttk.Combobox(win, textvariable=priority, values=["low", "medium", "high", "urgent"], state="readonly").pack(fill="x")
+        tk.Label(win, text="Due date (YYYY-MM-DD, optional)", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
+        due_entry = tk.Entry(win, font=("Segoe UI", 10), relief="solid", bd=1)
+        due_entry.pack(fill="x")
+        note = tk.Label(win, text="", bg="white", fg=MUTED, wraplength=380, justify="left")
+        note.pack(anchor="w", pady=(8, 0))
+
+        def save():
+            title = title_entry.get().strip()
+            if not title:
+                note.config(text="Give the task a title.", fg=RED)
+                return
+            due = due_entry.get().strip() or None
+            note.config(text="Saving...", fg=MUTED)
+
+            def done(_):
+                self._flash("Task added.", GREEN)
+                win.destroy()
+                self.refresh()
+
+            self._run(lambda: self.client.create_task(title, priority.get(), due), done,
+                      lambda e: note.config(text=(e.first_message if isinstance(e, ApiError) else str(e)), fg=RED))
+
+        ttk.Button(win, text="Add task", style="Primary.TButton", command=save).pack(fill="x", pady=(14, 0))
+        title_entry.focus_set()
 
     # Daily status -----------------------------------------------------------
     def _open_daily_status(self):
