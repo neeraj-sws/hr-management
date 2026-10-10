@@ -26,6 +26,8 @@ from .client import ApiError, HrClient
 from .offline import OfflineQueue
 
 NAVY, BLUE, CANVAS, INK, MUTED, GREEN, RED, AMBER = "#14284b", "#3461d1", "#f4f6fa", "#172033", "#6b778a", "#12804a", "#bd3446", "#9a6412"
+INK2, LINE, HEADER, BLUE_SOFT, GREEN_SOFT, AMBER_SOFT, RED_SOFT, STRIPE = "#334258", "#e4e9f0", "#1b355f", "#ecf2ff", "#e6f6ee", "#fff4dc", "#ffedf0", "#f8fafd"
+STATUS_TONE = {"working": (GREEN, GREEN_SOFT), "on_break": (AMBER, AMBER_SOFT), "completed": (INK2, "#eef1f6")}
 SYNC_INTERVAL_MS = 30_000
 PRESENCE_INTERVAL_MS = 5_000
 SCREEN_IDLE_AFTER_SECONDS = 60  # no keyboard/mouse for a minute (or screen locked) counts as idle
@@ -87,18 +89,23 @@ class DesktopApp:
         style = ttk.Style(self.root)
         style.theme_use("clam")
         style.configure(".", font=("Segoe UI", 10))
-        style.configure("TButton", padding=(14, 8), font=("Segoe UI", 10), background="white", bordercolor="#d6dde8", relief="flat")
-        style.map("TButton", background=[("active", "#eef2f8"), ("disabled", "#f4f6fa")], foreground=[("disabled", "#94a0b2")])
+        style.configure("TButton", padding=(16, 9), font=("Segoe UI", 10), background="white", foreground=INK2, bordercolor="#d6dde8", relief="flat", focuscolor="")
+        style.map("TButton", background=[("active", "#eef2f8"), ("disabled", "#f4f6fa")], foreground=[("disabled", "#94a0b2")], bordercolor=[("active", "#bcc9db")])
         style.configure("Primary.TButton", background=BLUE, foreground="white", bordercolor=BLUE)
-        style.map("Primary.TButton", background=[("active", "#2a51b5"), ("disabled", "#9db3e8")])
+        style.map("Primary.TButton", background=[("active", "#2a51b5"), ("disabled", "#9db3e8")], foreground=[("disabled", "white")])
         style.configure("Success.TButton", background=GREEN, foreground="white", bordercolor=GREEN)
         style.map("Success.TButton", background=[("active", "#0e6a3d")])
         style.configure("Danger.TButton", background="white", foreground=RED, bordercolor="#f0c3cb")
-        style.configure("Header.TButton", background="#22406f", foreground="white", bordercolor="#22406f", padding=(12, 6))
-        style.map("Header.TButton", background=[("active", "#2c4f86")])
-        style.configure("Treeview", rowheight=30, font=("Segoe UI", 10), borderwidth=0, fieldbackground="white")
-        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background="#f4f6fa", foreground=MUTED, relief="flat")
-        style.map("Treeview", background=[("selected", "#ecf2ff")], foreground=[("selected", INK)])
+        style.map("Danger.TButton", background=[("active", RED_SOFT)])
+        style.configure("Ghost.TButton", padding=(10, 6), background="white", foreground=BLUE, bordercolor="#cdd9ee")
+        style.map("Ghost.TButton", background=[("active", BLUE_SOFT)])
+        style.configure("Header.TButton", background=HEADER, foreground="#dce6f5", bordercolor=HEADER, padding=(13, 7), font=("Segoe UI", 9))
+        style.map("Header.TButton", background=[("active", "#27477a")], foreground=[("active", "white")])
+        style.configure("TCombobox", padding=5, arrowsize=14)
+        style.configure("Treeview", rowheight=34, font=("Segoe UI", 10), borderwidth=0, fieldbackground="white", background="white")
+        style.configure("Treeview.Heading", font=("Segoe UI", 8, "bold"), background="white", foreground=MUTED, relief="flat", padding=(6, 8))
+        style.map("Treeview.Heading", background=[("active", "white")])
+        style.map("Treeview", background=[("selected", BLUE_SOFT)], foreground=[("selected", NAVY)])
 
     def _run(self, work, done=None, failed=None):
         """Run `work` off the UI thread; call `done(result)` or `failed(error)` on it."""
@@ -193,50 +200,66 @@ class DesktopApp:
     # Main window -----------------------------------------------------------
     def _show_main(self):
         self._clear()
-        header = tk.Frame(self.container, bg=NAVY, padx=16, pady=12)
+        header = tk.Frame(self.container, bg=NAVY, padx=20, pady=14)
         header.pack(fill="x")
-        self.title_label = tk.Label(header, text="SWS HR", font=("Segoe UI", 14, "bold"), fg="white", bg=NAVY)
-        self.title_label.pack(side="left")
+        brand = tk.Frame(header, bg=NAVY)
+        brand.pack(side="left")
+        self.avatar = tk.Label(brand, text="SW", font=("Segoe UI", 13, "bold"), fg=NAVY, bg="#5b8cff", width=3, height=1)
+        self.avatar.pack(side="left", padx=(0, 12), ipady=6)
+        names = tk.Frame(brand, bg=NAVY)
+        names.pack(side="left")
+        self.title_label = tk.Label(names, text="SWS HR", font=("Segoe UI", 14, "bold"), fg="white", bg=NAVY, anchor="w")
+        self.title_label.pack(anchor="w")
+        self.subtitle_label = tk.Label(names, text="HR & Work Management", font=("Segoe UI", 9), fg="#9db3d6", bg=NAVY, anchor="w")
+        self.subtitle_label.pack(anchor="w")
         ttk.Button(header, text="Sign out", style="Header.TButton", command=self.logout).pack(side="right")
         ttk.Button(header, text="Refresh", style="Header.TButton", command=self.refresh).pack(side="right", padx=8)
         ttk.Button(header, text="Daily status", style="Header.TButton", command=self._open_daily_status).pack(side="right")
         self.autostart_var = tk.BooleanVar(value=autostart.is_enabled())
-        tk.Checkbutton(header, text="Open when Windows starts", variable=self.autostart_var, command=self._toggle_autostart,
-                       bg=NAVY, fg="white", selectcolor=NAVY, activebackground=NAVY, activeforeground="white").pack(side="right", padx=8)
+        tk.Checkbutton(header, text="Open at Windows start", variable=self.autostart_var, command=self._toggle_autostart,
+                       bg=NAVY, fg="#dce6f5", selectcolor=NAVY, activebackground=NAVY, activeforeground="white", font=("Segoe UI", 9)).pack(side="right", padx=12)
 
-        body = tk.Frame(self.container, bg=CANVAS, padx=16, pady=12)
+        body = tk.Frame(self.container, bg=CANVAS, padx=18, pady=16)
         body.pack(fill="both", expand=True)
 
-        att = tk.Frame(body, bg="white", padx=16, pady=14, highlightbackground="#e4e9f0", highlightthickness=1)
+        shell = tk.Frame(body, bg=LINE, padx=1, pady=1)   # 1px border ring
+        shell.pack(fill="x")
+        att = tk.Frame(shell, bg="white", padx=22, pady=20)
         att.pack(fill="x")
-        tk.Label(att, text="TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).grid(row=0, column=0, sticky="w")
-        self.clock_label = tk.Label(att, text="--:--:--", font=("Segoe UI", 30, "bold"), fg=NAVY, bg="white")
-        self.clock_label.grid(row=1, column=0, sticky="w")
-        self.session_label = tk.Label(att, text="Not checked in", fg=INK, bg="white")
-        self.session_label.grid(row=2, column=0, sticky="w")
-        self.screen_label = tk.Label(att, text="", fg=MUTED, bg="white")
-        self.screen_label.grid(row=3, column=0, sticky="w")
-        self.capture_label = tk.Label(att, text="", fg=AMBER, bg="white", wraplength=440, justify="left")
-        self.capture_label.grid(row=4, column=0, sticky="w")
-        self.app_usage_label = tk.Label(att, text="", fg=MUTED, bg="white", wraplength=440, justify="left")
-        self.app_usage_label.grid(row=5, column=0, sticky="w")
+        left = tk.Frame(att, bg="white")
+        left.grid(row=0, column=0, sticky="w")
+        tk.Label(left, text="TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        self.clock_label = tk.Label(left, text="--:--:--", font=("Segoe UI", 34, "bold"), fg=NAVY, bg="white")
+        self.clock_label.pack(anchor="w")
+        self.status_pill = tk.Label(left, text="Not checked in", fg=MUTED, bg="#eef1f6", font=("Segoe UI", 9, "bold"), padx=10, pady=3)
+        self.status_pill.pack(anchor="w", pady=(2, 0))
+        self.session_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 10))
+        self.session_label.pack(anchor="w", pady=(6, 0))
+        self.screen_label = tk.Label(left, text="", fg=MUTED, bg="white", font=("Segoe UI", 9))
+        self.screen_label.pack(anchor="w")
+        self.capture_label = tk.Label(left, text="", fg=AMBER, bg="white", wraplength=460, justify="left", font=("Segoe UI", 9))
+        self.capture_label.pack(anchor="w")
+        self.app_usage_label = tk.Label(left, text="", fg=MUTED, bg="white", wraplength=460, justify="left", font=("Segoe UI", 9))
+        self.app_usage_label.pack(anchor="w")
         buttons = tk.Frame(att, bg="white")
-        buttons.grid(row=0, column=1, rowspan=3, sticky="e", padx=(20, 0))
+        buttons.grid(row=0, column=1, sticky="ne", padx=(20, 0))
         att.columnconfigure(0, weight=1)
-        self.att_off_label = tk.Label(buttons, text="", fg=AMBER, bg="white", wraplength=200, justify="right")
+        self.att_off_label = tk.Label(buttons, text="", fg=AMBER, bg="white", wraplength=210, justify="right", font=("Segoe UI", 9))
         self.att_off_label.pack(side="bottom")
         self.att_buttons = {}
         for action in ("check_in", "break_start", "break_end", "check_out"):
             look = {"check_in": "Primary.TButton", "break_end": "Success.TButton", "check_out": "Danger.TButton"}.get(action, "TButton")
-            button = ttk.Button(buttons, text=ATTENDANCE_LABEL[action], style=look, command=lambda a=action: self.attendance(a))
+            button = ttk.Button(buttons, text=ATTENDANCE_LABEL[action], style=look, command=lambda a=action: self.attendance(a), width=16)
             self.att_buttons[action] = button
 
-        tasks_frame = tk.Frame(body, bg="white", padx=12, pady=10, highlightbackground="#e4e9f0", highlightthickness=1)
-        tasks_frame.pack(fill="both", expand=True, pady=12)
+        tshell = tk.Frame(body, bg=LINE, padx=1, pady=1)
+        tshell.pack(fill="both", expand=True, pady=(14, 0))
+        tasks_frame = tk.Frame(tshell, bg="white", padx=18, pady=14)
+        tasks_frame.pack(fill="both", expand=True)
         top = tk.Frame(tasks_frame, bg="white")
         top.pack(fill="x")
-        tk.Label(top, text="My open tasks", font=("Segoe UI", 11, "bold"), fg=INK, bg="white").pack(side="left")
-        ttk.Button(top, text="+ Add task", command=self._open_add_task).pack(side="left", padx=10)
+        tk.Label(top, text="My open tasks", font=("Segoe UI", 12, "bold"), fg=NAVY, bg="white").pack(side="left")
+        ttk.Button(top, text="+ Add task", style="Ghost.TButton", command=self._open_add_task).pack(side="left", padx=12)
         self.task_buttons = {
             "complete": ttk.Button(top, text="Complete", command=lambda: self.task_action("complete")),
             "pause": ttk.Button(top, text="Pause", command=lambda: self.task_action("pause")),
@@ -254,6 +277,8 @@ class DesktopApp:
             self.tree.column(column, width=width, anchor="w")
         self.tree.tag_configure("running", foreground=GREEN)
         self.tree.tag_configure("overdue", foreground=RED)
+        self.tree.tag_configure("odd", background=STRIPE)
+        self.tree.tag_configure("even", background="white")
         self.tree.pack(fill="both", expand=True, pady=(8, 0))
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._update_task_buttons())
         self.tree.bind("<Double-1>", lambda _e: self._toggle_selected_task())
@@ -544,7 +569,12 @@ class DesktopApp:
             if self.away_tracker.threshold.total_seconds() != minutes * 60:
                 self.away_tracker = presence.AwayTracker(minutes)
             self._set_session(session)
-            self.title_label.config(text=f"SWS HR · {self.me['name']}" + (f" ({self.me['employee']['employee_code']})" if self.me.get("employee") else ""))
+            name = self.me.get("name", "SWS HR")
+            self.title_label.config(text=name)
+            code = self.me["employee"]["employee_code"] if self.me.get("employee") else None
+            self.subtitle_label.config(text=" · ".join(filter(None, [code, ", ".join(self.me.get("roles", [])) or "Employee"])))
+            initials = "".join(part[0] for part in name.split()[:2]).upper() or "SW"
+            self.avatar.config(text=initials)
             self._render_tasks()
             self._render_sync()
             if not self.me.get("employee"):
@@ -592,21 +622,24 @@ class DesktopApp:
             button.pack_forget()
         # Today's time/status always shows; the buttons depend on the admin setting.
         if not session:
-            self.session_label.config(text="Not checked in", fg=MUTED)
+            self.status_pill.config(text="Not checked in", fg=MUTED, bg="#eef1f6")
+            self.session_label.config(text="")
             if self.desktop_attendance_allowed:
-                self.att_buttons["check_in"].pack(fill="x", pady=2)
+                self.att_buttons["check_in"].pack(fill="x", pady=4)
         else:
             check_in = parse_time(session.get("check_in"))
             check_out = parse_time(session.get("check_out"))
+            fg, bg = STATUS_TONE.get(session["status"], (MUTED, "#eef1f6"))
+            self.status_pill.config(text=STATUS_LABEL.get(session["status"], session["status"]), fg=fg, bg=bg)
             text = f"In {check_in.astimezone().strftime('%I:%M %p') if check_in else '—'}"
             if check_out:
-                text += f" · Out {check_out.astimezone().strftime('%I:%M %p')}"
-            self.session_label.config(text=f"{text} · {STATUS_LABEL.get(session['status'], session['status'])}", fg={"working": GREEN, "on_break": AMBER}.get(session["status"], MUTED))
+                text += f"   ·   Out {check_out.astimezone().strftime('%I:%M %p')}"
+            self.session_label.config(text=text)
             if getattr(self, "tray", None):
                 self.tray.set_title(f"SWS HR - {STATUS_LABEL.get(session['status'], session['status'])}")
             if self.desktop_attendance_allowed and not check_out:
-                self.att_buttons["break_end" if session["status"] == "on_break" else "break_start"].pack(fill="x", pady=2)
-                self.att_buttons["check_out"].pack(fill="x", pady=2)
+                self.att_buttons["break_end" if session["status"] == "on_break" else "break_start"].pack(fill="x", pady=4)
+                self.att_buttons["check_out"].pack(fill="x", pady=4)
         # A small note when the admin has turned desktop attendance off (buttons hidden, time still shown).
         if hasattr(self, "att_off_label") and self.att_off_label.winfo_exists():
             self.att_off_label.config(text="" if self.desktop_attendance_allowed else "Attendance from the desktop app is turned off for you. Use the website or mobile app.")
@@ -650,10 +683,11 @@ class DesktopApp:
         selected = self.tree.selection()
         self.tree.delete(*self.tree.get_children())
         self.task_hint.config(text="No open tasks assigned to you." if not self.tasks else "Select a task, then use the buttons above (double-click starts or pauses its timer).")
-        for task in self.tasks:
+        for index, task in enumerate(self.tasks):
             logged = int(task.get("logged_seconds") or 0)
-            status = "● running" if task.get("timer_running_since") else ("overdue" if task.get("overdue") else task["status"].replace("_", " "))
-            tags = ("running",) if task.get("timer_running_since") else ("overdue",) if task.get("overdue") else ()
+            status = "● running" if task.get("timer_running_since") else ("overdue" if task.get("overdue") else task["status"].replace("_", " ").title())
+            stripe = "odd" if index % 2 else "even"
+            tags = (("running", stripe) if task.get("timer_running_since") else ("overdue", stripe) if task.get("overdue") else (stripe,))
             due = datetime.strptime(task["due_on"][:10], "%Y-%m-%d").strftime("%d %b %Y") if task.get("due_on") else "—"
             self.tree.insert("", "end", iid=str(task["id"]), values=(task["title"], (task.get("project") or {}).get("name", "—"), due, f"{logged // 3600}:{logged % 3600 // 60:02d}", status), tags=tags)
         if selected and self.tree.exists(selected[0]):
