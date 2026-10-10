@@ -212,3 +212,69 @@ Also: send a test email (trigger any approval and confirm it arrives), and open 
 - Deploys after the first: `git pull` → `composer install --no-dev -o` → `php artisan migrate --force` → `php artisan config:cache route:cache view:cache` → `sudo systemctl restart sws-worker`.
 - Watch disk (screenshots/app-usage grow); the nightly purge keeps only the retention window you set.
 - Keep PHP, MariaDB and the OS patched.
+
+---
+
+# Hostinger shared hosting (hPanel) — manual upload
+
+No root, no nginx/systemd. You upload files through hPanel and use hPanel's
+own tools (MySQL, Cron, SSL, PHP selector). SSH is included free on paid plans
+and you need it briefly to initialise the database — enable it in
+hPanel → Advanced → SSH Access.
+
+## A. Prepare the code on your PC (so the server needs no Composer)
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan key:generate --show
+```
+- Copy the printed `base64:...` key.
+- In `.env` set: `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://yourdomain.com`, `APP_KEY=` (the key above), DB values (fill after step C), `SESSION_DRIVER=database`, `SESSION_SECURE_COOKIE=true`, `CACHE_STORE=database`, `QUEUE_CONNECTION=sync`, and your `MAIL_*` SMTP. `QUEUE_CONNECTION=sync` is simplest on shared hosting (emails/notifications send during the request; no worker needed).
+- Zip the whole project **including `vendor/` and `.env`**, but exclude `node_modules/`, `.git/`, `python/.build-venv/`.
+
+## B. Upload & place the files
+Hostinger serves your domain from `.../domains/yourdomain.com/public_html`.
+Laravel's web root is its `public/` folder, so split it:
+1. hPanel → File Manager → upload the zip into `.../domains/yourdomain.com/` and extract to a folder, e.g. `app` (so you have `domains/yourdomain.com/app/...` and the existing `public_html`).
+2. Move everything from `app/public/` into `public_html/` (replace the default files).
+3. Edit `public_html/index.php` — change the two require paths to point up into `app`:
+   ```php
+   require __DIR__.'/../app/vendor/autoload.php';
+   $app = require_once __DIR__.'/../app/bootstrap/app.php';
+   ```
+4. In File Manager, set `app/storage` and `app/bootstrap/cache` (and everything inside) to permission **775**.
+
+(If your plan's hPanel lets you change the domain's Document Root, simpler: upload the whole project into `public_html/sws` and set the document root to `public_html/sws/public` — then skip steps 2–3.)
+
+## C. Database (hPanel)
+hPanel → Databases → MySQL Databases → create a database + user (note the name, user, password; host is usually `localhost`). Put these into `app/.env` (`DB_CONNECTION=mysql`, `DB_HOST=localhost`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`) via File Manager's editor.
+
+## D. PHP version & extensions
+hPanel → Advanced → PHP Configuration → choose **PHP 8.2+** and enable: `pdo_mysql, mbstring, openssl, fileinfo, gd, zip, bcmath, curl`.
+
+## E. Initialise (over SSH, one time)
+hPanel → Advanced → SSH Access → connect, then:
+```bash
+cd ~/domains/yourdomain.com/app
+php artisan sws:install
+```
+This migrates, seeds roles/permissions and the admin, and caches config. Admin login is `admin@example.com` with your `.env` `SEED_USER_PASSWORD` — change it right after first sign-in.
+(No SSH at all? Ask me to add a one-time, token-protected web installer route instead — less safe, removed after use.)
+
+## F. SSL
+hPanel → Security → SSL → install the free certificate for the domain. Confirm `https://yourdomain.com/login` opens. Keep `APP_URL` on `https`.
+
+## G. Cron (REQUIRED for reminders, compliance, clean-up, wishes)
+hPanel → Advanced → Cron Jobs → add, running **every minute**:
+```
+php ~/domains/yourdomain.com/app/artisan schedule:run >/dev/null 2>&1
+```
+(If hPanel needs a full PHP path, use the one it shows, e.g. `/usr/bin/php8.2`.)
+With `QUEUE_CONNECTION=sync` no separate queue worker is needed. (If later you move to a VPS, switch to `database` queue + a worker per the main guide.)
+
+## H. Updating later
+Re-run steps A–B for changed files (upload the new `app/` and `public_html` files), then over SSH:
+```bash
+cd ~/domains/yourdomain.com/app && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan view:cache
+```
+
+> Mobile (section 9) and desktop (section 10) are built and distributed the same way regardless of where the server is hosted — just point `app.json` `apiUrl` and the desktop download at your Hostinger domain.
