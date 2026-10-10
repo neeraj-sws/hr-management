@@ -70,6 +70,20 @@ class WhatsAppTest extends TestCase
             && $r->hasHeader('Authorization', 'Bearer TKN'));
     }
 
+    public function test_template_mode_flattens_newlines_into_one_parameter(): void
+    {
+        config(['services.whatsapp.enabled' => true, 'services.whatsapp.provider' => 'meta', 'services.whatsapp.token' => 'T', 'services.whatsapp.phone_id' => '9', 'services.whatsapp.template' => 'sws_alert', 'services.whatsapp.template_lang' => 'en']);
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'x']]])]);
+        (new SendWhatsAppMessage('919876500000', "✅ *Check-in*
+Asha checked in at 09:30."))->handle();
+        Http::assertSent(function ($r) {
+            $param = $r['template']['components'][0]['parameters'][0]['text'];
+            return $r['type'] === 'template' && $r['template']['name'] === 'sws_alert'
+                && ! str_contains($param, "
+") && str_contains($param, 'Asha checked in');
+        });
+    }
+
     public function test_job_does_nothing_when_disabled(): void
     {
         config(['services.whatsapp.enabled' => false]);

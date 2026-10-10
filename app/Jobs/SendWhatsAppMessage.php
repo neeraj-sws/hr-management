@@ -51,9 +51,11 @@ class SendWhatsAppMessage implements ShouldQueue
             $endpoint = "https://graph.facebook.com/v21.0/{$phoneId}/messages";
             if (! empty($c['template'])) {
                 // A pre-approved template with one body parameter (the message text).
+                // Template parameters may not contain newlines/tabs or 4+ spaces, so flatten to one line.
+                $param = trim(preg_replace('/\s{2,}/', ' ', str_replace(["\r", "\n", "\t", '*'], [' ', ' - ', ' ', ''], $this->text)));
                 $payload = ['messaging_product' => 'whatsapp', 'to' => $this->to, 'type' => 'template',
                     'template' => ['name' => $c['template'], 'language' => ['code' => $c['template_lang'] ?? 'en'],
-                        'components' => [['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $this->text]]]]]];
+                        'components' => [['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $param]]]]]];
             } else {
                 $payload = ['messaging_product' => 'whatsapp', 'to' => $this->to, 'type' => 'text', 'text' => ['body' => $this->text]];
             }
