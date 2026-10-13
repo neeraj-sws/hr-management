@@ -2,7 +2,8 @@
     <div class="page-head">
         <div><p class="eyebrow">Reports</p><h1>{{ $label }} report</h1><p>The CSV export uses exactly the same query and filters as this preview.</p></div>
         <div class="actions">
-            <a class="btn btn-primary" href="{{ $exportUrl }}"><x-icon name="download" class="icon-sm" />Export CSV</a>
+            <a class="btn btn-primary" href="{{ $exportUrlExcel }}"><x-icon name="download" class="icon-sm" />Export Excel</a>
+            <a class="btn" href="{{ $exportUrl }}"><x-icon name="download" class="icon-sm" />Export CSV</a>
         </div>
     </div>
     <div class="tabs">@foreach($types as $key => $name)<a class="tab {{ $key === $type ? 'active' : '' }}" href="{{ route('reports.show', $key) }}">{{ $name }}</a>@endforeach</div>

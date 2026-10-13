@@ -42,12 +42,37 @@ class Salary extends Component
         return $this->user()->canAny(['payroll.manage', 'hr.manage']);
     }
 
+    /** True when the form is correcting the current salary in place (vs adding a new effective-dated revision). */
+    public bool $correcting = false;
+
     public function editProfile(int $employeeId): void
+    {
+        $this->loadProfile($employeeId, correct: false);
+    }
+
+    /**
+     * Edit the current salary record in place to fix a wrong entry: loads the
+     * latest profile with its actual effective date, so saving overwrites that
+     * same record instead of creating a new revision.
+     */
+    public function correctProfile(int $employeeId): void
+    {
+        $this->loadProfile($employeeId, correct: true);
+    }
+
+    private function loadProfile(int $employeeId, bool $correct): void
     {
         abort_unless($this->canManage(), 403);
         $employee = AttendanceEmployee::findOrFail($employeeId);
         $current = $employee->salaryProfiles()->orderByDesc('effective_from')->first();
-        $this->fill(['profileEmployeeId' => $employee->id, 'monthly' => (string) ($current?->monthly_salary ?? ''), 'workingDays' => (string) ($current?->working_days_per_month ?? 22), 'dailyHours' => (string) (float) ($current?->standard_daily_hours ?? 8), 'effectiveFrom' => today()->startOfMonth()->toDateString(),
+        if ($correct && ! $current) {
+            $this->toast('No salary record to edit yet. Use Revise to set one.');
+
+            return;
+        }
+        $this->correcting = $correct;
+        $this->fill(['profileEmployeeId' => $employee->id, 'monthly' => (string) ($current?->monthly_salary ?? ''), 'workingDays' => (string) ($current?->working_days_per_month ?? 22), 'dailyHours' => (string) (float) ($current?->standard_daily_hours ?? 8),
+            'effectiveFrom' => $correct ? $current->effective_from->toDateString() : today()->startOfMonth()->toDateString(),
             'components' => collect($current?->components ?? [])->map(fn ($c) => ['name' => (string) $c['name'], 'type' => (string) $c['type'], 'amount' => (string) $c['amount']])->all()]);
         $this->resetValidation();
     }
@@ -81,12 +106,21 @@ class Salary extends Component
         }
         $rows = app(\App\Services\SalaryStructureService::class)->validate($this->components, (float) $this->monthly);
         app(\App\Services\PayrollLockGuard::class)->changed((int) $this->profileEmployeeId, $this->effectiveFrom, 'salary', '2999-12-31');
-        $profile = SalaryProfile::updateOrCreate(['employee_id' => $this->profileEmployeeId, 'effective_from' => $this->effectiveFrom], ['components' => $rows ?: null, 'monthly_salary' => $this->monthly, 'working_days_per_month' => $this->workingDays, 'standard_daily_hours' => $this->dailyHours, 'configured_by' => auth()->id()]);
+        $values = ['components' => $rows ?: null, 'monthly_salary' => $this->monthly, 'working_days_per_month' => $this->workingDays, 'standard_daily_hours' => $this->dailyHours, 'configured_by' => auth()->id()];
+        // Match on the date part (robust across MySQL/SQLite) so editing the same effective date overwrites that record.
+        $profile = SalaryProfile::where('employee_id', $this->profileEmployeeId)->whereDate('effective_from', $this->effectiveFrom)->first();
+        if ($profile) {
+            $profile->update($values);
+        } else {
+            $profile = SalaryProfile::create(['employee_id' => $this->profileEmployeeId, 'effective_from' => $this->effectiveFrom, ...$values]);
+        }
         $latest = SalaryProfile::where('employee_id', $this->profileEmployeeId)->orderByDesc('effective_from')->first();
         AttendanceEmployee::whereKey($this->profileEmployeeId)->update(['monthly_salary' => $latest->monthly_salary]);
         $audit->record('salary.profile_configured', $profile, ['monthly_salary' => (float) $this->monthly, 'effective_from' => $this->effectiveFrom, 'components' => $rows]);
+        $message = $this->correcting ? 'Salary corrected.' : 'Salary profile saved.';
         $this->profileEmployeeId = null;
-        $this->toast('Salary profile saved.');
+        $this->correcting = false;
+        $this->toast($message);
     }
 
     public function newAdjustment(): void
@@ -117,6 +151,7 @@ class Salary extends Component
     public function closeModal(): void
     {
         $this->profileEmployeeId = null;
+        $this->correcting = false;
         $this->showAdjustment = false;
     }
 

@@ -22,7 +22,7 @@
                     <tr wire:key="s-{{ $e->id }}"><td><strong>{{ $e->name }}</strong><small>{{ $e->employee_code }}</small></td><td>{{ $e->department?->name ?? '—' }}</td>
                         <td class="num">{{ $e->salaryProfile ? number_format((float) $e->salaryProfile->monthly_salary, 2) : '—' }}</td><td>{{ $e->salaryProfile?->effective_from?->format('d M Y') ?? '—' }}</td>
                         <td class="num">{{ $e->salaryProfile?->working_days_per_month ?? '—' }}</td><td class="num">{{ $e->salaryProfile ? (float) $e->salaryProfile->standard_daily_hours : '—' }}</td>
-                        <td>@if($canManage)<button class="btn btn-sm" wire:click="editProfile({{ $e->id }})">Revise</button>@endif</td></tr>
+                        <td>@if($canManage)@if($e->salaryProfile)<button type="button" class="btn btn-sm" wire:click="correctProfile({{ $e->id }})">Edit</button> @endif<button type="button" class="btn btn-sm" wire:click="editProfile({{ $e->id }})">Revise</button>@endif</td></tr>
                 @empty<tr><td colspan="7"><x-empty title="No employees" icon="users" /></td></tr>@endforelse
             </tbody></table></div>
             {{ $employees->links() }}
@@ -41,8 +41,8 @@
     </section>
 
     @if($editing)
-        <x-modal title="Revise salary · {{ $editing->name }}" size="lg">
-            <form wire:submit="saveProfile"><div class="modal-body"><x-errors /><div class="form-grid">
+        <x-modal title="{{ $correcting ? 'Edit salary (correct) · ' : 'Revise salary · ' }}{{ $editing->name }}" size="lg">
+            <form wire:submit="saveProfile"><div class="modal-body"><x-errors />@if($correcting)<p class="small muted" style="margin:-4px 0 10px">Fixing the current salary record in place. Keep the effective date to overwrite it, or change it to add a new revision.</p>@endif<div class="form-grid">
                 <x-field label="Monthly salary" name="monthly"><input type="number" step="0.01" min="0" wire:model="monthly"></x-field>
                 <x-field label="Effective from" name="effectiveFrom"><input type="date" wire:model="effectiveFrom"></x-field>
                 <x-field label="Working days per month" name="workingDays"><input type="number" min="1" max="31" wire:model="workingDays"></x-field>

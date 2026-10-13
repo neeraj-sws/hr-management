@@ -58,6 +58,7 @@ class Report extends Component
             'rows' => $rows->take(self::PREVIEW_LIMIT),
             'truncated' => $rows->count() > self::PREVIEW_LIMIT,
             'exportUrl' => route('hr.reports.export', ['type' => $this->type, ...$filters]),
+            'exportUrlExcel' => route('hr.reports.export', ['type' => $this->type, 'format' => 'xlsx', ...$filters]),
             'types' => collect($reports->availableTypes($this->user()))->mapWithKeys(fn ($t) => [$t => $reports->label($t)]),
             'employees' => AttendanceEmployee::whereIn('id', $scopeIds)->orderBy('name')->get(['id', 'name']),
             'departments' => Department::orderBy('name')->get(['id', 'name']),
