@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, get, post } from './api';
+import { Platform } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { ApiError, get, post, upload } from './api';
 import { useAuth } from './auth';
 import { currentPosition, type Position } from './location';
 import { runOrQueue } from './queue';
@@ -57,7 +59,41 @@ export function useAttendance() {
         }
       }
       const place = position ? { latitude: position.latitude, longitude: position.longitude, accuracy: position.accuracy } : {};
+      // Selfie at check-in/out when the company requires it (front camera, taken now).
+      let photo: { uri: string; name: string; type: string; file?: File } | null = null;
+      if (me?.policies?.selfie_required && (action === 'check-in' || action === 'check-out')) {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setMessage({ tone: 'error', text: 'Allow camera access: your company requires a selfie to check in and out.' });
+          return;
+        }
+        const shot = await ImagePicker.launchCameraAsync({ cameraType: ImagePicker.CameraType.front, quality: 0.5, allowsEditing: false });
+        if (shot.canceled || !shot.assets?.[0]) {
+          setMessage({ tone: 'info', text: `A selfie is needed to ${label[action].toLowerCase()}.` });
+          return;
+        }
+        const asset = shot.assets[0];
+        photo = { uri: asset.uri, name: asset.fileName ?? 'selfie.jpg', type: asset.mimeType ?? 'image/jpeg', file: (asset as { file?: File }).file };
+      }
       let updated: AttendanceSession | null = null;
+      if (photo) {
+        // A selfie cannot wait in the offline queue: it is sent now or the action is not recorded.
+        const form = new FormData();
+        form.append('source', 'mobile');
+        Object.entries(place).forEach(([key, value]) => form.append(key, String(value)));
+        if (Platform.OS === 'web' && photo.file) form.append('photo', photo.file, photo.name);
+        else form.append('photo', { uri: photo.uri, name: photo.name, type: photo.type } as unknown as Blob);
+        try {
+          updated = (await upload<{ data: AttendanceSession }>(endpoint[action], form)).data;
+        } catch (error) {
+          setMessage({ tone: 'error', text: error instanceof ApiError && error.isNetwork ? 'You are offline. A selfie check-in needs the internet — try again when connected.' : error instanceof ApiError ? error.firstMessage : 'Could not send the selfie.' });
+          return;
+        }
+        setSession(updated);
+        await store.setJson('sws.today', updated);
+        setMessage({ tone: 'success', text: `${label[action]} recorded with your selfie.` });
+        return;
+      }
       const result = await runOrQueue(
         async () => {
           updated = (await post<{ data: AttendanceSession }>(endpoint[action], { source: 'mobile', ...place })).data;
@@ -82,7 +118,7 @@ export function useAttendance() {
     } finally {
       setBusy(null);
     }
-  }, [session, me?.policies?.location_required]);
+  }, [session, me?.policies?.location_required, me?.policies?.selfie_required]);
 
   return { session, loading, busy, message, load, act };
 }

@@ -12,7 +12,7 @@ use Livewire\Component;
 
 class Advances extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $status = '';
     public bool $showForm = false;
@@ -79,7 +79,7 @@ class Advances extends Component
         $advances = SalaryAdvance::with(['employee', 'repayments.payrollItem.run'])
             ->when(! $this->canManage(), fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($this->status, fn ($q, $s) => $q->where('status', $s))
-            ->latest()->get();
+            ->latest()->paginate(15);
 
         return $this->page('livewire.payroll.advances', [
             'advances' => $advances,

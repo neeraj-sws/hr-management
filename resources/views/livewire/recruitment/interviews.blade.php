@@ -26,6 +26,7 @@
             @endforelse
             </tbody>
         </table></div>
+        {{ $interviews->links() }}
     </section>
 
     @if($giving)

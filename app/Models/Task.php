@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
 {
-    protected $fillable = ['project_id', 'assignee_id', 'created_by', 'title', 'description', 'priority', 'status', 'estimated_hours', 'due_on', 'started_at', 'completed_at', 'server_version', 'work_date', 'parent_id', 'overdue_notified_at'];
+    protected $fillable = ['project_id', 'assignee_id', 'created_by', 'title', 'description', 'priority', 'status', 'estimated_hours', 'due_on', 'started_at', 'completed_at', 'server_version', 'work_date', 'parent_id', 'overdue_notified_at', 'progress'];
     protected $casts = ['estimated_hours' => 'decimal:2', 'due_on' => 'date', 'started_at' => 'datetime', 'completed_at' => 'datetime', 'work_date' => 'date'];
     public function project(): BelongsTo { return $this->belongsTo(Project::class); }
     public function assignee(): BelongsTo { return $this->belongsTo(AttendanceEmployee::class, 'assignee_id'); }
@@ -20,6 +20,22 @@ class Task extends Model
         static::saving(function (Task $task) {
             if ($task->isDirty('due_on') && $task->exists) $task->overdue_notified_at = null;
         });
+    }
+
+    /**
+     * Progress in %: 100 when completed; otherwise the % set on the task; otherwise
+     * done subtasks out of all subtasks; otherwise logged time against the estimate
+     * (capped at 95 until it is completed); otherwise 0.
+     */
+    public function progressPercent(?int $loggedSeconds = null): int
+    {
+        if ($this->status === 'completed') return 100;
+        if ($this->progress !== null) return max(0, min(100, (int) $this->progress));
+        $subtasks = $this->subtasks_count ?? null;
+        if ($subtasks) return (int) round(((int) ($this->subtasks_done_count ?? 0)) / $subtasks * 100);
+        if ($loggedSeconds !== null && (float) $this->estimated_hours > 0) return (int) min(95, round($loggedSeconds / ((float) $this->estimated_hours * 3600) * 100));
+
+        return 0;
     }
 
     public function isOverdue(): bool

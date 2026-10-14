@@ -154,20 +154,26 @@ class CompletionTest extends TestCase
         $this->assertSame(['resignation', '2026-10-31', '2026-10-01', 'Moving cities'], [$e->exit_type, $e->exit_date->toDateString(), $e->resigned_on->toDateString(), $e->exit_reason]);
     }
 
-    public function test_password_reset_by_email_link(): void
+    public function test_password_reset_by_email_link_is_for_administrators_only(): void
     {
         \Illuminate\Support\Facades\Notification::fake();
         $this->post(route('password.email'), ['email' => 'nobody@example.com'])->assertSessionHas('status'); // same answer for unknown emails
+        // An employee cannot reset their own password: no link is sent, and a token cannot be used either.
         $this->post(route('password.email'), ['email' => $this->employeeUser->email])->assertSessionHas('status');
+        \Illuminate\Support\Facades\Notification::assertNotSentTo($this->employeeUser, \Illuminate\Auth\Notifications\ResetPassword::class);
+        $employeeToken = \Illuminate\Support\Facades\Password::createToken($this->employeeUser);
+        $this->post(route('password.update'), ['token' => $employeeToken, 'email' => $this->employeeUser->email, 'password' => 'BrandNewPass2026', 'password_confirmation' => 'BrandNewPass2026'])->assertSessionHasErrors('email');
+        $this->assertFalse(\Illuminate\Support\Facades\Hash::check('BrandNewPass2026', $this->employeeUser->fresh()->password));
+
+        // The administrator can still recover their own account by e-mail.
+        $this->post(route('password.email'), ['email' => $this->admin->email])->assertSessionHas('status');
         $token = null;
-        \Illuminate\Support\Facades\Notification::assertSentTo($this->employeeUser, \Illuminate\Auth\Notifications\ResetPassword::class, function ($n) use (&$token) { $token = $n->token; return true; });
-        $this->employeeUser->createToken('phone');
-        $this->get(route('password.reset', ['token' => $token, 'email' => $this->employeeUser->email]))->assertOk()->assertSee('Choose a new password');
-        $this->post(route('password.update'), ['token' => $token, 'email' => $this->employeeUser->email, 'password' => 'short', 'password_confirmation' => 'short'])->assertSessionHasErrors('password');
-        $this->post(route('password.update'), ['token' => $token, 'email' => $this->employeeUser->email, 'password' => 'BrandNewPass2026', 'password_confirmation' => 'BrandNewPass2026'])->assertRedirect(route('login'));
-        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('BrandNewPass2026', $this->employeeUser->fresh()->password));
-        $this->assertSame(0, $this->employeeUser->tokens()->count(), 'Mobile/desktop sessions are signed out');
-        $this->post('/login', ['email' => $this->employeeUser->email, 'password' => 'BrandNewPass2026'])->assertRedirect();
+        \Illuminate\Support\Facades\Notification::assertSentTo($this->admin, \Illuminate\Auth\Notifications\ResetPassword::class, function ($n) use (&$token) { $token = $n->token; return true; });
+        $this->admin->createToken('phone');
+        $this->get(route('password.reset', ['token' => $token, 'email' => $this->admin->email]))->assertOk()->assertSee('Choose a new password');
+        $this->post(route('password.update'), ['token' => $token, 'email' => $this->admin->email, 'password' => 'BrandNewPass2026', 'password_confirmation' => 'BrandNewPass2026'])->assertRedirect(route('login'));
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('BrandNewPass2026', $this->admin->fresh()->password));
+        $this->assertSame(0, $this->admin->tokens()->count(), 'Mobile/desktop sessions are signed out');
     }
 
     public function test_own_tasks_subtasks_comments_and_project_members(): void
@@ -197,8 +203,9 @@ class CompletionTest extends TestCase
         $this->employeeUser->forceFill(['notification_preferences' => ['company' => ['in_app' => false, 'email' => false], 'important' => ['in_app' => false, 'email' => true]]])->save();
         $user = $this->employeeUser->fresh();
         $this->assertSame([], (new \App\Notifications\ApprovalRequested('Announcement', 1, 'News'))->via($user), 'Muted optional group');
-        $this->assertSame(['database', 'mail'], (new \App\Notifications\ApprovalRequested('LeaveRequest', 1, 'Approved'))->via($user), 'Important is always in the app; e-mail as chosen');
-        $this->assertSame(['database'], (new \App\Notifications\ApprovalRequested('TaskAssignment', 1, 'Task'))->via($user));
+        $this->assertSame(['database', \App\Notifications\Channels\SafeMailChannel::class], (new \App\Notifications\ApprovalRequested('LeaveRequest', 1, 'Approved'))->via($user), 'Important is always in the app; e-mail as chosen');
+        $this->assertSame(['database', \App\Notifications\Channels\SafeMailChannel::class], (new \App\Notifications\ApprovalRequested('TaskAssignment', 1, 'Task'))->via($user), 'Task e-mails are on by default');
+        $this->assertSame(['database'], (new \App\Notifications\ApprovalRequested('DailyStatusReminder', 1, 'Reminder'))->via($user), 'Reminders stay in the app by default');
 
         Livewire::actingAs($this->employeeUser)->test(\App\Livewire\Account\Profile::class)
             ->set('prefs.work.in_app', false)->set('prefs.important.in_app', false)->call('savePreferences')->assertHasNoErrors();

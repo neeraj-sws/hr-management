@@ -28,6 +28,7 @@
             @endforelse
             </tbody>
         </table></div>
+        {{ $advances->links() }}
     </section>
 
     @if($showForm)

@@ -7,7 +7,7 @@
         @if($own)<button class="tab {{ $tab === 'mine' ? 'active' : '' }}" wire:click="$set('tab','mine')">My reviews</button>@endif
         @if($canReview)<button class="tab {{ $tab === 'team' ? 'active' : '' }}" wire:click="$set('tab','team')">Team reviews</button>@endif
     </div>
-    @if($reviews->isNotEmpty())<div class="stats"><div class="stat"><span class="stat-icon violet"><x-icon name="star" /></span><div><span class="stat-label">Average rating</span><span class="stat-value">{{ number_format($average, 1) }} / 5</span><small>{{ $reviews->count() }} reviews</small></div></div></div>@endif
+    @if($reviews->isNotEmpty())<div class="stats"><div class="stat"><span class="stat-icon violet"><x-icon name="star" /></span><div><span class="stat-label">Average rating</span><span class="stat-value">{{ number_format($average, 1) }} / 5</span><small>{{ $reviews->total() }} reviews</small></div></div></div>@endif
     <div class="stack">
         @forelse($reviews as $review)
             <section class="card" wire:key="rv-{{ $review->id }}">
@@ -28,6 +28,7 @@
         @empty
             <div class="card"><x-empty title="No performance reviews yet" icon="star" /></div>
         @endforelse
+        {{ $reviews->links() }}
     </div>
 
     @if($showForm)

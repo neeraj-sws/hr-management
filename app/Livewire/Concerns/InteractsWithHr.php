@@ -74,6 +74,20 @@ trait InteractsWithHr
         return 'partials.pagination';
     }
 
+    /**
+     * Pages an already-built list (rows computed in PHP, e.g. a day's team
+     * attendance or the approval inbox) with the same pager as database lists.
+     * Requires the WithPagination trait on the component.
+     */
+    protected function paginateCollection(Collection $items, int $perPage = 15, string $pageName = 'page'): \Illuminate\Pagination\LengthAwarePaginator
+    {
+        $page = max(1, (int) $this->getPage($pageName));
+        $lastPage = max(1, (int) ceil($items->count() / $perPage));
+        if ($page > $lastPage) $page = $lastPage;
+
+        return new \Illuminate\Pagination\LengthAwarePaginator($items->forPage($page, $perPage)->values(), $items->count(), $perPage, $page, ['pageName' => $pageName, 'path' => request()->url()]);
+    }
+
     protected function page(string $view, array $data, string $title): View
     {
         return view($view, $data)->layout('layouts.app')->title($title);

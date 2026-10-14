@@ -11,7 +11,7 @@
                 @php($pct = $c->assignments_count ? (int) round($c->completed_count * 100 / $c->assignments_count) : 0)
                 <tr wire:key="course-{{ $c->id }}">
                     <td><strong>{{ $c->title }}</strong>@if($c->is_mandatory) <x-badge tone="red">Mandatory</x-badge>@endif<small>{{ $c->provider ?: '—' }}</small></td>
-                    <td>{{ $c->category ?: '—' }}</td><td class="num">{{ $c->duration_hours !== null ? (float) $c->duration_hours : '—' }}</td>
+                    <td>{{ $c->category ?: '—' }}</td><td class="num">{{ $c->duration_hours !== null ? \App\Support\Duration::fromHours($c->duration_hours) : '—' }}</td>
                     <td style="min-width:160px">@if($c->assignments_count)<div class="progress" title="{{ $pct }}%"><span style="width:{{ $pct }}%"></span></div><small>{{ $c->completed_count }} of {{ $c->assignments_count }} completed</small>@else<span class="muted small">Not assigned yet</span>@endif</td>
                     <td><x-badge :status="$c->is_active ? 'active' : 'inactive'" /></td>
                     <td><div class="row-actions">
@@ -25,6 +25,7 @@
             @endforelse
             </tbody>
         </table></div>
+        {{ $courses->links() }}
     </section>
 
     @if($showForm)

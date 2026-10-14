@@ -13,4 +13,5 @@
         @endforelse
         </tbody>
     </table></div></section>
+    {{ $managers->links() }}
 </div>

@@ -42,6 +42,7 @@
             @endforelse
             </tbody>
         </table></div>
+        {{ $employees->links() }}
     </section>
 
     @if($showShiftForm)

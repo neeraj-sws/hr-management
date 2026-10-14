@@ -1,8 +1,13 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { ColorValue, Text } from 'react-native';
+import { ColorValue } from 'react-native';
 import { colors } from '../../components/ui';
 
-const icon = (glyph: string) => ({ color }: { color: ColorValue }) => <Text style={{ color, fontSize: 18 }}>{glyph}</Text>;
+/** Filled glyph when the tab is active, outline when not — the standard mobile look. */
+const icon = (name: keyof typeof Ionicons.glyphMap) =>
+  ({ color, size, focused }: { color: ColorValue; size: number; focused: boolean }) => (
+    <Ionicons name={(focused ? name : (`${name}-outline` as keyof typeof Ionicons.glyphMap))} size={size ?? 24} color={color as string} />
+  );
 
 export default function TabsLayout() {
   return (
@@ -13,13 +18,16 @@ export default function TabsLayout() {
         headerTitleStyle: { fontWeight: '700' },
         tabBarActiveTintColor: colors.blue,
         tabBarInactiveTintColor: colors.faint,
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600', marginBottom: 4 },
+        tabBarIconStyle: { marginTop: 4 },
+        tabBarStyle: { height: 64, paddingTop: 6, paddingBottom: 10 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('⌂') }} />
-      <Tabs.Screen name="attendance" options={{ title: 'Attendance', tabBarIcon: icon('◷') }} />
-      <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: icon('✓') }} />
-      <Tabs.Screen name="leave" options={{ title: 'Leave', tabBarIcon: icon('▣') }} />
-      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('≡') }} />
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home') }} />
+      <Tabs.Screen name="attendance" options={{ title: 'Attendance', tabBarIcon: icon('time') }} />
+      <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: icon('checkmark-circle') }} />
+      <Tabs.Screen name="leave" options={{ title: 'Leave', tabBarIcon: icon('calendar') }} />
+      <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: icon('menu') }} />
     </Tabs>
   );
 }

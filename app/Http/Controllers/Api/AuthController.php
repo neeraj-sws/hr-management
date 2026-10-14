@@ -12,8 +12,8 @@ class AuthController extends Controller
 {
     public function token(Request $request)
     {
-        $data=$request->validate(['email'=>['required','email'],'password'=>['required','string'],'device_name'=>['required','string','max:100']]);
-        $user=User::where('email',$data['email'])->first();
+        $data=$request->validate(['email'=>['required','string','max:255'],'password'=>['required','string'],'device_name'=>['required','string','max:100']]);
+        $user=User::findForLogin($data['email']); // e-mail or employee ID
         if(!$user||!$user->is_active||!Hash::check($data['password'],$user->password)){
             // Why an app sign-in failed (never the password), for support and security review.
             app(\App\Services\AuditLogger::class)->record('auth.api_login_failed', $user, ['email' => $data['email'], 'reason' => !$user ? 'unknown_email' : (!$user->is_active ? 'inactive' : 'wrong_password'), 'device' => $data['device_name']]);

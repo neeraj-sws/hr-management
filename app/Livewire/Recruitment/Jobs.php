@@ -13,7 +13,7 @@ use Livewire\Component;
 
 class Jobs extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $status = 'open';
     public bool $showForm = false;
@@ -74,7 +74,7 @@ class Jobs extends Component
         $jobs = JobOpening::with(['department', 'hiringManager'])->withCount([
             'candidates', 'candidates as active_count' => fn ($q) => $q->whereNotIn('stage', ['hired', 'rejected']),
             'candidates as hired_count' => fn ($q) => $q->where('stage', 'hired'),
-        ])->when($this->status, fn ($q) => $q->where('status', $this->status))->latest()->get();
+        ])->when($this->status, fn ($q) => $q->where('status', $this->status))->latest()->paginate(15);
 
         return $this->page('livewire.recruitment.jobs', [
             'jobs' => $jobs,

@@ -29,6 +29,7 @@ class MeController extends ApiController
             'schedule' => $employee ? (fn ($rules) => ['shift' => $rules['shift'], 'starts_at' => $rules['work_start'] ? substr($rules['work_start'], 0, 5) : null, 'grace_minutes' => $rules['grace_minutes']])($attendance->rules($employee, today()->toDateString())) : null,
             'policies' => [
                 'location_required' => (bool) ($policies->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_mobile'] ?? false),
+                'selfie_required' => $employee ? $attendance->selfieRequired($employee, 'mobile') : false,
                 'attendance_sources' => $employee ? app(\App\Services\AttendanceService::class)->allowedSources($employee) : ['web', 'mobile', 'desktop'],
                 'app_usage' => $employee ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : false,
                 'window_titles' => $employee ? app(\App\Services\AppUsageService::class)->titlesEnabledFor($employee) : false,

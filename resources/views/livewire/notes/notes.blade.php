@@ -14,6 +14,7 @@
             <div class="card" style="grid-column:1/-1"><x-empty title="No notes here yet" icon="note" /></div>
         @endforelse
     </div>
+    {{ $notes->links() }}
     @if($showForm)
         <x-modal :title="$editingId ? 'Edit note' : 'New note'">
             <form wire:submit="save"><div class="modal-body"><x-errors /><div class="form-grid">

@@ -12,7 +12,7 @@ use Livewire\Component;
 /** Interviews assigned to the signed-in user (recruiters can switch to all). */
 class Interviews extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $show = 'upcoming';
     #[Url] public bool $all = false;
@@ -59,7 +59,7 @@ class Interviews extends Component
         else $query->where('status', '!=', 'scheduled')->orderByDesc('scheduled_at');
 
         return $this->page('livewire.recruitment.interviews', [
-            'interviews' => $query->limit(200)->get(),
+            'interviews' => $query->paginate(15),
             'canSeeAll' => $this->user()->can('recruitment.manage'),
             'giving' => $this->feedbackId ? Interview::with('candidate.jobOpening')->find($this->feedbackId) : null,
         ], 'Interviews');

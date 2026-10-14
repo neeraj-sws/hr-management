@@ -55,7 +55,7 @@
                     <dt>Day</dt><dd>{{ $deciding->work_date->format('D d M Y') }}</dd>
                     <dt>Recorded</dt><dd>@if($deciding->session){{ $deciding->session->check_in?->format('h:i A') ?? '—' }} – {{ $deciding->session->check_out?->format('h:i A') ?? 'no check-out' }}@else No attendance @endif</dd>
                     <dt>Requested</dt><dd>{{ $deciding->requested_check_in?->format('h:i A') ?? 'unchanged' }} – {{ $deciding->requested_check_out?->format('d M h:i A') ?? 'unchanged' }}</dd>
-                    @if($deciding->requested_break_minutes !== null)<dt>Break</dt><dd>{{ $deciding->session ? intdiv((int) $deciding->session->break_seconds, 60).' min recorded → ' : '' }}{{ $deciding->requested_break_minutes }} min</dd>@endif
+                    @if($deciding->requested_break_minutes !== null)<dt>Break</dt><dd>{{ $deciding->session ? \App\Support\Duration::hms((int) $deciding->session->break_seconds).' recorded → ' : '' }}{{ \App\Support\Duration::fromMinutes($deciding->requested_break_minutes) }}</dd>@endif
                     <dt>Reason</dt><dd>{{ $deciding->reason }}</dd>
                 </dl>
                 <div class="form-grid mt"><x-field label="Note" name="decisionNote" hint="required to reject" full><input wire:model="decisionNote"></x-field></div>

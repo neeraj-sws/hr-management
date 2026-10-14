@@ -12,29 +12,32 @@
         <button type="button" class="stat" wire:click="$set('status','open')" style="cursor:pointer;text-align:left"><span class="stat-icon"><x-icon name="list" /></span><div><span class="stat-label">Open</span><span class="stat-value">{{ $counts['open'] }}</span></div></button>
         <button type="button" class="stat" wire:click="$set('status','in_progress')" style="cursor:pointer;text-align:left"><span class="stat-icon amber"><x-icon name="timer" /></span><div><span class="stat-label">In progress</span><span class="stat-value">{{ $counts['in_progress'] }}</span></div></button>
         <button type="button" class="stat" wire:click="$set('due','overdue')" style="cursor:pointer;text-align:left"><span class="stat-icon red"><x-icon name="alert" /></span><div><span class="stat-label">Overdue</span><span class="stat-value">{{ $counts['overdue'] }}</span></div></button>
-        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Done this week</span><span class="stat-value">{{ $counts['done_week'] }}</span></div></div>
+        <button type="button" class="stat" wire:click="$set('status','completed')" style="cursor:pointer;text-align:left"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Completed</span><span class="stat-value">{{ $counts['completed'] }}</span><small>{{ $counts['done_week'] }} this week</small></div></button>
     </div>
     <section class="card">
         <div class="toolbar">
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Task title"></label>
-            <label class="field"><span>Status</span><select wire:model.live="status"><option value="open">Open</option><option value="">All</option><option value="todo">To do</option><option value="in_progress">In progress</option><option value="on_hold">On hold</option><option value="completed">Completed</option></select></label>
+            <label class="field"><span>Status</span><select wire:model.live="status"><option value="">All (open first)</option><option value="open">Open</option><option value="todo">To do</option><option value="in_progress">In progress</option><option value="on_hold">On hold</option><option value="completed">Completed</option></select></label>
             <label class="field"><span>Priority</span><select wire:model.live="priority"><option value="">Any</option><option value="urgent">Urgent</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
             <label class="field"><span>Project</span><select wire:model.live="project"><option value="">Any</option>@foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}</option>@endforeach</select></label>
             @if(!$mine && $assignees->isNotEmpty())<label class="field"><span>Assignee</span><select wire:model.live="assignee"><option value="">Anyone</option>@foreach($assignees as $a)<option value="{{ $a->id }}">{{ $a->name }}</option>@endforeach</select></label>@endif
             <label class="field"><span>Due</span><select wire:model.live="due"><option value="">Any time</option><option value="overdue">Overdue</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="late">Completed late</option></select></label>
         </div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Task</th>@unless($mine)<th>Assignee</th>@endunless<th>Priority</th><th>Due</th><th class="num">Est / logged</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Task</th>@unless($mine)<th>Assignee</th>@endunless<th>Priority</th><th>Due</th><th class="num">Est / logged</th><th>Progress</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @forelse($tasks as $task)
                 @php($logged = $work->loggedSeconds($task))
                 <tr wire:key="t-{{ $task->id }}">
-                    <td><button type="button" class="linklike" wire:click="open({{ $task->id }})"><strong>@if($task->parent)<span class="muted">{{ \Illuminate\Support\Str::limit($task->parent->title, 25) }} › </span>@endif{{ $task->title }}</strong></button><small>{{ $task->project?->name ?? 'No project' }}@if($task->subtasks_count) · {{ $task->subtasks_done_count }}/{{ $task->subtasks_count }} subtasks @endif @if($task->comments_count) · 💬 {{ $task->comments_count }}@endif @if($task->work_date) · for {{ $task->work_date->format('d M') }}@endif</small></td>
+                    <td><button type="button" class="linklike" wire:click="open({{ $task->id }})"><strong>@if($task->parent)<span class="muted">{{ \Illuminate\Support\Str::limit($task->parent->title, 25) }} › </span>@endif{{ $task->title }}</strong></button><small>{{ $task->project?->name ?? 'No project' }}@if($task->subtasks_count) · {{ $task->subtasks_done_count }}/{{ $task->subtasks_count }} subtasks @endif @if($task->comments_count) · 💬 {{ $task->comments_count }}@endif @if($task->work_date) · for {{ $task->work_date->format('d M') }}@endif</small>@if($task->creator && $task->created_by !== $task->assignee?->user_id)<small>Assigned by {{ $task->creator->name }}</small>@endif</td>
                     @unless($mine)<td>{{ $task->assignee?->name }}</td>@endunless
                     <td><x-badge :status="$task->priority" /></td>
                     <td class="nowrap">@if($task->due_on){{ $task->due_on->format('d M Y') }}@if($task->isOverdue())<small style="color:var(--red)">{{ $task->due_on->diffInDays(today()) }} days overdue</small>@elseif($task->wasCompletedLate())<small style="color:var(--amber)">completed late</small>@endif @else — @endif</td>
-                    <td class="num nowrap">{{ $task->estimated_hours !== null ? (float) $task->estimated_hours.'h' : '—' }} / {{ sprintf('%d:%02d', intdiv($logged, 3600), intdiv($logged % 3600, 60)) }}</td>
-                    <td><x-badge :status="$task->status" />@if($runningTaskId === $task->id)<small style="color:var(--green)">● timer running</small>@endif</td>
+                    <td class="num nowrap">{{ $task->estimated_hours !== null ? (float) $task->estimated_hours.'h' : '—' }} / @hms($logged)</td>
+                    @php($pct = $task->progressPercent($logged))
+                    <td style="min-width:120px"><div class="progress"><span style="width: {{ $pct }}%"></span></div><small>{{ $pct }}%@if($task->progress === null && $task->status !== 'completed') <span class="muted">(auto)</span>@endif</small>
+                        @if($task->status !== 'completed' && (($own && $task->assignee_id === $own->id) || ($canAssign && ! $mine)))<select class="input" style="width:auto;padding:2px 6px;font-size:11px" aria-label="Set progress" x-on:change="$wire.updateProgress({{ $task->id }}, parseInt($event.target.value))"><option value="">Set %</option>@foreach([0, 10, 25, 50, 75, 90, 100] as $step)<option value="{{ $step }}">{{ $step }}%</option>@endforeach</select>@endif</td>
+                    <td><x-badge :status="$task->status">{{ $task->status === 'completed' ? 'Completed' : '' }}</x-badge>@if($task->status === 'completed' && $task->completed_at)<small>{{ $task->completed_at->format('d M Y, h:i A') }}</small>@endif @if($runningTaskId === $task->id)<small style="color:var(--green)">● timer running</small>@endif</td>
                     <td><div class="row-actions">
                         @if($own && $task->assignee_id === $own->id && $task->status !== 'completed')
                             @if($runningTaskId === $task->id)
@@ -49,7 +52,7 @@
                     </div></td>
                 </tr>
             @empty
-                <tr><td colspan="7"><x-empty title="No tasks match these filters" icon="check-square" /></td></tr>
+                <tr><td colspan="8"><x-empty title="No tasks match these filters" icon="check-square" /></td></tr>
             @endforelse
             </tbody>
         </table></div>
@@ -66,6 +69,7 @@
                 <x-field label="Priority" name="taskPriority"><select wire:model="taskPriority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></x-field>
                 <x-field label="Status" name="taskStatus"><select wire:model="taskStatus"><option value="todo">To do</option><option value="in_progress">In progress</option><option value="on_hold">On hold</option><option value="completed">Completed</option></select></x-field>
                 <x-field label="Estimated hours" name="estimatedHours"><input type="number" step="0.25" min="0" wire:model="estimatedHours"></x-field>
+                <x-field label="Progress %" name="taskProgress" hint="empty = automatic"><input type="number" min="0" max="100" step="5" wire:model="taskProgress"></x-field>
                 <x-field label="Due date" name="dueOn"><input type="date" wire:model="dueOn"></x-field>
                 @if($mine)<x-field label="Work date" name="workDate" hint="the day this work is for"><input type="date" wire:model="workDate" max="{{ today()->toDateString() }}"></x-field>@endif
                 <x-field label="Subtask of" name="parentId" hint="optional"><select wire:model="parentId"><option value="">— not a subtask —</option>@foreach($parentChoices as $p)<option value="{{ $p->id }}">{{ $p->title }}</option>@endforeach</select></x-field>
@@ -78,10 +82,13 @@
             <div class="modal-body">
                 <dl class="kv">
                     <dt>Assignee</dt><dd>{{ $opened->assignee?->name }}</dd>
+                    <dt>Assigned by</dt><dd>{{ $opened->creator?->name ?? '—' }} · {{ $opened->created_at?->format('d M Y, h:i A') }}</dd>
+                    @if($opened->completed_at)<dt>Completed</dt><dd>{{ $opened->completed_at->format('d M Y, h:i A') }}@if($opened->wasCompletedLate()) <x-badge tone="amber">late</x-badge>@endif</dd>@endif
                     <dt>Project</dt><dd>{{ $opened->project?->name ?? '—' }}</dd>
                     @if($opened->parent)<dt>Subtask of</dt><dd><button type="button" class="linklike" wire:click="open({{ $opened->parent->id }})">{{ $opened->parent->title }}</button></dd>@endif
+                    <dt>Progress</dt><dd>{{ $opened->progressPercent($work->loggedSeconds($opened)) }}%</dd>
                     <dt>Status</dt><dd><x-badge :status="$opened->status" /> · {{ $opened->priority }}@if($opened->due_on) · due {{ $opened->due_on->format('d M Y') }}@endif</dd>
-                    <dt>Logged</dt><dd>@php($loggedOpen = $work->loggedSeconds($opened)){{ sprintf('%d:%02d', intdiv($loggedOpen, 3600), intdiv($loggedOpen % 3600, 60)) }}{{ $opened->estimated_hours !== null ? ' of '.(float) $opened->estimated_hours.' h estimated' : '' }}</dd>
+                    <dt>Logged</dt><dd>@php($loggedOpen = $work->loggedSeconds($opened))@hms($loggedOpen){{ $opened->estimated_hours !== null ? ' of '.(float) $opened->estimated_hours.' h estimated' : '' }}</dd>
                     @if($opened->description)<dt>Description</dt><dd style="white-space:pre-line">{{ $opened->description }}</dd>@endif
                 </dl>
                 <h3 class="mt" style="font-size:14px">Subtasks</h3>
@@ -93,6 +100,14 @@
                     @endforelse
                 </div>
                 @if(! $opened->parent_id && (($canAssign && !$mine) || $canAddOwn))<button type="button" class="btn btn-sm mt" wire:click="create({{ $opened->id }})">+ Add subtask</button>@endif
+                <h3 class="mt" style="font-size:14px">History</h3>
+                <div class="list">
+                    @forelse($history as $event)
+                        <div class="list-row"><div><strong>{{ str($event->action)->after('task.')->replace('_', ' ')->ucfirst() }}</strong><small>{{ $event->actor?->name ?? 'System' }}@if(isset($event->metadata['duration_seconds'])) · @hms($event->metadata['duration_seconds'])@endif</small></div><span class="small muted">{{ $event->created_at?->format('d M Y, h:i A') }}</span></div>
+                    @empty
+                        <p class="small muted">No history yet.</p>
+                    @endforelse
+                </div>
                 <h3 class="mt" style="font-size:14px">Comments</h3>
                 <div class="list">
                     @forelse($opened->comments as $c)

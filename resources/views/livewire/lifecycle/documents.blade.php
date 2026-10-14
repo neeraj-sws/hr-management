@@ -20,16 +20,30 @@
             @endforelse
             </tbody>
         </table></div>
+        {{ $documents->links() }}
     </section>
     @if($showForm)
         <x-modal title="Upload document">
-            <form wire:submit="upload"><div class="modal-body"><x-errors /><div class="form-grid">
-                <x-field label="Employee" name="employeeId" full><select wire:model="employeeId"><option value="">Select</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></x-field>
-                <x-field label="Category" name="documentCategory"><select wire:model="documentCategory">@foreach($categories as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
-                <x-field label="Expiry date" name="expiresOn" hint="optional"><input type="date" wire:model="expiresOn"></x-field>
-                <x-field label="File" name="file" hint="PDF, image or Word, max 10 MB" full><input type="file" wire:model="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"><span wire:loading wire:target="file" class="small muted">Uploading…</span></x-field>
+            {{-- Upload state is tracked here (not with wire:loading on the file), so a failed or cancelled
+                 upload can never leave the button disabled; the form stays usable after any error. --}}
+            <form wire:submit="upload" x-data="{ uploading: false, progress: 0, failed: '' }"
+                  x-on:livewire-upload-start="uploading = true; progress = 0; failed = ''"
+                  x-on:livewire-upload-progress="progress = $event.detail.progress"
+                  x-on:livewire-upload-finish="uploading = false"
+                  x-on:livewire-upload-cancel="uploading = false"
+                  x-on:livewire-upload-error="uploading = false; failed = 'The file could not be uploaded — it may be larger than the server allows (max 10 MB) or the connection dropped. Choose the file again.'">
+                <div class="modal-body"><x-errors /><div class="form-grid">
+                <x-field label="Employee" name="employeeId" full><select wire:model.live="employeeId"><option value="">Select</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></x-field>
+                <x-field label="Category" name="documentCategory"><select wire:model.live="documentCategory">@foreach($categories as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
+                <x-field label="Expiry date" name="expiresOn" hint="optional"><input type="date" wire:model.live="expiresOn"></x-field>
+                <x-field label="File" name="file" hint="PDF, JPG, PNG or Word, max 10 MB" full>
+                    <input type="file" wire:model="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" x-on:click="failed = ''">
+                    <span x-show="uploading" class="small muted">Uploading… <span x-text="progress + '%'"></span></span>
+                    <span x-show="failed" x-text="failed" class="error"></span>
+                    @if($file && ! $errors->has('file'))<span class="small muted">Selected: {{ method_exists($file, 'getClientOriginalName') ? $file->getClientOriginalName() : '' }}</span>@endif
+                </x-field>
             </div></div>
-            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled" wire:target="file,upload">Upload</button></div></form>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" x-bind:disabled="uploading" wire:loading.attr="disabled" wire:target="upload"><span wire:loading wire:target="upload" class="spinner"></span>Upload</button></div></form>
         </x-modal>
     @endif
 </div>

@@ -71,7 +71,7 @@ class Salary extends Component
             return;
         }
         $this->correcting = $correct;
-        $this->fill(['profileEmployeeId' => $employee->id, 'monthly' => (string) ($current?->monthly_salary ?? ''), 'workingDays' => (string) ($current?->working_days_per_month ?? 22), 'dailyHours' => (string) (float) ($current?->standard_daily_hours ?? 8),
+        $this->fill(['profileEmployeeId' => $employee->id, 'monthly' => (string) ($current?->monthly_salary ?? ''), 'workingDays' => (string) ($current?->working_days_per_month ?? 22), 'dailyHours' => (string) app(\App\Services\AttendanceService::class)->dailyHours($employee),
             'effectiveFrom' => $correct ? $current->effective_from->toDateString() : today()->startOfMonth()->toDateString(),
             'components' => collect($current?->components ?? [])->map(fn ($c) => ['name' => (string) $c['name'], 'type' => (string) $c['type'], 'amount' => (string) $c['amount']])->all()]);
         $this->resetValidation();
@@ -115,7 +115,8 @@ class Salary extends Component
             $profile = SalaryProfile::create(['employee_id' => $this->profileEmployeeId, 'effective_from' => $this->effectiveFrom, ...$values]);
         }
         $latest = SalaryProfile::where('employee_id', $this->profileEmployeeId)->orderByDesc('effective_from')->first();
-        AttendanceEmployee::whereKey($this->profileEmployeeId)->update(['monthly_salary' => $latest->monthly_salary]);
+        // The current record's hours are the employee's working day everywhere (attendance, payroll, settings).
+        AttendanceEmployee::whereKey($this->profileEmployeeId)->update(['monthly_salary' => $latest->monthly_salary, 'daily_work_hours' => $latest->standard_daily_hours]);
         $audit->record('salary.profile_configured', $profile, ['monthly_salary' => (float) $this->monthly, 'effective_from' => $this->effectiveFrom, 'components' => $rows]);
         $message = $this->correcting ? 'Salary corrected.' : 'Salary profile saved.';
         $this->profileEmployeeId = null;

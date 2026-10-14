@@ -13,9 +13,11 @@ use Livewire\Component;
 
 class Report extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
-    public const PREVIEW_LIMIT = 200;
+    /** Rows read for the on-screen report (paged 25 at a time); the export always has every row. */
+    public const PREVIEW_LIMIT = 5000;
+    public const PER_PAGE = 25;
 
     #[Locked] public string $type = '';
     #[Url] public string $from = '';
@@ -33,8 +35,14 @@ class Report extends Component
         $this->to = strtotime($this->to) ? $this->to : today()->toDateString();
     }
 
+    public function updated($property): void
+    {
+        if (in_array($property, ['from', 'to', 'employee', 'department', 'team', 'search'], true)) $this->resetPage();
+    }
+
     public function resetFilters(): void
     {
+        $this->resetPage();
         $this->reset('employee', 'department', 'team', 'search');
         $this->from = now()->startOfMonth()->toDateString();
         $this->to = today()->toDateString();
@@ -55,7 +63,7 @@ class Report extends Component
         return $this->page('livewire.reports.report', [
             'label' => $reports->label($this->type),
             'columns' => $reports->columns($this->type),
-            'rows' => $rows->take(self::PREVIEW_LIMIT),
+            'rows' => $this->paginateCollection($rows->take(self::PREVIEW_LIMIT)->values(), self::PER_PAGE),
             'truncated' => $rows->count() > self::PREVIEW_LIMIT,
             'exportUrl' => route('hr.reports.export', ['type' => $this->type, ...$filters]),
             'exportUrlExcel' => route('hr.reports.export', ['type' => $this->type, 'format' => 'xlsx', ...$filters]),

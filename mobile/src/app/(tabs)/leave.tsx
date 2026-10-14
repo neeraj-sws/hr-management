@@ -15,6 +15,7 @@ export default function Leave() {
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [typeId, setTypeId] = useState<number | null>(null);
+  const [duration, setDuration] = useState<'full' | 'half' | 'short'>('full');
   const [startsOn, setStartsOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
   const [reason, setReason] = useState('');
@@ -46,28 +47,29 @@ export default function Leave() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const submit = async () => {
+    const endDate = duration === 'full' ? endsOn : startsOn;
     const local: Record<string, string> = {};
     if (!typeId) local.leave_type_id = 'Choose a leave type.';
     if (!startsOn) local.starts_on = 'Choose the first day of leave.';
-    if (!endsOn) local.ends_on = 'Choose the last day of leave.';
-    else if (startsOn && endsOn < startsOn) local.ends_on = 'End date must be on or after the start date.';
+    if (duration === 'full' && !endsOn) local.ends_on = 'Choose the last day of leave.';
+    else if (duration === 'full' && startsOn && endsOn < startsOn) local.ends_on = 'End date must be on or after the start date.';
     if (!reason.trim()) local.reason = 'Give a reason.';
     setErrors(local);
     if (Object.keys(local).length) return;
     setBusy(true);
     setMessage(null);
     try {
-      const created = await post<{ data: LeaveRequest }>('/leave/requests', { leave_type_id: typeId, starts_on: startsOn, ends_on: endsOn, reason });
+      const created = await post<{ data: LeaveRequest }>('/leave/requests', { leave_type_id: typeId, duration, starts_on: startsOn, ends_on: endDate, reason });
       // Show the new request immediately; balances refresh in the background.
       setRequests((current) => [created.data, ...current.filter((r) => r.id !== created.data.id)]);
       setMessage({ tone: 'success', text: 'Leave request submitted for approval.' });
-      setStartsOn(''); setEndsOn(''); setReason('');
+      setStartsOn(''); setEndsOn(''); setReason(''); setDuration('full');
       load();
     } catch (e) {
       if (e instanceof ApiError && e.isNetwork) {
-        await enqueue({ type: 'leave.request', payload: { leave_type_id: typeId, starts_on: startsOn, ends_on: endsOn, reason }, label: `Leave ${formatDate(startsOn)} – ${formatDate(endsOn)}` });
+        await enqueue({ type: 'leave.request', payload: { leave_type_id: typeId, duration, starts_on: startsOn, ends_on: endDate, reason }, label: `Leave ${formatDate(startsOn)}${duration === 'full' ? ` – ${formatDate(endDate)}` : ''}` });
         setMessage({ tone: 'info', text: 'You are offline. The request is saved on this phone and will be sent for approval automatically.' });
-        setStartsOn(''); setEndsOn(''); setReason('');
+        setStartsOn(''); setEndsOn(''); setReason(''); setDuration('full');
       } else if (e instanceof ApiError) {
         setErrors(Object.fromEntries(Object.entries(e.errors).map(([k, v]) => [k, v[0]])));
         setMessage({ tone: 'error', text: e.firstMessage });
@@ -112,15 +114,17 @@ export default function Leave() {
         <Muted style={{ marginBottom: 6 }}>Leave type</Muted>
         <Chips value={typeId} onChange={setTypeId} options={types.map((t) => ({ label: t.paid ? t.name : `${t.name} (unpaid)`, value: t.id }))} />
         {errors.leave_type_id ? <Muted style={{ color: '#bd3446', marginTop: -6, marginBottom: 8 }}>{errors.leave_type_id}</Muted> : null}
-        <DateField label="From" value={startsOn} onChange={pickStart} error={errors.starts_on} />
-        <DateField label="To" value={endsOn} onChange={setEndsOn} minimumDate={startsOn || undefined} error={errors.ends_on} />
+        <Muted style={{ marginBottom: 6 }}>Duration</Muted>
+        <Chips<'full' | 'half' | 'short'> value={duration} onChange={setDuration} options={[{ label: 'Full day', value: 'full' }, { label: 'Half day', value: 'half' }, { label: 'Short leave', value: 'short' }]} />
+        <DateField label={duration === 'full' ? 'From' : 'Day'} value={startsOn} onChange={pickStart} error={errors.starts_on} />
+        {duration === 'full' ? <DateField label="To" value={endsOn} onChange={setEndsOn} minimumDate={startsOn || undefined} error={errors.ends_on} /> : null}
         <Field label="Reason" value={reason} onChangeText={setReason} error={errors.reason} multiline />
         <Button title="Submit request" tone="primary" onPress={submit} loading={busy} />
       </Card>
       <Card>
         <H2>My requests</H2>
         {requests.length ? requests.map((r) => (
-          <Row key={r.id} title={`${r.leave_type} · ${r.days} day(s)`} subtitle={`${formatDate(r.starts_on)} – ${formatDate(r.ends_on)}${r.decision_note ? ` · ${r.decision_note}` : ''}`}
+          <Row key={r.id} title={`${r.leave_type} · ${r.days} day(s)${r.duration && r.duration !== 'full' ? ` · ${r.duration === 'half' ? 'Half day' : 'Short leave'}` : ''}`} subtitle={`${r.duration && r.duration !== 'full' ? formatDate(r.starts_on) : `${formatDate(r.starts_on)} – ${formatDate(r.ends_on)}`}${r.decision_note ? ` · ${r.decision_note}` : ''}`}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={r.status} />{r.status === 'pending' ? <Button small tone="danger" title="Cancel" onPress={() => cancel(r.id)} /> : null}</View>} />
         )) : <Empty text={loaded ? 'No leave requests' : 'Loading…'} />}
       </Card>

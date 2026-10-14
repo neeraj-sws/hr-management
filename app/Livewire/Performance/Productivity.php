@@ -11,11 +11,16 @@ use Livewire\Component;
 
 class Productivity extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $from = '';
     #[Url] public string $to = '';
     #[Url] public ?int $department = null;
+
+    public function updated($property): void
+    {
+        if (in_array($property, ['from', 'to', 'department'], true)) $this->resetPage();
+    }
 
     public function mount(): void
     {
@@ -33,9 +38,9 @@ class Productivity extends Component
         $rows = $work->productivity($employees, $this->from, $this->to);
 
         return $this->page('livewire.performance.productivity', [
-            'rows' => $rows,
+            'rows' => $this->paginateCollection($rows, 20),
             'departments' => Department::orderBy('name')->get(),
-            'totals' => ['completed' => $rows->sum('completed_tasks'), 'late' => $rows->sum('completed_late'), 'overdue' => $rows->sum('overdue_tasks'), 'logged' => round($rows->sum('logged_hours'), 1), 'active' => round($rows->sum('active_hours'), 1)],
+            'totals' => ['completed' => $rows->sum('completed_tasks'), 'late' => $rows->sum('completed_late'), 'overdue' => $rows->sum('overdue_tasks'), 'logged' => $rows->sum('logged_seconds'), 'active' => $rows->sum('active_seconds')],
         ], 'Productivity');
     }
 }

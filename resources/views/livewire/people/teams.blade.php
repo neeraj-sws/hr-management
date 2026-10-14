@@ -15,6 +15,7 @@
             <div class="card" style="grid-column:1/-1"><x-empty title="No teams to show" icon="team">{{ $canManage ? 'Create a team to group employees.' : 'You have not been added to a team yet.' }}</x-empty></div>
         @endforelse
     </div>
+    {{ $teams->links() }}
 
     @if($showForm)
         <x-modal :title="$editingId ? 'Edit team' : 'Create team'" size="lg">

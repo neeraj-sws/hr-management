@@ -35,7 +35,8 @@ class HrWorkflowService
         return DB::transaction(function () use ($data, $userId) {
             $employee = AttendanceEmployee::create($data);
             if (isset($data['monthly_salary'])) {
-                SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId]);
+                // The salary record carries the hours entered for the employee, so Payroll shows the same working day.
+                SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
             }
             foreach (LeaveType::where('is_active', true)->get() as $leaveType) {
                 LeaveBalance::firstOrCreate(
@@ -68,7 +69,7 @@ class HrWorkflowService
     public function stopTaskTimer(AttendanceEmployee $employee, TaskTimeEntry $entry, bool $complete = false): TaskTimeEntry
     {
         if ($entry->employee_id !== $employee->id || $entry->status !== 'running') throw ValidationException::withMessages(['timer' => 'No active timer belongs to this employee.']);
-        return DB::transaction(function () use ($entry, $complete) {
+        $stopped = DB::transaction(function () use ($entry, $complete) {
             $end = now();
             $entry->update(['ended_at' => $end, 'duration_seconds' => $entry->started_at->diffInSeconds($end), 'status' => 'stopped']);
             if ($complete) $entry->task->update(['status' => 'completed', 'completed_at' => $end]);
@@ -76,6 +77,9 @@ class HrWorkflowService
             $this->audit->record($complete ? 'task.completed' : 'task.timer_stopped', $entry->task, ['entry_id' => $entry->id, 'duration_seconds' => $entry->duration_seconds]);
             return $entry->fresh();
         });
+        if ($complete) app(WorkService::class)->taskCompleted($stopped->task, $employee->user);
+
+        return $stopped;
     }
 
     /** Completes a task for its assignee, stopping a running timer if there is one. */
@@ -86,21 +90,35 @@ class HrWorkflowService
         $running = TaskTimeEntry::where('task_id', $task->id)->where('employee_id', $employee->id)->where('status', 'running')->first();
         if ($running) return $this->stopTaskTimer($employee, $running, true)->task;
 
-        return DB::transaction(function () use ($task) {
+        $completed = DB::transaction(function () use ($task) {
             $task->update(['status' => 'completed', 'completed_at' => now()]);
             $task->increment('server_version');
             $this->audit->record('task.completed', $task);
 
             return $task->fresh();
         });
+        app(WorkService::class)->taskCompleted($completed, $employee->user);
+
+        return $completed;
     }
 
     public function requestLeave(AttendanceEmployee $employee, array $data): LeaveRequest
     {
+        $duration = $data['duration'] ?? 'full';
+        if (! isset(LeaveRequest::DURATION_DAYS[$duration])) throw ValidationException::withMessages(['duration' => 'Choose a valid leave duration.']);
         if ($data['ends_on']->lt($data['starts_on'])) throw ValidationException::withMessages(['ends_on' => 'The end date must be on or after the start date.']);
         if ($data['starts_on']->year !== $data['ends_on']->year) throw ValidationException::withMessages(['starts_on' => 'A leave request must stay within one leave year. Split requests that cross years.']);
-        $days = $this->businessDaysBetween($data['starts_on'], $data['ends_on'], $employee);
-        if ($days < 1) throw ValidationException::withMessages(['starts_on' => 'The selected date range contains no configured working days.']);
+        // Half-day and short leave apply to a single working day; a full-day leave can span a range.
+        if ($duration !== 'full') {
+            if (! $data['starts_on']->isSameDay($data['ends_on'])) throw ValidationException::withMessages(['ends_on' => 'A half-day or short leave is for a single day.']);
+            if (! $this->isConfiguredWorkday($data['starts_on']->toDateString(), $employee ? $this->policyConfiguration($employee, 'calendar.working_days', $data['starts_on']->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]) : ['days' => [1, 2, 3, 4, 5], 'holidays' => []])) {
+                throw ValidationException::withMessages(['starts_on' => 'This day is not a configured working day.']);
+            }
+            $days = LeaveRequest::DURATION_DAYS[$duration];
+        } else {
+            $days = $this->businessDaysBetween($data['starts_on'], $data['ends_on'], $employee);
+            if ($days < 1) throw ValidationException::withMessages(['starts_on' => 'The selected date range contains no configured working days.']);
+        }
         $year = (int) $data['starts_on']->format('Y');
         return DB::transaction(function () use ($employee, $data, $days, $year) {
             AttendanceEmployee::whereKey($employee->id)->lockForUpdate()->firstOrFail();
@@ -126,8 +144,11 @@ class HrWorkflowService
             $leave = LeaveRequest::create(['employee_id' => $employee->id, ...$data, 'days' => $days, 'status' => 'pending']);
             $approverId=$employee->manager?->user_id;
             ApprovalRequest::create(['approvable_type' => LeaveRequest::class, 'approvable_id' => $leave->id, 'approver_id' => $approverId, 'status' => 'pending']);
-            $notification=new \App\Notifications\ApprovalRequested('LeaveRequest',$leave->id,'A leave request needs review.');
-            if($approverId) \App\Models\User::whereKey($approverId)->first()?->notify($notification);else foreach(\App\Models\User::permission('leave.manage')->get() as $approver)$approver->notify($notification);
+            // The manager decides; HR (leave.manage) is told as well, so a request is never stuck with one person.
+            // A missing permission or channel failure must not sink the request.
+            $type = LeaveType::find($data['leave_type_id']);
+            $range = $data['starts_on']->isSameDay($data['ends_on']) ? $data['starts_on']->format('d M Y') : $data['starts_on']->format('d M').' – '.$data['ends_on']->format('d M Y');
+            Notifier::send(Notifier::withPermission('leave.manage')->push($employee->manager?->user), 'LeaveRequest', $leave->id, "A leave request from {$employee->name} needs review: {$type?->name}, {$range} ({$days} day/s).", route('leave.requests', ['tab' => 'approvals'], false), $employee->user_id);
             $this->audit->record('leave.requested', $leave, ['days' => $days]);
             app(\App\Services\WhatsAppNotifier::class)->leaveApplied($leave->load(['employee.manager', 'leaveType']));
             return $leave;
@@ -156,7 +177,9 @@ class HrWorkflowService
                 }
             }
             $this->audit->record($approve ? 'leave.approved' : 'leave.rejected', $leave, ['approver_id' => $approverId]);
-            $leave->employee?->user?->notify(new \App\Notifications\ApprovalRequested('LeaveRequest',$leave->id,$approve?'Your leave request was approved.':'Your leave request was rejected.'));
+            $by = \App\Models\User::find($approverId)?->name ?? 'Your approver';
+            $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
+            Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, $approve ? "{$by} approved your leave ({$range})." : "{$by} rejected your leave ({$range})".($note ? ": {$note}" : '.'));
             return $leave->fresh();
         });
     }
@@ -187,9 +210,9 @@ class HrWorkflowService
                 if (! $profile) continue;
                 $policyResolver = app(PolicyConfigurationService::class);
                 $payrollPolicy = $policyResolver->forEmployee($employee, 'payroll.calculation', $end, []);
-                $hoursPolicy = $policyResolver->forEmployee($employee, 'work.hours', $end, []);
                 $workingDaysPerMonth = (int) ($payrollPolicy['working_days_per_month'] ?? $profile->working_days_per_month);
-                $standardDailyHours = (float) ($payrollPolicy['standard_daily_hours'] ?? $hoursPolicy['standard_daily_hours'] ?? $profile->standard_daily_hours);
+                // An explicit payroll rule wins; otherwise the employee's own working hours (same value attendance uses).
+                $standardDailyHours = (float) ($payrollPolicy['standard_daily_hours'] ?? app(AttendanceService::class)->dailyHours($employee, $end));
                 $attendanceProration = (bool) ($payrollPolicy['attendance_proration'] ?? true);
                 $includePaidLeave = (bool) ($payrollPolicy['include_paid_leave'] ?? true);
                 $startDate = now()->parse($start)->startOfDay();
@@ -286,6 +309,30 @@ class HrWorkflowService
                 $hourly = (float)$profile->monthly_salary / max(1,$workingDaysPerMonth*$standardDailyHours);
                 $overtimeHours = $approvedMinutes/60;
                 $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
+                // Short hours (optional, Settings > Payroll): on the days the employee was present, the time
+                // worked below their working day (less any half-day/short leave that day) is deducted at the
+                // hourly rate, after a monthly grace. Absent days are already handled by proration above.
+                $short = ['enabled' => ! empty($payrollPolicy['short_hours_deduction']), 'required_seconds' => 0, 'actual_seconds' => 0, 'short_seconds' => 0, 'grace_seconds' => 0, 'amount' => 0.0];
+                if ($short['enabled']) {
+                    $partLeave = LeaveRequest::where('employee_id',$employee->id)->where('status','approved')->whereIn('duration',['half','short'])->whereDate('starts_on','>=',$start)->whereDate('starts_on','<=',$end)->get()
+                        ->groupBy(fn ($l) => $l->starts_on->toDateString())->map(fn ($g) => min(1, (float) $g->sum('days')));
+                    $daySessions = AttendanceSession::with('employee')->where('employee_id',$employee->id)->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->get()->keyBy(fn ($s) => $s->work_date->toDateString());
+                    $attendanceService = app(AttendanceService::class);
+                    $missing = 0;
+                    foreach (array_keys($presentSet) as $date) {
+                        $daySession = $daySessions->get($date);
+                        if (! $daySession) continue;
+                        $required = (int) round($standardDailyHours * 3600 * (1 - (float) ($partLeave[$date] ?? 0)));
+                        $worked = $attendanceService->workedSeconds($daySession);
+                        $short['required_seconds'] += $required;
+                        $short['actual_seconds'] += $worked;
+                        $missing += max(0, $required - $worked);
+                    }
+                    $short['grace_seconds'] = (int) round((float) ($payrollPolicy['short_hours_grace'] ?? 0) * 3600);
+                    $short['short_seconds'] = max(0, $missing - $short['grace_seconds']);
+                    $short['amount'] = round($hourly * $short['short_seconds'] / 3600, 2);
+                }
+                $shortAmount = (float) $short['amount'];
                 $penalties = (float)EmployeePenalty::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->whereNull('payroll_item_id')->sum('amount');
                 $adjustments = SalaryAdjustment::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->whereNull('payroll_item_id')->get();
                 $adjustmentTotal = $adjustments->sum(fn ($adjustment) => $adjustment->kind==='earning' ? (float)$adjustment->amount : -(float)$adjustment->amount);
@@ -302,14 +349,14 @@ class HrWorkflowService
                 // Approved expense claims are reimbursed on top of pay (not part of gross, never reduced by deductions).
                 $claims = \App\Models\ExpenseClaim::where('employee_id',$employee->id)->where('status','approved')->whereNull('payroll_item_id')->whereDate('spent_on','<=',$end)->lockForUpdate()->get();
                 $reimbursements = round((float)$claims->sum('amount'),2);
-                $net = round(max(0,round($gross-(float)$adjustments->where('kind','deduction')->sum('amount')-$penalties-$advanceRecovery-$statutory['deductions']-$fixedDeductionTotal,2))+$reimbursements,2);
+                $net = round(max(0,round($gross-(float)$adjustments->where('kind','deduction')->sum('amount')-$penalties-$shortAmount-$advanceRecovery-$statutory['deductions']-$fixedDeductionTotal,2))+$reimbursements,2);
                 $item = PayrollItem::create([
                     'payroll_run_id'=>$run->id,'employee_id'=>$employee->id,'gross_amount'=>$gross,'adjustments'=>$adjustmentTotal,'net_amount'=>$net,
                     'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
                     'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
-                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'salary_adjustments'=>$adjustmentTotal,'penalties'=>$penalties,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
+                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'salary_adjustments'=>$adjustmentTotal,'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
                 foreach ($claims as $claim) $claim->update(['payroll_item_id'=>$item->id]);
@@ -397,8 +444,7 @@ class HrWorkflowService
 
     private function isConfiguredWorkday(string $date,array $calendar): bool
     {
-        $day=(int)\Carbon\Carbon::parse($date)->isoWeekday();
-        return in_array($day,$calendar['days']??[1,2,3,4,5],true) && !in_array($date,$calendar['holidays']??[],true);
+        return \App\Support\WorkCalendar::isWorkday($date, $calendar);
     }
 
     private function policyConfiguration(AttendanceEmployee $employee, string $key, string $asOf, array $fallback): array

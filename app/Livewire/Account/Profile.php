@@ -4,8 +4,6 @@ namespace App\Livewire\Account;
 
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Services\AuditLogger;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
 use Livewire\Component;
 
 class Profile extends Component
@@ -16,9 +14,6 @@ class Profile extends Component
     public string $dateOfBirth = '';
     public bool $shareBirthday = true;
     public array $prefs = [];
-    public string $currentPassword = '';
-    public string $newPassword = '';
-    public string $newPassword_confirmation = '';
 
     public function mount(): void
     {
@@ -27,7 +22,7 @@ class Profile extends Component
         $this->shareBirthday = (bool) ($this->ownEmployee()?->share_birthday ?? true);
         $saved = (array) ($this->user()->notification_preferences ?? []);
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => $definition) {
-            $this->prefs[$group] = ['in_app' => (bool) ($saved[$group]['in_app'] ?? true), 'email' => (bool) ($saved[$group]['email'] ?? false), 'push' => (bool) ($saved[$group]['push'] ?? true)];
+            $this->prefs[$group] = ['in_app' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'in_app'), 'email' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'email'), 'push' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'push')];
         }
     }
 
@@ -50,20 +45,6 @@ class Profile extends Component
         $this->prefs = $clean;
         $audit->record('profile.notification_preferences_updated', $this->user(), $clean);
         $this->toast('Notification preferences saved.');
-    }
-
-    public function changePassword(AuditLogger $audit): void
-    {
-        $this->validate([
-            'currentPassword' => ['required', 'current_password:web'],
-            'newPassword' => ['required', 'confirmed', Password::min(12)->letters()->numbers(), 'different:currentPassword'],
-        ], [], ['newPassword' => 'new password', 'currentPassword' => 'current password']);
-        $user = $this->user();
-        $user->update(['password' => Hash::make($this->newPassword)]);
-        $user->tokens()->delete();
-        $audit->record('profile.password_changed', $user);
-        $this->reset('currentPassword', 'newPassword', 'newPassword_confirmation');
-        $this->toast('Password changed. API tokens were revoked.');
     }
 
     public function render()

@@ -14,7 +14,7 @@ use Livewire\Component;
 /** Final settlement calculated from real attendance, leave, OT, adjustments, penalties, advances and locked payroll. */
 class Settlements extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public ?int $case = null;
     public string $paymentAmount = '';
@@ -63,7 +63,7 @@ class Settlements extends Component
 
     public function render(ApprovalInbox $inbox)
     {
-        $cases = EmployeeLifecycleCase::with(['employee', 'settlement.payments'])->where('kind', 'offboarding')->latest()->get();
+        $cases = EmployeeLifecycleCase::with(['employee', 'settlement.payments'])->where('kind', 'offboarding')->where('status', '!=', 'cancelled')->latest()->paginate(20);
         $selected = $this->case ? EmployeeLifecycleCase::with(['employee', 'clearances', 'settlement.payments'])->where('kind', 'offboarding')->find($this->case) : null;
         $settlement = $selected?->settlement;
         $approval = $settlement ? ApprovalRequest::with('approver')->where('approvable_type', EmployeeFinalSettlement::class)->where('approvable_id', $settlement->id)->latest('id')->first() : null;

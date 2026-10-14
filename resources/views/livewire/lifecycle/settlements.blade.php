@@ -13,6 +13,7 @@
                 @empty
                     <x-empty title="No offboarding cases" icon="user-minus"><a href="{{ route('lifecycle.offboarding') }}">Open an offboarding case</a></x-empty>
                 @endforelse
+                {{ $cases->links() }}
             </div>
         </section>
         <section class="card">

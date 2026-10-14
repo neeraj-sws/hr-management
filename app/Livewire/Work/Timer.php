@@ -49,7 +49,8 @@ class Timer extends Component
             'running' => $running,
             'entries' => $today,
             'todaySeconds' => $todaySeconds,
-            'openTasks' => Task::where('assignee_id', $employee->id)->where('status', '!=', 'completed')->orderByRaw('due_on IS NULL')->orderBy('due_on')->get(),
+            // Every open task assigned to the employee (by anyone), so newly assigned work appears here at once.
+            'openTasks' => Task::with(['project', 'creator'])->where('assignee_id', $employee->id)->where('status', '!=', 'completed')->orderByRaw('due_on IS NULL')->orderBy('due_on')->latest('id')->get(),
             'session' => \App\Models\AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', today())->first(),
         ], 'Task Timer');
     }

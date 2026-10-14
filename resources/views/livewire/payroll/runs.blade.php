@@ -26,6 +26,7 @@
                 @empty
                     <x-empty :title="$approvalsOnly ? 'No payroll awaiting approval' : 'No payroll runs yet'" icon="layers" />
                 @endforelse
+                {{ $runs->links() }}
             </div>
         </section>
 
@@ -57,7 +58,7 @@
                             <td class="num nowrap">{{ $item->working_days }} / {{ (float) $item->present_days }} / {{ (float) $item->paid_leave_days }} / {{ (float) $item->unpaid_leave_days }}</td>
                             <td class="num">{{ number_format((float) $item->overtime_amount, 2) }}<small>{{ (float) $item->overtime_hours }} h</small></td>
                             <td class="num">{{ number_format((float) $item->gross_amount, 2) }}</td>
-                            <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}</small></td>
+                            <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
                             <td class="num"><strong>{{ number_format((float) $item->net_amount, 2) }}</strong></td>
                             <td class="num">{{ number_format($paid, 2) }}@if($paid > 0 && $paid < (float) $item->net_amount)<small>partial</small>@endif</td>
                             <td><div class="row-actions">

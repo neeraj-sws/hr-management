@@ -19,7 +19,7 @@ use Livewire\Component;
  */
 class Runs extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Locked] public bool $approvalsOnly = false;
     #[Url] public ?int $run = null;
@@ -106,7 +106,7 @@ class Runs extends Component
     {
         $runs = PayrollRun::withCount('items')->withSum('items', 'net_amount')
             ->when($this->approvalsOnly, fn ($q) => $q->where('status', 'draft'))
-            ->latest('period_starts_on')->limit(24)->get();
+            ->latest('period_starts_on')->paginate(12);
         $selected = $this->run ? PayrollRun::with(['items.employee', 'items.payments', 'items.payslip'])->find($this->run) : null;
         $approval = $selected ? ApprovalRequest::with('approver')->where('approvable_type', PayrollRun::class)->where('approvable_id', $selected->id)->latest('id')->first() : null;
 

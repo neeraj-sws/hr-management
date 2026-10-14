@@ -5,8 +5,8 @@
     </div>
     @if($own)
         <div class="stats">
-            <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Approved this month</span><span class="stat-value">{{ sprintf('%d:%02d', intdiv($monthApproved, 60), $monthApproved % 60) }}</span><small>hours</small></div></div>
-            <div class="stat"><span class="stat-icon amber"><x-icon name="hourglass" /></span><div><span class="stat-label">Pending this month</span><span class="stat-value">{{ sprintf('%d:%02d', intdiv($monthPending, 60), $monthPending % 60) }}</span><small>hours</small></div></div>
+            <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Approved this month</span><span class="stat-value">{{ \App\Support\Duration::fromMinutes($monthApproved) }}</span><small>HH:MM:SS</small></div></div>
+            <div class="stat"><span class="stat-icon amber"><x-icon name="hourglass" /></span><div><span class="stat-label">Pending this month</span><span class="stat-value">{{ \App\Support\Duration::fromMinutes($monthPending) }}</span><small>HH:MM:SS</small></div></div>
         </div>
     @endif
     <div class="tabs">
@@ -21,7 +21,7 @@
                 <tr wire:key="ot-{{ $ot->id }}">
                     @if($tab !== 'mine')<td><strong>{{ $ot->employee?->name }}</strong></td>@endif
                     <td class="nowrap">{{ $ot->work_date->format('D d M Y') }}</td>
-                    <td class="num">{{ $ot->requested_minutes }} min</td><td class="num">{{ $ot->approved_minutes !== null ? $ot->approved_minutes.' min' : '—' }}</td>
+                    <td class="num">{{ \App\Support\Duration::fromMinutes($ot->requested_minutes) }}</td><td class="num">{{ $ot->approved_minutes !== null ? \App\Support\Duration::fromMinutes($ot->approved_minutes) : '—' }}</td>
                     <td style="white-space:normal;max-width:300px">{{ $ot->reason }}@if($ot->decision_note)<small>Note: {{ $ot->decision_note }}</small>@endif</td>
                     <td><x-badge :status="$ot->status" />@if($ot->decider)<small>by {{ $ot->decider->name }}</small>@endif</td>
                     <td>@if($tab === 'approvals')<button class="btn btn-sm btn-primary" wire:click="openDecision({{ $ot->id }})">Review</button>@endif</td>
@@ -47,8 +47,8 @@
     @if($deciding)
         <x-modal title="Review overtime">
             <div class="modal-body">
-                <dl class="kv"><dt>Employee</dt><dd>{{ $deciding->employee?->name }}</dd><dt>Date</dt><dd>{{ $deciding->work_date->format('d M Y') }}</dd><dt>Requested</dt><dd>{{ $deciding->requested_minutes }} minutes</dd><dt>Reason</dt><dd>{{ $deciding->reason }}</dd>
-                    <dt>Attendance that day</dt><dd>@if($evidence['session']){{ $evidence['session']->check_in?->format('h:i A') }} – {{ $evidence['session']->check_out?->format('h:i A') ?? 'still checked in' }} · worked {{ gmdate('H:i', $evidence['worked_seconds']) }} (standard {{ gmdate('H:i', $evidence['standard_seconds']) }}) · <strong @class(['muted' => $evidence['extra_minutes'] >= $deciding->requested_minutes])>{{ $evidence['extra_minutes'] }} min beyond standard</strong>@if($evidence['extra_minutes'] < $deciding->requested_minutes) <x-badge tone="amber">claims more than attendance shows</x-badge>@endif @else <x-badge tone="red">No attendance recorded</x-badge>@endif @if($evidence['holiday']) <x-badge tone="violet">weekly off / holiday</x-badge>@endif</dd></dl>
+                <dl class="kv"><dt>Employee</dt><dd>{{ $deciding->employee?->name }}</dd><dt>Date</dt><dd>{{ $deciding->work_date->format('d M Y') }}</dd><dt>Requested</dt><dd>{{ \App\Support\Duration::fromMinutes($deciding->requested_minutes) }}</dd><dt>Reason</dt><dd>{{ $deciding->reason }}</dd>
+                    <dt>Attendance that day</dt><dd>@if($evidence['session']){{ $evidence['session']->check_in?->format('h:i A') }} – {{ $evidence['session']->check_out?->format('h:i A') ?? 'still checked in' }} · worked @hms($evidence['worked_seconds']) (standard @hms($evidence['standard_seconds'])) · <strong @class(['muted' => $evidence['extra_minutes'] >= $deciding->requested_minutes])>{{ \App\Support\Duration::fromMinutes($evidence['extra_minutes']) }} beyond standard</strong>@if($evidence['extra_minutes'] < $deciding->requested_minutes) <x-badge tone="amber">claims more than attendance shows</x-badge>@endif @else <x-badge tone="red">No attendance recorded</x-badge>@endif @if($evidence['holiday']) <x-badge tone="violet">weekly off / holiday</x-badge>@endif</dd></dl>
                 <div class="form-grid mt">
                     <x-field label="Approve minutes" name="approvedMinutes"><input type="number" min="1" max="{{ $deciding->requested_minutes }}" wire:model="approvedMinutes"></x-field>
                     <x-field label="Note" name="decisionNote" hint="required to reject"><input wire:model="decisionNote"></x-field>

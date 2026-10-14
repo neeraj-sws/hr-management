@@ -12,7 +12,7 @@ use Livewire\Component;
 
 class Teams extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     public bool $showForm = false;
     public ?int $editingId = null;
@@ -85,7 +85,7 @@ class Teams extends Component
         $own = $this->ownEmployee();
         $teams = Team::with(['department', 'manager', 'members' => fn ($q) => $q->orderBy('name')])
             ->when(! $this->canManage(), fn ($q) => $q->where('is_active', true)->where(fn ($q) => $q->whereHas('members', fn ($m) => $m->whereKey($own?->id ?? 0))->orWhere('manager_employee_id', $own?->id ?? 0)))
-            ->orderByDesc('is_active')->orderBy('name')->get();
+            ->orderByDesc('is_active')->orderBy('name')->paginate(15);
 
         return $this->page('livewire.people.teams', [
             'teams' => $teams,

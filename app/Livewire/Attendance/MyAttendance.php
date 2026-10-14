@@ -10,7 +10,10 @@ use Livewire\Component;
 
 class MyAttendance extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithFileUploads;
+
+    /** Selfie for check-in/out (when Settings require it on the website). */
+    public $photo = null;
 
     #[Url] public string $month = '';
 
@@ -19,9 +22,16 @@ class MyAttendance extends Component
         $this->month = preg_match('/^\d{4}-\d{2}$/', $this->month) ? $this->month : now()->format('Y-m');
     }
 
-    public function checkIn(AttendanceService $attendance): void
+    /** The browser sends its position (when the employee allows it) with check-in and check-out. */
+    private function place(?float $latitude, ?float $longitude, ?float $accuracy): ?array
     {
-        $attendance->checkIn($this->requireEmployee());
+        return $latitude !== null && $longitude !== null ? ['latitude' => $latitude, 'longitude' => $longitude, 'accuracy' => $accuracy] : null;
+    }
+
+    public function checkIn(AttendanceService $attendance, ?float $latitude = null, ?float $longitude = null, ?float $accuracy = null): void
+    {
+        $attendance->checkIn($this->requireEmployee(), 'web', null, $this->place($latitude, $longitude, $accuracy), $this->photo);
+        $this->reset('photo');
         $this->toast('Checked in. Have a productive day!');
     }
 
@@ -37,9 +47,10 @@ class MyAttendance extends Component
         $this->toast('Welcome back — work resumed.');
     }
 
-    public function checkOut(AttendanceService $attendance): void
+    public function checkOut(AttendanceService $attendance, ?float $latitude = null, ?float $longitude = null, ?float $accuracy = null): void
     {
-        $attendance->checkOut($this->requireEmployee());
+        $attendance->checkOut($this->requireEmployee(), 'web', null, $this->place($latitude, $longitude, $accuracy), $this->photo);
+        $this->reset('photo');
         $this->toast('Checked out. See you tomorrow!');
     }
 
@@ -57,6 +68,8 @@ class MyAttendance extends Component
             'worked' => $session ? $attendance->workedSeconds($session) : 0,
             'rules' => $attendance->rules($employee, today()->toDateString()),
             'late' => $session ? $attendance->isLate($session) : false,
+            'selfieRequired' => $attendance->selfieRequired($employee, 'web'),
+            'locationRequired' => (bool) (app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_web'] ?? false),
             'days' => $days,
             'summary' => $days->countBy('status'),
             'monthStart' => $start,

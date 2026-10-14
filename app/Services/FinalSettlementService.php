@@ -57,7 +57,6 @@ class FinalSettlementService
         $policyResolver = app(PolicyConfigurationService::class);
         $calendar = $policyResolver->forEmployee($employee, 'calendar.working_days', $end->toDateString(), ['days' => [1,2,3,4,5], 'holidays' => []]);
         $payrollPolicy = $policyResolver->forEmployee($employee, 'payroll.calculation', $end->toDateString(), []);
-        $hoursPolicy = $policyResolver->forEmployee($employee, 'work.hours', $end->toDateString(), []);
         $attendanceProration = (bool) ($payrollPolicy['attendance_proration'] ?? true);
         $includePaidLeave = (bool) ($payrollPolicy['include_paid_leave'] ?? true);
         $base = 0.0; $workingDays = 0; $present = []; $paidLeave = []; $unpaidLeave = [];
@@ -90,7 +89,7 @@ class FinalSettlementService
             $cap = $policyResolver->forEmployee($employee, 'overtime.multiplier', $date, [])['max_minutes_per_day'] ?? null;
             if ($cap !== null && (int) $rows->sum('approved_minutes') > (int) $cap) throw ValidationException::withMessages(['settlement' => 'Approved overtime exceeds the configured daily employer limit.']);
         }
-        $dailyHours = (float) ($payrollPolicy['standard_daily_hours'] ?? $hoursPolicy['standard_daily_hours'] ?? $profile?->standard_daily_hours ?? 8);
+        $dailyHours = (float) ($payrollPolicy['standard_daily_hours'] ?? app(AttendanceService::class)->dailyHours($employee, $end->toDateString()));
         $workingDaysPerMonth = (int) ($payrollPolicy['working_days_per_month'] ?? $profile?->working_days_per_month ?? 22);
         $multiplier = (float) ($overtimePolicy['multiplier'] ?? 0);
         $overtime = $profile ? round(((float) $profile->monthly_salary / max(1, $workingDaysPerMonth * $dailyHours)) * ($approvedMinutes / 60) * $multiplier, 2) : 0;
@@ -196,6 +195,6 @@ class FinalSettlementService
 
     private function isWorkday(string $date,array $calendar): bool
     {
-        return in_array((int) Carbon::parse($date)->isoWeekday(),$calendar['days']??[1,2,3,4,5],true)&&!in_array($date,$calendar['holidays']??[],true);
+        return \App\Support\WorkCalendar::isWorkday($date, $calendar);
     }
 }

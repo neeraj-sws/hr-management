@@ -38,5 +38,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Re-apply route access rules on every Livewire update request, not only the first page load.
         Livewire::addPersistentMiddleware([EnsureActiveAccount::class, EnsureAccess::class]);
+
+        // @hms($seconds) prints any duration as HH:MM:SS, the one format used across the app.
+        \Illuminate\Support\Facades\Blade::directive('hms', fn (string $expression) => "<?php echo e(\\App\\Support\\Duration::hms({$expression})); ?>");
     }
 }

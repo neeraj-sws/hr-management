@@ -26,6 +26,11 @@
             <tr><td>Paid leave</td><td class="num">{{ (float) $item->paid_leave_days }}</td></tr>
             <tr><td>Unpaid leave</td><td class="num">{{ (float) $item->unpaid_leave_days }}</td></tr>
             <tr><td>Overtime hours</td><td class="num">{{ (float) $item->overtime_hours }}</td></tr>
+            @if(! empty($item->calculation_breakdown['short_hours']['enabled']))
+                <tr><td>Required hours (days present)</td><td class="num">{{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['required_seconds']) }}</td></tr>
+                <tr><td>Actual hours worked</td><td class="num">{{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['actual_seconds']) }}</td></tr>
+                <tr><td>Short hours charged @if($item->calculation_breakdown['short_hours']['grace_seconds'])<span class="muted small">(after {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['grace_seconds']) }} grace)</span>@endif</td><td class="num">{{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}</td></tr>
+            @endif
         </tbody></table>
         <table class="table"><thead><tr><th>Earnings &amp; deductions</th><th class="num">Amount</th></tr></thead><tbody>
             @forelse(($item->calculation_breakdown['salary_components'] ?? []) as $name => $amount)
@@ -39,6 +44,7 @@
                 <tr><td>{{ $c['name'] ?? $c['key'] }} <span class="muted small">({{ $c['type'] ?? '' }})</span></td><td class="num">{{ ($c['type'] ?? '') === 'deduction' ? '−' : '' }}{{ number_format((float) ($c['amount'] ?? 0), 2) }}</td></tr>
             @endforeach
             @foreach(($item->calculation_breakdown['fixed_deductions'] ?? []) as $d)<tr><td>{{ $d['name'] }}</td><td class="num">−{{ number_format((float) $d['amount'], 2) }}</td></tr>@endforeach
+            @if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0)<tr><td>Short hours</td><td class="num">−{{ number_format((float) $item->calculation_breakdown['short_hours']['amount'], 2) }}</td></tr>@endif
             <tr><td>Penalties</td><td class="num">−{{ number_format((float) $item->penalties_amount, 2) }}</td></tr>
             <tr><td>Advance recovery</td><td class="num">−{{ number_format((float) $item->recovery_amount, 2) }}</td></tr>
             <tr><th>Gross</th><th class="num">{{ number_format((float) $item->gross_amount, 2) }}</th></tr>

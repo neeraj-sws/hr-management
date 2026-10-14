@@ -17,7 +17,7 @@ use Livewire\Component;
  */
 class Notes extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Locked] public bool $teamMode = false;
     #[Url] public string $search = '';
@@ -118,7 +118,7 @@ class Notes extends Component
                 ->orWhere(fn ($q) => $q->where('visibility', 'manager')->whereIn('employee_id', $reportIds->all() ?: [0]))
                 ->when($user->can('hr.manage'), fn ($q) => $q->orWhereIn('visibility', ['team', 'manager']))))
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('title', 'like', "%{$term}%")->orWhere('body', 'like', "%{$term}%")))
-            ->latest('updated_at')->limit(100)->get();
+            ->latest('updated_at')->paginate(15);
 
         return $this->page('livewire.notes.notes', [
             'notes' => $notes,

@@ -43,6 +43,9 @@ class Employees extends Component
     public array $teamIds = [];
     public bool $isManager = false;
 
+    public ?int $pwEmployeeId = null;
+    public string $pwPassword = '';
+
     public function updated($property): void
     {
         if (in_array($property, ['search', 'department', 'status'], true)) $this->resetPage();
@@ -52,6 +55,11 @@ class Employees extends Component
     {
         $this->resetForm();
         $this->joinedAt = today()->toDateString();
+        // New employees start from the company defaults under Settings > Work hours; they can be changed per person.
+        $hours = app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'work.hours', today()->toDateString(), []);
+        if (! empty($hours['start_time'])) $this->workStart = substr((string) $hours['start_time'], 0, 5);
+        if (! empty($hours['end_time'])) $this->workEnd = substr((string) $hours['end_time'], 0, 5);
+        if ((float) ($hours['standard_daily_hours'] ?? 0) > 0) $this->dailyHours = (string) (float) $hours['standard_daily_hours'];
         $this->showForm = true;
     }
 
@@ -116,6 +124,24 @@ class Employees extends Component
         $this->closeModal();
     }
 
+    public function openPassword(int $id): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($this->user()), 403, 'Only an administrator can change an employee password.');
+        $this->pwEmployeeId = AttendanceEmployee::findOrFail($id)->id;
+        $this->pwPassword = '';
+        $this->resetValidation();
+    }
+
+    public function resetPassword(EmployeeService $service): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($this->user()), 403, 'Only an administrator can change an employee password.');
+        $this->validate(['pwPassword' => ['required', 'string', Password::min(12)->letters()->numbers()]], [], ['pwPassword' => 'new password']);
+        $service->resetPassword(AttendanceEmployee::with('user')->findOrFail($this->pwEmployeeId), $this->pwPassword, $this->user());
+        $this->pwEmployeeId = null;
+        $this->pwPassword = '';
+        $this->toast('Password reset. The employee can sign in with the new password; their API tokens were revoked.');
+    }
+
     public function toggleActive(int $id, EmployeeService $service): void
     {
         abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
@@ -128,6 +154,8 @@ class Employees extends Component
     public function closeModal(): void
     {
         $this->showForm = false;
+        $this->pwEmployeeId = null;
+        $this->pwPassword = '';
         $this->resetForm();
     }
 
@@ -152,6 +180,8 @@ class Employees extends Component
             'managers' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'teams' => Team::where('is_active', true)->orderBy('name')->get(),
             'counts' => ['active' => AttendanceEmployee::where('is_active', true)->count(), 'inactive' => AttendanceEmployee::where('is_active', false)->count()],
+            'pwEmployee' => $this->pwEmployeeId ? AttendanceEmployee::find($this->pwEmployeeId) : null,
+            'isAdmin' => \App\Support\Access::isAdmin($this->user()),
         ], 'Employees');
     }
 }

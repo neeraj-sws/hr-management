@@ -29,10 +29,12 @@ return [
         ['label' => 'Attendance', 'route' => 'attendance.records', 'icon' => 'calendar'],
         ['label' => 'Corrections', 'route' => 'attendance.corrections', 'icon' => 'edit'],
         ['label' => 'Leave Conflicts', 'route' => 'attendance.conflicts', 'icon' => 'alert'],
+        ['label' => 'Devices', 'route' => 'attendance.devices', 'icon' => 'monitor'],
         ['label' => 'Shifts & Roster', 'route' => 'attendance.shifts', 'icon' => 'layers'],
     ]],
     ['heading' => 'Work', 'items' => [
         ['label' => 'Projects', 'route' => 'work.projects', 'icon' => 'folder'],
+        ['label' => 'My Projects', 'route' => 'work.my-projects', 'icon' => 'folder'],
         ['label' => 'Tasks', 'route' => 'work.tasks', 'icon' => 'check-square'],
         ['label' => 'My Tasks', 'route' => 'work.my-tasks', 'icon' => 'list'],
         ['label' => 'Task Timer', 'route' => 'work.timer', 'icon' => 'timer'],

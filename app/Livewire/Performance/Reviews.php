@@ -13,7 +13,7 @@ use Livewire\Component;
 
 class Reviews extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $tab = '';
     public bool $showForm = false;
@@ -96,17 +96,18 @@ class Reviews extends Component
     public function render()
     {
         $own = $this->ownEmployee();
-        $reviews = PerformanceReview::with(['employee', 'reviewer'])
+        $query = PerformanceReview::with(['employee', 'reviewer'])
             ->when($this->tab === 'mine', fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($this->tab === 'team', fn ($q) => $q->where(fn ($q) => $q->whereIn('employee_id', $this->reviewableIds()->all() ?: [0])->orWhere('reviewer_id', auth()->id())))
-            ->latest('period_ends_on')->latest('id')->get();
+            ->latest('period_ends_on')->latest('id');
+        $reviews = (clone $query)->paginate(15);
 
         return $this->page('livewire.performance.reviews', [
             'reviews' => $reviews,
             'own' => $own,
             'canReview' => $this->canReview(),
             'people' => $this->canReview() ? AttendanceEmployee::whereIn('id', $this->reviewableIds()->all() ?: [0])->where('user_id', '!=', auth()->id())->orderBy('name')->get(['id', 'name']) : collect(),
-            'average' => $reviews->avg('rating'),
+            'average' => (clone $query)->reorder()->avg('rating'),
         ], 'Performance');
     }
 }

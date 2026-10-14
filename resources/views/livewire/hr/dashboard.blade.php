@@ -20,7 +20,7 @@
                 @if(!$mySession)
                     <h2>Not checked in</h2><p class="muted small">Start your day from My Attendance.</p>
                 @else
-                    <h2>{{ gmdate('H:i', $myWorked) }} <span class="small muted">worked</span></h2>
+                    <h2>@hms($myWorked) <span class="small muted">worked</span></h2>
                     <p class="small muted">In {{ $mySession->check_in->format('h:i A') }} @if($mySession->check_out)· Out {{ $mySession->check_out->format('h:i A') }}@endif · <x-badge :status="$mySession->status" /></p>
                 @endif
             </section>
@@ -45,11 +45,14 @@
 
     <div class="stats">
         @if($orgWide)<div class="stat"><span class="stat-icon"><x-icon name="users" /></span><div><span class="stat-label">Active employees</span><span class="stat-value">{{ $metrics['employees'] }}</span><small>In your scope</small></div></div>@endif
-        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Present today</span><span class="stat-value">{{ $metrics['present'] }}</span><small>{{ $metrics['working'] }} working · {{ $metrics['on_break'] }} on break</small></div></div>
+        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Checked in today</span><span class="stat-value">{{ $metrics['checked_in'] }}</span><small>{{ $metrics['still_in'] }} still checked in · {{ $metrics['working'] }} working now</small></div></div>
+        <div class="stat"><span class="stat-icon violet"><x-icon name="user-minus" /></span><div><span class="stat-label">Checked out today</span><span class="stat-value">{{ $metrics['checked_out'] }}</span><small>Finished for the day</small></div></div>
+        <div class="stat"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">On lunch / break now</span><span class="stat-value">{{ $metrics['on_break'] }}</span><small>Currently on a break</small></div></div>
         <div class="stat"><span class="stat-icon red"><x-icon name="user-minus" /></span><div><span class="stat-label">Absent today</span><span class="stat-value">{{ $metrics['absent'] }}</span><small>Excludes approved leave</small></div></div>
         <div class="stat"><span class="stat-icon violet"><x-icon name="calendar" /></span><div><span class="stat-label">On leave</span><span class="stat-value">{{ $metrics['on_leave'] }}</span><small>Approved leave today</small></div></div>
         <div class="stat"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">Late arrivals</span><span class="stat-value">{{ $metrics['late'] }}</span><small>After start time + grace</small></div></div>
         <div class="stat"><span class="stat-icon"><x-icon name="check-square" /></span><div><span class="stat-label">Open tasks</span><span class="stat-value">{{ $metrics['active_tasks'] }}</span><small>{{ $metrics['overdue_tasks'] }} overdue</small></div></div>
+        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Today's tasks completed</span><span class="stat-value">{{ $metrics['task_completion_pct'] }}%</span><small>{{ $metrics['completed_today'] }} of {{ $metrics['todays_tasks'] }} done (due today, overdue or finished today)</small></div></div>
         @if($metrics['pending_approvals'] !== null)<div class="stat"><span class="stat-icon amber"><x-icon name="inbox" /></span><div><span class="stat-label">Pending approvals</span><span class="stat-value">{{ $metrics['pending_approvals'] }}</span><small><a href="{{ route('approvals.pending') }}">Review now</a></small></div></div>@endif
         @if($metrics['payroll_pending'] !== null)<div class="stat"><span class="stat-icon"><x-icon name="layers" /></span><div><span class="stat-label">Payroll in progress</span><span class="stat-value">{{ $metrics['payroll_pending'] }}</span><small>Draft or awaiting lock</small></div></div>@endif
     </div>
@@ -95,7 +98,7 @@
                 <thead><tr><th>Employee</th><th>Check in</th><th>Check out</th><th>Worked</th><th>Status</th></tr></thead>
                 <tbody>
                 @forelse($recentAttendance as $session)
-                    <tr><td><strong>{{ $session->employee?->name }}</strong><small>{{ $session->employee?->employee_code }}</small></td><td>{{ $session->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $session->check_out?->format('h:i A') ?? '—' }}</td><td>{{ gmdate('H:i', app(\App\Services\AttendanceService::class)->workedSeconds($session)) }}</td><td><x-badge :status="$session->status" /></td></tr>
+                    <tr><td><strong>{{ $session->employee?->name }}</strong><small>{{ $session->employee?->employee_code }}</small></td><td>{{ $session->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $session->check_out?->format('h:i A') ?? '—' }}</td><td>@hms(app(\App\Services\AttendanceService::class)->workedSeconds($session))</td><td><x-badge :status="$session->status" /></td></tr>
                 @empty
                     <tr><td colspan="5"><x-empty title="No attendance yet today" icon="clock" /></td></tr>
                 @endforelse

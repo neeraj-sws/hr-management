@@ -1,6 +1,6 @@
 <div>
     <div class="page-head">
-        <div><p class="eyebrow">Reports</p><h1>{{ $label }} report</h1><p>The CSV export uses exactly the same query and filters as this preview.</p></div>
+        <div><p class="eyebrow">Reports</p><h1>{{ $label }} report</h1><p>The Excel/CSV export uses exactly the same query and filters as this report.</p></div>
         <div class="actions">
             <a class="btn btn-primary" href="{{ $exportUrlExcel }}"><x-icon name="download" class="icon-sm" />Export Excel</a>
             <a class="btn" href="{{ $exportUrl }}"><x-icon name="download" class="icon-sm" />Export CSV</a>
@@ -30,6 +30,7 @@
             @endforelse
             </tbody>
         </table></div>
-        <div class="card-foot small muted">{{ $rows->count() }} rows shown @if($truncated)· preview limited to {{ \App\Livewire\Reports\Report::PREVIEW_LIMIT }} rows — export for the full data set @endif</div>
+        {{ $rows->links() }}
+        <div class="card-foot small muted">{{ $rows->total() }} rows @if($truncated)· the screen shows the first {{ \App\Livewire\Reports\Report::PREVIEW_LIMIT }} rows — export for the full data set @endif · durations are HH:MM:SS</div>
     </section>
 </div>

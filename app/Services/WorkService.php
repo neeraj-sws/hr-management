@@ -23,9 +23,14 @@ class WorkService
     public function saveProject(?Project $project, array $data, User $actor): Project
     {
         $isNew = ! $project;
+        $previousManager = $project?->manager_id;
         $project ??= new Project();
         $project->fill($data)->save();
-        $this->audit->record($isNew ? 'project.created' : 'project.updated', $project);
+        $this->audit->record($isNew ? 'project.created' : 'project.updated', $project, ['manager_id' => $project->manager_id]);
+        if ($project->manager_id && (int) $project->manager_id !== (int) $previousManager) {
+            $manager = AttendanceEmployee::with('user')->find($project->manager_id);
+            Notifier::send($manager?->user, 'ProjectManager', $project->id, "{$actor->name} made you the manager of the project \"{$project->name}\".", route('work.projects', [], false), $actor->id);
+        }
 
         return $project;
     }
@@ -66,6 +71,7 @@ class WorkService
             if (! $isNew && $task->status === 'completed' && ($data['status'] ?? 'completed') !== 'completed') {
                 $data['completed_at'] = null;
             }
+            $becameCompleted = ($data['status'] ?? null) === 'completed' && $task->status !== 'completed';
             if (($data['status'] ?? null) === 'completed' && ! $task->completed_at) {
                 TaskTimeEntry::where('task_id', $task->id)->where('status', 'running')->get()
                     ->each(fn ($entry) => app(HrWorkflowService::class)->stopTaskTimer($entry->employee, $entry));
@@ -75,11 +81,30 @@ class WorkService
             if (! $isNew) $task->increment('server_version');
             $this->audit->record($isNew ? 'task.assigned' : 'task.updated', $task, ['assignee_id' => $assignee->id]);
             if ($isNew || $previousAssignee !== $assignee->id) {
-                $assignee->user?->notify(new ApprovalRequested('TaskAssignment', $task->id, "Task assigned to you: {$task->title}"));
+                $details = collect([$task->project?->name ? 'project '.$task->project->name : null, $task->due_on ? 'due '.$task->due_on->format('d M Y') : null, $task->priority !== 'normal' ? $task->priority.' priority' : null])->filter()->join(', ');
+                // Assigning work to yourself needs no notification.
+                if ($assignee->user_id !== $actor->id) {
+                    Notifier::send($assignee->user, 'TaskAssignment', $task->id, "{$actor->name} assigned you a task: \"{$task->title}\"".($details ? " ({$details})" : '').'.', route('work.my-tasks', ['task' => $task->id], false), $actor->id);
+                }
             }
+            if ($becameCompleted) $this->taskCompleted($task, $actor);
 
             return $task->fresh();
         });
+    }
+
+    /**
+     * Tells the person who assigned a task (and the assignee's manager, if
+     * different) that it is done. The completion itself is kept in the audit
+     * log, which the task's History shows.
+     */
+    public function taskCompleted(Task $task, ?User $by = null): void
+    {
+        $task->loadMissing('assignee.manager.user', 'creator');
+        $who = $by?->name ?? $task->assignee?->name ?? 'Someone';
+        $message = "{$who} completed the task \"{$task->title}\"".($task->wasCompletedLate() ? ' (after its due date)' : '').'.';
+        $url = route('work.tasks', ['task' => $task->id, 'status' => 'completed'], false);
+        Notifier::send([$task->creator, $task->assignee?->manager?->user], 'TaskCompleted', $task->id, $message, $url, $by?->id ?? $task->assignee?->user_id);
     }
 
     /** Assignee, creator, the assignee's manager, or task/HR managers with the employee in scope. */
@@ -100,18 +125,53 @@ class WorkService
         if ($body === '') throw ValidationException::withMessages(['comment' => 'Write a comment.']);
         $comment = $task->comments()->create(['user_id' => $author->id, 'body' => $body]);
         $this->audit->record('task.commented', $task, ['comment_id' => $comment->id]);
-        $recipients = collect([$task->assignee?->user, User::find($task->created_by), $task->assignee?->manager?->user])->filter()->unique('id')->reject(fn ($u) => $u->id === $author->id);
-        foreach ($recipients as $user) $user->notify(new ApprovalRequested('TaskComment', $task->id, "{$author->name} commented on \"{$task->title}\": ".\Illuminate\Support\Str::limit($body, 80), route('work.my-tasks', ['task' => $task->id], false)));
+        Notifier::send([$task->assignee?->user, User::find($task->created_by), $task->assignee?->manager?->user], 'TaskComment', $task->id, "{$author->name} commented on \"{$task->title}\": ".\Illuminate\Support\Str::limit($body, 80), route('work.my-tasks', ['task' => $task->id], false), $author->id);
 
         return $comment;
     }
 
-    /** @param array<int> $employeeIds */
+    /**
+     * Sets a project's members. People added (or removed) are told, and so is
+     * the project manager when someone else changed the team.
+     *
+     * @param array<int> $employeeIds
+     */
     public function setProjectMembers(Project $project, array $employeeIds, User $actor): void
     {
         $before = $project->members()->pluck('attendance_employees.id')->all();
-        $project->members()->sync(AttendanceEmployee::whereIn('id', $employeeIds)->pluck('id')->all());
-        $this->audit->record('project.members_updated', $project, ['before' => $before, 'after' => $project->members()->pluck('attendance_employees.id')->all(), 'by' => $actor->id]);
+        $changes = $project->members()->sync(AttendanceEmployee::whereIn('id', $employeeIds)->pluck('id')->all());
+        $this->audit->record('project.members_updated', $project, ['before' => $before, 'after' => $project->members()->pluck('attendance_employees.id')->all(), 'added' => $changes['attached'], 'removed' => $changes['detached'], 'by' => $actor->id]);
+
+        $added = AttendanceEmployee::with('user')->whereIn('id', $changes['attached'] ?: [0])->get();
+        $removed = AttendanceEmployee::with('user')->whereIn('id', $changes['detached'] ?: [0])->get();
+        foreach ($added as $member) {
+            Notifier::send($member->user, 'ProjectMember', $project->id, "{$actor->name} added you to the project \"{$project->name}\".", route('work.my-projects', [], false), $actor->id);
+        }
+        foreach ($removed as $member) {
+            Notifier::send($member->user, 'ProjectMember', $project->id, "{$actor->name} removed you from the project \"{$project->name}\".", route('work.my-projects', [], false), $actor->id);
+        }
+        $manager = $project->manager()->with('user')->first();
+        if ($manager?->user && ($added->isNotEmpty() || $removed->isNotEmpty())) {
+            $summary = collect([$added->isNotEmpty() ? 'added '.$added->pluck('name')->join(', ') : null, $removed->isNotEmpty() ? 'removed '.$removed->pluck('name')->join(', ') : null])->filter()->join('; ');
+            Notifier::send($manager->user, 'ProjectMember', $project->id, "{$actor->name} {$summary} on your project \"{$project->name}\".", route('work.projects', [], false), $actor->id);
+        }
+    }
+
+    /**
+     * Tells the manager (and the managers of the projects in the update) that a
+     * daily status was submitted, with the project-wise lines. Sent once per day
+     * per person; later edits the same day do not send it again.
+     */
+    public function notifyDailyStatus(AttendanceEmployee $employee, \App\Models\DailyWorkStatus $status): void
+    {
+        $projectIds = collect((array) ($status->project_updates ?? []))->pluck('project_id')->filter()->all();
+        $recipients = collect([$employee->manager?->user])
+            ->merge(Project::with('manager.user')->whereIn('id', $projectIds ?: [0])->get()->map(fn ($p) => $p->manager?->user))
+            ->filter()->unique('id')->reject(fn ($u) => $u->id === $employee->user_id)
+            ->reject(fn ($u) => $u->notifications()->where('data->kind', 'DailyStatusSubmitted')->where('data->record_id', $status->id)->exists());
+        if ($recipients->isEmpty()) return;
+        $projects = collect((array) ($status->project_updates ?? []))->map(fn ($l) => $l['project'].($l['update'] !== '' ? ': '.\Illuminate\Support\Str::limit($l['update'], 60) : ''))->join('; ');
+        Notifier::send($recipients, 'DailyStatusSubmitted', $status->id, "{$employee->name} submitted the daily status for {$status->work_date->format('d M')}".($projects ? " — {$projects}" : ': '.\Illuminate\Support\Str::limit($status->summary, 100)), route('work.daily-status', ['employee' => $employee->id, 'date' => $status->work_date->toDateString()], false), $employee->user_id);
     }
 
     /** Tells the manager when a daily status reports a blocker (once per status). */
@@ -206,8 +266,10 @@ class WorkService
                 'on_time_rate' => $onTime,
                 'estimated_hours' => round($estimated, 2),
                 'logged_hours' => round($loggedSeconds / 3600, 2),
+                'logged_seconds' => $loggedSeconds,
                 'attendance_days' => (int) ($attendance[$employee->id]->days ?? 0),
                 'active_hours' => round($activeSeconds / 3600, 2),
+                'active_seconds' => $activeSeconds,
                 'utilization' => $activeSeconds > 0 ? min(100, (int) round($loggedSeconds / $activeSeconds * 100)) : null,
             ];
         })->values();

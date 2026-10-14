@@ -26,7 +26,7 @@ class EmployeeService
      */
     public function create(array $data, User $actor): AttendanceEmployee
     {
-        return DB::transaction(function () use ($data, $actor) {
+        $employee = DB::transaction(function () use ($data, $actor) {
             $user = User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => Hash::make($data['password']), 'is_active' => true]);
             $user->assignRole('Employee');
             if (! empty($data['is_manager'])) $user->assignRole('Manager');
@@ -44,6 +44,11 @@ class EmployeeService
 
             return $employee;
         });
+        // Sent after the employee is saved: a notification or e-mail problem can no longer turn a
+        // successful save into a "500 Server Error" (the employee used to be created anyway).
+        $this->notifyManagerAssigned($employee, $actor);
+
+        return $employee;
     }
 
     public function update(AttendanceEmployee $employee, array $data, User $actor): AttendanceEmployee
@@ -52,6 +57,10 @@ class EmployeeService
             if (isset($data['manager_id']) && (int) $data['manager_id'] === $employee->id) $data['manager_id'] = null;
             $previousManager = $employee->manager_id;
             $employee->update(array_intersect_key($data, array_flip(self::PROFILE_FIELDS)));
+            // Keep the current salary record on the same working day, so Payroll never disagrees with the employee record.
+            if ($employee->wasChanged('daily_work_hours')) {
+                $employee->salaryProfiles()->orderByDesc('effective_from')->orderByDesc('id')->first()?->update(['standard_daily_hours' => $employee->daily_work_hours]);
+            }
             if (array_key_exists('manager_id', $data) && (int) $previousManager !== (int) $employee->manager_id) $this->managerChanged($employee, $previousManager, $actor);
             if (array_key_exists('team_ids', $data)) $this->syncTeams($employee, $data['team_ids'] ?? [], $actor);
             if ($employee->user) {
@@ -127,7 +136,29 @@ class EmployeeService
             }
             if ($moved && $newUserId) User::find($newUserId)?->notify(new ApprovalRequested('ManagerChange', $employee->id, "{$moved} pending request(s) from {$employee->name} now need your review."));
         }
+        $this->notifyManagerAssigned($employee, $actor);
         $this->audit->record('employee.manager_changed', $employee, ['from_manager_id' => $previousManagerId, 'to_manager_id' => $employee->manager_id, 'pending_approvals_moved' => $moved]);
+    }
+
+    /** Admin-only password reset for an employee's login; revokes their API tokens. */
+    public function resetPassword(AttendanceEmployee $employee, string $password, User $actor): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($actor), 403, 'Only an administrator can change an employee password.');
+        abort_unless((bool) $employee->user, 422, 'This employee has no login account.');
+        $employee->user->update(['password' => Hash::make($password)]);
+        $employee->user->tokens()->delete();
+        $this->audit->record('user.password_reset', $employee->user, ['by' => $actor->id, 'employee_id' => $employee->id]);
+    }
+
+    /** Tells a newly-assigned manager that this employee now reports to them, and by whom. */
+    private function notifyManagerAssigned(AttendanceEmployee $employee, ?User $actor = null): void
+    {
+        if (! $employee->manager_id) return;
+        $manager = AttendanceEmployee::with('user')->find($employee->manager_id);
+        if (! $manager?->user) return;
+        $by = $actor ? " (assigned by {$actor->name})" : '';
+        Notifier::send($manager->user, 'ManagerAssigned', $employee->id, "You are now the manager of {$employee->name}{$by}. Their leave, overtime, attendance corrections and expense claims will come to you for approval.", route('people.employees.show', $employee, false), $actor?->id);
+        if ($employee->user && $actor) Notifier::send($employee->user, 'ManagerAssigned', $employee->id, "{$manager->name} is now your manager{$by}.", route('account.profile', [], false), $actor->id);
     }
 
     /** Ends probation: records the confirmation date and tells the employee. */

@@ -12,7 +12,7 @@ use Livewire\Component;
 /** Days with approved leave and attendance: HR decides whether each counts as worked or as leave. */
 class Conflicts extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $from = '';
     #[Url] public string $to = '';
@@ -35,8 +35,8 @@ class Conflicts extends Component
         $open = $conflicts->open($this->from, $this->to);
 
         return $this->page('livewire.attendance.conflicts', [
-            'open' => $open,
-            'resolved' => LeaveConflictResolution::with(['employee', 'leaveRequest.leaveType', 'resolver'])->latest('id')->limit(30)->get(),
+            'open' => $this->paginateCollection(collect($open)->values(), 15, 'openPage'),
+            'resolved' => LeaveConflictResolution::with(['employee', 'leaveRequest.leaveType', 'resolver'])->latest('id')->paginate(15, ['*'], 'resolvedPage'),
         ], 'Leave & Attendance Conflicts');
     }
 }

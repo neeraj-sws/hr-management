@@ -13,6 +13,13 @@
         </section>
     @endif
 
+    @if($canManage)
+        <section class="card mb">
+            <div class="card-head"><div><h2>Import salary records</h2><p>Add historical salary records from Excel (.xlsx) or CSV: one row per employee per effective date.</p></div></div>
+            @include('partials.import-form', ['type' => 'salary', 'kind' => 'Salary', 'action' => route('payroll.salary.import')])
+        </section>
+    @endif
+
     @if($employees)
         <section class="card mb">
             <div class="card-head"><h2>Employee salaries</h2></div>

@@ -15,26 +15,29 @@
             <span wire:loading class="spinner" style="margin-bottom:10px"></span>
         </div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Employee</th><th>Department</th><th>Manager</th><th>Teams</th><th>Roles</th><th>Joined</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Employee</th><th>Email</th><th>Department</th><th>Manager</th><th>Teams</th><th>Roles</th><th>Work hours</th><th>Joined</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @forelse($employees as $employee)
                 <tr wire:key="emp-{{ $employee->id }}">
                     <td><a href="{{ route('people.employees.show', $employee) }}"><strong>{{ $employee->name }}</strong></a><small>{{ $employee->employee_code }} · {{ $employee->designation ?? '—' }}</small></td>
+                    <td class="small">@if($employee->email ?? $employee->user?->email)<a href="mailto:{{ $employee->email ?? $employee->user?->email }}">{{ $employee->email ?? $employee->user?->email }}</a>@else — @endif</td>
                     <td>{{ $employee->department?->name ?? '—' }}</td>
                     <td>{{ $employee->manager?->name ?? '—' }}</td>
                     <td>{{ $employee->teams->pluck('name')->join(', ') ?: '—' }}</td>
                     <td>{{ $employee->user?->roles->pluck('name')->join(', ') ?: 'No login' }}</td>
+                    <td class="nowrap">{{ \App\Support\Duration::fromHours($employee->daily_work_hours) }}<small>{{ $employee->work_start ? substr($employee->work_start, 0, 5).'–'.substr((string) $employee->work_end, 0, 5) : '' }}</small></td>
                     <td class="nowrap">{{ $employee->joined_at?->format('d M Y') ?? '—' }}</td>
                     <td><x-badge :status="$employee->is_active ? 'active' : 'inactive'" /></td>
                     <td><div class="row-actions">
                         <button class="btn btn-sm" wire:click="edit({{ $employee->id }})">Edit</button>
+                        @if($employee->user_id && $isAdmin)<button class="btn btn-sm" wire:click="openPassword({{ $employee->id }})">Reset password</button>@endif
                         @if($employee->user_id !== auth()->id())
                             <button class="btn btn-sm {{ $employee->is_active ? 'btn-danger' : '' }}" wire:click="toggleActive({{ $employee->id }})" wire:confirm="{{ $employee->is_active ? 'Deactivate '.$employee->name.'? Their login and device tokens will be revoked.' : 'Reactivate '.$employee->name.'?' }}">{{ $employee->is_active ? 'Deactivate' : 'Reactivate' }}</button>
                         @endif
                     </div></td>
                 </tr>
             @empty
-                <tr><td colspan="8"><x-empty title="No employees match these filters" icon="users" /></td></tr>
+                <tr><td colspan="10"><x-empty title="No employees match these filters" icon="users" /></td></tr>
             @endforelse
             </tbody>
         </table></div>
@@ -60,7 +63,7 @@
                         <x-field label="Probation ends" name="probationEndsOn" hint="optional"><input type="date" wire:model="probationEndsOn" x-bind:min="$wire.joinedAt"></x-field>
                         <x-field label="Notice period (days)" name="noticePeriodDays" hint="optional"><input type="number" min="0" max="365" wire:model="noticePeriodDays"></x-field>
                         <x-field label="Date of birth" name="dateOfBirth" hint="optional"><input type="date" wire:model="dateOfBirth" max="{{ today()->subDay()->toDateString() }}"></x-field>
-                        <x-field label="Daily work hours" name="dailyHours"><input type="number" step="0.25" min="0.25" max="24" wire:model="dailyHours"></x-field>
+                        <x-field label="Daily work hours" name="dailyHours" hint="used by attendance and payroll"><input type="number" step="0.25" min="0.25" max="24" wire:model="dailyHours"></x-field>
                         <x-field label="Work start" name="workStart"><input type="time" wire:model="workStart"></x-field>
                         <x-field label="Work end" name="workEnd"><input type="time" wire:model="workEnd"></x-field>
                         @unless($editingId)<x-field label="Monthly salary" name="monthlySalary" hint="effective from joining date"><input type="number" step="0.01" min="0" wire:model="monthlySalary"></x-field>@endunless
@@ -74,6 +77,22 @@
                 <div class="modal-foot">
                     <button type="button" class="btn" wire:click="closeModal">Cancel</button>
                     <button class="btn btn-primary" wire:loading.attr="disabled"><span wire:loading wire:target="save" class="spinner"></span>{{ $editingId ? 'Save changes' : 'Create employee' }}</button>
+                </div>
+            </form>
+        </x-modal>
+    @endif
+
+    @if($pwEmployee)
+        <x-modal title="Reset password · {{ $pwEmployee->name }}">
+            <form wire:submit="resetPassword">
+                <div class="modal-body stack">
+                    <x-errors />
+                    <p class="small muted">Set a new login password for {{ $pwEmployee->name }}. At least 12 characters with letters and numbers. Their existing API/device tokens will be revoked.</p>
+                    <x-field label="New password" name="pwPassword"><input type="text" wire:model="pwPassword" autocomplete="new-password"></x-field>
+                </div>
+                <div class="modal-foot">
+                    <button type="button" class="btn" wire:click="closeModal">Cancel</button>
+                    <button class="btn btn-primary" wire:loading.attr="disabled"><span wire:loading wire:target="resetPassword" class="spinner"></span>Reset password</button>
                 </div>
             </form>
         </x-modal>

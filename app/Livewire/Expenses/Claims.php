@@ -30,13 +30,14 @@ class Claims extends Component
 
     public function mount(): void
     {
-        if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = $this->ownEmployee() ? 'mine' : 'approvals';
+        if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = ! $this->ownEmployee() || ($this->canApprove() && app(ApprovalInbox::class)->pending($this->user(), ExpenseClaim::class)->isNotEmpty()) ? 'approvals' : 'mine';
         if ($this->tab !== 'mine' && ! $this->canApprove()) $this->tab = 'mine';
     }
 
+    /** Expense administrators, approvers, and team leads for their own team's claims. */
     private function canApprove(): bool
     {
-        return $this->user()->canAny(['expenses.manage', 'approvals.manage']);
+        return $this->user()->canAny(['expenses.manage', 'approvals.manage']) || ApprovalInbox::isTeamLead($this->user());
     }
 
     public function updatedTab(): void
@@ -65,13 +66,13 @@ class Claims extends Component
         ], [], ['spentOn' => 'date', 'receipt' => 'receipt']);
         $expenses->submit($this->requireEmployee(), ['category' => $this->category, 'spent_on' => $this->spentOn, 'amount' => $this->amount, 'description' => $this->description], $this->receipt);
         $this->showForm = false;
-        $this->toast('Expense claim submitted for approval.');
+        $this->toast('Expense claim submitted. Your manager and the expense administrators were notified.');
     }
 
     public function cancel(int $id, ExpenseService $expenses): void
     {
         $expenses->cancel(ExpenseClaim::findOrFail($id), $this->requireEmployee());
-        $this->toast('Claim cancelled.');
+        $this->toast('Claim cancelled. Your approvers were told.');
     }
 
     public function openDecision(int $id): void

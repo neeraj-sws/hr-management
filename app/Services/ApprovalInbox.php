@@ -40,10 +40,27 @@ class ApprovalInbox
         private readonly ExpenseService $expenses,
     ) {}
 
-    /** Types this user holds any deciding permission for. */
+    /**
+     * Employee requests that the employee's own manager decides. A team lead
+     * is the designated approver for these even without a Manager role, so the
+     * request they are notified about never ends in "403 Forbidden".
+     */
+    public const TEAM_LEAD_TYPES = [LeaveRequest::class, OvertimeRequest::class, AttendanceCorrection::class, ExpenseClaim::class];
+
+    /** Types this user holds any deciding permission for (plus team requests for a team lead). */
     public function typesFor(User $user): array
     {
-        return array_keys(array_filter(self::TYPES, fn ($definition) => $user->canAny($definition[1])));
+        $types = array_keys(array_filter(self::TYPES, fn ($definition) => $user->canAny($definition[1])));
+        if (self::isTeamLead($user)) $types = array_values(array_unique([...$types, ...self::TEAM_LEAD_TYPES]));
+
+        return $types;
+    }
+
+    /** True when the user's employee has direct reports or is named approver on a pending request. */
+    public static function isTeamLead(User $user): bool
+    {
+        return (bool) $user->employeeProfile?->directReports()->exists()
+            || ApprovalRequest::where('approver_id', $user->id)->where('status', 'pending')->exists();
     }
 
     public function pending(User $user, ?string $type = null): Collection
@@ -81,7 +98,8 @@ class ApprovalInbox
     {
         $subject = $approval->approvable;
         if (! $subject || $approval->status !== 'pending') return false;
-        if (! $user->canAny(self::TYPES[$approval->approvable_type][1] ?? ['-'])) return false;
+        $designated = in_array($approval->approvable_type, self::TEAM_LEAD_TYPES, true) && ($approval->approver_id === $user->id || $this->managesEmployee($user, $this->subjectEmployee($subject)));
+        if (! $designated && ! $user->canAny(self::TYPES[$approval->approvable_type][1] ?? ['-'])) return false;
         if ($this->subjectEmployee($subject)?->user_id === $user->id) return false; // no self-approval
 
         return match (true) {

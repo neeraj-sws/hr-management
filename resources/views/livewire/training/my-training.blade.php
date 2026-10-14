@@ -1,8 +1,8 @@
 <div>
     <div class="page-head"><div><h1>My Training</h1><p>Courses assigned to you. Open the material, then mark the course as completed.</p></div></div>
     <div class="stats">
-        <div class="stat"><span class="stat-icon amber"><x-icon name="list" /></span><div><span class="stat-label">To do</span><span class="stat-value">{{ $open->count() }}</span><small>{{ $open->filter->isOverdue()->count() }} overdue</small></div></div>
-        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Completed</span><span class="stat-value">{{ $done->count() }}</span></div></div>
+        <div class="stat"><span class="stat-icon amber"><x-icon name="list" /></span><div><span class="stat-label">To do</span><span class="stat-value">{{ $open->total() }}</span><small>{{ $overdueCount }} overdue</small></div></div>
+        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Completed</span><span class="stat-value">{{ $done->total() }}</span></div></div>
     </div>
     <section class="card">
         <div class="card-head"><div><h2>To do</h2></div></div>
@@ -23,6 +23,7 @@
             @empty
                 <x-empty title="Nothing to do — you're all caught up" icon="check-circle" />
             @endforelse
+            {{ $open->links() }}
         </div>
     </section>
     @if($done->isNotEmpty())
@@ -32,6 +33,7 @@
                 @foreach($done as $a)
                     <div class="list-row"><div><strong>{{ $a->course?->title }}</strong><small>Completed {{ $a->completed_at?->format('d M Y') }}{{ $a->completion_note ? ' · '.$a->completion_note : '' }}</small></div><x-badge status="completed" /></div>
                 @endforeach
+                {{ $done->links() }}
             </div>
         </section>
     @endif

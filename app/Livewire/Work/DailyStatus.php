@@ -5,6 +5,7 @@ namespace App\Livewire\Work;
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\AttendanceEmployee;
 use App\Models\DailyWorkStatus;
+use App\Models\Project;
 use App\Models\Task;
 use App\Services\AuditLogger;
 use Illuminate\Support\Facades\DB;
@@ -21,20 +22,62 @@ class DailyStatus extends Component
     public string $plan = '';
     public string $blockers = '';
     public string $notes = '';
+    public string $pending = '';
+    public string $tomorrowPlan = '';
+    /** project id => what was done on that project today */
+    public array $projectUpdates = [];
     #[Url] public string $date = '';
     #[Url] public ?int $employee = null;
+    #[Url] public ?int $project = null;
 
     public function mount(): void
     {
         $today = $this->ownEmployee() ? DailyWorkStatus::where('employee_id', $this->ownEmployee()->id)->whereDate('work_date', today())->first() : null;
-        $this->fill(['summary' => (string) $today?->summary, 'yesterday' => (string) $today?->yesterday, 'plan' => (string) $today?->plan, 'blockers' => (string) $today?->blockers, 'notes' => (string) $today?->notes]);
+        $this->fill(['summary' => (string) $today?->summary, 'yesterday' => (string) $today?->yesterday, 'plan' => (string) $today?->plan, 'blockers' => (string) $today?->blockers, 'notes' => (string) $today?->notes, 'pending' => (string) $today?->pending, 'tomorrowPlan' => (string) $today?->tomorrow_plan]);
+        foreach ((array) ($today?->project_updates ?? []) as $line) $this->projectUpdates[(string) ($line['project_id'] ?? 0)] = (string) ($line['update'] ?? '');
+    }
+
+    public function updated($property): void
+    {
+        if (in_array($property, ['date', 'employee', 'project'], true)) $this->resetPage();
+    }
+
+    /**
+     * Today's work grouped by project: the employee's projects (member, manager or
+     * with tasks) plus tasks touched today and time logged on them.
+     *
+     * @return \Illuminate\Support\Collection<int, array{project: ?Project, tasks: \Illuminate\Support\Collection, seconds: int}>
+     */
+    private function todayByProject(\App\Models\AttendanceEmployee $employee): \Illuminate\Support\Collection
+    {
+        $tasks = Task::with('project')->where('assignee_id', $employee->id)
+            ->where(fn ($q) => $q->whereDate('completed_at', today())->orWhere('status', 'in_progress')->orWhereHas('timeEntries', fn ($t) => $t->whereDate('started_at', today())))
+            ->get();
+        $seconds = \App\Models\TaskTimeEntry::where('employee_id', $employee->id)->whereDate('started_at', today())->get()
+            ->groupBy('task_id')->map(fn ($entries) => (int) $entries->sum(fn ($e) => $e->status === 'running' ? $e->started_at->diffInSeconds(now()) : (int) $e->duration_seconds));
+        $projects = Project::where(fn ($q) => $q->where('manager_id', $employee->id)->orWhereHas('members', fn ($m) => $m->where('attendance_employees.id', $employee->id)))
+            ->whereIn('status', ['planned', 'active'])->orderBy('name')->get()->keyBy('id');
+        foreach ($tasks as $task) if ($task->project) $projects->put($task->project->id, $task->project);
+
+        return $projects->map(fn (Project $p) => ['project' => $p, 'tasks' => $tasks->where('project_id', $p->id)->values(), 'seconds' => (int) $tasks->where('project_id', $p->id)->sum(fn ($t) => $seconds[$t->id] ?? 0)])
+            ->push(['project' => null, 'tasks' => $tasks->whereNull('project_id')->values(), 'seconds' => (int) $tasks->whereNull('project_id')->sum(fn ($t) => $seconds[$t->id] ?? 0)])
+            ->filter(fn ($row) => $row['project'] || $row['tasks']->isNotEmpty())->values();
     }
 
     public function save(AuditLogger $audit): void
     {
         $employee = $this->requireEmployee();
-        $this->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'yesterday' => ['nullable', 'string', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000']], ['summary.required' => 'Write what you completed today.'], ['summary' => 'completed work']);
-        $fields = ['summary' => $this->summary, 'yesterday' => $this->yesterday ?: null, 'plan' => $this->plan ?: null, 'blockers' => $this->blockers ?: null, 'notes' => $this->notes ?: null, 'submitted_at' => now()];
+        $this->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'yesterday' => ['nullable', 'string', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000'], 'pending' => ['nullable', 'string', 'max:4000'], 'tomorrowPlan' => ['nullable', 'string', 'max:4000']], ['summary.required' => 'Write what you completed today.'], ['summary' => 'completed work']);
+        $this->validate(['projectUpdates.*' => ['nullable', 'string', 'max:2000']], [], ['projectUpdates.*' => 'project update']);
+        // Project-wise lines: what the employee wrote per project, with the tasks and time logged on it today.
+        $lines = $this->todayByProject($employee)->map(function ($row) {
+            $key = (string) ($row['project']?->id ?? 0);
+            $update = trim((string) ($this->projectUpdates[$key] ?? ''));
+            if ($update === '' && $row['tasks']->isEmpty()) return null;
+
+            return ['project_id' => $row['project']?->id, 'project' => $row['project']?->name ?? 'No project', 'update' => $update, 'tasks' => $row['tasks']->map(fn ($t) => ['title' => $t->title, 'status' => $t->status])->all(), 'seconds' => $row['seconds']];
+        })->filter()->values()->all();
+        $fields = ['summary' => $this->summary, 'yesterday' => $this->yesterday ?: null, 'plan' => $this->plan ?: null, 'blockers' => $this->blockers ?: null, 'notes' => $this->notes ?: null, 'pending' => $this->pending ?: null, 'tomorrow_plan' => $this->tomorrowPlan ?: null, 'submitted_at' => now(), 'project_updates' => $lines ?: null];
         $status = DB::transaction(function () use ($employee, $fields) {
             $status = DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', today())->lockForUpdate()->first();
             if ($status) {
@@ -45,8 +88,9 @@ class DailyStatus extends Component
 
             return $status;
         });
-        $audit->record('work_status.submitted', $status, ['has_blockers' => (bool) $status->blockers]);
+        $audit->record('work_status.submitted', $status, ['has_blockers' => (bool) $status->blockers, 'projects' => collect($lines)->pluck('project')->all()]);
         app(\App\Services\WorkService::class)->notifyBlocker($employee, $status);
+        app(\App\Services\WorkService::class)->notifyDailyStatus($employee, $status);
         $this->toast('Daily status saved.');
     }
 
@@ -70,6 +114,7 @@ class DailyStatus extends Component
             ->when($canSeeTeam && $scope, fn ($q) => $q->whereIn('employee_id', $scope->all() ?: [0]))
             ->when($this->date, fn ($q, $d) => $q->whereDate('work_date', $d))
             ->when($this->employee, fn ($q, $id) => $q->where('employee_id', $id))
+            ->when($this->project, fn ($q, $id) => $q->where('project_updates', 'like', '%"project_id":'.(int) $id.',%'))
             ->latest('work_date')->latest('id')->paginate(15);
 
         $missing = collect();
@@ -85,6 +130,8 @@ class DailyStatus extends Component
             'canSeeTeam' => $canSeeTeam,
             'missing' => $missing,
             'todayTasks' => $own ? Task::where('assignee_id', $own->id)->where(fn ($q) => $q->whereDate('completed_at', today())->orWhere('status', 'in_progress'))->get() : collect(),
+            'byProject' => $own ? $this->todayByProject($own) : collect(),
+            'projects' => $canSeeTeam ? Project::orderBy('name')->get(['id', 'name']) : collect(),
             'people' => $canSeeTeam ? AttendanceEmployee::where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))->orderBy('name')->get(['id', 'name']) : collect(),
         ], 'Daily Work Status');
     }

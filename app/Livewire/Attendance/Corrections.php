@@ -30,14 +30,15 @@ class Corrections extends Component
     public function mount(): void
     {
         $canApprove = $this->canApprove();
-        if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = $this->ownEmployee() ? 'mine' : 'approvals';
+        // Approvers land on what is waiting for them; everyone else on their own requests.
+        if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = ! $this->ownEmployee() || ($canApprove && app(ApprovalInbox::class)->pending($this->user(), AttendanceCorrection::class)->isNotEmpty()) ? 'approvals' : 'mine';
         if ($this->tab !== 'mine' && ! $canApprove) $this->tab = 'mine';
         if ($this->ownEmployee() && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->prefillDate)) $this->create($this->prefillDate);
     }
 
     private function canApprove(): bool
     {
-        return $this->user()->canAny(['attendance.correct', 'approvals.manage']);
+        return $this->user()->canAny(['attendance.correct', 'approvals.manage']) || ApprovalInbox::isTeamLead($this->user());
     }
 
     public function create(?string $date = null): void
@@ -70,7 +71,7 @@ class Corrections extends Component
         ], [], ['workDate' => 'date', 'checkIn' => 'check-in time', 'checkOut' => 'check-out time', 'breakMinutes' => 'break minutes']);
         $corrections->request($this->requireEmployee(), $this->workDate, $this->checkIn ?: null, $this->checkOut ?: null, $this->reason, $this->breakMinutes === '' ? null : (int) $this->breakMinutes);
         $this->showForm = false;
-        $this->toast('Correction sent to your manager for approval.');
+        $this->toast('Correction sent for approval to your manager and the attendance administrators.');
     }
 
     public function cancel(int $id, AttendanceCorrectionService $corrections): void

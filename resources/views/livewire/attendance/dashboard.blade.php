@@ -20,28 +20,30 @@
             @forelse($rows as $row)
                 <tr wire:key="row-{{ $row->employee->id }}">
                     <td><strong>{{ $row->employee->name }}</strong><small>{{ $row->employee->employee_code }} · {{ $row->employee->department?->name ?? '—' }}</small></td>
-                    <td>{{ $row->session?->check_in?->format('h:i A') ?? '—' }}</td>
-                    <td>{{ $row->session?->check_out?->format('h:i A') ?? '—' }}</td>
-                    <td class="num">{{ $row->session ? gmdate('H:i', $row->worked) : '—' }}</td>
-                    <td class="num">{{ $row->session ? gmdate('H:i', (int) $row->session->idle_seconds) : '—' }}</td>
-                    <td class="num">{{ $row->session ? gmdate('H:i', (int) $row->session->break_seconds) : '—' }}</td>
+                    <td>{{ $row->session?->check_in?->format('h:i A') ?? '—' }}@if($row->session?->check_in_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'in']) }}" target="_blank" title="Check-in selfie">📸</a>@endif @if($row->session?->check_in_latitude) <span title="{{ $row->session->check_in_latitude }}, {{ $row->session->check_in_longitude }}">📍</span>@endif</td>
+                    <td>{{ $row->session?->check_out?->format('h:i A') ?? '—' }}@if($row->session?->check_out_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'out']) }}" target="_blank" title="Check-out selfie">📸</a>@endif</td>
+                    <td class="num">{{ $row->session ? \App\Support\Duration::hms($row->worked) : '—' }}</td>
+                    <td class="num">{{ $row->session ? \App\Support\Duration::hms($row->session->idleSeconds()) : '—' }}</td>
+                    <td class="num">{{ $row->session ? \App\Support\Duration::hms((int) $row->session->break_seconds) : '—' }}</td>
                     <td class="nowrap">@include('livewire.attendance.partials.screen-time', ['s' => $row->session])</td>
                     <td class="small">{{ $row->session ? ($row->session->device?->computer_name ?? 'Web / mobile') : '—' }}</td>
                     <td><x-badge :status="$row->state" />@if($row->leave)<small>{{ $row->leave->leaveType?->name }}</small>@endif</td>
-                    <td>@if($row->session)<x-badge :status="$row->session->status" />@if($row->session->closed_automatically)<small>auto-closed</small>@endif @if(! $row->session->check_out && auth()->user()->canAny(['attendance.correct', 'hr.manage']))<button class="btn btn-sm" wire:click="openClose({{ $row->session->id }})">Check out</button>@endif @else — @endif</td>
+                    <td>@if($row->session)<x-badge :status="$row->session->status" />@if($row->session->closed_automatically)<small>auto-closed</small>@endif @if($row->session->wasForcedOut())<small title="{{ $row->session->forcedReasonLabel() }}">checked out by {{ $row->session->forcedBy?->name ?? 'admin' }} · {{ \Illuminate\Support\Str::limit($row->session->forcedReasonLabel(), 40) }}</small>@endif @if(! $row->session->check_out && auth()->user()->canAny(['attendance.correct', 'hr.manage']))<button class="btn btn-sm" wire:click="openClose({{ $row->session->id }})">Check out</button>@endif @else — @endif</td>
                 </tr>
             @empty
                 <tr><td colspan="9"><x-empty title="No employees match these filters" icon="users" /></td></tr>
             @endforelse
             </tbody>
         </table></div>
+        {{ $rows->links() }}
     </section>
     @if($closingId)
         <x-modal title="Check out on behalf of the employee">
             <form wire:submit="closeSession"><div class="modal-body"><div class="form-grid">
                 <x-field label="Check-out time" name="closeTime"><input type="time" wire:model="closeTime"></x-field>
-                <x-field label="Reason" name="closeNote" full><input wire:model="closeNote" placeholder="e.g. Left at 6 PM, forgot to check out"></x-field>
-            </div><p class="small muted">Recorded in the audit log and the employee is notified.</p></div>
+                <x-field label="Reason" name="closeReason"><select wire:model.live="closeReason"><option value="">Select a reason</option>@foreach(\App\Models\AttendanceSession::FORCED_CHECKOUT_REASONS as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
+                <x-field :label="$closeReason === 'other' ? 'Explanation (required)' : 'Explanation (optional)'" name="closeNote" full><textarea wire:model="closeNote" rows="2" placeholder="e.g. Left at 6 PM, confirmed by the team lead"></textarea></x-field>
+            </div><p class="small muted">The audit log records who checked the employee out, whose attendance it was, the date/time and the reason. The employee and their manager are notified, and the employee cannot check out again for this day.</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Check out</button></div></form>
         </x-modal>
     @endif

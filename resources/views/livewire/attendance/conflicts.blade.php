@@ -4,7 +4,7 @@
         <div class="toolbar"><input type="date" class="input" wire:model.live="from" aria-label="From"><input type="date" class="input" wire:model.live="to" x-bind:min="$wire.from" aria-label="To"></div>
     </div>
     <section class="card">
-        <div class="card-head"><div><h2>Needs a decision</h2><p>{{ $open->count() }} day(s)</p></div></div>
+        <div class="card-head"><div><h2>Needs a decision</h2><p>{{ $open->total() }} day(s)</p></div></div>
         <div class="table-wrap"><table class="table">
             <thead><tr><th>Employee</th><th>Day</th><th>Leave</th><th>Attendance</th><th></th></tr></thead>
             <tbody>
@@ -24,6 +24,7 @@
             @endforelse
             </tbody>
         </table></div>
+        {{ $open->links() }}
     </section>
     @if($resolved->isNotEmpty())
         <section class="card">
@@ -32,6 +33,7 @@
                 @foreach($resolved as $r)
                     <div class="list-row"><div><strong>{{ $r->employee?->name }} · {{ $r->work_date->format('d M Y') }}</strong><small>{{ $r->leaveRequest?->leaveType?->name }} · by {{ $r->resolver?->name ?? 'system' }} · {{ $r->created_at->diffForHumans() }}</small></div><x-badge :tone="$r->resolution === 'worked' ? 'green' : 'violet'">{{ $r->resolution }}</x-badge></div>
                 @endforeach
+                {{ $resolved->links() }}
             </div>
         </section>
     @endif

@@ -23,6 +23,21 @@ class HrFileController extends Controller
         return Storage::disk('local')->response($claim->receipt_path, $claim->receipt_name ?? 'receipt');
     }
 
+    /** Check-in/out selfie: the employee, their manager, and people who see team attendance or manage HR. */
+    public function attendancePhoto(\App\Models\AttendanceSession $session, string $kind, AuditLogger $audit): StreamedResponse
+    {
+        abort_unless(in_array($kind, ['in', 'out'], true), 404);
+        $path = $kind === 'in' ? $session->check_in_photo_path : $session->check_out_photo_path;
+        $user = auth()->user();
+        $employee = $session->employee;
+        $allowed = $employee && ($employee->user_id === $user->id || $employee->manager?->user_id === $user->id || $user->canAny(['hr.manage', 'employees.manage', 'attendance.correct']));
+        abort_unless($path && $allowed, 403);
+        abort_unless(Storage::disk('local')->exists($path), 404);
+        if ($employee->user_id !== $user->id) $audit->record('attendance.photo_viewed', $session, ['kind' => $kind, 'employee_id' => $employee->id]);
+
+        return Storage::disk('local')->response($path, 'checkin-'.$session->work_date->toDateString().'-'.$kind.'.'.pathinfo($path, PATHINFO_EXTENSION), ['Cache-Control' => 'private, no-store']);
+    }
+
     public function screenshot(Screenshot $screenshot, ScreenCaptureService $captures, AuditLogger $audit): StreamedResponse
     {
         abort_unless($captures->canView(auth()->user(), $screenshot), 403);

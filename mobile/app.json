@@ -18,7 +18,12 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.sws.hr"
+      "package": "com.sws.hr",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -46,7 +51,12 @@
     ],
     "scheme": "swshr",
     "extra": {
-      "apiUrl": "https://hrms.sohamsolution.com"
-    }
+      "apiUrl": "https://hrms.sohamsolution.com",
+      "router": {},
+      "eas": {
+        "projectId": "0ba36534-555e-4ac0-ac78-cd0536ee40fa"
+      }
+    },
+    "owner": "khushboo1-verma1"
   }
 }

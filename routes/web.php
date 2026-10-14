@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\EmployeeDocumentController;
 use App\Http\Controllers\HrFileController;
+use App\Http\Controllers\ImportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\ReportExportController;
@@ -41,13 +42,17 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/attendance/my', Livewire\Attendance\MyAttendance::class)->middleware('access:profile')->name('attendance.my');
     Route::get('/attendance/team', Livewire\Attendance\Dashboard::class)->middleware('access:attendance.view,hr.manage,employees.manage')->name('attendance.dashboard');
     Route::get('/attendance/records', Livewire\Attendance\Records::class)->middleware('access:hr.manage,employees.manage')->name('attendance.records');
+    Route::get('/attendance/{session}/photo/{kind}', [HrFileController::class, 'attendancePhoto'])->name('attendance.photo');
+    Route::post('/attendance/records/import', [ImportController::class, 'attendance'])->middleware('access:hr.manage,employees.manage')->name('attendance.records.import');
     Route::get('/attendance/corrections', Livewire\Attendance\Corrections::class)->middleware('access:profile,attendance.correct,approvals.manage')->name('attendance.corrections');
     Route::get('/attendance/conflicts', Livewire\Attendance\Conflicts::class)->middleware('access:attendance.correct,leave.manage,hr.manage')->name('attendance.conflicts');
+    Route::get('/attendance/devices', Livewire\Attendance\Devices::class)->middleware('access:employees.manage,hr.manage')->name('attendance.devices');
     Route::get('/attendance/shifts', Livewire\Attendance\Shifts::class)->middleware('access:shifts.manage,hr.manage')->name('attendance.shifts');
 
     // Work
     Route::get('/work/projects', Livewire\Work\Projects::class)->middleware('access:projects.manage,hr.manage')->name('work.projects');
-    Route::get('/work/tasks', Livewire\Work\Tasks::class)->middleware('access:tasks.manage,hr.manage')->name('work.tasks');
+    Route::get('/work/my-projects', Livewire\Work\Projects::class)->middleware('access:profile')->name('work.my-projects');
+    Route::get('/work/tasks', Livewire\Work\Tasks::class)->middleware('access:tasks.manage,hr.manage,manager')->name('work.tasks');
     Route::get('/work/my-tasks', Livewire\Work\Tasks::class)->middleware('access:profile')->name('work.my-tasks');
     Route::get('/work/timer', Livewire\Work\Timer::class)->middleware('access:profile')->name('work.timer');
     Route::get('/work/daily-status', Livewire\Work\DailyStatus::class)->middleware('access:profile,attendance.view,hr.manage')->name('work.daily-status');
@@ -63,6 +68,8 @@ Route::middleware(['auth', 'account.active'])->group(function () {
 
     // Payroll
     Route::get('/payroll/salary', Livewire\Payroll\Salary::class)->middleware('access:profile,payroll.manage,payroll.approve,hr.manage')->name('payroll.salary');
+    Route::post('/payroll/salary/import', [ImportController::class, 'salary'])->middleware('access:payroll.manage,hr.manage')->name('payroll.salary.import');
+    Route::get('/imports/{type}/template', [ImportController::class, 'template'])->middleware('access:payroll.manage,hr.manage,employees.manage')->name('imports.template');
     Route::get('/payroll/runs', Livewire\Payroll\Runs::class)->middleware('access:payroll.manage,payroll.approve')->name('payroll.runs');
     Route::get('/payroll/approvals', Livewire\Payroll\Runs::class)->middleware('access:payroll.approve')->name('payroll.approvals');
     Route::get('/payroll/payslips', Livewire\Payroll\Payslips::class)->middleware('access:profile,payroll.manage,payroll.approve')->name('payroll.payslips');

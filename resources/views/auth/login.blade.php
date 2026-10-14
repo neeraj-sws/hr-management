@@ -23,11 +23,11 @@
     <main class="auth-panel">
         <div class="auth-card">
             <h2>Welcome back</h2>
-            <p class="muted" style="margin-top:0">Sign in with your SWS account.</p>
+            <p class="muted" style="margin-top:0">Sign in with your work email or employee ID.</p>
             <form method="POST" action="{{ route('login.store') }}" class="stack" style="margin-top:22px">
                 @csrf
                 @if($errors->any())<div class="alert alert-error" role="alert">{{ $errors->first() }}</div>@endif
-                <label class="field {{ $errors->has('email') ? 'has-error' : '' }}"><span>Email</span><input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus autocomplete="username"></label>
+                <label class="field {{ $errors->has('email') ? 'has-error' : '' }}"><span>Email or Employee ID</span><input id="email" name="email" type="text" placeholder="you@company.com or EMP-001" value="{{ old('email') }}" required autofocus autocomplete="username"></label>
                 <label class="field"><span>Password</span><input id="password" name="password" type="password" required autocomplete="current-password"></label>
                 <label class="check"><input type="checkbox" name="remember" value="1"> Keep me signed in</label>
                 <button type="submit" class="btn btn-primary btn-lg" style="width:100%">Sign in</button>

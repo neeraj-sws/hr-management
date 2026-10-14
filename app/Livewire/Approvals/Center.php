@@ -12,7 +12,7 @@ use Livewire\Component;
 /** Approval Center, Pending Approvals and Approval History share this page. */
 class Center extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Locked] public string $mode = 'center';
     #[Url] public string $type = '';
@@ -67,8 +67,9 @@ class Center extends Component
             'inbox' => $inbox,
             'title' => $title,
             'byType' => $pending->groupBy('approvable_type'),
-            'pending' => $this->type ? $pending->where('approvable_type', $this->type)->values() : $pending,
-            'history' => $this->mode === 'history' ? $inbox->history($user, $this->type ?: null) : collect(),
+            'pending' => $filtered = ($this->type ? $pending->where('approvable_type', $this->type)->values() : $pending),
+            'pendingPage' => $this->paginateCollection($filtered->sortBy('created_at')->values(), 15, 'pendingPage'),
+            'history' => $this->mode === 'history' ? $this->paginateCollection($inbox->history($user, $this->type ?: null), 15, 'historyPage') : collect(),
             'recent' => $this->mode === 'center' ? $inbox->history($user, null, 8) : collect(),
             'types' => array_intersect_key(ApprovalInbox::TYPES, array_flip($inbox->typesFor($user))),
             'deciding' => $deciding && $deciding->approvable && $inbox->canDecide($user, $deciding) ? $deciding : null,

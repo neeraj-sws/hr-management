@@ -39,6 +39,10 @@ class CompanyService
     public function deleteAnnouncement(Announcement $announcement): void
     {
         $this->audit->record('announcement.deleted', $announcement, ['title' => $announcement->title]);
+        // Remove the in-app notifications that pointed at this announcement, so a deleted
+        // announcement no longer lingers in anyone's notification list.
+        \Illuminate\Notifications\DatabaseNotification::where('data->kind', 'Announcement')
+            ->where('data->record_id', $announcement->id)->delete();
         $announcement->delete();
     }
 

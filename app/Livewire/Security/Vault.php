@@ -18,7 +18,7 @@ use Livewire\Component;
  */
 class Vault extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     public const CATEGORIES = ['database' => 'Database', 'login' => 'Login', 'service' => 'API / service'];
 
@@ -139,7 +139,7 @@ class Vault extends Component
                 ->when($user->can('hr.manage'), fn ($q) => $q->orWhere('visibility', 'hr'))))
             ->when($this->category, fn ($q, $c) => $q->where('category', $c))
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('label', 'like', "%{$term}%")->orWhere('username', 'like', "%{$term}%")->orWhere('url', 'like', "%{$term}%")))
-            ->orderBy('label')->get();
+            ->orderBy('label')->paginate(15);
 
         return $this->page('livewire.security.vault', [
             'entries' => $entries,

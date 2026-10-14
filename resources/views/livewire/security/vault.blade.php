@@ -29,6 +29,7 @@
                 @endforelse
                 </tbody>
             </table></div>
+            {{ $entries->links() }}
         </section>
         @if($canManage)
             <section class="card">

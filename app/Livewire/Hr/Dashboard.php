@@ -40,6 +40,12 @@ class Dashboard extends Component
         $onLeaveIds = LeaveRequest::whereIn('employee_id', $employeeIds)->where('status', 'approved')
             ->whereDate('starts_on', '<=', $today)->whereDate('ends_on', '>=', $today)->pluck('employee_id')->unique()->diff($presentIds);
         $tasks = Task::with('assignee')->whereIn('assignee_id', $employeeIds)->get();
+        $completedToday = $tasks->filter(fn (Task $task) => $task->status === 'completed' && $task->completed_at?->isToday())->count();
+        // Today's work = tasks finished today + open tasks that are due today or already overdue.
+        // The percentage is how much of today's work is done.
+        $dueOpen = $tasks->filter(fn (Task $task) => $task->status !== 'completed' && $task->due_on && $task->due_on->lte($today))->count();
+        $todaysTasks = $completedToday + $dueOpen;
+        $taskCompletionPct = $todaysTasks > 0 ? (int) round($completedToday / $todaysTasks * 100) : 0;
 
         $mySession = $profile ? $attendance->today($profile) : null;
         $myTasks = $profile ? Task::where('assignee_id', $profile->id)->where('status', '!=', 'completed')->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(5)->get() : collect();
@@ -59,8 +65,14 @@ class Dashboard extends Component
                 'on_break' => $sessions->where('status', 'on_break')->count(),
                 'working' => $sessions->where('status', 'working')->count(),
                 'completed' => $sessions->where('status', 'completed')->count(),
+                'checked_in' => $presentIds->count(),
+                'still_in' => $sessions->whereNull('check_out')->pluck('employee_id')->unique()->count(),
+                'checked_out' => $sessions->whereNotNull('check_out')->pluck('employee_id')->unique()->count(),
+                'todays_tasks' => $todaysTasks,
                 'active_tasks' => $tasks->where('status', '!=', 'completed')->count(),
                 'overdue_tasks' => $tasks->filter(fn (Task $task) => $task->isOverdue())->count(),
+                'completed_today' => $completedToday,
+                'task_completion_pct' => $taskCompletionPct,
                 'pending_approvals' => $user->canAny(\App\Support\Access::APPROVER_PERMISSIONS) ? $inbox->pendingCount($user) : null,
                 'payroll_pending' => $user->canAny(['payroll.manage', 'payroll.approve']) ? PayrollRun::whereIn('status', ['draft', 'approved'])->count() : null,
             ],

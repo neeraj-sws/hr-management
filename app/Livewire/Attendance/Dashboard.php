@@ -16,7 +16,7 @@ use Livewire\Component;
 /** Team attendance for a single day: who is in, late, on break, on leave or absent. */
 class Dashboard extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $date = '';
     #[Url] public string $search = '';
@@ -24,7 +24,13 @@ class Dashboard extends Component
     #[Url] public string $show = 'all';
     public ?int $closingId = null;
     public string $closeTime = '';
+    public string $closeReason = '';
     public string $closeNote = '';
+
+    public function updated($property): void
+    {
+        if (in_array($property, ['date', 'search', 'department', 'show'], true)) $this->resetPage();
+    }
 
     public function mount(): void
     {
@@ -41,24 +47,31 @@ class Dashboard extends Component
     {
         abort_unless($this->canClose(), 403);
         $session = AttendanceSession::findOrFail($sessionId);
-        $this->fill(['closingId' => $session->id, 'closeTime' => now()->format('H:i'), 'closeNote' => '']);
+        abort_if($session->check_out !== null, 422, 'This person is already checked out.');
+        $this->fill(['closingId' => $session->id, 'closeTime' => now()->format('H:i'), 'closeReason' => '', 'closeNote' => '']);
         $this->resetValidation();
     }
 
-    public function closeSession(AttendanceService $attendance, \App\Services\AuditLogger $audit): void
+    /**
+     * Check-out on an employee's behalf. A reason is mandatory (and an
+     * explanation for "Other"); see AttendanceService::forceCheckOut for the
+     * audit record, notifications and the lock on further check-outs that day.
+     */
+    public function closeSession(AttendanceService $attendance): void
     {
         abort_unless($this->canClose(), 403);
-        $this->validate(['closeTime' => ['required', 'date_format:H:i'], 'closeNote' => ['required', 'string', 'min:3', 'max:500']], ['closeNote.required' => 'Say why you are checking this person out.'], ['closeTime' => 'check-out time']);
+        $this->validate([
+            'closeTime' => ['required', 'date_format:H:i'],
+            'closeReason' => ['required', \Illuminate\Validation\Rule::in(array_keys(AttendanceSession::FORCED_CHECKOUT_REASONS))],
+            'closeNote' => [$this->closeReason === 'other' ? 'required' : 'nullable', 'string', 'min:3', 'max:500'],
+        ], ['closeReason.required' => 'Choose why you are checking this person out.', 'closeNote.required' => 'Explain the reason when you choose "Other".'], ['closeTime' => 'check-out time', 'closeReason' => 'reason', 'closeNote' => 'explanation']);
         $session = AttendanceSession::with('employee')->findOrFail($this->closingId);
         $at = $session->work_date->copy()->setTimeFromTimeString($this->closeTime);
         if ($at->lt($session->check_in)) $at->addDay();
         if ($at->gt(now())) { $this->addError('closeTime', 'The check-out time cannot be in the future.'); return; }
-        app(\App\Services\PayrollLockGuard::class)->changed($session->employee_id, $session->work_date->toDateString(), 'attendance');
-        $closed = $attendance->checkOut($session->employee, 'admin', $at);
-        $audit->record('attendance.checked_out_by_admin', $closed, ['check_out' => $at->toDateTimeString(), 'note' => $this->closeNote]);
-        $closed->employee?->user?->notify(new \App\Notifications\ApprovalRequested('AttendanceSession', $closed->id, 'HR checked you out at '.$at->format('h:i A').': '.$this->closeNote, route('attendance.my', [], false)));
+        $closed = $attendance->forceCheckOut($session, $at, $this->closeReason, $this->closeNote ?: null, $this->user());
         $this->closingId = null;
-        $this->toast('Checked out at '.$at->format('h:i A').'.');
+        $this->toast("{$closed->employee->name} checked out at ".$closed->check_out->format('h:i A').'. They and their manager were notified.');
     }
 
     public function closeModal(): void
@@ -76,12 +89,12 @@ class Dashboard extends Component
             ->orderBy('name')->get();
         $since = $this->teamSince();
         if ($since) $employees = $employees->filter(fn ($e) => ! isset($since[$e->id]) || $since[$e->id] <= $this->date)->values();
-        $sessions = AttendanceSession::with(['employee', 'device'])->whereIn('employee_id', $employees->pluck('id'))->whereDate('work_date', $this->date)->get()->keyBy('employee_id');
+        $sessions = AttendanceSession::with(['employee', 'device', 'forcedBy'])->whereIn('employee_id', $employees->pluck('id'))->whereDate('work_date', $this->date)->get()->keyBy('employee_id');
         $onLeave = LeaveRequest::with('leaveType')->whereIn('employee_id', $employees->pluck('id'))->where('status', 'approved')
             ->whereDate('starts_on', '<=', $this->date)->whereDate('ends_on', '>=', $this->date)->get()->keyBy('employee_id');
         $isPast = $this->date < today()->toDateString();
         $calendar = $policies->forEmployee(null, 'calendar.working_days', $this->date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
-        $isWorkday = in_array(Carbon::parse($this->date)->isoWeekday(), $calendar['days'] ?? [1, 2, 3, 4, 5], true) && ! in_array($this->date, $calendar['holidays'] ?? [], true);
+        $isWorkday = \App\Support\WorkCalendar::isWorkday($this->date, $calendar);
 
         $rows = $employees->map(function (AttendanceEmployee $employee) use ($sessions, $onLeave, $attendance, $isPast, $isWorkday) {
             $session = $sessions->get($employee->id);
@@ -101,7 +114,7 @@ class Dashboard extends Component
         if ($this->show !== 'all') $rows = $rows->filter(fn ($row) => $this->show === 'present' ? in_array($row->state, ['present', 'late', 'half_day'], true) : $row->state === $this->show);
 
         return $this->page('livewire.attendance.dashboard', [
-            'rows' => $rows->values(),
+            'rows' => $this->paginateCollection($rows->values(), 25),
             'counts' => $counts,
             'total' => $employees->count(),
             'departments' => Department::orderBy('name')->get(),

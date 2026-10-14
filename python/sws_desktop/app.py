@@ -146,7 +146,7 @@ class DesktopApp:
         self.server_var = tk.StringVar(value=self.prefs.get("server", settings.DEFAULT_SERVER))
         self.email_var = tk.StringVar(value=self.prefs.get("email", ""))
         self.password_var = tk.StringVar()
-        for label, var, show in (("Server", self.server_var, ""), ("Email", self.email_var, ""), ("Password", self.password_var, "•")):
+        for label, var, show in (("Server", self.server_var, ""), ("Email or Employee ID", self.email_var, ""), ("Password", self.password_var, "•")):
             tk.Label(card, text=label, bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 2))
             entry = ttk.Entry(card, textvariable=var, width=40, show=show)
             entry.pack(anchor="w")
@@ -164,7 +164,7 @@ class DesktopApp:
     def _login(self):
         server, email, password = self.server_var.get().strip().rstrip("/"), self.email_var.get().strip(), self.password_var.get()
         if not (server and email and password):
-            self.login_error.config(text="Enter the server address, email and password.")
+            self.login_error.config(text="Enter the server address, email (or employee ID) and password.")
             return
         self.login_button.config(state="disabled", text="Signing in…")
         self.client = HrClient(server)

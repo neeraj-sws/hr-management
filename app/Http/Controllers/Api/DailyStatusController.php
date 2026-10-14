@@ -24,7 +24,7 @@ class DailyStatusController extends ApiController
     public function store(Request $request, AuditLogger $audit, WorkService $work): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $data = $request->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'yesterday' => ['nullable', 'string', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000'], 'work_date' => ['nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.today()->subDays(2)->toDateString()]]);
+        $data = $request->validate(['summary' => ['required', 'string', 'min:5', 'max:4000'], 'yesterday' => ['nullable', 'string', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000'], 'pending' => ['nullable', 'string', 'max:4000'], 'tomorrow_plan' => ['nullable', 'string', 'max:4000'], 'work_date' => ['nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.today()->subDays(2)->toDateString()]]);
         // Offline submissions carry the day they were written for (up to 2 days late).
         $day = isset($data['work_date']) ? Carbon::parse($data['work_date'])->toDateString() : today()->toDateString();
         unset($data['work_date']);
@@ -43,6 +43,7 @@ class DailyStatusController extends ApiController
         });
         $audit->record('work_status.submitted', $status, ['has_blockers' => (bool) $status->blockers]);
         $work->notifyBlocker($employee, $status);
+        $work->notifyDailyStatus($employee, $status);
 
         return response()->json(['data' => $this->present($status)], 201);
         });
@@ -50,6 +51,6 @@ class DailyStatusController extends ApiController
 
     private function present(DailyWorkStatus $s): array
     {
-        return ['id' => $s->id, 'work_date' => $s->work_date->toDateString(), 'yesterday' => $s->yesterday, 'plan' => $s->plan, 'summary' => $s->summary, 'blockers' => $s->blockers, 'notes' => $s->notes, 'submitted_at' => $s->submitted_at?->toIso8601String(), 'server_version' => (int) $s->server_version];
+        return ['id' => $s->id, 'work_date' => $s->work_date->toDateString(), 'yesterday' => $s->yesterday, 'plan' => $s->plan, 'summary' => $s->summary, 'blockers' => $s->blockers, 'notes' => $s->notes, 'pending' => $s->pending, 'tomorrow_plan' => $s->tomorrow_plan, 'submitted_at' => $s->submitted_at?->toIso8601String(), 'server_version' => (int) $s->server_version];
     }
 }

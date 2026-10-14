@@ -26,6 +26,7 @@ class Requests extends Component
 
     public bool $showForm = false;
     public ?int $leaveTypeId = null;
+    public string $duration = 'full';
     public string $startsOn = '';
     public string $endsOn = '';
     public string $reason = '';
@@ -34,9 +35,15 @@ class Requests extends Component
 
     public function mount(): void
     {
-        $canApprove = $this->user()->canAny(['leave.manage', 'leave.approve']);
-        if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = $this->ownEmployee() ? 'mine' : 'approvals';
+        $canApprove = $this->canApprove();
+        if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = ! $this->ownEmployee() || ($canApprove && app(ApprovalInbox::class)->pending($this->user(), LeaveRequest::class)->isNotEmpty()) ? 'approvals' : 'mine';
         if ($this->tab !== 'mine' && ! $canApprove) $this->tab = 'mine';
+    }
+
+    /** Leave administrators/approvers, and team leads for their own team's requests. */
+    private function canApprove(): bool
+    {
+        return $this->user()->canAny(['leave.manage', 'leave.approve']) || ApprovalInbox::isTeamLead($this->user());
     }
 
     public function updatedTab(): void
@@ -48,20 +55,34 @@ class Requests extends Component
     {
         $this->requireEmployee();
         $this->reset('leaveTypeId', 'startsOn', 'endsOn', 'reason');
+        $this->duration = 'full';
         $this->resetValidation();
         $this->startsOn = $this->endsOn = today()->addDay()->toDateString();
         $this->showForm = true;
+    }
+
+    /** Half-day and short leave are single-day, so keep the end date on the start date. */
+    public function updatedDuration(): void
+    {
+        if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
+    }
+
+    public function updatedStartsOn(): void
+    {
+        if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
     }
 
     public function submit(HrWorkflowService $workflow): void
     {
         $this->validate([
             'leaveTypeId' => ['required', 'exists:leave_types,id'],
+            'duration' => ['required', 'in:full,half,short'],
             'startsOn' => ['required', 'date'],
             'endsOn' => ['required', 'date', 'after_or_equal:startsOn'],
             'reason' => ['required', 'string', 'max:2000'],
         ], [], ['leaveTypeId' => 'leave type', 'startsOn' => 'start date', 'endsOn' => 'end date']);
-        $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
+        if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
+        $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'duration' => $this->duration, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
         $this->showForm = false;
         $this->toast('Leave request submitted for approval.');
     }
@@ -75,6 +96,8 @@ class Requests extends Component
             $leave->update(['status' => 'cancelled', 'decided_at' => now(), 'decision_note' => 'Cancelled by employee']);
             ApprovalRequest::where('approvable_type', LeaveRequest::class)->where('approvable_id', $leave->id)->where('status', 'pending')->update(['status' => 'cancelled', 'decided_at' => now()]);
             $audit->record('leave.cancelled', $leave);
+            $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
+            \App\Services\Notifier::send(\App\Services\Notifier::withPermission('leave.manage')->push($employee->manager?->user), 'LeaveRequest', $leave->id, "{$employee->name} cancelled their leave request ({$range}). No action is needed.", route('leave.requests', ['tab' => 'all'], false), $employee->user_id);
         });
         $this->toast('Leave request cancelled.');
     }
@@ -105,7 +128,7 @@ class Requests extends Component
     {
         $user = $this->user();
         $own = $this->ownEmployee();
-        $canApprove = $user->canAny(['leave.manage', 'leave.approve']);
+        $canApprove = $this->canApprove();
         $query = LeaveRequest::with(['employee', 'leaveType', 'decider'])->latest('starts_on')->latest('id');
         if ($this->tab === 'mine') {
             $query->where('employee_id', $own?->id ?? 0);

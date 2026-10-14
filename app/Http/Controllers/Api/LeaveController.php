@@ -41,9 +41,9 @@ class LeaveController extends ApiController
     public function store(Request $request, HrWorkflowService $workflow): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'starts_on' => ['required', 'date'], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000']]);
+        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'duration' => ['nullable', 'in:full,half,short'], 'starts_on' => ['required', 'date'], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000']]);
         return $this->once($request, function () use ($workflow, $employee, $data) {
-            $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
+            $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'duration' => $data['duration'] ?? 'full', 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
 
             return response()->json(['data' => $this->present($leave->load('leaveType'))], 201);
         });
@@ -66,6 +66,6 @@ class LeaveController extends ApiController
 
     private function present(LeaveRequest $leave): array
     {
-        return ['id' => $leave->id, 'leave_type' => $leave->leaveType?->name, 'starts_on' => $leave->starts_on->toDateString(), 'ends_on' => $leave->ends_on->toDateString(), 'days' => (float) $leave->days, 'reason' => $leave->reason, 'status' => $leave->status, 'decision_note' => $leave->decision_note, 'decided_at' => $leave->decided_at?->toIso8601String()];
+        return ['id' => $leave->id, 'leave_type' => $leave->leaveType?->name, 'duration' => $leave->duration, 'starts_on' => $leave->starts_on->toDateString(), 'ends_on' => $leave->ends_on->toDateString(), 'days' => (float) $leave->days, 'reason' => $leave->reason, 'status' => $leave->status, 'decision_note' => $leave->decision_note, 'decided_at' => $leave->decided_at?->toIso8601String()];
     }
 }

@@ -194,7 +194,9 @@ class AttendanceFlowTest extends TestCase
         $this->get('/dashboard')
             ->assertOk()
             ->assertSee('SWS HR')
-            ->assertSee('Present today')
+            ->assertSee('Checked in today')
+            ->assertSee('Checked out today')
+            ->assertSee('On lunch / break now')
             ->assertSee('Dashboard');
         $this->get('/attendance/team')
             ->assertOk()

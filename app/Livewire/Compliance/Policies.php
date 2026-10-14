@@ -16,7 +16,7 @@ use Livewire\Component;
  */
 class Policies extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     public const RULES = [
         'attendance.late_penalty' => ['Late attendance', ['amount_per_minute' => 'Amount per late minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
@@ -101,7 +101,7 @@ class Policies extends Component
             'teamOverrides' => \App\Models\TeamPolicyOverride::with('team')->whereIn('rule_key', array_keys(self::OVERRIDABLE))->latest()->get(),
             'teams' => \App\Models\Team::orderBy('name')->get(['id', 'name']),
             'canConfigure' => $this->user()->can('policies.manage'),
-            'overrides' => EmployeePolicyOverride::whereIn('rule_key', array_keys(self::OVERRIDABLE))->with('employee')->latest()->get(),
+            'overrides' => EmployeePolicyOverride::whereIn('rule_key', array_keys(self::OVERRIDABLE))->with('employee')->latest()->paginate(15, ['*'], 'overridesPage'),
             'history' => PolicyRule::whereIn('rule_key', array_keys(self::RULES))->latest('effective_from')->latest('id')->limit(15)->get(),
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ], 'Compliance');

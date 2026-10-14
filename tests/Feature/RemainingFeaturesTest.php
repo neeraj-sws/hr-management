@@ -108,7 +108,7 @@ class RemainingFeaturesTest extends TestCase
         app(EmployeeService::class)->syncTeams($this->employee, [$team->id], $this->admin, '2026-01-01');
         AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-06', 'check_in' => '2026-10-06 09:50:00', 'check_out' => '2026-10-06 18:30:00', 'active_seconds' => 7200, 'status' => 'completed']);
         $teamRow = $reports->rows($this->admin, 'teams', ['from' => '2026-10-01', 'to' => '2026-10-07', 'team_id' => $team->id])->first();
-        $this->assertSame(['Gamma', 1, 1, 1, 2.0], [$teamRow['team'], $teamRow['members'], $teamRow['attendance_days'], $teamRow['late_days'], $teamRow['active_hours']]);
+        $this->assertSame(['Gamma', 1, 1, 1, '02:00:00'], [$teamRow['team'], $teamRow['members'], $teamRow['attendance_days'], $teamRow['late_days'], $teamRow['active_time']]);
 
         Screenshot::create(['employee_id' => $this->employee->id, 'captured_at' => '2026-10-06 10:00:00', 'path' => 'x/1.jpg', 'bytes' => 1048576]);
         Screenshot::create(['employee_id' => $this->employee->id, 'captured_at' => '2026-10-06 16:30:00', 'path' => 'x/2.jpg', 'bytes' => 1048576]);
@@ -127,7 +127,7 @@ class RemainingFeaturesTest extends TestCase
         $this->postJson('/api/push-tokens', ['token' => 'not-a-token'])->assertUnprocessable();
         $this->postJson('/api/push-tokens', ['token' => 'ExponentPushToken[abc123]', 'platform' => 'android'])->assertOk()->assertJsonPath('push_enabled', false);
         $notification = new \App\Notifications\ApprovalRequested('LeaveRequest', 1, 'Your leave was approved');
-        $this->assertSame(['database'], $notification->via($this->employeeUser->fresh()), 'Off until EXPO_PUSH_ENABLED');
+        $this->assertNotContains(\App\Notifications\Channels\ExpoPushChannel::class, $notification->via($this->employeeUser->fresh()), 'Off until EXPO_PUSH_ENABLED');
 
         config(['services.expo_push.enabled' => true]);
         $this->assertContains(\App\Notifications\Channels\ExpoPushChannel::class, $notification->via($this->employeeUser->fresh()));
@@ -240,7 +240,7 @@ class RemainingFeaturesTest extends TestCase
         // Admin report lists it; employees cannot view it.
         $rows = app(ReportService::class)->rows($this->admin, 'app_usage', ['from' => today()->toDateString(), 'to' => today()->toDateString()]);
         $chrome = $rows->firstWhere('application', 'Google Chrome');
-        $this->assertSame([15, 0.25], [$chrome['minutes'], $chrome['hours']]);
+        $this->assertSame('00:15:00', $chrome['time']);
         $this->assertFalse(app(ReportService::class)->canView($this->employeeUser, 'app_usage'));
 
         // The phone/desktop learns the flag from /me.
@@ -255,6 +255,6 @@ class RemainingFeaturesTest extends TestCase
         $this->assertSame(180, (int) \App\Models\ActivityTitle::where('title', 'github.com - Chrome')->value('seconds'));
         $this->getJson('/api/me')->assertJsonPath('data.policies.window_titles', true);
         $titleRow = app(ReportService::class)->rows($this->admin, 'window_titles', ['from' => today()->toDateString(), 'to' => today()->toDateString()])->firstWhere('title', 'github.com - Chrome');
-        $this->assertSame(3, $titleRow['minutes']);
+        $this->assertSame('00:03:00', $titleRow['time']);
     }
 }

@@ -9,7 +9,7 @@ use Livewire\Component;
 
 class MyTraining extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     public ?int $completingId = null;
     public string $note = '';
@@ -42,13 +42,13 @@ class MyTraining extends Component
     public function render()
     {
         $employee = $this->requireEmployee();
-        $assignments = TrainingAssignment::with(['course', 'assigner'])->where('employee_id', $employee->id)
-            ->orderByRaw("status = 'completed'")->orderByRaw('due_on IS NULL')->orderBy('due_on')->get();
+        $base = fn () => TrainingAssignment::with(['course', 'assigner'])->where('employee_id', $employee->id);
 
         return $this->page('livewire.training.my-training', [
-            'open' => $assignments->where('status', '!=', 'completed'),
-            'done' => $assignments->where('status', 'completed'),
-            'completing' => $this->completingId ? $assignments->firstWhere('id', $this->completingId) : null,
+            'open' => $base()->where('status', '!=', 'completed')->orderByRaw('due_on IS NULL')->orderBy('due_on')->paginate(15, ['*'], 'openPage'),
+            'done' => $base()->where('status', 'completed')->latest('completed_at')->paginate(15, ['*'], 'donePage'),
+            'completing' => $this->completingId ? $base()->find($this->completingId) : null,
+            'overdueCount' => $base()->where('status', '!=', 'completed')->get()->filter->isOverdue()->count(),
         ], 'My Training');
     }
 }

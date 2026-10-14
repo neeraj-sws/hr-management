@@ -12,7 +12,7 @@ use Livewire\Component;
 /** Managers directory: anyone with direct reports or the Manager role, with team load. */
 class Managers extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     public function render()
     {
@@ -29,6 +29,6 @@ class Managers extends Component
                 return $manager;
             });
 
-        return $this->page('livewire.people.managers', ['managers' => $managers], 'Managers');
+        return $this->page('livewire.people.managers', ['managers' => $this->paginateCollection($managers, 15)], 'Managers');
     }
 }

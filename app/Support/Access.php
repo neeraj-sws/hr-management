@@ -8,7 +8,9 @@ use App\Models\User;
  * Evaluates the rule tokens used by the `access:` route middleware.
  * A user passes when ANY token matches:
  *   profile  – the user has an employee profile (self-service pages)
- *   approver – the user holds at least one approval permission
+ *   approver – the user holds at least one approval permission, or is a team lead
+ *              (direct reports / named approver on a pending request)
+ *   manager  – the user's employee has at least one direct report (a team lead)
  *   interviewer – the user has been assigned at least one interview
  *   any      – any signed-in user
  *   <name>   – a Spatie permission
@@ -20,6 +22,15 @@ class Access
         'salary.adjust', 'salary.advance', 'penalties.manage', 'lifecycle.manage', 'attendance.correct', 'expenses.manage',
     ];
 
+    /**
+     * The system administrator: the Master Admin role (or whoever may manage
+     * roles). Only an administrator can set another person's password.
+     */
+    public static function isAdmin(?User $user): bool
+    {
+        return $user !== null && ($user->hasRole('Master Admin') || $user->can('roles.manage'));
+    }
+
     public static function allows(?User $user, array $rules): bool
     {
         if (! $user) return false;
@@ -29,7 +40,8 @@ class Access
             $allowed = match ($rule) {
                 'any' => true,
                 'profile' => $user->employeeProfile !== null,
-                'approver' => $user->canAny(self::APPROVER_PERMISSIONS),
+                'approver' => $user->canAny(self::APPROVER_PERMISSIONS) || \App\Services\ApprovalInbox::isTeamLead($user),
+                'manager' => $user->employeeProfile?->directReports()->exists() ?? false,
                 'interviewer' => \App\Models\Interview::where('interviewer_id', $user->id)->exists(),
                 default => $user->can($rule),
             };

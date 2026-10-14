@@ -2,7 +2,7 @@
 @section('title', 'Reset password')
 @section('card')
     <h2>Reset your password</h2>
-    <p class="muted" style="margin-top:0">Enter your work email. If it belongs to an active account, we will send a link to choose a new password.</p>
+    <p class="muted" style="margin-top:0">Administrators: enter your work email to get a reset link. Employees cannot reset their own password — please ask your administrator.</p>
     @if(session('status'))<div class="alert alert-success" role="status">{{ session('status') }}</div>@endif
     <form method="POST" action="{{ route('password.email') }}" class="stack" style="margin-top:22px">
         @csrf

@@ -45,6 +45,7 @@
             <div class="list">
                 @foreach($teamOverrides as $t)<div class="list-row"><div><strong>Team {{ $t->team?->name }} · {{ $overridable[$t->rule_key][0] ?? $t->rule_key }}</strong><small>from {{ $t->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($t->configuration)->map(fn ($v, $k) => str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="blue">team</x-badge></div>@endforeach
                 @foreach($overrides as $o)<div class="list-row"><div><strong>{{ $o->employee?->name }} · {{ $overridable[$o->rule_key][0] ?? $o->rule_key }}</strong><small>from {{ $o->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($o->configuration)->map(fn ($v, $k) => str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="violet">override</x-badge></div>@endforeach
+                {{ $overrides->links() }}
                 @foreach($history as $r)<div class="list-row"><div><strong>{{ $rules[$r->rule_key][0] ?? $r->rule_key }}</strong><small>from {{ $r->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($r->configuration)->map(fn ($v, $k) => str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="blue">global</x-badge></div>@endforeach
                 @if($overrides->isEmpty() && $teamOverrides->isEmpty() && $history->isEmpty())<x-empty title="No compliance rules configured yet" icon="shield" />@endif
             </div>

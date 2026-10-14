@@ -54,6 +54,20 @@ class User extends Authenticatable
     }
 
     /**
+     * The account for a sign-in name: an e-mail address, or an employee ID
+     * (employee code, e.g. EMP-001, any letter case) of an employee with a login.
+     */
+    public static function findForLogin(string $login): ?self
+    {
+        $login = trim($login);
+        if ($login === '') return null;
+        if (str_contains($login, '@')) return self::where('email', $login)->first();
+        $employee = AttendanceEmployee::whereRaw('LOWER(employee_code) = ?', [mb_strtolower($login)])->whereNotNull('user_id')->first();
+
+        return $employee ? self::find($employee->user_id) : null;
+    }
+
+    /**
      * Keep existing bcrypt/Argon hashes intact so Laravel can verify legacy
      * credentials and its auth provider can rehash them after successful login.
      */

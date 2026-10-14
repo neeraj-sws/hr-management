@@ -107,6 +107,7 @@ class TaskController extends ApiController
             'priority' => ['required', 'in:'.implode(',', WorkService::PRIORITIES)],
             'status' => ['nullable', 'in:'.implode(',', WorkService::STATUSES)],
             'estimated_hours' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'progress' => ['nullable', 'integer', 'min:0', 'max:100'],
             'due_on' => ['nullable', 'date'],
         ]);
     }
@@ -121,7 +122,8 @@ class TaskController extends ApiController
             'assignee' => $task->assignee ? ['id' => $task->assignee->id, 'name' => $task->assignee->name] : null,
             'priority' => $task->priority, 'status' => $task->status,
             'estimated_hours' => $task->estimated_hours !== null ? (float) $task->estimated_hours : null,
-            'logged_seconds' => $this->work->loggedSeconds($task),
+            'logged_seconds' => $logged = $this->work->loggedSeconds($task),
+            'progress' => $task->progressPercent($logged),
             'due_on' => $task->due_on?->toDateString(), 'overdue' => $task->isOverdue(), 'completed_late' => $task->wasCompletedLate(),
             'timer_running_since' => $running?->started_at?->toIso8601String(),
             'completed_at' => $task->completed_at?->toIso8601String(),

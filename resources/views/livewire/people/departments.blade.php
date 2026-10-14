@@ -1,5 +1,5 @@
 <div>
-    <div class="page-head"><div><h1>Departments</h1><p>{{ $departments->count() }} departments</p></div><button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Add department</button></div>
+    <div class="page-head"><div><h1>Departments</h1><p>{{ $departments->total() }} departments</p></div><button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Add department</button></div>
     <section class="card"><div class="table-wrap"><table class="table">
         <thead><tr><th>Department</th><th>Code</th><th>Head</th><th class="num">Active employees</th><th class="num">Teams</th><th>Status</th><th></th></tr></thead>
         <tbody>
@@ -10,6 +10,7 @@
         @endforelse
         </tbody>
     </table></div></section>
+    {{ $departments->links() }}
 
     @if($showForm)
         <x-modal :title="$editingId ? 'Edit department' : 'Add department'">

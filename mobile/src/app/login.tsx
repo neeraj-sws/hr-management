@@ -19,7 +19,7 @@ export default function Login() {
     setError(null);
     if (!server.trim() || !email.trim() || !password) {
       if (!server.trim()) setEditServer(true);
-      setError(!email.trim() || !password ? 'Enter your email and password.' : 'Enter the server address.');
+      setError(!email.trim() || !password ? 'Enter your email or employee ID and password.' : 'Enter the server address.');
       return;
     }
     setBusy(true);
@@ -44,7 +44,7 @@ export default function Login() {
         </View>
         <Card>
           {error ? <View style={{ marginBottom: 12 }}><Notice tone="error" text={error} /></View> : null}
-          <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="username" />
+          <Field label="Email or Employee ID" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} textContentType="username" />
           <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} textContentType="password" returnKeyType="go" onSubmitEditing={submit} />
           <Pressable onPress={() => setShowPassword((v) => !v)} style={{ alignSelf: 'flex-end', marginTop: -6, marginBottom: 12 }}>
             <Text style={{ color: colors.blue, fontWeight: '600', fontSize: 13 }}>{showPassword ? 'Hide password' : 'Show password'}</Text>

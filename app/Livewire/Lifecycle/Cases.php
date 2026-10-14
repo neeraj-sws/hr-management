@@ -23,7 +23,7 @@ use Livewire\Component;
  */
 class Cases extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Locked] public string $kind = 'onboarding';
     #[Url] public ?int $case = null;
@@ -36,6 +36,10 @@ class Cases extends Component
     public string $exitType = 'resignation';
     public string $resignedOn = '';
     public string $newItem = '';
+    public bool $showCorrect = false;
+    public bool $showCancel = false;
+    public string $correctionReason = '';
+    public string $cancelReason = '';
 
     public function mount(): void
     {
@@ -90,7 +94,8 @@ class Cases extends Component
         $case = EmployeeLifecycleCase::findOrFail($this->case);
         $asset = EmployeeAsset::where('employee_id', $case->employee_id)->where('status', 'assigned')->findOrFail($assetId);
         $asset->update(['status' => 'returned', 'returned_on' => today()]);
-        $audit->record('employee.asset_returned', $asset);
+        $asset->recordEvent('returned', $asset->employee_id, 'Returned during offboarding');
+        $audit->record('employee.asset_returned', $asset, ['employee_id' => $asset->employee_id, 'asset_tag' => $asset->asset_tag]);
         $this->toast('Asset marked as returned.');
     }
 
@@ -106,9 +111,46 @@ class Cases extends Component
         $this->toast($case->kind === 'offboarding' ? 'Offboarding closed. The employee is now inactive and all access was revoked.' : 'Onboarding completed. The employee is active.');
     }
 
+    /** Correct an offboarding case opened with wrong details (within the correction window). */
+    public function openCorrect(PeopleOperationsService $people): void
+    {
+        $case = EmployeeLifecycleCase::with('employee')->findOrFail($this->case);
+        abort_unless($people->canCorrectOffboarding($this->user(), $case), 403, 'The correction window for this case has passed. Ask an administrator.');
+        $this->fill(['effectiveOn' => (string) $case->effective_on?->toDateString(), 'exitType' => $case->employee->exit_type ?: 'resignation', 'resignedOn' => (string) $case->employee->resigned_on?->toDateString(), 'notes' => (string) $case->notes, 'correctionReason' => '', 'showCorrect' => true]);
+        $this->resetValidation();
+    }
+
+    public function saveCorrection(PeopleOperationsService $people): void
+    {
+        $this->validate(['effectiveOn' => ['required', 'date'], 'exitType' => ['required', 'in:resignation,termination,end_of_contract,retirement'], 'resignedOn' => ['nullable', 'date'], 'notes' => ['nullable', 'string', 'max:2000'], 'correctionReason' => ['required', 'string', 'min:5', 'max:1000']], [], ['effectiveOn' => 'last working day', 'exitType' => 'exit type', 'correctionReason' => 'reason for the correction']);
+        $people->correctOffboarding(EmployeeLifecycleCase::findOrFail($this->case), ['effective_on' => $this->effectiveOn, 'exit_type' => $this->exitType, 'resigned_on' => $this->resignedOn ?: null, 'notes' => $this->notes ?: null], $this->correctionReason, $this->user());
+        $this->showCorrect = false;
+        $this->toast('Offboarding case corrected. The change is in the audit log.');
+    }
+
+    /** Cancel an offboarding case opened by mistake (a closed one is reversed and the employee re-activated). */
+    public function openCancel(PeopleOperationsService $people): void
+    {
+        $case = EmployeeLifecycleCase::findOrFail($this->case);
+        abort_unless($people->canCorrectOffboarding($this->user(), $case), 403, 'The correction window for this case has passed. Ask an administrator.');
+        $this->fill(['cancelReason' => '', 'showCancel' => true]);
+        $this->resetValidation();
+    }
+
+    public function cancelCase(PeopleOperationsService $people): void
+    {
+        $this->validate(['cancelReason' => ['required', 'string', 'min:5', 'max:1000']], ['cancelReason.required' => 'Say why the offboarding is being cancelled.'], ['cancelReason' => 'reason']);
+        $case = $people->cancelOffboarding(EmployeeLifecycleCase::findOrFail($this->case), $this->cancelReason, $this->user());
+        $this->showCancel = false;
+        $this->status = 'all';
+        $this->toast('Offboarding cancelled'.($case->employee->is_active ? '; the employee is active.' : '.'));
+    }
+
     public function closeModal(): void
     {
         $this->showForm = false;
+        $this->showCorrect = false;
+        $this->showCancel = false;
     }
 
     /** Data-driven onboarding readiness, checked against the employee's real records. */
@@ -129,8 +171,9 @@ class Cases extends Component
     public function render(LeaveAccrualService $leave)
     {
         $cases = EmployeeLifecycleCase::with(['employee', 'clearances', 'settlement'])->where('kind', $this->kind)
-            ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))->latest()->get();
-        $selected = $this->case ? EmployeeLifecycleCase::with(['employee.department', 'employee.manager', 'clearances', 'settlement.payments'])->where('kind', $this->kind)->find($this->case) : null;
+            ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))->latest()->paginate(20);
+        $selected = $this->case ? EmployeeLifecycleCase::with(['employee.department', 'employee.manager', 'clearances', 'settlement.payments', 'canceller'])->where('kind', $this->kind)->find($this->case) : null;
+        $people = app(PeopleOperationsService::class);
         $details = [];
         if ($selected) {
             $employee = $selected->employee;
@@ -148,6 +191,9 @@ class Cases extends Component
             'selected' => $selected,
             'details' => $details,
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
+            'canCorrect' => $selected && $selected->kind === 'offboarding' ? $people->canCorrectOffboarding($this->user(), $selected) : false,
+            'correctionDeadline' => $selected && $selected->kind === 'offboarding' ? $people->correctionDeadline($selected) : null,
+            'windowHours' => $people->offboardingWindowHours(),
         ], $this->kind === 'offboarding' ? 'Offboarding' : 'Onboarding');
     }
 }

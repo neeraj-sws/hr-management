@@ -65,7 +65,27 @@ class ReportService
         return array_values(array_filter(array_keys(self::TYPES), fn ($type) => $this->canView($user, $type)));
     }
 
+    /**
+     * Duration columns (unit in seconds) shown as HH:MM:SS, the same format
+     * as the attendance and task screens. The column is renamed to *_time so
+     * a spreadsheet never mixes decimal hours with clock times.
+     */
+    public const DURATION_COLUMNS = ['active_hours' => 3600, 'idle_hours' => 3600, 'break_hours' => 3600, 'screen_active_hours' => 3600, 'screen_idle_hours' => 3600, 'late_minutes' => 60, 'early_minutes' => 60, 'estimated_hours' => 3600, 'logged_hours' => 3600, 'requested_minutes' => 60, 'approved_minutes' => 60, 'hours' => 3600, 'minutes' => 60];
+
+    public static function durationColumn(string $column): string
+    {
+        if (! isset(self::DURATION_COLUMNS[$column])) return $column;
+        if (in_array($column, ['hours', 'minutes'], true)) return 'time';
+
+        return preg_replace('/_(hours|minutes)$/', '', $column).'_time';
+    }
+
     public function columns(string $type): array
+    {
+        return array_map([self::class, 'durationColumn'], $this->rawColumns($type));
+    }
+
+    private function rawColumns(string $type): array
     {
         return match ($type) {
             'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'day_status', 'session_status'],
@@ -84,7 +104,7 @@ class ReportService
             'payments' => ['paid_on', 'kind', 'employee_code', 'employee_name', 'for_period', 'amount', 'method', 'reference', 'recorded_by'],
             'teams' => ['team', 'department', 'manager', 'members', 'attendance_days', 'late_days', 'leave_days', 'active_hours', 'tasks_completed', 'tasks_completed_late', 'tasks_overdue'],
             'screenshots' => ['employee_code', 'employee_name', 'date', 'captures', 'first_at', 'last_at', 'size_mb'],
-            'app_usage' => ['employee_code', 'employee_name', 'date', 'application', 'hours', 'minutes'],
+            'app_usage' => ['employee_code', 'employee_name', 'date', 'application', 'hours'],
             'window_titles' => ['employee_code', 'employee_name', 'date', 'application', 'title', 'minutes'],
             default => [],
         };
@@ -105,7 +125,7 @@ class ReportService
                 ->map(function (AttendanceSession $s) {
                     $status = $this->attendance->isHalfDay($s) ? 'half_day' : ($this->attendance->isLate($s) ? 'late' : 'present');
 
-                    return ['employee_code' => $s->employee?->employee_code, 'employee_name' => $s->employee?->name, 'department' => $s->employee?->department?->name, 'work_date' => $s->work_date?->toDateString(), 'check_in' => $s->check_in?->format('H:i'), 'check_out' => $s->check_out?->format('H:i'), 'active_hours' => $this->hours($s->active_seconds), 'idle_hours' => $this->hours($s->idle_seconds), 'break_hours' => $this->hours($s->break_seconds), 'screen_active_hours' => $this->hours($s->screen_active_seconds), 'screen_idle_hours' => $this->hours($s->screen_idle_seconds), 'late_minutes' => $this->attendance->lateMinutes($s), 'early_minutes' => $this->attendance->earlyMinutes($s), 'day_status' => $status, 'session_status' => $s->status];
+                    return ['employee_code' => $s->employee?->employee_code, 'employee_name' => $s->employee?->name, 'department' => $s->employee?->department?->name, 'work_date' => $s->work_date?->toDateString(), 'check_in' => $s->check_in?->format('h:i:s A'), 'check_out' => $s->check_out?->format('h:i:s A'), 'active_hours' => $this->hours($this->attendance->workedSeconds($s)), 'idle_hours' => $this->hours($s->idleSeconds()), 'break_hours' => $this->hours($s->break_seconds), 'screen_active_hours' => $this->hours($s->screen_active_seconds), 'screen_idle_hours' => $this->hours($s->screen_idle_seconds), 'late_minutes' => $this->attendance->lateMinutes($s), 'early_minutes' => $this->attendance->earlyMinutes($s), 'day_status' => $status, 'session_status' => $s->status];
                 }),
             'leave' => LeaveRequest::with(['employee', 'leaveType'])->whereIn('employee_id', $ids)
                 ->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->orderByDesc('starts_on')
@@ -115,7 +135,7 @@ class ReportService
                 ->where(fn ($q) => $q->whereBetween('due_on', [$from, $to])->orWhere(fn ($q) => $q->whereDate('created_at', '>=', $from)->whereDate('created_at', '<=', $to)))
                 ->when($filters['search'] ?? null, fn ($q, $term) => $q->where('title', 'like', "%{$term}%"))
                 ->orderByDesc('id')->when($limit, fn ($q) => $q->limit($limit))->get()
-                ->map(fn (Task $t) => ['id' => $t->id, 'title' => $t->title, 'project' => $t->project?->name, 'employee_code' => $t->assignee?->employee_code, 'employee_name' => $t->assignee?->name, 'priority' => $t->priority, 'status' => $t->status, 'due_on' => $t->due_on?->toDateString(), 'estimated_hours' => $t->estimated_hours !== null ? (float) $t->estimated_hours : null, 'logged_hours' => round($this->work->loggedSeconds($t) / 3600, 2), 'completed_at' => $t->completed_at?->toDateTimeString(), 'timeliness' => $t->wasCompletedLate() ? 'late' : ($t->isOverdue() ? 'overdue' : ($t->status === 'completed' ? 'on_time' : 'open'))]),
+                ->map(fn (Task $t) => ['id' => $t->id, 'title' => $t->title, 'project' => $t->project?->name, 'employee_code' => $t->assignee?->employee_code, 'employee_name' => $t->assignee?->name, 'priority' => $t->priority, 'status' => $t->status, 'due_on' => $t->due_on?->toDateString(), 'estimated_hours' => $t->estimated_hours !== null ? (float) $t->estimated_hours : null, 'logged_hours' => $this->work->loggedSeconds($t) / 3600, 'completed_at' => $t->completed_at?->toDateTimeString(), 'timeliness' => $t->wasCompletedLate() ? 'late' : ($t->isOverdue() ? 'overdue' : ($t->status === 'completed' ? 'on_time' : 'open'))]),
             'overtime' => OvertimeRequest::with('employee')->whereIn('employee_id', $ids)
                 ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')
                 ->when($limit, fn ($q) => $q->limit($limit))->get()
@@ -163,11 +183,11 @@ class ReportService
                 ->sortByDesc('date')->values(),
             'app_usage' => \App\Models\AppUsage::with('employee')->whereIn('employee_id', $ids)
                 ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')->orderByDesc('seconds')->get()
-                ->map(fn ($u) => ['employee_code' => $u->employee?->employee_code, 'employee_name' => $u->employee?->name, 'date' => $u->work_date->toDateString(), 'application' => $u->app_name, 'hours' => round($u->seconds / 3600, 2), 'minutes' => (int) round($u->seconds / 60)])
+                ->map(fn ($u) => ['employee_code' => $u->employee?->employee_code, 'employee_name' => $u->employee?->name, 'date' => $u->work_date->toDateString(), 'application' => $u->app_name, 'hours' => $u->seconds / 3600])
                 ->values(),
             'window_titles' => \App\Models\ActivityTitle::with('employee')->whereIn('employee_id', $ids)
                 ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')->orderByDesc('seconds')->get()
-                ->map(fn ($u) => ['employee_code' => $u->employee?->employee_code, 'employee_name' => $u->employee?->name, 'date' => $u->work_date->toDateString(), 'application' => $u->app_name, 'title' => $u->title, 'minutes' => (int) round($u->seconds / 60)])
+                ->map(fn ($u) => ['employee_code' => $u->employee?->employee_code, 'employee_name' => $u->employee?->name, 'date' => $u->work_date->toDateString(), 'application' => $u->app_name, 'title' => $u->title, 'minutes' => $u->seconds / 60])
                 ->values(),
             default => collect(),
         };
@@ -181,7 +201,24 @@ class ReportService
             $rows = $rows->filter(fn ($row) => ! isset($sinceByCode[$row['employee_code'] ?? '']) || ($row[$dateColumn] ?? '9999') >= $sinceByCode[$row['employee_code']]);
         }
 
+        $rows = $rows->map(fn (array $row) => $this->formatDurations($row));
+
         return $limit ? $rows->take($limit)->values() : $rows->values();
+    }
+
+    /** Converts duration columns to HH:MM:SS under their *_time name. */
+    private function formatDurations(array $row): array
+    {
+        $out = [];
+        foreach ($row as $key => $value) {
+            if (isset(self::DURATION_COLUMNS[$key])) {
+                $out[self::durationColumn($key)] = $value === null ? null : \App\Support\Duration::hms((float) $value * self::DURATION_COLUMNS[$key]);
+                continue;
+            }
+            $out[$key] = $value;
+        }
+
+        return $out;
     }
 
     /** @return array<int, string> direct report id => date the current manager took over (non-org-wide users only) */
@@ -272,8 +309,9 @@ class ReportService
         ]);
     }
 
+    /** Unrounded, so the HH:MM:SS shown in reports keeps every second. */
     private function hours(mixed $seconds): float
     {
-        return round(((int) $seconds) / 3600, 2);
+        return ((int) $seconds) / 3600;
     }
 }

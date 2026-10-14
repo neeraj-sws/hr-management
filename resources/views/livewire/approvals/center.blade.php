@@ -18,7 +18,7 @@
             <div class="table-wrap"><table class="table">
                 <thead><tr><th>Type</th><th>Request</th><th>Submitted</th><th></th></tr></thead>
                 <tbody>
-                @forelse(($mode === 'center' ? $pending->sortBy('created_at')->take(10) : $pending->sortBy('created_at')) as $approval)
+                @forelse(($mode === 'center' ? $pending->sortBy('created_at')->take(10) : $pendingPage) as $approval)
                     <tr wire:key="ap-{{ $approval->id }}"><td><x-badge tone="blue">{{ $inbox->typeLabel($approval->approvable_type) }}</x-badge></td><td style="white-space:normal">{{ $inbox->summary($approval) }}</td><td class="nowrap">{{ $approval->created_at->diffForHumans() }}</td>
                         <td><div class="row-actions"><button class="btn btn-sm btn-success" wire:click="quickApprove({{ $approval->id }})" wire:confirm="Approve this {{ strtolower($inbox->typeLabel($approval->approvable_type)) }}?">Approve</button><button class="btn btn-sm" wire:click="open({{ $approval->id }})">Review</button></div></td></tr>
                 @empty
@@ -26,6 +26,7 @@
                 @endforelse
                 </tbody>
             </table></div>
+            @if($mode === 'pending'){{ $pendingPage->links() }}@endif
         </section>
     @endif
 
@@ -43,6 +44,7 @@
                 @endforelse
                 </tbody>
             </table></div>
+            @if($mode === 'history'){{ $history->links() }}@endif
         </section>
     @endif
 

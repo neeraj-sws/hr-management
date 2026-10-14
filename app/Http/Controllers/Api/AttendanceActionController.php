@@ -21,7 +21,7 @@ class AttendanceActionController extends ApiController
 
     public function checkIn(Request $request): JsonResponse
     {
-        return $this->respond($this->attendance->checkIn($this->apiEmployee($request), $this->source($request), null, $this->location($request)), 201);
+        return $this->respond($this->attendance->checkIn($this->apiEmployee($request), $this->source($request), null, $this->location($request), $request->file('photo')), 201);
     }
 
     public function startBreak(Request $request): JsonResponse
@@ -36,7 +36,7 @@ class AttendanceActionController extends ApiController
 
     public function checkOut(Request $request): JsonResponse
     {
-        return $this->respond($this->attendance->checkOut($this->apiEmployee($request), $this->source($request), null, $this->location($request)));
+        return $this->respond($this->attendance->checkOut($this->apiEmployee($request), $this->source($request), null, $this->location($request), $request->file('photo')));
     }
 
     /** Desktop: the employee confirmed that time away from the computer was a break. */

@@ -150,6 +150,10 @@ class AttendanceSyncController extends Controller
                 ->lockForUpdate()
                 ->first();
             $isNew=!$session;
+            // An administrator's check-out is final for the day: a device cannot move or reopen it.
+            if(!$isNew && $session->forced_checkout_at){
+                return ['conflict'=>true,'message'=>'An administrator checked you out at '.$session->check_out?->format('h:i A').' ('.$session->forcedReasonLabel().'). Ask for an attendance correction if this is wrong.','session'=>$session->load('employee','device','events')];
+            }
             $session ??= new AttendanceSession([
                 'employee_id' => $employee->id,
                 'work_date' => $payload['work_date'],

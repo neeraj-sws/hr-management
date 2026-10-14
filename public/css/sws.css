@@ -285,3 +285,10 @@ details.nav-group[open]{padding-bottom:6px}
 .tab-on{color:#14284b;border-bottom-color:#3461d1}
 .link-sm{font-size:12.5px;font-weight:600;color:#3461d1;margin-left:auto}
 .card-head{display:flex;align-items:center;gap:10px}
+
+/* Tables: cell content centred everywhere (header, numbers, badges and row actions). */
+.table th,.table td,.table .num{text-align:center}
+.table .row-actions{justify-content:center}
+.table td .progress{margin-left:auto;margin-right:auto}
+.table td .pill-row{justify-content:center}
+.badge-gray,.badge-cancelled{background:#eef1f6;color:#5b6576}

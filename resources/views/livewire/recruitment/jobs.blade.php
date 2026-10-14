@@ -23,6 +23,7 @@
             @endforelse
             </tbody>
         </table></div>
+        {{ $jobs->links() }}
     </section>
 
     @if($showForm)

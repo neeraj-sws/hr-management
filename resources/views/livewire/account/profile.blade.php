@@ -50,13 +50,7 @@
             </form>
         </section>
         <section class="card" id="password">
-            <div class="card-head"><div><h2>Change password</h2><p>At least 12 characters with letters and numbers.</p></div></div>
-            <form class="card-body stack" wire:submit="changePassword">
-                <x-field label="Current password" name="currentPassword"><input type="password" wire:model="currentPassword" autocomplete="current-password"></x-field>
-                <x-field label="New password" name="newPassword"><input type="password" wire:model="newPassword" autocomplete="new-password"></x-field>
-                <x-field label="Confirm new password" name="newPassword_confirmation"><input type="password" wire:model="newPassword_confirmation" autocomplete="new-password"></x-field>
-                <div class="form-actions"><button class="btn btn-primary" wire:loading.attr="disabled"><span wire:loading wire:target="changePassword" class="spinner"></span>Update password</button></div>
-            </form>
+            <div class="card-head"><div><h2>Password</h2><p>For security, only an administrator can change your password. Contact your HR administrator if you need it reset.</p></div></div>
         </section>
     </div>
 </div>

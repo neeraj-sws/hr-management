@@ -66,8 +66,7 @@ class PeopleOperationsService
     public function overtimeEvidence(OvertimeRequest $request): array
     {
         $session = \App\Models\AttendanceSession::where('employee_id',$request->employee_id)->whereDate('work_date',$request->work_date)->first();
-        $hours = $this->policy($request->employee, 'work.hours', ['standard_daily_hours'=>$request->employee?->daily_work_hours ?: 8], $request->work_date->toDateString());
-        $standard = (int) round((float) ($hours['standard_daily_hours'] ?? 8) * 3600);
+        $standard = (int) round(($request->employee ? app(AttendanceService::class)->dailyHours($request->employee, $request->work_date->toDateString()) : 8) * 3600);
         $worked = $session ? app(AttendanceService::class)->workedSeconds($session) : 0;
 
         return ['session'=>$session, 'worked_seconds'=>$worked, 'standard_seconds'=>$standard, 'extra_minutes'=>max(0, intdiv($worked-$standard, 60)), 'holiday'=>! $this->isConfiguredWorkday($request->work_date->toDateString(), $this->policy($request->employee,'calendar.working_days',['days'=>[1,2,3,4,5],'holidays'=>[]],$request->work_date->toDateString()))];
@@ -181,7 +180,8 @@ class PeopleOperationsService
             foreach (['working_days_per_month' => [1, 31], 'standard_daily_hours' => [0.01, 24]] as $field => [$min, $max]) {
                 if (isset($config[$field]) && (! is_numeric($config[$field]) || (float) $config[$field] < $min || (float) $config[$field] > $max)) throw ValidationException::withMessages(['policyConfig' => "{$field} must be between {$min} and {$max}."]);
             }
-            foreach (['attendance_proration', 'include_paid_leave'] as $field) if (isset($config[$field]) && ! is_bool($config[$field])) throw ValidationException::withMessages(['policyConfig' => "{$field} must be true or false."]);
+            if (isset($config['short_hours_grace']) && (! is_numeric($config['short_hours_grace']) || (float) $config['short_hours_grace'] < 0 || (float) $config['short_hours_grace'] > 200)) throw ValidationException::withMessages(['policyConfig' => 'Short-hours grace must be between 0 and 200 hours.']);
+            foreach (['attendance_proration', 'include_paid_leave', 'short_hours_deduction'] as $field) if (isset($config[$field]) && ! is_bool($config[$field])) throw ValidationException::withMessages(['policyConfig' => "{$field} must be true or false."]);
         }
         if ($key === 'overtime.multiplier') {
             if (isset($config['multiplier']) && (! is_numeric($config['multiplier']) || (float) $config['multiplier'] < 0 || (float) $config['multiplier'] > 10)) throw ValidationException::withMessages(['policyConfig' => 'Overtime multiplier must be between 0 and 10.']);
@@ -343,6 +343,92 @@ class PeopleOperationsService
         });
     }
 
+    /** Hours after an offboarding case is opened (or closed) during which it may still be corrected or cancelled. */
+    public function offboardingWindowHours(): int
+    {
+        return max(0, (int) (app(PolicyConfigurationService::class)->forEmployee(null, 'lifecycle.offboarding', today()->toDateString(), ['correction_window_hours' => 72])['correction_window_hours'] ?? 72));
+    }
+
+    /** Until when this case can be corrected by lifecycle managers (null = never, administrators only). */
+    public function correctionDeadline(EmployeeLifecycleCase $case): ?Carbon
+    {
+        $hours = $this->offboardingWindowHours();
+        if ($hours <= 0) return null;
+        $from = $case->status === 'closed' && $case->closed_at ? $case->closed_at : $case->created_at;
+
+        return $from ? Carbon::parse($from)->addHours($hours) : null;
+    }
+
+    /**
+     * Who may correct or cancel an offboarding case opened by mistake: people
+     * who manage lifecycle cases while the window is open; afterwards only an
+     * administrator. Cancelled cases and paid settlements cannot be undone here.
+     */
+    public function canCorrectOffboarding(\App\Models\User $user, EmployeeLifecycleCase $case): bool
+    {
+        if ($case->kind !== 'offboarding' || ! in_array($case->status, ['open', 'closed'], true)) return false;
+        if (\App\Support\Access::isAdmin($user)) return true;
+        $deadline = $this->correctionDeadline($case);
+
+        return $user->can('lifecycle.manage') && $deadline !== null && now()->lte($deadline);
+    }
+
+    /** Fixes the details of an offboarding case (last day, exit type, resignation date, notes). */
+    public function correctOffboarding(EmployeeLifecycleCase $case, array $data, string $reason, \App\Models\User $actor): EmployeeLifecycleCase
+    {
+        abort_unless($this->canCorrectOffboarding($actor, $case), 403, 'The correction window for this offboarding case has passed. Ask an administrator.');
+        if (mb_strlen(trim($reason)) < 5) throw ValidationException::withMessages(['correctionReason' => 'Say why the case is being corrected (at least 5 characters).']);
+        if (! in_array($data['exit_type'] ?? '', ['resignation','termination','end_of_contract','retirement'], true)) throw ValidationException::withMessages(['exitType' => 'Choose the exit type.']);
+
+        return DB::transaction(function () use ($case, $data, $reason, $actor) {
+            $case = EmployeeLifecycleCase::whereKey($case->id)->lockForUpdate()->firstOrFail();
+            $employee = $case->employee;
+            $before = ['effective_on' => $case->effective_on?->toDateString(), 'exit_type' => $employee->exit_type, 'resigned_on' => $employee->resigned_on?->toDateString(), 'notes' => $case->notes];
+            $case->update(['effective_on' => $data['effective_on'], 'notes' => $data['notes'] ?? $case->notes]);
+            $employee->update(['exit_type' => $data['exit_type'], 'exit_date' => $data['effective_on'], 'exit_reason' => $data['notes'] ?? $employee->exit_reason, 'resigned_on' => $data['exit_type'] === 'resignation' ? ($data['resigned_on'] ?? $employee->resigned_on) : null]);
+            $after = ['effective_on' => $case->effective_on?->toDateString(), 'exit_type' => $employee->exit_type, 'resigned_on' => $employee->resigned_on?->toDateString(), 'notes' => $case->notes];
+            $this->audit->record('employee.offboarding_corrected', $case, ['employee_id' => $employee->id, 'employee' => $employee->name, 'by' => $actor->name, 'reason' => $reason, 'before' => $before, 'after' => $after]);
+            Notifier::send(Notifier::withPermission('lifecycle.manage'), 'EmployeeLifecycleCase', $case->id, "{$actor->name} corrected the offboarding case of {$employee->name}: {$reason}", route('lifecycle.offboarding', ['case' => $case->id], false), $actor->id);
+
+            return $case->fresh();
+        });
+    }
+
+    /**
+     * Cancels an offboarding case opened by mistake. An open case is simply
+     * withdrawn; a closed one is reversed (the employee and their login are
+     * active again). Exit details are cleared and an unpaid final settlement is
+     * cancelled. Not possible once any settlement payment was made.
+     */
+    public function cancelOffboarding(EmployeeLifecycleCase $case, string $reason, \App\Models\User $actor): EmployeeLifecycleCase
+    {
+        abort_unless($this->canCorrectOffboarding($actor, $case), 403, 'The correction window for this offboarding case has passed. Ask an administrator.');
+        if (mb_strlen(trim($reason)) < 5) throw ValidationException::withMessages(['cancelReason' => 'Say why the case is being cancelled (at least 5 characters).']);
+
+        return DB::transaction(function () use ($case, $reason, $actor) {
+            $case = EmployeeLifecycleCase::whereKey($case->id)->lockForUpdate()->firstOrFail();
+            $settlement = $case->settlement()->with('payments')->first();
+            if ($settlement && $settlement->payments->isNotEmpty()) throw ValidationException::withMessages(['cancelReason' => 'A final settlement payment has already been made for this case, so it cannot be cancelled here. Reverse the payment first.']);
+            $wasClosed = $case->status === 'closed';
+            $employee = $case->employee;
+            $before = ['status' => $case->status, 'effective_on' => $case->effective_on?->toDateString(), 'exit_type' => $employee->exit_type, 'employee_active' => (bool) $employee->is_active];
+
+            if ($settlement) {
+                $settlement->update(['status' => 'cancelled']);
+                ApprovalRequest::where('approvable_type', \App\Models\EmployeeFinalSettlement::class)->where('approvable_id', $settlement->id)->where('status', 'pending')->update(['status' => 'cancelled', 'decided_at' => now()]);
+            }
+            $case->update(['status' => 'cancelled', 'cancelled_by' => $actor->id, 'cancelled_at' => now(), 'cancel_reason' => mb_substr(trim($reason), 0, 1000)]);
+            $employee->update(['exit_type' => null, 'exit_date' => null, 'exit_reason' => null, 'resigned_on' => null, 'is_active' => true]);
+            if ($wasClosed) $employee->user?->update(['is_active' => true]);
+
+            $this->audit->record('employee.offboarding_cancelled', $case, ['employee_id' => $employee->id, 'employee' => $employee->name, 'by' => $actor->name, 'reason' => $reason, 'was_closed' => $wasClosed, 'reactivated' => $wasClosed, 'settlement_cancelled' => (bool) $settlement, 'before' => $before]);
+            Notifier::send(Notifier::withPermission('lifecycle.manage')->push($employee->manager?->user), 'EmployeeLifecycleCase', $case->id, "{$actor->name} cancelled the offboarding of {$employee->name}".($wasClosed ? ' and re-activated their account' : '').": {$reason}", route('lifecycle.offboarding', ['case' => $case->id, 'status' => 'all'], false), $actor->id);
+            if ($wasClosed) Notifier::send($employee->user, 'EmployeeLifecycleCase', $case->id, 'Your account is active again; the offboarding was cancelled. Sign in again on your devices.', route('dashboard', [], false), $actor->id);
+
+            return $case->fresh();
+        });
+    }
+
     public function closeLifecycle(EmployeeLifecycleCase $case, int $actor): EmployeeLifecycleCase
     {
         return DB::transaction(function () use ($case,$actor) {
@@ -399,6 +485,6 @@ class PeopleOperationsService
 
     private function isConfiguredWorkday(string $date,array $calendar): bool
     {
-        return in_array((int)Carbon::parse($date)->isoWeekday(),$calendar['days']??[1,2,3,4,5],true)&&!in_array($date,$calendar['holidays']??[],true);
+        return \App\Support\WorkCalendar::isWorkday($date, $calendar);
     }
 }

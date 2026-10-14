@@ -15,7 +15,7 @@ use Livewire\Component;
 
 class Shifts extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     #[Url] public string $week = '';
     #[Url] public string $department = '';
@@ -109,7 +109,7 @@ class Shifts extends Component
         $start = Carbon::parse($this->week);
         $dates = collect(range(0, 6))->map(fn ($i) => $start->copy()->addDays($i)->toDateString())->all();
         $employees = AttendanceEmployee::with('department')->where('is_active', true)
-            ->when($this->department, fn ($q) => $q->where('department_id', $this->department))->orderBy('name')->get();
+            ->when($this->department, fn ($q) => $q->where('department_id', $this->department))->orderBy('name')->paginate(20);
 
         return $this->page('livewire.attendance.shifts', [
             'shiftList' => Shift::withCount(['assignments' => fn ($q) => $q->where(fn ($q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', today()))])->orderBy('start_time')->get(),
@@ -117,7 +117,7 @@ class Shifts extends Component
             'allEmployees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'departments' => Department::orderBy('name')->get(['id', 'name']),
             'dates' => $dates,
-            'roster' => $shifts->roster($employees, $dates),
+            'roster' => $shifts->roster($employees->getCollection(), $dates),
         ], 'Shifts & Roster');
     }
 }

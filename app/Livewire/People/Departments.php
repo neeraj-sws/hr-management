@@ -11,7 +11,7 @@ use Livewire\Component;
 
 class Departments extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
 
     public bool $showForm = false;
     public ?int $editingId = null;
@@ -62,7 +62,7 @@ class Departments extends Component
     public function render()
     {
         return $this->page('livewire.people.departments', [
-            'departments' => Department::with('head')->withCount(['employees' => fn ($q) => $q->where('is_active', true), 'teams'])->orderBy('name')->get(),
+            'departments' => Department::with('head')->withCount(['employees' => fn ($q) => $q->where('is_active', true), 'teams'])->orderBy('name')->paginate(15),
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']),
         ], 'Departments');
     }
