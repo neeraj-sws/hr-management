@@ -30,6 +30,7 @@ class ReportService
         'attendance' => ['Attendance', ['reports.view', 'hr.manage', 'attendance.view'], ['hr.manage', 'employees.manage']],
         'leave' => ['Leave', ['leave.manage', 'leave.approve', 'hr.manage'], ['hr.manage', 'leave.manage']],
         'tasks' => ['Tasks', ['reports.view', 'hr.manage', 'tasks.manage'], ['hr.manage', 'employees.manage']],
+        'projects' => ['Projects', ['reports.view', 'hr.manage', 'projects.manage'], ['hr.manage', 'employees.manage']],
         'overtime' => ['Overtime', ['overtime.manage', 'hr.manage', 'payroll.manage'], ['hr.manage', 'employees.manage', 'payroll.manage']],
         'payroll' => ['Payroll', ['payroll.manage', 'payroll.approve'], ['payroll.manage', 'payroll.approve']],
         'salary' => ['Salary', ['payroll.manage', 'payroll.approve'], ['payroll.manage', 'payroll.approve']],
@@ -90,6 +91,7 @@ class ReportService
         return match ($type) {
             'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'day_status', 'session_status', 'check_in_ip', 'check_out_ip'],
             'leave' => ['id', 'employee_code', 'employee_name', 'leave_type', 'paid', 'starts_on', 'ends_on', 'days', 'status', 'decided_at'],
+            'projects' => ['id', 'project', 'manager', 'status', 'starts_on', 'ends_on', 'members', 'tasks', 'completed_tasks', 'open_tasks', 'overdue_tasks', 'progress_pct', 'estimated_hours', 'logged_hours'],
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
             'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
             'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance'],
@@ -175,6 +177,7 @@ class ReportService
                 ->orderBy('employee_id')->orderBy('due_on')->when($limit, fn ($q) => $q->limit($limit))->get()
                 ->map(fn ($r) => ['employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'course' => $r->course?->title, 'mandatory' => $r->course?->is_mandatory ? 'yes' : 'no', 'assigned_on' => $r->created_at?->toDateString(), 'due_on' => $r->due_on?->toDateString(), 'status' => $r->displayStatus(), 'completed_at' => $r->completed_at?->toDateString()]),
             'payments' => $this->paymentRows($ids, $from, $to),
+            'projects' => $this->projectRows($user, $ids, $from, $to, $filters, $limit),
             'teams' => $this->teamRows($ids, $from, $to, $filters),
             'screenshots' => \App\Models\Screenshot::with('employee')->whereIn('employee_id', $ids)
                 ->whereBetween('captured_at', [$from.' 00:00:00', $to.' 23:59:59'])->orderBy('captured_at')->get()
@@ -244,7 +247,7 @@ class ReportService
             ->when($filters['employee_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('department_id', $id))
             ->when($filters['team_id'] ?? null, fn ($q, $id) => $q->whereHas('teams', fn ($t) => $t->whereKey($id)))
-            ->when(($filters['search'] ?? null) && ! in_array($type, ['tasks', 'audit'], true), fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$filters['search'].'%')->orWhere('employee_code', 'like', '%'.$filters['search'].'%')))
+            ->when(($filters['search'] ?? null) && ! in_array($type, ['tasks', 'audit', 'projects'], true), fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.$filters['search'].'%')->orWhere('employee_code', 'like', '%'.$filters['search'].'%')))
             ->pluck('id');
     }
 
@@ -263,6 +266,32 @@ class ReportService
         $names = User::whereIn('id', $rows->pluck('recorded_by')->filter()->unique())->pluck('name', 'id');
 
         return $rows->map(fn ($row) => array_merge($row, ['recorded_by' => $names[$row['recorded_by']] ?? null]))->sortByDesc('paid_on')->values();
+    }
+
+    /**
+     * One row per project running in the period (started by its end, not finished before its start).
+     * HR/admin see every project; others see the projects their people manage, belong to or have tasks in.
+     */
+    private function projectRows(User $user, Collection $ids, string $from, string $to, array $filters, ?int $limit): Collection
+    {
+        $everything = $user->canAny(self::TYPES['projects'][2]) && empty($filters['employee_id']) && empty($filters['department_id']) && empty($filters['team_id']);
+
+        return ($everything ? \App\Models\Project::query() : $this->work->projectsInvolving($ids))
+            ->with(['manager:id,name', 'tasks.timeEntries'])->withCount('members')
+            ->where(fn ($q) => $q->whereNull('starts_on')->orWhereDate('starts_on', '<=', $to))
+            ->where(fn ($q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', $from)->orWhere('status', '!=', 'completed'))
+            ->when($filters['search'] ?? null, fn ($q, $term) => $q->where('name', 'like', "%{$term}%"))
+            ->orderByRaw("case status when 'active' then 0 when 'planned' then 1 when 'on_hold' then 2 else 3 end")->orderBy('name')
+            ->when($limit, fn ($q) => $q->limit($limit))->get()
+            ->map(function (\App\Models\Project $p) {
+                $tasks = $p->tasks;
+                $done = $tasks->where('status', 'completed')->count();
+
+                return ['id' => $p->id, 'project' => $p->name, 'manager' => $p->manager?->name, 'status' => $p->status, 'starts_on' => $p->starts_on?->toDateString(), 'ends_on' => $p->ends_on?->toDateString(),
+                    'members' => (int) $p->members_count, 'tasks' => $tasks->count(), 'completed_tasks' => $done, 'open_tasks' => $tasks->count() - $done,
+                    'overdue_tasks' => $tasks->filter(fn (Task $t) => $t->isOverdue())->count(), 'progress_pct' => $tasks->count() ? (int) round($done / $tasks->count() * 100) : 0,
+                    'estimated_hours' => (float) $tasks->sum('estimated_hours'), 'logged_hours' => $tasks->sum(fn (Task $t) => $this->work->loggedSeconds($t)) / 3600];
+            });
     }
 
     /** One row per team: members on the last day of the period (from the dated history) and what they did in it. */

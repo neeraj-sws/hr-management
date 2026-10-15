@@ -135,7 +135,9 @@ class Projects extends Component
     public function render()
     {
         $own = $this->ownEmployee();
-        $projects = ($this->mine ? $this->myProjectsQuery() : Project::query()->when($this->scopedToOwn(), fn ($q) => $q->where('manager_id', $own?->id ?? 0)))
+        $base = $this->mine ? $this->myProjectsQuery() : Project::query()->when($this->scopedToOwn(), fn ($q) => $q->where('manager_id', $own?->id ?? 0));
+        $counts = app(\App\Services\WorkService::class)->projectCounts($base);
+        $projects = (clone $base)
             ->with(['manager', 'members:attendance_employees.id,attendance_employees.name'])
             ->withCount(['tasks', 'tasks as completed_tasks_count' => fn ($q) => $q->where('status', 'completed'), 'tasks as overdue_tasks_count' => fn ($q) => $q->where('status', '!=', 'completed')->whereDate('due_on', '<', today())])
             ->when($this->mine, fn ($q) => $q->withCount(['tasks as my_open_tasks_count' => fn ($t) => $t->where('assignee_id', $own?->id ?? 0)->where('status', '!=', 'completed')]))
@@ -146,6 +148,7 @@ class Projects extends Component
 
         return $this->page('livewire.work.projects', [
             'projects' => $projects,
+            'counts' => $counts,
             'mine' => $this->mine,
             'canManage' => $this->canManage(),
             'managers' => $this->canManage() ? AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),

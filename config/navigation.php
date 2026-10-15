@@ -93,6 +93,7 @@ return [
         ['label' => 'Attendance', 'route' => 'reports.show', 'params' => ['type' => 'attendance'], 'icon' => 'chart'],
         ['label' => 'Leave', 'route' => 'reports.show', 'params' => ['type' => 'leave'], 'icon' => 'chart'],
         ['label' => 'Tasks', 'route' => 'reports.show', 'params' => ['type' => 'tasks'], 'icon' => 'chart'],
+        ['label' => 'Projects', 'route' => 'reports.show', 'params' => ['type' => 'projects'], 'icon' => 'chart'],
         ['label' => 'Overtime', 'route' => 'reports.show', 'params' => ['type' => 'overtime'], 'icon' => 'chart'],
         ['label' => 'Expenses', 'route' => 'reports.show', 'params' => ['type' => 'expenses'], 'icon' => 'chart'],
         ['label' => 'Training', 'route' => 'reports.show', 'params' => ['type' => 'training'], 'icon' => 'chart'],

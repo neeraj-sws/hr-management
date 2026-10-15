@@ -16,7 +16,7 @@
                 <label class="field"><span>Department</span><select wire:model.live="department"><option value="">All</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
                 <label class="field"><span>Team</span><select wire:model.live="team"><option value="">All</option>@foreach($teams as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach</select></label>
             @endif
-            <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.400ms="search" placeholder="{{ in_array($type, ['tasks', 'audit'], true) ? ($type === 'tasks' ? 'Task title' : 'Action') : 'Employee name or code' }}"></label>
+            <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.400ms="search" placeholder="{{ ['tasks' => 'Task title', 'audit' => 'Action', 'projects' => 'Project name'][$type] ?? 'Employee name or code' }}"></label>
             <button type="button" class="btn" wire:click="resetFilters">Reset</button>
             <span wire:loading class="spinner" style="margin-bottom:10px"></span>
         </div>

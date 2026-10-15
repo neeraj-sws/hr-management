@@ -3,6 +3,12 @@
         <div><h1>{{ $mine ? 'My Projects' : 'Projects' }}</h1><p>{{ $mine ? 'Projects you are a member of, manage, or have tasks in.' : ($scoped ? 'Projects you manage.' : 'All projects.') }}</p></div>
         @if($canManage)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />New project</button>@endif
     </div>
+    <div class="pill-row mb" role="group" aria-label="Project count by status">
+        <button type="button" class="pill {{ $status === '' ? 'pill-on' : '' }}" wire:click="$set('status', '')"><b>{{ $counts['total'] }}</b> {{ $mine ? 'my projects' : 'projects' }}</button>
+        @foreach(\App\Services\WorkService::PROJECT_STATUSES as $key => $label)
+            <button type="button" class="pill {{ $status === $key ? 'pill-on' : '' }}" wire:click="$set('status', '{{ $key }}')"><b>{{ $counts[$key] }}</b> {{ strtolower($label) }}</button>
+        @endforeach
+    </div>
     <section class="card">
         <div class="toolbar">
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Project name"></label>

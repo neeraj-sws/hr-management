@@ -17,6 +17,27 @@ class WorkService
 {
     public const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
     public const STATUSES = ['todo', 'in_progress', 'on_hold', 'completed'];
+    public const PROJECT_STATUSES = ['planned' => 'Planned', 'active' => 'Active', 'on_hold' => 'On hold', 'completed' => 'Completed'];
+
+    /** Projects any of these employees manage, are a member of, or have tasks in. */
+    public function projectsInvolving(iterable $employeeIds): \Illuminate\Database\Eloquent\Builder
+    {
+        $ids = collect($employeeIds)->map(fn ($id) => (int) $id)->unique()->values()->all() ?: [0];
+
+        return Project::query()->where(fn ($q) => $q->whereIn('manager_id', $ids)
+            ->orWhereHas('members', fn ($m) => $m->whereIn('attendance_employees.id', $ids))
+            ->orWhereHas('tasks', fn ($t) => $t->whereIn('assignee_id', $ids)));
+    }
+
+    /** Number of projects in a query: total and per status. */
+    public function projectCounts(\Illuminate\Database\Eloquent\Builder $query): array
+    {
+        $byStatus = (clone $query)->reorder()->toBase()->select('status', DB::raw('count(*) as aggregate'))->groupBy('status')->pluck('aggregate', 'status');
+        $counts = ['total' => (int) $byStatus->sum()];
+        foreach (array_keys(self::PROJECT_STATUSES) as $status) $counts[$status] = (int) ($byStatus[$status] ?? 0);
+
+        return $counts;
+    }
 
     public function __construct(private readonly AuditLogger $audit) {}
 
