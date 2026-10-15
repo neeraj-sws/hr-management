@@ -15,6 +15,10 @@ use Illuminate\Support\Carbon;
  * Keys:
  *   days      ISO weekdays that are working days, e.g. [1,2,3,4,5,6] (Mon–Sat)
  *   holidays  ['Y-m-d', ...] dates that are off
+ *   holiday_types {"Y-m-d": {"category": "national", "paid": true}} – the kind of holiday
+ *             (public, national, festival, company, optional) and whether it is paid.
+ *             An optional holiday is not a day off for everyone: it stays a working
+ *             day and an employee who wants it applies for leave.
  *   off_weeks {"6": [3]} – the 3rd Saturday of each month is off (weekday => occurrences;
  *             -1 = the last one). A team/employee layer can add the 2nd Saturday: {"6": [2, 3]}.
  *   shifts    [{"from": "2026-10-17", "to": "2026-10-19", "note": "..."}] – a weekly off
@@ -24,6 +28,31 @@ class WorkCalendar
 {
     public const WEEKDAYS = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
     public const OCCURRENCES = [1 => '1st', 2 => '2nd', 3 => '3rd', 4 => '4th', 5 => '5th', -1 => 'Last'];
+    public const HOLIDAY_CATEGORIES = ['public' => 'Public holiday', 'national' => 'National holiday', 'festival' => 'Festival', 'company' => 'Company holiday', 'optional' => 'Optional holiday'];
+
+    /** Category and paid flag of a listed holiday; a holiday without a type is a paid public holiday. */
+    public static function holidayTypeOf(array $calendar, string $date): array
+    {
+        $type = (array) ($calendar['holiday_types'][$date] ?? []);
+        $category = isset(self::HOLIDAY_CATEGORIES[$type['category'] ?? '']) ? $type['category'] : 'public';
+
+        return ['category' => $category, 'paid' => (bool) ($type['paid'] ?? true)];
+    }
+
+    /** Holidays that close the office (every listed holiday except optional ones). */
+    public static function offHolidays(array $calendar): array
+    {
+        return array_values(array_filter((array) ($calendar['holidays'] ?? []), fn ($date) => self::holidayTypeOf($calendar, (string) $date)['category'] !== 'optional'));
+    }
+
+    /** True when the date is a listed, non-optional holiday that is paid, and would otherwise be a working day. */
+    public static function isPaidHoliday(string $date, array $calendar): bool
+    {
+        $ymd = Carbon::parse($date)->toDateString();
+        if (! in_array($ymd, self::offHolidays($calendar), true) || ! self::holidayTypeOf($calendar, $ymd)['paid']) return false;
+
+        return self::isWorkday($ymd, [...$calendar, 'holidays' => []]);
+    }
 
     public static function isWorkday(string $date, array $calendar): bool
     {
@@ -35,12 +64,12 @@ class WorkCalendar
             if (($shift['to'] ?? null) === $ymd) return false;
         }
         foreach ((array) ($calendar['shifts'] ?? []) as $shift) {
-            if (($shift['from'] ?? null) === $ymd) return ! in_array($ymd, $calendar['holidays'] ?? [], true);
+            if (($shift['from'] ?? null) === $ymd) return ! in_array($ymd, self::offHolidays($calendar), true);
         }
 
         $weekday = (int) $day->isoWeekday();
         if (! in_array($weekday, array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]), true)) return false;
-        if (in_array($ymd, $calendar['holidays'] ?? [], true)) return false;
+        if (in_array($ymd, self::offHolidays($calendar), true)) return false;
 
         return ! self::isNthWeekdayOff($day, (array) ($calendar['off_weeks'] ?? []));
     }

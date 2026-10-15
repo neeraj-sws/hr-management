@@ -18,3 +18,4 @@ Schedule::command('sanctum:prune-expired --hours=24')->dailyAt('04:00');
 Schedule::command('work:remind-daily-status')->weekdays()->dailyAt('18:15')->withoutOverlapping();
 Schedule::command('attendance:absence-alerts')->everyFifteenMinutes()->between('09:00', '20:00')->withoutOverlapping();
 Schedule::command('work:reconcile-task-hours --fix')->dailyAt('01:30')->withoutOverlapping();
+Schedule::command('sheets:sync')->everyThirtyMinutes()->withoutOverlapping();

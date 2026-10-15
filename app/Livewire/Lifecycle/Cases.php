@@ -161,7 +161,7 @@ class Cases extends Component
             ['label' => 'Added to a team', 'done' => $e->teams()->exists(), 'required' => false],
             ['label' => 'Manager assigned', 'done' => (bool) $e->manager_id, 'required' => true],
             ['label' => 'Salary profile configured', 'done' => $e->salaryProfiles()->exists(), 'required' => true],
-            ['label' => 'Leave balances for '.today()->year, 'done' => $e->leaveBalances()->where('year', today()->year)->exists(), 'required' => true],
+            ['label' => 'Leave balances for '.\App\Support\LeaveYear::label(\App\Support\LeaveYear::current()), 'done' => $e->leaveBalances()->where('year', \App\Support\LeaveYear::current())->exists(), 'required' => true],
             ['label' => 'Documents uploaded', 'done' => $e->documents()->exists(), 'required' => false],
             ['label' => 'Assets issued', 'done' => $e->assets()->exists(), 'required' => false],
             ['label' => 'Login account active', 'done' => (bool) $e->user?->is_active, 'required' => true],
@@ -181,7 +181,7 @@ class Cases extends Component
             if ($this->kind === 'onboarding') {
                 $details['checks'] = $this->onboardingChecks($employee);
             } else {
-                $details['leave'] = LeaveType::where('is_active', true)->where('paid', true)->get()->map(fn ($t) => ['type' => $t->name, 'remaining' => $leave->balance($employee, $t, today()->year)['remaining']]);
+                $details['leave'] = LeaveType::where('is_active', true)->where('paid', true)->get()->map(fn ($t) => ['type' => $t->name, 'remaining' => $leave->balance($employee, $t, \App\Support\LeaveYear::current())['remaining']]);
                 $details['advances'] = SalaryAdvance::where('employee_id', $employee->id)->whereIn('status', ['approved', 'disbursed'])->get()->sum(fn ($a) => max(0, (float) $a->disbursed_amount - (float) $a->recovered_amount));
             }
         }

@@ -146,7 +146,7 @@ class ApprovalInbox
         return match (true) {
             $subject instanceof LeaveRequest => "{$who} · {$subject->leaveType?->name} · {$subject->starts_on->format('d M')}–{$subject->ends_on->format('d M Y')} ({$subject->days} days)",
             $subject instanceof OvertimeRequest => "{$who} · {$subject->work_date->format('d M Y')} · {$subject->requested_minutes} min",
-            $subject instanceof SalaryAdjustment => "{$who} · ".ucfirst($subject->kind).' '.number_format((float) $subject->amount, 2),
+            $subject instanceof SalaryAdjustment => "{$who} · ".$subject->label().' '.number_format((float) $subject->amount, 2).($subject->is_recurring ? ' / month'.($subject->recurring_until ? ' until '.$subject->recurring_until->format('M Y') : '') : ''),
             $subject instanceof SalaryAdvance => "{$who} · ".number_format((float) $subject->amount, 2).' (recover '.number_format((float) $subject->installment_amount, 2).'/run)',
             $subject instanceof EmployeePenalty => "{$who} · ".number_format((float) $subject->amount, 2).' · '.$subject->reason,
             $subject instanceof AttendanceCorrection => "{$who} · {$subject->work_date->format('d M Y')} · ".collect(['in '.$subject->requested_check_in?->format('h:i A'), 'out '.$subject->requested_check_out?->format('h:i A')])->filter(fn ($part) => strlen($part) > 4)->join(', '),

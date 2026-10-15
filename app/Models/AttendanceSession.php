@@ -38,6 +38,8 @@ class AttendanceSession extends Model
         'forced_checkout_note',
         'forced_checkout_at',
         'check_in_photo_path',
+        'check_in_ip',
+        'check_out_ip',
         'check_out_photo_path',
     ];
 

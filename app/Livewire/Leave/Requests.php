@@ -147,7 +147,7 @@ class Requests extends Component
             'canApprove' => $canApprove,
             'pendingCount' => $canApprove ? $inbox->pending($user, LeaveRequest::class)->count() : 0,
             'types' => $types,
-            'balances' => $own ? $types->map(fn ($t) => ['type' => $t, ...$accrual->balance($own, $t, today()->year)]) : collect(),
+            'balances' => $own ? $types->map(fn ($t) => ['type' => $t, ...$accrual->balance($own, $t, \App\Support\LeaveYear::current())]) : collect(),
             'deciding' => $this->decidingId ? LeaveRequest::with(['employee', 'leaveType'])->find($this->decidingId) : null,
             'own' => $own,
         ], 'Leave Requests');

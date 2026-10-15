@@ -1,8 +1,8 @@
 <div>
     <div class="page-head">
-        <div><h1>Leave Balance</h1><p>Entitlement, monthly accrual, carry-forward (with expiry), usage and pending bookings for {{ $year }}.</p></div>
+        <div><h1>Leave Balance</h1><p>Entitlement, monthly accrual, carry-forward (with expiry), usage and pending bookings for leave year {{ $yearLabel }} ({{ $yearRange }}).</p></div>
         <div class="actions">
-            <label class="field"><span class="sr-only">Year</span><select wire:model.live="year">@for($y = today()->year + 1; $y >= today()->year - 3; $y--)<option value="{{ $y }}">{{ $y }}</option>@endfor</select></label>
+            <label class="field"><span class="sr-only">Year</span><select wire:model.live="year">@foreach($yearOptions as $y => $label)<option value="{{ $y }}">{{ $label }}</option>@endforeach</select></label>
             @can('policies.manage')<button class="btn" wire:click="runAccrual" wire:confirm="Run monthly accrual through {{ today()->format('F Y') }}? It is idempotent." wire:loading.attr="disabled"><x-icon name="refresh" class="icon-sm" />Run accrual</button>@endcan
         </div>
     </div>
@@ -24,11 +24,15 @@
             </table></div>
         </section>
         <section class="card mb">
-            <div class="card-head"><h2>My leave history {{ $year }}</h2></div>
+            <div class="card-head"><h2>My leave history {{ $yearLabel }}</h2></div>
             <div class="list">
                 @forelse($history as $leave)<div class="list-row"><div><strong>{{ $leave->leaveType?->name }} · {{ (float) $leave->days }} days</strong><small>{{ $leave->starts_on->format('d M') }} – {{ $leave->ends_on->format('d M Y') }} · {{ $leave->reason }}</small></div><x-badge :status="$leave->status" /></div>
                 @empty<x-empty title="No leave taken this year" icon="calendar" />@endforelse
             </div>
+        </section>
+        <section class="card mb">
+            <div class="card-head"><div><h2>My leave ledger {{ $yearLabel }}</h2><p>Every change to your balance: allowance, accruals, carry-forward, expiry, HR adjustments and leave taken.</p></div></div>
+            @include('livewire.leave.partials.ledger', ['entries' => $myLedger])
         </section>
     @endif
 
@@ -37,13 +41,14 @@
             <div class="card-head"><h2>Employee balances</h2></div>
             <div class="toolbar"><label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name or code"></label></div>
             <div class="table-wrap"><table class="table">
-                <thead><tr><th>Employee</th>@foreach($types as $t)<th class="num">{{ $t->name }}</th>@endforeach</tr></thead>
+                <thead><tr><th>Employee</th>@foreach($types as $t)<th class="num">{{ $t->name }}</th>@endforeach<th></th></tr></thead>
                 <tbody>
                 @forelse($team as $employee)
                     <tr><td><strong>{{ $employee->name }}</strong><small>{{ $employee->employee_code }}</small></td>
-                        @foreach($types as $t)@php($b = $employee->balances[$t->id])<td class="num"><strong>{{ round($b['remaining'], 2) }}</strong><small>used {{ $b['used'] }} · pend {{ $b['booked'] }}</small><button class="btn btn-sm btn-ghost" wire:click="openAdjust({{ $employee->id }}, {{ $t->id }})">Adjust</button></td>@endforeach</tr>
+                        @foreach($types as $t)@php($b = $employee->balances[$t->id])<td class="num"><strong>{{ round($b['remaining'], 2) }}</strong><small>used {{ $b['used'] }} · pend {{ $b['booked'] }}</small><button class="btn btn-sm btn-ghost" wire:click="openAdjust({{ $employee->id }}, {{ $t->id }})">Adjust</button></td>@endforeach
+                        <td><button class="btn btn-sm" wire:click="openLedger({{ $employee->id }})">Ledger</button></td></tr>
                 @empty
-                    <tr><td colspan="{{ $types->count() + 1 }}"><x-empty title="No employees" icon="users" /></td></tr>
+                    <tr><td colspan="{{ $types->count() + 2 }}"><x-empty title="No employees" icon="users" /></td></tr>
                 @endforelse
                 </tbody>
             </table></div>
@@ -54,13 +59,19 @@
     @if($adjusting && $adjustType)
         <x-modal title="Adjust leave balance">
             <form wire:submit="saveAdjustment"><div class="modal-body">
-                <p class="small muted" style="margin-top:0">{{ $adjusting->name }} · {{ $adjustType->name }} · {{ $year }}. Use a negative number to deduct. The adjustment is audited.</p>
+                <p class="small muted" style="margin-top:0">{{ $adjusting->name }} · {{ $adjustType->name }} · leave year {{ $yearLabel }}. Use a negative number to deduct. The adjustment is written to the leave ledger with your name and reason.</p>
                 <div class="form-grid">
                     <x-field label="Days (+/−)" name="adjustDays"><input type="number" step="0.5" wire:model="adjustDays"></x-field>
                     <x-field label="Reason" name="adjustReason"><input wire:model="adjustReason"></x-field>
                 </div>
             </div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Save adjustment</button></div></form>
+        </x-modal>
+    @endif
+    @if($ledgerEmployee)
+        <x-modal title="Leave ledger · {{ $ledgerEmployee->name }} · {{ $yearLabel }}" size="lg">
+            <div class="modal-body">@include('livewire.leave.partials.ledger', ['entries' => $ledgerEntries])</div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Close</button></div>
         </x-modal>
     @endif
 </div>

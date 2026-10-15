@@ -5,10 +5,12 @@ namespace App\Livewire\Leave;
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\AttendanceEmployee;
 use App\Models\LeaveBalance;
+use App\Models\LeaveLedgerEntry;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Services\AuditLogger;
 use App\Services\LeaveAccrualService;
+use App\Support\LeaveYear;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -26,9 +28,12 @@ class Balances extends Component
     public string $adjustDays = '';
     public string $adjustReason = '';
 
+    /** Employee whose leave ledger is open (HR view). */
+    public ?int $ledgerEmployeeId = null;
+
     public function mount(): void
     {
-        $this->year = $this->year >= 2000 && $this->year <= 2100 ? $this->year : (int) today()->year;
+        $this->year = $this->year >= 2000 && $this->year <= 2100 ? $this->year : LeaveYear::current();
     }
 
     private function canManage(): bool
@@ -50,9 +55,10 @@ class Balances extends Component
         $employee = AttendanceEmployee::findOrFail($this->adjustEmployeeId);
         $type = LeaveType::findOrFail($this->adjustTypeId);
         DB::transaction(function () use ($employee, $type, $audit) {
-            $balance = LeaveBalance::firstOrCreate(['employee_id' => $employee->id, 'leave_type_id' => $type->id, 'year' => $this->year], ['entitled_days' => (float) $type->monthly_accrual > 0 ? 0 : $type->annual_allowance]);
+            $balance = LeaveBalance::open($employee->id, $type, $this->year);
             $balance = LeaveBalance::whereKey($balance->id)->lockForUpdate()->first();
             $balance->update(['adjusted_days' => (float) $balance->adjusted_days + (float) $this->adjustDays]);
+            LeaveLedgerEntry::record($balance, 'adjustment', (float) $this->adjustDays, $this->adjustReason);
             $audit->record('leave.balance_adjusted', $balance, ['days' => (float) $this->adjustDays, 'reason' => $this->adjustReason, 'employee_id' => $employee->id, 'leave_type' => $type->name]);
         });
         $this->closeModal();
@@ -66,9 +72,27 @@ class Balances extends Component
         $this->toast("Monthly accrual processed for {$count} balances.");
     }
 
+    public function openLedger(int $employeeId): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->ledgerEmployeeId = $employeeId;
+    }
+
     public function closeModal(): void
     {
-        $this->reset('adjustEmployeeId', 'adjustTypeId', 'adjustDays', 'adjustReason');
+        $this->reset('adjustEmployeeId', 'adjustTypeId', 'adjustDays', 'adjustReason', 'ledgerEmployeeId');
+    }
+
+    /** Ledger entries for one employee and leave year, oldest first, with a running total per leave type. */
+    private function ledger(int $employeeId)
+    {
+        $running = [];
+
+        return LeaveLedgerEntry::with(['leaveType', 'creator'])->where('employee_id', $employeeId)->where('year', $this->year)->orderBy('id')->get()
+            ->each(function (LeaveLedgerEntry $entry) use (&$running) {
+                $running[$entry->leave_type_id] = round(($running[$entry->leave_type_id] ?? 0) + (float) $entry->days, 3);
+                $entry->setAttribute('running', $running[$entry->leave_type_id]);
+            });
     }
 
     public function render(LeaveAccrualService $accrual)
@@ -76,7 +100,7 @@ class Balances extends Component
         $types = LeaveType::where('is_active', true)->orderBy('name')->get();
         $own = $this->ownEmployee();
         $mine = $own ? $types->map(fn ($t) => ['type' => $t, ...$accrual->balance($own, $t, $this->year)]) : collect();
-        $history = $own ? LeaveRequest::with('leaveType')->where('employee_id', $own->id)->whereYear('starts_on', $this->year)->latest('starts_on')->get() : collect();
+        $history = $own ? LeaveRequest::with('leaveType')->where('employee_id', $own->id)->whereBetween('starts_on', [LeaveYear::start($this->year)->toDateString(), LeaveYear::end($this->year)->toDateString()])->latest('starts_on')->get() : collect();
 
         $team = null;
         if ($this->canManage()) {
@@ -94,6 +118,11 @@ class Balances extends Component
             'types' => $types, 'mine' => $mine, 'history' => $history, 'team' => $team, 'own' => $own,
             'adjusting' => $this->adjustEmployeeId ? AttendanceEmployee::find($this->adjustEmployeeId) : null,
             'adjustType' => $this->adjustTypeId ? LeaveType::find($this->adjustTypeId) : null,
+            'myLedger' => $own ? $this->ledger($own->id) : collect(),
+            'ledgerEmployee' => $this->ledgerEmployeeId && $this->canManage() ? AttendanceEmployee::find($this->ledgerEmployeeId) : null,
+            'ledgerEntries' => $this->ledgerEmployeeId && $this->canManage() ? $this->ledger($this->ledgerEmployeeId) : collect(),
+            'yearOptions' => LeaveYear::options(), 'yearLabel' => LeaveYear::label($this->year),
+            'yearRange' => LeaveYear::start($this->year)->format('d M Y').' – '.LeaveYear::end($this->year)->format('d M Y'),
         ], 'Leave Balance');
     }
 }

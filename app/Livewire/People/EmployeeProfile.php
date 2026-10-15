@@ -67,7 +67,7 @@ class EmployeeProfile extends Component
         $user = $this->user();
         $days = $attendance->days($employee, now()->startOfMonth(), today());
         $summary = $days->countBy('status');
-        $balances = LeaveType::where('is_active', true)->get()->map(fn ($type) => ['type' => $type, ...$leave->balance($employee, $type, today()->year)]);
+        $balances = LeaveType::where('is_active', true)->get()->map(fn ($type) => ['type' => $type, ...$leave->balance($employee, $type, \App\Support\LeaveYear::current())]);
         $metrics = $work->productivity(collect([$employee]), now()->startOfMonth()->toDateString(), today()->toDateString())->first();
         $isSelf = $employee->user_id === $user->id;
         $showSalary = $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']);

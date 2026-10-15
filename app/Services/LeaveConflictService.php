@@ -64,8 +64,12 @@ class LeaveConflictService
             $record = LeaveConflictResolution::create(['employee_id' => $leave->employee_id, 'leave_request_id' => $leave->id, 'work_date' => $date, 'resolution' => $resolution, 'resolved_by' => $actor, 'note' => $note]);
             if ($resolution === 'worked' && $leave->leaveType?->paid && (float) $leave->days >= 1) {
                 $leave->decrement('days', 1);
-                LeaveBalance::where('employee_id', $leave->employee_id)->where('leave_type_id', $leave->leave_type_id)->where('year', Carbon::parse($date)->year)
-                    ->where('used_days', '>=', 1)->decrement('used_days', 1);
+                $balance = LeaveBalance::where('employee_id', $leave->employee_id)->where('leave_type_id', $leave->leave_type_id)->where('year', \App\Support\LeaveYear::of($date))
+                    ->where('used_days', '>=', 1)->lockForUpdate()->first();
+                if ($balance) {
+                    $balance->decrement('used_days', 1);
+                    \App\Models\LeaveLedgerEntry::record($balance, 'reversal', 1, 'Worked on leave day '.Carbon::parse($date)->format('d M Y').' — day returned', $leave, $actor);
+                }
             }
             $this->audit->record('leave.conflict_resolved', $record, ['date' => $date, 'resolution' => $resolution, 'leave_request_id' => $leave->id]);
 

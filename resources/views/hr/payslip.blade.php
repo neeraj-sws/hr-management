@@ -25,6 +25,8 @@
             <tr><td>Present</td><td class="num">{{ (float) $item->present_days }}</td></tr>
             <tr><td>Paid leave</td><td class="num">{{ (float) $item->paid_leave_days }}</td></tr>
             <tr><td>Unpaid leave</td><td class="num">{{ (float) $item->unpaid_leave_days }}</td></tr>
+            @if(! empty($item->calculation_breakdown['paid_holiday_days']))<tr><td>Paid holidays</td><td class="num">{{ $item->calculation_breakdown['paid_holiday_days'] }}</td></tr>@endif
+            @if(! empty($item->calculation_breakdown['unpaid_holiday_days']))<tr><td>Unpaid holidays</td><td class="num">{{ $item->calculation_breakdown['unpaid_holiday_days'] }}</td></tr>@endif
             <tr><td>Overtime hours</td><td class="num">{{ (float) $item->overtime_hours }}</td></tr>
             @if(! empty($item->calculation_breakdown['short_hours']['enabled']))
                 <tr><td>Required hours (days present)</td><td class="num">{{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['required_seconds']) }}</td></tr>
@@ -39,7 +41,13 @@
                 <tr><td>Base salary (prorated)</td><td class="num">{{ number_format((float) ($item->calculation_breakdown['base_salary'] ?? 0), 2) }}</td></tr>
             @endforelse
             <tr><td>Overtime</td><td class="num">{{ number_format((float) $item->overtime_amount, 2) }}</td></tr>
-            <tr><td>Adjustments (net)</td><td class="num">{{ number_format((float) $item->adjustments_amount, 2) }}</td></tr>
+            @if(! empty($item->calculation_breakdown['salary_adjustment_lines']))
+                @foreach($item->calculation_breakdown['salary_adjustment_lines'] as $line)
+                    <tr><td>{{ $line['label'] }}@if($line['recurring']) <span class="muted small">(monthly{{ $line['months'] > 1 ? ' × '.$line['months'] : '' }})</span>@endif @if(! empty($line['reason']))<span class="muted small">· {{ $line['reason'] }}</span>@endif</td><td class="num">{{ $line['amount'] < 0 ? '−' : '+' }}{{ number_format(abs((float) $line['amount']), 2) }}</td></tr>
+                @endforeach
+            @else
+                <tr><td>Adjustments (net)</td><td class="num">{{ number_format((float) $item->adjustments_amount, 2) }}</td></tr>
+            @endif
             @foreach(($item->calculation_breakdown['statutory_components'] ?? []) as $c)
                 <tr><td>{{ $c['name'] ?? $c['key'] }} <span class="muted small">({{ $c['type'] ?? '' }})</span></td><td class="num">{{ ($c['type'] ?? '') === 'deduction' ? '−' : '' }}{{ number_format((float) ($c['amount'] ?? 0), 2) }}</td></tr>
             @endforeach

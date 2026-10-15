@@ -33,6 +33,11 @@ class Settings extends Component
     public string $newHoliday = '';
     public string $newHolidayName = '';
     public array $holidayNames = [];
+    /** @var array<string, array{category: string, paid: bool}> date => holiday type */
+    public array $holidayTypes = [];
+    public string $newHolidayCategory = 'public';
+    public bool $newHolidayPaid = true;
+    public string $leaveYearStart = '4';
     public string $idleMinutes = '10';
 
     // Weekly offs: nth-weekday offs (e.g. 3rd Saturday), temporary shifts, and per-employee patterns.
@@ -48,6 +53,14 @@ class Settings extends Component
     public ?int $patternEmployeeId = null;
     public array $employeeOffWeeks = [];
     public array $employeeDays = [];
+
+    // Google Sheets
+    public bool $sheetsEnabled = false;
+    public string $sheetsUrl = '';
+    public string $sheetsSecret = '';
+    public array $sheetsReports = ['attendance'];
+    public string $sheetsFrom = '';
+    public string $sheetsTo = '';
 
     // E-mail
     public bool $emailEnabled = true;
@@ -122,6 +135,8 @@ class Settings extends Component
         $selfie = $policies->forEmployee(null, 'attendance.selfie', $today, []);
         $alerts = $policies->forEmployee(null, 'attendance.alerts', $today, \App\Services\AttendanceAlertService::DEFAULTS);
         $offboarding = $policies->forEmployee(null, 'lifecycle.offboarding', $today, ['correction_window_hours' => 72]);
+        $sheets = app(\App\Services\GoogleSheetsSync::class)->settings();
+        $this->fill(['sheetsEnabled' => $sheets['enabled'], 'sheetsUrl' => $sheets['url'], 'sheetsReports' => $sheets['reports'] ?: ['attendance'], 'sheetsFrom' => today()->subDay()->toDateString(), 'sheetsTo' => $today]);
         $this->fill([
             'offWeeks' => collect((array) ($calendar['off_weeks'] ?? []))->map(fn ($weeks) => array_map('strval', (array) $weeks))->all(),
             'shifts' => array_values((array) ($calendar['shifts'] ?? [])),
@@ -131,6 +146,8 @@ class Settings extends Component
             'workdays' => array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]),
             'holidays' => implode("\n", $calendar['holidays'] ?? []),
             'holidayNames' => (array) ($calendar['holiday_names'] ?? []),
+            'holidayTypes' => collect((array) ($calendar['holiday_types'] ?? []))->map(fn ($t) => \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => ['d' => $t]], 'd'))->all(),
+            'leaveYearStart' => (string) \App\Support\LeaveYear::startMonth(),
             'idleMinutes' => (string) ($idle['away_prompt_minutes'] ?? 10),
             'requireLocation' => (bool) ($location['required_for_mobile'] ?? false),
             'requireLocationWeb' => (bool) ($location['required_for_web'] ?? false),
@@ -194,16 +211,36 @@ class Settings extends Component
         $this->validate(['newHoliday' => ['required', 'date_format:Y-m-d']], ['newHoliday.required' => 'Pick a date to add.'], ['newHoliday' => 'holiday']);
         $this->validate(['newHolidayName' => ['nullable', 'string', 'max:80']], [], ['newHolidayName' => 'holiday name']);
         $this->holidays = implode("\n", collect($this->holidayList())->push($this->newHoliday)->unique()->sort()->values()->all());
+        $this->validate(['newHolidayCategory' => ['required', Rule::in(array_keys(\App\Support\WorkCalendar::HOLIDAY_CATEGORIES))]], [], ['newHolidayCategory' => 'holiday type']);
         if (trim($this->newHolidayName) !== '') $this->holidayNames[$this->newHoliday] = trim($this->newHolidayName);
+        $this->holidayTypes[$this->newHoliday] = ['category' => $this->newHolidayCategory, 'paid' => $this->newHolidayPaid];
         $this->newHoliday = '';
         $this->newHolidayName = '';
+        $this->newHolidayCategory = 'public';
+        $this->newHolidayPaid = true;
     }
 
     public function removeHoliday(string $date): void
     {
         $this->authorizeSettings();
         $this->holidays = implode("\n", collect($this->holidayList())->reject(fn ($d) => $d === $date)->values()->all());
-        unset($this->holidayNames[$date]);
+        unset($this->holidayNames[$date], $this->holidayTypes[$date]);
+    }
+
+    /** Flips a listed holiday between paid and unpaid (kept after "Save calendar"). */
+    public function toggleHolidayPaid(string $date): void
+    {
+        $this->authorizeSettings();
+        $type = \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $this->holidayTypes], $date);
+        $this->holidayTypes[$date] = ['category' => $type['category'], 'paid' => ! $type['paid']];
+    }
+
+    public function saveLeaveYear(PeopleOperationsService $people): void
+    {
+        $this->authorizeSettings();
+        $this->validate(['leaveYearStart' => ['required', 'integer', 'between:1,12']], [], ['leaveYearStart' => 'leave year start']);
+        $people->setPolicy('leave.year', 'leave', 'Leave year', ['start_month' => (int) $this->leaveYearStart], null, auth()->id(), today()->toDateString());
+        $this->toast('Leave year saved: '.\Illuminate\Support\Carbon::create(2000, (int) $this->leaveYearStart, 1)->format('F').' to '.\Illuminate\Support\Carbon::create(2000, (int) $this->leaveYearStart, 1)->subMonth()->format('F').'.');
     }
 
     public function saveCalendar(PeopleOperationsService $people): void
@@ -217,7 +254,7 @@ class Settings extends Component
 
             return;
         }
-        $calendar = \App\Support\WorkCalendar::normalise(['days' => array_map('intval', $this->workdays), 'holidays' => $holidays->sort()->values()->all(), 'holiday_names' => array_intersect_key(array_map(fn ($name) => mb_substr(trim((string) $name), 0, 80), $this->holidayNames), array_flip($holidays->all())), 'off_weeks' => $this->offWeeks, 'shifts' => $this->shifts]);
+        $calendar = \App\Support\WorkCalendar::normalise(['days' => array_map('intval', $this->workdays), 'holidays' => $holidays->sort()->values()->all(), 'holiday_names' => array_intersect_key(array_map(fn ($name) => mb_substr(trim((string) $name), 0, 80), $this->holidayNames), array_flip($holidays->all())), 'holiday_types' => collect($holidays)->mapWithKeys(fn ($date) => [$date => \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $this->holidayTypes], $date)])->all(), 'off_weeks' => $this->offWeeks, 'shifts' => $this->shifts]);
         $people->setPolicy('calendar.working_days', 'calendar', 'Working calendar', $calendar, null, auth()->id(), today()->toDateString());
         $this->offWeeks = collect($calendar['off_weeks'])->map(fn ($weeks) => array_map('strval', $weeks))->all();
         $this->shifts = $calendar['shifts'];
@@ -305,6 +342,37 @@ class Settings extends Component
             \App\Models\EmployeePolicyOverride::create(['employee_id' => $employeeId, 'rule_key' => 'calendar.working_days', 'effective_from' => null, 'configuration' => $config, 'configured_by' => auth()->id()]);
         }
         app(AuditLogger::class)->record('policy.employee_calendar_updated', \App\Models\AttendanceEmployee::find($employeeId), $config);
+    }
+
+    public function saveSheets(\App\Services\GoogleSheetsSync $sheets): void
+    {
+        $this->authorizeSettings();
+        $this->validate([
+            'sheetsUrl' => [$this->sheetsEnabled ? 'required' : 'nullable', 'url', 'starts_with:https://', 'max:500'],
+            'sheetsSecret' => ['nullable', 'string', 'min:12', 'max:200'],
+            'sheetsReports' => ['array', $this->sheetsEnabled ? 'min:1' : 'min:0'], 'sheetsReports.*' => [Rule::in(array_keys(\App\Services\GoogleSheetsSync::REPORTS))],
+        ], ['sheetsUrl.starts_with' => 'Use the https:// web-app URL from Apps Script (Deploy → Web app).'], ['sheetsUrl' => 'web-app URL', 'sheetsSecret' => 'shared secret', 'sheetsReports' => 'reports']);
+        if ($this->sheetsEnabled && $this->sheetsSecret === '' && ! $sheets->settings()['secret']) {
+            $this->addError('sheetsSecret', 'Enter the shared secret you put in the Apps Script.');
+
+            return;
+        }
+        $sheets->configure($this->sheetsEnabled, $this->sheetsUrl, $this->sheetsSecret, $this->sheetsReports, $this->user());
+        $this->sheetsSecret = '';
+        $this->toast($this->sheetsEnabled ? 'Google Sheets sync saved. It runs every 30 minutes.' : 'Google Sheets sync turned off.');
+    }
+
+    public function syncSheetsNow(\App\Services\GoogleSheetsSync $sheets): void
+    {
+        $this->authorizeSettings();
+        $this->validate(['sheetsFrom' => ['required', 'date'], 'sheetsTo' => ['required', 'date', 'after_or_equal:sheetsFrom']], [], ['sheetsFrom' => 'from', 'sheetsTo' => 'to']);
+        if (\Illuminate\Support\Carbon::parse($this->sheetsFrom)->diffInDays(\Illuminate\Support\Carbon::parse($this->sheetsTo)) > 62) {
+            $this->addError('sheetsTo', 'Send at most two months at a time.');
+
+            return;
+        }
+        $result = $sheets->sync(\Illuminate\Support\Carbon::parse($this->sheetsFrom), \Illuminate\Support\Carbon::parse($this->sheetsTo), force: true);
+        $this->toast($result['message'], $result['ok'] ? 'success' : 'error');
     }
 
     public function saveEmail(PeopleOperationsService $people): void
@@ -479,6 +547,7 @@ class Settings extends Component
             'leaveTypes' => LeaveType::orderBy('name')->get(), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
             'allEmployees' => $this->tab === 'calendar' ? \App\Models\AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']) : collect(),
             'calendarOverrides' => $calendarOverrides,
+            'sheetsStatus' => $this->tab === 'sheets' ? ['stored_secret' => (bool) app(\App\Services\GoogleSheetsSync::class)->settings()['secret'], 'last' => app(\App\Services\GoogleSheetsSync::class)->lastResult()] : null,
             'mail' => ['mailer' => config('mail.default'), 'host' => config('mail.mailers.'.config('mail.default').'.host'), 'port' => config('mail.mailers.'.config('mail.default').'.port'), 'from' => config('mail.from.address'), 'queue' => config('queue.default'), 'last_error' => \Illuminate\Support\Facades\Cache::get(\App\Notifications\Channels\SafeMailChannel::LAST_ERROR_KEY)],
         ], 'Settings');
     }

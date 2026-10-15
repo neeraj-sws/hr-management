@@ -72,13 +72,47 @@ class PeopleOperationsService
         return ['session'=>$session, 'worked_seconds'=>$worked, 'standard_seconds'=>$standard, 'extra_minutes'=>max(0, intdiv($worked-$standard, 60)), 'holiday'=>! $this->isConfiguredWorkday($request->work_date->toDateString(), $this->policy($request->employee,'calendar.working_days',['days'=>[1,2,3,4,5],'holidays'=>[]],$request->work_date->toDateString()))];
     }
 
-    public function requestAdjustment(AttendanceEmployee $employee, float $amount, string $kind, string $effectiveOn, string $reason, int $userId): SalaryAdjustment
+    public function requestAdjustment(AttendanceEmployee $employee, float $amount, string $kind, string $effectiveOn, string $reason, int $userId, bool $recurring = false, ?string $recurringUntil = null): SalaryAdjustment
     {
-        if (! in_array($kind, ['earning','deduction'], true) || $amount <= 0) throw ValidationException::withMessages(['amount'=>'Enter a positive amount and valid adjustment type.']);
-        $adjustment = SalaryAdjustment::create(['employee_id'=>$employee->id,'amount'=>$amount,'kind'=>$kind,'effective_on'=>$effectiveOn,'reason'=>$reason,'requested_by'=>$userId,'status'=>'pending']);
+        if (! isset(SalaryAdjustment::KINDS[$kind]) || $amount <= 0) throw ValidationException::withMessages(['amount'=>'Enter a positive amount and valid adjustment type.']);
+        if ($kind === 'increment' && $recurring) throw ValidationException::withMessages(['recurring'=>'An increment changes the monthly salary itself; it cannot also be recurring.']);
+        if ($kind === 'increment' && ! $employee->salaryProfiles()->exists()) throw ValidationException::withMessages(['kind'=>'Set a salary for this employee before adding an increment.']);
+        if (! $recurring) $recurringUntil = null;
+        if ($recurringUntil !== null && $recurringUntil < $effectiveOn) throw ValidationException::withMessages(['recurringUntil'=>'The last month cannot be before the effective date.']);
+        $adjustment = SalaryAdjustment::create(['employee_id'=>$employee->id,'amount'=>$amount,'kind'=>$kind,'is_recurring'=>$recurring,'recurring_until'=>$recurringUntil,'effective_on'=>$effectiveOn,'reason'=>$reason,'requested_by'=>$userId,'status'=>'pending']);
         $this->approval(SalaryAdjustment::class, $adjustment->id);
         $this->audit->record('salary.adjustment_requested', $adjustment);
         return $adjustment;
+    }
+
+    /**
+     * An approved increment becomes a new salary revision from its effective date:
+     * the salary in force then plus the increment (earning components scale with it).
+     * Earlier revisions are untouched, so salary history is kept.
+     */
+    private function applyIncrement(SalaryAdjustment $increment, int $approver): void
+    {
+        $employee = $increment->employee;
+        $date = $increment->effective_on->toDateString();
+        $base = $employee->salaryProfiles()->whereDate('effective_from', '<=', $date)->orderByDesc('effective_from')->orderByDesc('id')->first()
+            ?? $employee->salaryProfiles()->orderBy('effective_from')->first();
+        if (! $base) throw ValidationException::withMessages(['approval'=>'This employee has no salary to increment.']);
+        $old = (float) $base->monthly_salary;
+        $new = round($old + (float) $increment->amount, 2);
+        $components = $base->components;
+        if (is_array($components) && $components && $old > 0) {
+            // Keep the structure: earnings grow in proportion, fixed deductions stay as they are.
+            $earningRows = array_keys(array_filter($components, fn ($c) => ($c['type'] ?? 'earning') === 'earning'));
+            foreach ($earningRows as $i) $components[$i]['amount'] = round((float) $components[$i]['amount'] * $new / $old, 2);
+            $drift = round($new - array_sum(array_map(fn ($i) => (float) $components[$i]['amount'], $earningRows)), 2);
+            if ($earningRows && $drift != 0.0) $components[$earningRows[0]]['amount'] = round((float) $components[$earningRows[0]]['amount'] + $drift, 2);
+        }
+        $values = ['monthly_salary' => $new, 'working_days_per_month' => $base->working_days_per_month, 'standard_daily_hours' => $base->standard_daily_hours, 'components' => $components ?: null, 'configured_by' => $approver];
+        $profile = $employee->salaryProfiles()->whereDate('effective_from', $date)->first();
+        if ($profile) $profile->update($values); else $profile = $employee->salaryProfiles()->create(['effective_from' => $date, ...$values]);
+        $latest = $employee->salaryProfiles()->orderByDesc('effective_from')->orderByDesc('id')->first();
+        $employee->update(['monthly_salary' => $latest->monthly_salary]);
+        $this->audit->record('salary.increment_applied', $profile, ['adjustment_id' => $increment->id, 'from' => $old, 'to' => $new, 'effective_from' => $date]);
     }
 
     public function requestAdvance(AttendanceEmployee $employee, float $amount, float $installment, string $reason, int $userId): SalaryAdvance
@@ -97,7 +131,8 @@ class PeopleOperationsService
         return DB::transaction(function () use ($modelClass, $id, $approver, $approve, $note, $amount) {
             $record = $modelClass::whereKey($id)->lockForUpdate()->firstOrFail();
             if ($record->status !== 'pending') throw ValidationException::withMessages(['approval'=>'This request has already been decided.'])->status(409);
-            if ($approve && $record->effective_on) app(PayrollLockGuard::class)->changed($record->employee_id, $record->effective_on->toDateString(), $modelClass === EmployeePenalty::class ? 'penalty' : 'salary adjustment');
+            if ($approve && $record->effective_on) app(PayrollLockGuard::class)->changed($record->employee_id, $record->effective_on->toDateString(), $modelClass === EmployeePenalty::class ? 'penalty' : 'salary adjustment', $record instanceof SalaryAdjustment && ($record->is_recurring || $record->isIncrement()) ? ($record->recurring_until?->copy()->endOfMonth()->toDateString() ?? '2999-12-31') : null);
+            if ($approve && $record instanceof SalaryAdjustment && $record->isIncrement()) $this->applyIncrement($record, $approver);
             $changes = ['status'=>$approve?'approved':'rejected','decided_by'=>$approver,'decided_at'=>now()];
             if ($approve && $amount !== null && $modelClass === EmployeePenalty::class) {
                 if ($amount <= 0 || $amount > (float) $record->amount) throw ValidationException::withMessages(['amount'=>'A penalty can only be reduced, to an amount above zero.']);

@@ -125,6 +125,18 @@ class AttendanceService
         return $session;
     }
 
+    /**
+     * The IP address the employee's request came from (behind a proxy, configure
+     * trusted proxies so this is the client and not the proxy). Not recorded for
+     * admin actions or console jobs, where it would not be the employee's.
+     */
+    private function clientIp(string $source): ?string
+    {
+        if ($source === 'admin' || app()->runningInConsole() && ! app()->runningUnitTests()) return null;
+
+        return request()->ip();
+    }
+
     private function createCheckIn(AttendanceEmployee $employee, string $source, ?CarbonInterface $at, array $place, ?string $photoPath): AttendanceSession
     {
         return DB::transaction(function () use ($employee, $source, $at, $place, $photoPath) {
@@ -134,7 +146,7 @@ class AttendanceService
             if ($open) throw ValidationException::withMessages(['attendance' => 'You are still checked in since '.$open->check_in->format('d M, h:i A').'. Check out first.']);
             if (AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $now->toDateString())->exists()) throw ValidationException::withMessages(['attendance' => 'An attendance session already exists for this day.']);
             $session = AttendanceSession::create(['employee_id' => $employee->id, 'work_date' => $now->toDateString(), 'check_in' => $now, 'status' => 'working', 'last_sync_at' => $now,
-                'check_in_latitude' => $place['latitude'], 'check_in_longitude' => $place['longitude'], 'check_in_office_id' => $place['office_id'], 'check_in_distance_meters' => $place['distance'], 'check_in_photo_path' => $photoPath]);
+                'check_in_latitude' => $place['latitude'], 'check_in_longitude' => $place['longitude'], 'check_in_office_id' => $place['office_id'], 'check_in_distance_meters' => $place['distance'], 'check_in_photo_path' => $photoPath, 'check_in_ip' => $this->clientIp($source)]);
             $this->event($session, 'check_in', $now, 0, ['source' => $source, 'photo' => (bool) $photoPath, 'located' => $place['latitude'] !== null]);
             $this->audit->record('attendance.checked_in', $session, ['source' => $source, 'photo' => (bool) $photoPath]);
 
@@ -203,7 +215,7 @@ class AttendanceService
             $session->refresh();
             $activeSeconds = max($session->check_in->diffInSeconds($checkOut) - (int) $session->break_seconds - (int) $session->idle_seconds, 0);
             $session->update(['check_out' => $checkOut, 'active_seconds' => (int) $activeSeconds, 'status' => 'completed', 'last_sync_at' => $checkOut,
-                'check_out_latitude' => $place['latitude'], 'check_out_longitude' => $place['longitude'], 'check_out_office_id' => $place['office_id'], 'check_out_distance_meters' => $place['distance'], 'check_out_photo_path' => $photoPath]);
+                'check_out_latitude' => $place['latitude'], 'check_out_longitude' => $place['longitude'], 'check_out_office_id' => $place['office_id'], 'check_out_distance_meters' => $place['distance'], 'check_out_photo_path' => $photoPath, 'check_out_ip' => $this->clientIp($source)]);
             $session->increment('server_version');
             $this->event($session, 'check_out', $checkOut, 0, ['source' => $source, 'photo' => (bool) $photoPath, 'located' => $place['latitude'] !== null]);
             $this->audit->record('attendance.checked_out', $session, ['active_seconds' => (int) $activeSeconds, 'photo' => (bool) $photoPath]);

@@ -37,13 +37,14 @@
     @endif
 
     <section class="card">
-        <div class="card-head"><div><h2>Salary adjustments</h2><p>One-off earnings (bonus, reimbursement) or deductions, applied in the payroll covering their effective date once approved.</p></div></div>
-        <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Type</th><th class="num">Amount</th><th>Effective</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>
+        <div class="card-head"><div><h2>Salary adjustments</h2><p>Increments raise the monthly salary from the effective date (old salary stays in history). Bonus and deductions apply in the payroll covering their effective date — once, or every month when recurring. All need approval.</p></div></div>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Type</th><th class="num">Amount</th><th>Effective</th><th>Repeats</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>
             @forelse($adjustments as $a)
-                <tr><td>{{ $a->employee?->name }}</td><td><x-badge :tone="$a->kind === 'earning' ? 'green' : 'red'">{{ $a->kind }}</x-badge></td><td class="num">{{ number_format((float) $a->amount, 2) }}</td><td>{{ $a->effective_on->format('d M Y') }}</td><td>{{ $a->reason }}</td>
+                <tr><td>{{ $a->employee?->name }}</td><td><x-badge :tone="$a->isIncrement() ? 'blue' : ($a->isDeduction() ? 'red' : 'green')">{{ $a->label() }}</x-badge></td><td class="num">{{ $a->isDeduction() ? '−' : '+' }}{{ number_format((float) $a->amount, 2) }}</td><td>{{ $a->effective_on->format('d M Y') }}</td>
+                    <td>@if($a->is_recurring)Monthly{{ $a->recurring_until ? ' until '.$a->recurring_until->format('M Y') : ', until stopped' }}@elseif($a->isIncrement())Salary revised @else Once @endif</td><td>{{ $a->reason }}</td>
                     <td><x-badge :status="$a->status" />@if($a->payroll_item_id)<small>in payroll</small>@endif</td>
-                    <td>@if(in_array($a->id, $decidable))<div class="row-actions"><button class="btn btn-sm btn-success" wire:click="decide({{ $a->id }}, true)" wire:confirm="Approve this request?">Approve</button><button class="btn btn-sm btn-danger" wire:click="decide({{ $a->id }}, false)" wire:confirm="Reject this request?">Reject</button></div>@endif</td></tr>
-            @empty<tr><td colspan="7"><x-empty title="No adjustments" icon="receipt" /></td></tr>@endforelse
+                    <td>@if(in_array($a->id, $decidable))<div class="row-actions"><button class="btn btn-sm btn-success" wire:click="decide({{ $a->id }}, true)" wire:confirm="Approve this request?">Approve</button><button class="btn btn-sm btn-danger" wire:click="decide({{ $a->id }}, false)" wire:confirm="Reject this request?">Reject</button></div>@elseif($a->is_recurring && $a->status === 'approved' && (! $a->recurring_until || $a->recurring_until->gte(today()->startOfMonth())) && auth()->user()->canAny(['salary.adjust', 'payroll.manage']))<button class="btn btn-sm" wire:click="stopRecurring({{ $a->id }})" wire:confirm="Stop this recurring adjustment from this month's payroll on?">Stop</button>@endif</td></tr>
+            @empty<tr><td colspan="8"><x-empty title="No adjustments" icon="receipt" /></td></tr>@endforelse
         </tbody></table></div>
     </section>
 
@@ -77,10 +78,16 @@
         <x-modal title="{{ auth()->user()->can('salary.adjust') ? 'New salary adjustment' : 'Request salary adjustment' }}">
             <form wire:submit="saveAdjustment"><div class="modal-body"><x-errors /><div class="form-grid">
                 @can('salary.adjust')<x-field label="Employee" name="adjustmentEmployeeId" full><select wire:model="adjustmentEmployeeId"><option value="">Myself</option>@foreach($allEmployees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></x-field>@endcan
-                <x-field label="Type" name="kind"><select wire:model="kind"><option value="earning">Earning (bonus / reimbursement)</option><option value="deduction">Deduction</option></select></x-field>
-                <x-field label="Amount" name="amount"><input type="number" step="0.01" min="0.01" wire:model="amount"></x-field>
+                <x-field label="Type" name="kind"><select wire:model.live="kind">@foreach(\App\Models\SalaryAdjustment::KINDS as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select></x-field>
+                <x-field :label="$kind === 'increment' ? 'Increase in monthly salary' : 'Amount'" name="amount"><input type="number" step="0.01" min="0.01" wire:model="amount"></x-field>
                 <x-field label="Effective date" name="effectiveOn"><input type="date" wire:model="effectiveOn"></x-field>
                 <x-field label="Reason" name="reason"><input wire:model="reason"></x-field>
+                @if($kind === 'increment')
+                    <p class="small muted" style="grid-column:1/-1;margin:0">On approval a new salary revision starts on the effective date: current salary + this amount. Earlier salary history is kept.</p>
+                @else
+                    <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model.live="recurring"> Repeat every month (recurring)</label>
+                    @if($recurring)<x-field label="Last month (optional)" name="recurringUntil" hint="leave empty to repeat until stopped"><input type="month" wire:model="recurringUntil"></x-field>@endif
+                @endif
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Submit for approval</button></div></form>
         </x-modal>

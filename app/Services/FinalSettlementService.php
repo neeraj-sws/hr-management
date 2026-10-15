@@ -93,9 +93,13 @@ class FinalSettlementService
         $workingDaysPerMonth = (int) ($payrollPolicy['working_days_per_month'] ?? $profile?->working_days_per_month ?? 22);
         $multiplier = (float) ($overtimePolicy['multiplier'] ?? 0);
         $overtime = $profile ? round(((float) $profile->monthly_salary / max(1, $workingDaysPerMonth * $dailyHours)) * ($approvedMinutes / 60) * $multiplier, 2) : 0;
-        $adjustments = SalaryAdjustment::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('effective_on', '<=', $end->toDateString())->whereNull('payroll_item_id')->get();
-        $earnings = (float) $adjustments->where('kind', 'earning')->sum('amount');
-        $otherDeductions = (float) $adjustments->where('kind', 'deduction')->sum('amount');
+        // One-off adjustments not yet paid, plus the final month of any recurring adjustment still running then.
+        // Increments are excluded: they already raised the salary used above.
+        $adjustments = SalaryAdjustment::where('employee_id', $employee->id)->where('status', 'approved')->where('kind', '!=', 'increment')->whereDate('effective_on', '<=', $end->toDateString())
+            ->where(fn ($q) => $q->where(fn ($q) => $q->where('is_recurring', false)->whereNull('payroll_item_id'))
+                ->orWhere(fn ($q) => $q->where('is_recurring', true)->where(fn ($q) => $q->whereNull('recurring_until')->orWhereDate('recurring_until', '>=', $end->copy()->startOfMonth()->toDateString()))))->get();
+        $earnings = (float) $adjustments->filter(fn ($a) => ! $a->isDeduction())->sum('amount');
+        $otherDeductions = (float) $adjustments->filter(fn ($a) => $a->isDeduction())->sum('amount');
         $penalties = (float) EmployeePenalty::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('effective_on', '<=', $end->toDateString())->whereNull('payroll_item_id')->sum('amount');
         $advances = SalaryAdvance::where('employee_id', $employee->id)->whereIn('status', ['approved', 'disbursed'])->get();
         $advanceRecovery = 0.0;
@@ -105,7 +109,7 @@ class FinalSettlementService
         }
         $policy = app(PeopleOperationsService::class)->policy($employee, 'leave.final_settlement', ['leave_encashment_enabled' => false, 'rate_per_day' => 0]);
         $leaveRemaining = 0.0;
-        foreach (\App\Models\LeaveType::where('is_active', true)->where('paid', true)->get() as $type) $leaveRemaining += max(0, (float) app(LeaveAccrualService::class)->balance($employee, $type, (int) $end->year)['remaining']);
+        foreach (\App\Models\LeaveType::where('is_active', true)->where('paid', true)->get() as $type) $leaveRemaining += max(0, (float) app(LeaveAccrualService::class)->balance($employee, $type, \App\Support\LeaveYear::of($end))['remaining']);
         $leaveCashout = !empty($policy['leave_encashment_enabled']) ? round($leaveRemaining * max(0, (float) ($policy['rate_per_day'] ?? 0)), 2) : 0;
         $reimbursements = round((float) \App\Models\ExpenseClaim::where('employee_id', $employee->id)->where('status', 'approved')->whereNull('payroll_item_id')->sum('amount'), 2);
         $gross = round($base + $overtime + $earnings + $leaveCashout + $lockedUnpaid + $reimbursements, 2);
