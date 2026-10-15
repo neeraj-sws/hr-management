@@ -71,6 +71,10 @@ class EmployeeProfile extends Component
         $metrics = $work->productivity(collect([$employee]), now()->startOfMonth()->toDateString(), today()->toDateString())->first();
         $isSelf = $employee->user_id === $user->id;
         $showSalary = $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']);
+        $projectQuery = $work->projectsInvolving([$employee->id]);
+        $projects = (clone $projectQuery)->with('manager:id,name')
+            ->withCount(['tasks as my_tasks_count' => fn ($q) => $q->where('assignee_id', $employee->id), 'tasks as my_open_tasks_count' => fn ($q) => $q->where('assignee_id', $employee->id)->where('status', '!=', 'completed')])
+            ->orderByRaw("case status when 'active' then 0 when 'planned' then 1 when 'on_hold' then 2 else 3 end")->orderBy('name')->limit(20)->get();
 
         return $this->page('livewire.people.employee-profile', [
             'employee' => $employee,
@@ -78,6 +82,8 @@ class EmployeeProfile extends Component
             'recentDays' => $days->reverse()->take(10),
             'balances' => $balances,
             'metrics' => $metrics,
+            'projectCounts' => $work->projectCounts($projectQuery),
+            'projects' => $projects,
             'tasks' => $employee->tasks()->where('status', '!=', 'completed')->latest()->limit(8)->get(),
             'assets' => $employee->assets()->latest()->get(),
             'documents' => ($isSelf || $user->can('lifecycle.manage')) ? $employee->documents()->latest()->get() : collect(),

@@ -31,6 +31,7 @@
             <dt>Manager</dt><dd>{{ $employee->manager?->name ?? '—' }}</dd>
             <dt>Direct reports</dt><dd>{{ $employee->directReports->pluck('name')->join(', ') ?: '—' }}</dd>
             <dt>Teams</dt><dd>{{ $employee->teams->pluck('name')->join(', ') ?: '—' }}</dd>
+            <dt>Projects</dt><dd><strong>{{ $projectCounts['total'] }}</strong> · {{ $projectCounts['active'] }} active · {{ $projectCounts['completed'] }} completed</dd>
             <dt>Roles</dt><dd>{{ $employee->user?->roles->pluck('name')->join(', ') ?: 'No login' }}</dd>
             <dt>Joined</dt><dd>{{ $employee->joined_at?->format('d M Y') ?? '—' }}</dd>
             <dt>Employment</dt><dd>{{ \App\Services\EmployeeService::EMPLOYMENT_TYPES[$employee->employment_type] ?? 'Full time' }}</dd>
@@ -74,6 +75,11 @@
 
     {{-- WORK --}}
     <div x-show="tab === 'work'" x-cloak class="grid grid-2">
+        <section class="card"><div class="card-head"><div><h2>Projects ({{ $projectCounts['total'] }})</h2><p>{{ $projectCounts['active'] }} active · {{ $projectCounts['planned'] }} planned · {{ $projectCounts['on_hold'] }} on hold · {{ $projectCounts['completed'] }} completed</p></div><a class="link-sm" href="{{ route('reports.show', ['type' => 'projects', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+            @forelse($projects as $project)<div class="list-row"><div><strong>{{ $project->name }}</strong><small>{{ $project->manager_id === $employee->id ? 'Manager' : 'Manager: '.($project->manager?->name ?? '—') }} · {{ $project->my_tasks_count }} {{ str('task')->plural($project->my_tasks_count) }} ({{ $project->my_open_tasks_count }} open)</small></div><x-badge :status="$project->status" /></div>
+            @empty<x-empty title="Not on any project" icon="layers" />@endforelse
+            @if($projectCounts['total'] > $projects->count())<p class="small muted">Showing {{ $projects->count() }} of {{ $projectCounts['total'] }}.</p>@endif
+        </div></section>
         <section class="card"><div class="card-head"><h2>Open tasks</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'tasks', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
             @forelse($tasks as $task)<div class="list-row"><div><strong>{{ $task->title }}</strong><small>{{ ucfirst($task->priority) }} · {{ $task->due_on ? 'due '.$task->due_on->format('d M') : 'no due date' }}</small></div>@if($task->isOverdue())<x-badge status="overdue" />@else<x-badge :status="$task->status" />@endif</div>
             @empty<x-empty title="No open tasks" icon="check-square" />@endforelse

@@ -47,6 +47,12 @@ class Dashboard extends Component
         $todaysTasks = $completedToday + $dueOpen;
         $taskCompletionPct = $todaysTasks > 0 ? (int) round($completedToday / $todaysTasks * 100) : 0;
 
+        // Projects: the whole company for HR/admin, the team's projects for a manager, otherwise the person's own.
+        $work = app(\App\Services\WorkService::class);
+        $teamIds = $this->teamEmployeeIds();
+        $projectScope = $orgWide ? 'company' : ($teamIds->count() > 1 ? 'team' : 'mine');
+        $projectCounts = $orgWide || $profile ? $work->projectCounts($orgWide ? \App\Models\Project::query() : $work->projectsInvolving($teamIds)) : null;
+
         $mySession = $profile ? $attendance->today($profile) : null;
         $myTasks = $profile ? Task::where('assignee_id', $profile->id)->where('status', '!=', 'completed')->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(5)->get() : collect();
         $runningTimer = $profile ? TaskTimeEntry::with('task')->where('employee_id', $profile->id)->where('status', 'running')->first() : null;
@@ -76,6 +82,8 @@ class Dashboard extends Component
                 'pending_approvals' => $user->canAny(\App\Support\Access::APPROVER_PERMISSIONS) ? $inbox->pendingCount($user) : null,
                 'payroll_pending' => $user->canAny(['payroll.manage', 'payroll.approve']) ? PayrollRun::whereIn('status', ['draft', 'approved'])->count() : null,
             ],
+            'projectCounts' => $projectCounts,
+            'projectScope' => $projectScope,
             'recentAttendance' => $sessions->take(6),
             'overdueTasks' => $tasks->filter(fn (Task $task) => $task->isOverdue())->sortBy('due_on')->take(5),
             'recentStatuses' => DailyWorkStatus::with('employee')->whereIn('employee_id', $employeeIds)->latest('work_date')->limit(5)->get(),
