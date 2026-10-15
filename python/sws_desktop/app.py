@@ -219,6 +219,15 @@ class DesktopApp:
         tk.Checkbutton(header, text="Open at Windows start", variable=self.autostart_var, command=self._toggle_autostart,
                        bg=NAVY, fg="#dce6f5", selectcolor=NAVY, activebackground=NAVY, activeforeground="white", font=("Segoe UI", 9)).pack(side="right", padx=12)
 
+        # Packed before the body so a small window shrinks the task list, never the status/error line.
+        footer = tk.Frame(self.container, bg="#e9edf4", padx=16, pady=6)
+        footer.pack(fill="x", side="bottom")
+        self.flash_label = tk.Label(footer, text="", bg="#e9edf4", fg=INK, anchor="w")
+        self.flash_label.pack(side="left")
+        self.sync_label = tk.Label(footer, text="", bg="#e9edf4", fg=MUTED)
+        self.sync_label.pack(side="right")
+        ttk.Button(footer, text="Sync now", command=self.sync_now).pack(side="right", padx=8)
+
         body = tk.Frame(self.container, bg=CANVAS, padx=18, pady=16)
         body.pack(fill="both", expand=True)
 
@@ -282,14 +291,6 @@ class DesktopApp:
         self.tree.pack(fill="both", expand=True, pady=(8, 0))
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._update_task_buttons())
         self.tree.bind("<Double-1>", lambda _e: self._toggle_selected_task())
-
-        footer = tk.Frame(self.container, bg="#e9edf4", padx=16, pady=6)
-        footer.pack(fill="x", side="bottom")
-        self.flash_label = tk.Label(footer, text="", bg="#e9edf4", fg=INK, anchor="w")
-        self.flash_label.pack(side="left")
-        self.sync_label = tk.Label(footer, text="", bg="#e9edf4", fg=MUTED)
-        self.sync_label.pack(side="right")
-        ttk.Button(footer, text="Sync now", command=self.sync_now).pack(side="right", padx=8)
 
         self._tick()
         self.root.after(SYNC_INTERVAL_MS, self._auto_sync)
@@ -723,7 +724,9 @@ class DesktopApp:
                 self._flash(f"{label} saved offline — it will sync automatically.", AMBER)
                 self._render_sync()
             else:
-                self._flash(error.first_message if isinstance(error, ApiError) else str(error), RED)
+                message = error.first_message if isinstance(error, ApiError) else str(error)
+                self._flash(message, RED)
+                messagebox.showerror(label, f"{label} failed:\n\n{message}", parent=self.root)
 
         self._run(lambda: self.client.attendance(action), done, failed)
 
