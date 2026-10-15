@@ -82,6 +82,8 @@ class ProductionReadinessTest extends TestCase
         $this->seed();
         $admin = User::where('email', 'admin@example.com')->firstOrFail();
         $employee = AttendanceEmployee::create(['employee_code' => 'LEAVE-1', 'name' => 'Leave Test', 'is_active' => true]);
+        // A calendar-year (January–December) leave year; the April–March default is covered in LeaveYearAndLedgerTest.
+        \App\Models\PolicyRule::create(['rule_key' => 'leave.year', 'category' => 'leave', 'name' => 'Leave year', 'configuration' => ['start_month' => 1], 'is_active' => true]);
         $type = LeaveType::create(['name' => 'Carry PTO', 'annual_allowance' => 0, 'monthly_accrual' => 1, 'carry_forward' => true, 'carry_forward_limit' => 5, 'carry_forward_expiry_months' => 1, 'allow_advance' => true, 'paid' => true, 'is_active' => true]);
         LeaveBalance::create(['employee_id' => $employee->id, 'leave_type_id' => $type->id, 'year' => 2025, 'entitled_days' => 10, 'used_days' => 4]);
         \App\Models\EmployeePolicyOverride::create(['employee_id' => $employee->id, 'rule_key' => 'leave.accrual.'.$type->id, 'configuration' => ['days_per_month' => 2, 'carry_forward_limit' => 3, 'carry_forward_expiry_months' => 1]]);

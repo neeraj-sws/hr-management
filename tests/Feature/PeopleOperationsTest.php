@@ -82,6 +82,8 @@ class PeopleOperationsTest extends TestCase
         $team=\App\Models\Team::create(['name'=>'Accrual Team','is_active'=>true]);
         $team->members()->attach($employee->id);
         $this->actingAs($employeeUser)->get('/notes')->assertOk()->assertSee('My Notes');
+        // A calendar-year (January–December) leave year; the April–March default is covered in LeaveYearAndLedgerTest.
+        \App\Models\PolicyRule::create(['rule_key' => 'leave.year', 'category' => 'leave', 'name' => 'Leave year', 'configuration' => ['start_month' => 1], 'is_active' => true]);
         $type = LeaveType::create(['name'=>'Accrued PTO','annual_allowance'=>0,'monthly_accrual'=>1.5,'carry_forward'=>true,'carry_forward_limit'=>3,'allow_advance'=>false,'paid'=>true,'is_active'=>true]);
         $balance = LeaveBalance::create(['employee_id'=>$employee->id,'leave_type_id'=>$type->id,'year'=>2026,'entitled_days'=>0]);
         $people = app(PeopleOperationsService::class);

@@ -2,12 +2,22 @@
     <div class="page-head"><div><h1>Settings</h1><p>Employer policies are saved as effective-dated rules starting today; history is kept and individual employees can have overrides (see Compliance). No statutory or legal rates are built in.</p></div></div>
     <x-errors />
     <div class="tabs">
-        @foreach(['leave' => 'Leave types', 'calendar' => 'Working calendar & weekly offs', 'hours' => 'Work hours & attendance', 'locations' => 'Office locations', 'capture' => 'Screen capture', 'payroll' => 'Payroll & overtime', 'statutory' => 'Statutory components', 'email' => 'E-mail', 'offboarding' => 'Offboarding'] as $key => $label)
+        @foreach(['leave' => 'Leave types', 'calendar' => 'Working calendar & weekly offs', 'hours' => 'Work hours & attendance', 'locations' => 'Office locations', 'capture' => 'Screen capture', 'payroll' => 'Payroll & overtime', 'statutory' => 'Statutory components', 'sheets' => 'Google Sheets', 'email' => 'E-mail', 'offboarding' => 'Offboarding'] as $key => $label)
             <button class="tab {{ $tab === $key ? 'active' : '' }}" wire:click="$set('tab','{{ $key }}')">{{ $label }}</button>
         @endforeach
     </div>
 
     @if($tab === 'leave')
+        <section class="card mb">
+            <form class="card-body" wire:submit="saveLeaveYear">
+                <div class="card-head" style="padding:0;border:0"><div><h2>Leave year (session)</h2><p>Balances, accrual, carry-forward and expiry run per leave year. April means April–March.</p></div></div>
+                <div class="toolbar">
+                    <x-field label="Leave year starts in" name="leaveYearStart"><select wire:model="leaveYearStart">@foreach(range(1, 12) as $m)<option value="{{ $m }}">{{ \Illuminate\Support\Carbon::create(2000, $m, 1)->format('F') }}</option>@endforeach</select></x-field>
+                    <button class="btn btn-primary">Save leave year</button>
+                </div>
+                <span class="small muted">Current leave year: <b>{{ \App\Support\LeaveYear::label(\App\Support\LeaveYear::current()) }}</b> ({{ \App\Support\LeaveYear::start(\App\Support\LeaveYear::current())->format('d M Y') }} – {{ \App\Support\LeaveYear::end(\App\Support\LeaveYear::current())->format('d M Y') }}). Change it only between leave years: balances already created stay under the leave year they were made for.</span>
+            </form>
+        </section>
         <section class="card">
             <div class="card-head"><div><h2>Leave types</h2><p>Monthly accrual &gt; 0 means balances build up each month (via the scheduled <code>leave:accrue</code> job); otherwise the annual allowance is granted up-front.</p></div><button class="btn btn-primary btn-sm" wire:click="editType"><x-icon name="plus" class="icon-sm" />Add leave type</button></div>
             <div class="table-wrap"><table class="table">
@@ -27,11 +37,12 @@
             <form class="card-body stack" wire:submit="saveCalendar">
                 <div class="field"><span class="label">Working days</span><div class="pill-row">@foreach([1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'] as $num => $day)<label class="check pill"><input type="checkbox" value="{{ $num }}" wire:model.live="workdays"> {{ $day }}</label>@endforeach</div>@error('workdays')<span class="error">{{ $message }}</span>@enderror</div>
                 <div class="field"><span class="label">Holidays</span>
-                    <div class="toolbar"><input type="date" class="input" style="width:auto" wire:model="newHoliday" wire:keydown.enter.prevent="addHoliday" aria-label="Holiday date"><input class="input" style="width:200px" wire:model="newHolidayName" wire:keydown.enter.prevent="addHoliday" placeholder="Name, e.g. Diwali" aria-label="Holiday name" maxlength="80"><button type="button" class="btn" wire:click="addHoliday">Add holiday</button></div>
+                    <div class="toolbar"><input type="date" class="input" style="width:auto" wire:model="newHoliday" wire:keydown.enter.prevent="addHoliday" aria-label="Holiday date"><input class="input" style="width:200px" wire:model="newHolidayName" wire:keydown.enter.prevent="addHoliday" placeholder="Name, e.g. Diwali" aria-label="Holiday name" maxlength="80"><select class="input" style="width:auto" wire:model="newHolidayCategory" aria-label="Holiday type">@foreach(\App\Support\WorkCalendar::HOLIDAY_CATEGORIES as $value => $label)<option value="{{ $value }}">{{ $label }}</option>@endforeach</select><label class="check"><input type="checkbox" wire:model="newHolidayPaid"> Paid</label><button type="button" class="btn" wire:click="addHoliday">Add holiday</button></div>
+                    <span class="small muted">A paid holiday is paid like a working day in payroll; an unpaid one is not. An optional holiday stays a working day — employees who want it apply for leave.</span>
                     @error('newHoliday')<span class="error">{{ $message }}</span>@enderror
                     @php($holidayList = $this->holidayList())
                     @if($holidayList)
-                        <div class="pill-row">@foreach($holidayList as $date)<span class="pill">{{ \Illuminate\Support\Carbon::parse($date)->format('D, d M Y') }}@if(! empty($holidayNames[$date])) · <b>{{ $holidayNames[$date] }}</b>@endif <button type="button" class="btn btn-sm" style="padding:0 6px" wire:click="removeHoliday('{{ $date }}')" aria-label="Remove {{ $date }}">&times;</button></span>@endforeach</div>
+                        <div class="pill-row">@foreach($holidayList as $date)<span class="pill">{{ \Illuminate\Support\Carbon::parse($date)->format('D, d M Y') }}@if(! empty($holidayNames[$date])) · <b>{{ $holidayNames[$date] }}</b>@endif @php($holidayType = \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $holidayTypes], $date)) · {{ \App\Support\WorkCalendar::HOLIDAY_CATEGORIES[$holidayType['category']] }} · <button type="button" class="btn btn-sm btn-ghost" style="padding:0 6px" wire:click="toggleHolidayPaid('{{ $date }}')" title="Switch paid / unpaid">{{ $holidayType['paid'] ? 'Paid' : 'Unpaid' }}</button> <button type="button" class="btn btn-sm" style="padding:0 6px" wire:click="removeHoliday('{{ $date }}')" aria-label="Remove {{ $date }}">&times;</button></span>@endforeach</div>
                     @else
                         <span class="small muted">No holidays added yet.</span>
                     @endif
@@ -211,6 +222,27 @@
             </div><div class="form-actions"><button class="btn btn-primary">Save policies</button></div></form>
         </section>
         @include('livewire.system.partials.salary-structure')
+    @elseif($tab === 'sheets')
+        <section class="card">
+            <div class="card-head"><div><h2>Google Sheets sync</h2><p>Attendance (and any other report you tick) is sent to your Google Sheet every 30 minutes, one tab per report. Rows are updated in place, so a late check-out or a correction replaces the earlier row instead of adding a new one. Set-up steps and the Apps Script code: <code>docs/google-sheets-sync.md</code>.</p></div></div>
+            <div class="card-body stack">
+                <form class="stack" wire:submit="saveSheets">
+                    <label class="check"><input type="checkbox" wire:model="sheetsEnabled"> Sync automatically</label>
+                    <div class="form-grid">
+                        <x-field label="Apps Script web-app URL" name="sheetsUrl" full><input type="url" wire:model="sheetsUrl" placeholder="https://script.google.com/macros/s/…/exec"></x-field>
+                        <x-field label="Shared secret" name="sheetsSecret" :hint="$sheetsStatus['stored_secret'] ?? false ? 'saved — leave empty to keep it' : 'the same value as SECRET in the script, at least 12 characters'"><input type="password" wire:model="sheetsSecret" autocomplete="new-password"></x-field>
+                    </div>
+                    <div class="field"><span class="label">Reports to send</span><div class="pill-row">@foreach(\App\Services\GoogleSheetsSync::REPORTS as $key => [$label])<label class="check pill"><input type="checkbox" value="{{ $key }}" wire:model="sheetsReports"> {{ $label }}</label>@endforeach</div>@error('sheetsReports')<span class="error">{{ $message }}</span>@enderror</div>
+                    <div><button class="btn btn-primary">Save</button></div>
+                </form>
+                <form class="toolbar" wire:submit="syncSheetsNow">
+                    <x-field label="From" name="sheetsFrom"><input type="date" wire:model="sheetsFrom"></x-field>
+                    <x-field label="To" name="sheetsTo"><input type="date" wire:model="sheetsTo"></x-field>
+                    <button class="btn" wire:loading.attr="disabled">Send now</button>
+                </form>
+                <dl class="kv"><dt>Last sync</dt><dd>@if($sheetsStatus['last'] ?? null)<span @style(['color:var(--red)' => ! $sheetsStatus['last']['ok']])>{{ \Illuminate\Support\Carbon::parse($sheetsStatus['last']['at'])->format('d M Y, h:i A') }} · {{ $sheetsStatus['last']['message'] }}</span>@else<span class="muted">not run yet</span>@endif</dd></dl>
+            </div>
+        </section>
     @elseif($tab === 'email')
         <section class="card">
             <div class="card-head"><div><h2>E-mail notifications</h2><p>Approvals, leave, expenses, attendance, tasks and projects are e-mailed to the people concerned (each person can change this in their profile). A delivery problem never blocks the action itself; it is logged here and in the audit log.</p></div></div>

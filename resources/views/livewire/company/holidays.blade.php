@@ -14,12 +14,12 @@
     @endif
     <section class="card">
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th><th>Day</th><th>Holiday</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Day</th><th>Holiday</th><th>Type</th><th>Pay</th><th></th></tr></thead>
             <tbody>
             @forelse($holidays as $h)
-                <tr @class(['muted' => $h['date']->lt(today())])><td class="nowrap">{{ $h['date']->format('d M Y') }}</td><td>{{ $h['date']->format('l') }}</td><td><strong>{{ $h['name'] }}</strong></td><td>@if($h['date']->isToday())<x-badge tone="green">Today</x-badge>@elseif($h['date']->lt(today()))<span class="small muted">past</span>@endif</td></tr>
+                <tr @class(['muted' => $h['date']->lt(today())])><td class="nowrap">{{ $h['date']->format('d M Y') }}</td><td>{{ $h['date']->format('l') }}</td><td><strong>{{ $h['name'] }}</strong></td><td><x-badge :tone="$h['category'] === 'optional' ? 'amber' : 'blue'">{{ $h['category_label'] }}</x-badge>@if($h['category'] === 'optional')<small>working day — apply for leave to take it</small>@endif</td><td>{{ $h['paid'] ? 'Paid' : 'Unpaid' }}</td><td>@if($h['date']->isToday())<x-badge tone="green">Today</x-badge>@elseif($h['date']->lt(today()))<span class="small muted">past</span>@endif</td></tr>
             @empty
-                <tr><td colspan="4"><x-empty title="No holidays set for {{ $year }}" icon="calendar">@if($canEdit)Add them under Settings → Calendar.@endif</x-empty></td></tr>
+                <tr><td colspan="6"><x-empty title="No holidays set for {{ $year }}" icon="calendar">@if($canEdit)Add them under Settings → Calendar.@endif</x-empty></td></tr>
             @endforelse
             </tbody>
         </table></div>

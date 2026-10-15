@@ -182,6 +182,9 @@ class AttendanceSyncController extends Controller
                 'last_sync_at' => now(),
                 'server_version' => $currentVersion+1,
                 'client_payload_hash' => $payloadHash,
+                // The address the desktop app synced from: kept from the first sync of the day, and at check-out.
+                'check_in_ip' => $session->check_in_ip ?? request()->ip(),
+                'check_out_ip' => $session->check_out_ip ?? (! empty($payload['check_out']) ? request()->ip() : null),
             ])->save();
 
             foreach ($data['events'] ?? [] as $event) {

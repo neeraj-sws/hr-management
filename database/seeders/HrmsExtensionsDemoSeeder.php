@@ -61,7 +61,7 @@ class HrmsExtensionsDemoSeeder extends Seeder
         $year = today()->year;
         $named = ["{$year}-10-02" => 'Gandhi Jayanti', "{$year}-12-25" => 'Christmas', ($year + 1).'-01-01' => "New Year's Day", ($year + 1).'-01-26' => 'Republic Day'];
         $holidays = collect($calendar['holidays'] ?? [])->merge(array_keys($named))->unique()->sort()->values()->all();
-        app(PeopleOperationsService::class)->setPolicy('calendar.working_days', 'calendar', 'Working calendar', ['days' => $calendar['days'] ?? [1, 2, 3, 4, 5], 'holidays' => $holidays, 'holiday_names' => ($calendar['holiday_names'] ?? []) + $named], null, $hr->id, today()->toDateString());
+        app(PeopleOperationsService::class)->setPolicy('calendar.working_days', 'calendar', 'Working calendar', ['days' => $calendar['days'] ?? [1, 2, 3, 4, 5], 'holidays' => $holidays, 'holiday_names' => ($calendar['holiday_names'] ?? []) + $named, 'holiday_types' => ($calendar['holiday_types'] ?? []) + ["{$year}-10-02" => ['category' => 'national', 'paid' => true], "{$year}-12-25" => ['category' => 'festival', 'paid' => true], ($year + 1).'-01-01' => ['category' => 'optional', 'paid' => true], ($year + 1).'-01-26' => ['category' => 'national', 'paid' => true]]], null, $hr->id, today()->toDateString());
 
         // Birthdays and an anniversary close to today (invented dates)
         $mgr1?->update(['date_of_birth' => today()->subYears(38)->toDateString()]);

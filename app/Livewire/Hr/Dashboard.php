@@ -50,8 +50,8 @@ class Dashboard extends Component
         $mySession = $profile ? $attendance->today($profile) : null;
         $myTasks = $profile ? Task::where('assignee_id', $profile->id)->where('status', '!=', 'completed')->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(5)->get() : collect();
         $runningTimer = $profile ? TaskTimeEntry::with('task')->where('employee_id', $profile->id)->where('status', 'running')->first() : null;
-        $myBalances = $profile ? $profile->leaveBalances()->with('leaveType')->where('year', $today->year)->get()
-            ->filter(fn ($balance) => $balance->leaveType?->paid)->map(fn ($balance) => ['type' => $balance->leaveType?->name, 'remaining' => app(LeaveAccrualService::class)->balance($profile, $balance->leaveType, $today->year)['remaining']]) : collect();
+        $myBalances = $profile ? $profile->leaveBalances()->with('leaveType')->where('year', \App\Support\LeaveYear::current())->get()
+            ->filter(fn ($balance) => $balance->leaveType?->paid)->map(fn ($balance) => ['type' => $balance->leaveType?->name, 'remaining' => app(LeaveAccrualService::class)->balance($profile, $balance->leaveType, \App\Support\LeaveYear::current())['remaining']]) : collect();
 
         return $this->page('livewire.hr.dashboard', [
             'orgWide' => $orgWide,

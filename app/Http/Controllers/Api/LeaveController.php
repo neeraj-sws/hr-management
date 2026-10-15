@@ -26,7 +26,7 @@ class LeaveController extends ApiController
     public function balances(Request $request, LeaveAccrualService $accrual): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $year = (int) ($request->validate(['year' => ['nullable', 'integer', 'between:2000,2100']])['year'] ?? today()->year);
+        $year = (int) ($request->validate(['year' => ['nullable', 'integer', 'between:2000,2100']])['year'] ?? \App\Support\LeaveYear::current());
 
         return response()->json(['data' => LeaveType::where('is_active', true)->orderBy('name')->get()->map(fn ($t) => ['leave_type' => ['id' => $t->id, 'name' => $t->name, 'paid' => $t->paid], 'year' => $year, ...$accrual->balance($employee, $t, $year)])]);
     }

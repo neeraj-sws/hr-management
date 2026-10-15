@@ -88,7 +88,7 @@ class ReportService
     private function rawColumns(string $type): array
     {
         return match ($type) {
-            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'day_status', 'session_status'],
+            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'day_status', 'session_status', 'check_in_ip', 'check_out_ip'],
             'leave' => ['id', 'employee_code', 'employee_name', 'leave_type', 'paid', 'starts_on', 'ends_on', 'days', 'status', 'decided_at'],
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
             'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
@@ -125,7 +125,7 @@ class ReportService
                 ->map(function (AttendanceSession $s) {
                     $status = $this->attendance->isHalfDay($s) ? 'half_day' : ($this->attendance->isLate($s) ? 'late' : 'present');
 
-                    return ['employee_code' => $s->employee?->employee_code, 'employee_name' => $s->employee?->name, 'department' => $s->employee?->department?->name, 'work_date' => $s->work_date?->toDateString(), 'check_in' => $s->check_in?->format('h:i:s A'), 'check_out' => $s->check_out?->format('h:i:s A'), 'active_hours' => $this->hours($this->attendance->workedSeconds($s)), 'idle_hours' => $this->hours($s->idleSeconds()), 'break_hours' => $this->hours($s->break_seconds), 'screen_active_hours' => $this->hours($s->screen_active_seconds), 'screen_idle_hours' => $this->hours($s->screen_idle_seconds), 'late_minutes' => $this->attendance->lateMinutes($s), 'early_minutes' => $this->attendance->earlyMinutes($s), 'day_status' => $status, 'session_status' => $s->status];
+                    return ['employee_code' => $s->employee?->employee_code, 'employee_name' => $s->employee?->name, 'department' => $s->employee?->department?->name, 'work_date' => $s->work_date?->toDateString(), 'check_in' => $s->check_in?->format('h:i:s A'), 'check_out' => $s->check_out?->format('h:i:s A'), 'active_hours' => $this->hours($this->attendance->workedSeconds($s)), 'idle_hours' => $this->hours($s->idleSeconds()), 'break_hours' => $this->hours($s->break_seconds), 'screen_active_hours' => $this->hours($s->screen_active_seconds), 'screen_idle_hours' => $this->hours($s->screen_idle_seconds), 'late_minutes' => $this->attendance->lateMinutes($s), 'early_minutes' => $this->attendance->earlyMinutes($s), 'day_status' => $status, 'session_status' => $s->status, 'check_in_ip' => $s->check_in_ip, 'check_out_ip' => $s->check_out_ip];
                 }),
             'leave' => LeaveRequest::with(['employee', 'leaveType'])->whereIn('employee_id', $ids)
                 ->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->orderByDesc('starts_on')

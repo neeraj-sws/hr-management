@@ -12,4 +12,19 @@ class LeaveBalance extends Model
     protected $casts = ['entitled_days' => 'decimal:2', 'used_days' => 'decimal:2', 'carried_days' => 'decimal:2', 'carried_expires_on' => 'date', 'accrued_days' => 'decimal:3', 'adjusted_days' => 'decimal:3', 'last_accrual_month' => 'integer'];
     public function employee(): BelongsTo { return $this->belongsTo(AttendanceEmployee::class); }
     public function leaveType(): BelongsTo { return $this->belongsTo(LeaveType::class); }
+
+    /**
+     * The balance row for an employee, leave type and leave year, created on first
+     * use with the type's up-front allowance (recorded in the ledger as the opening entry).
+     */
+    public static function open(int $employeeId, LeaveType $type, int $year): self
+    {
+        $balance = self::firstOrCreate(
+            ['employee_id' => $employeeId, 'leave_type_id' => $type->id, 'year' => $year],
+            ['entitled_days' => (float) $type->monthly_accrual > 0 ? 0 : $type->annual_allowance]
+        );
+        if ($balance->wasRecentlyCreated) LeaveLedgerEntry::record($balance, 'opening', (float) $balance->entitled_days, $type->name.' allowance for '.\App\Support\LeaveYear::label($year));
+
+        return $balance;
+    }
 }

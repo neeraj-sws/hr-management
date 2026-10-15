@@ -108,7 +108,7 @@ class CompanyService
     /**
      * Holidays from the working calendar (Settings > Calendar) with their names.
      *
-     * @return Collection<int, array{date: Carbon, name: string}>
+     * @return Collection<int, array{date: Carbon, name: string, category: string, category_label: string, paid: bool}>
      */
     public function holidays(?AttendanceEmployee $employee, int $year): Collection
     {
@@ -116,7 +116,11 @@ class CompanyService
         $names = $calendar['holiday_names'] ?? [];
 
         return collect($calendar['holidays'] ?? [])->filter(fn ($date) => str_starts_with((string) $date, (string) $year))->sort()->values()
-            ->map(fn ($date) => ['date' => Carbon::parse($date), 'name' => (string) ($names[$date] ?? 'Holiday')]);
+            ->map(function ($date) use ($names, $calendar) {
+                $type = \App\Support\WorkCalendar::holidayTypeOf($calendar, (string) $date);
+
+                return ['date' => Carbon::parse($date), 'name' => (string) ($names[$date] ?? 'Holiday'), 'category' => $type['category'], 'category_label' => \App\Support\WorkCalendar::HOLIDAY_CATEGORIES[$type['category']], 'paid' => $type['paid']];
+            });
     }
 
     /** ISO weekdays (1 = Monday) that are working days. */

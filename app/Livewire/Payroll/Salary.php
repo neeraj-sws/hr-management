@@ -36,6 +36,9 @@ class Salary extends Component
     public string $amount = '';
     public string $effectiveOn = '';
     public string $reason = '';
+    public bool $recurring = false;
+    /** Last month (Y-m) a recurring adjustment applies; empty = until stopped. */
+    public string $recurringUntil = '';
 
     private function canManage(): bool
     {
@@ -126,8 +129,8 @@ class Salary extends Component
 
     public function newAdjustment(): void
     {
-        $this->reset('adjustmentEmployeeId', 'amount', 'reason');
-        $this->kind = 'earning';
+        $this->reset('adjustmentEmployeeId', 'amount', 'reason', 'recurring', 'recurringUntil');
+        $this->kind = 'bonus';
         $this->effectiveOn = today()->toDateString();
         $this->resetValidation();
         $this->showAdjustment = true;
@@ -135,9 +138,11 @@ class Salary extends Component
 
     public function saveAdjustment(PeopleOperationsService $people): void
     {
-        $this->validate(['kind' => ['required', 'in:earning,deduction'], 'amount' => ['required', 'numeric', 'gt:0', 'max:10000000'], 'effectiveOn' => ['required', 'date'], 'reason' => ['required', 'string', 'max:255'], 'adjustmentEmployeeId' => ['nullable', 'exists:attendance_employees,id']], [], ['effectiveOn' => 'effective date']);
+        $this->validate(['kind' => ['required', 'in:'.implode(',', array_keys(SalaryAdjustment::KINDS))], 'amount' => ['required', 'numeric', 'gt:0', 'max:10000000'], 'effectiveOn' => ['required', 'date'], 'reason' => ['required', 'string', 'max:255'], 'adjustmentEmployeeId' => ['nullable', 'exists:attendance_employees,id'], 'recurringUntil' => ['nullable', 'date_format:Y-m']], [], ['effectiveOn' => 'effective date', 'recurringUntil' => 'last month']);
         $employee = $this->user()->can('salary.adjust') && $this->adjustmentEmployeeId ? AttendanceEmployee::findOrFail($this->adjustmentEmployeeId) : $this->requireEmployee();
-        $people->requestAdjustment($employee, (float) $this->amount, $this->kind, $this->effectiveOn, $this->reason, auth()->id());
+        $recurring = $this->recurring && $this->kind !== 'increment';
+        $until = $recurring && $this->recurringUntil !== '' ? \Illuminate\Support\Carbon::parse($this->recurringUntil.'-01')->endOfMonth()->toDateString() : null;
+        $people->requestAdjustment($employee, (float) $this->amount, $this->kind, $this->effectiveOn, $this->reason, auth()->id(), $recurring, $until);
         $this->showAdjustment = false;
         $this->toast('Adjustment submitted for approval.');
     }
@@ -147,6 +152,21 @@ class Salary extends Component
         $approval = ApprovalRequest::where('approvable_type', SalaryAdjustment::class)->where('approvable_id', $id)->where('status', 'pending')->firstOrFail();
         $inbox->decide($this->user(), $approval, $approve);
         $this->toast($approve ? 'Adjustment approved.' : 'Adjustment rejected.');
+    }
+
+    /** Ends a running recurring adjustment after the given month (from the next payroll month on, it no longer applies). */
+    public function stopRecurring(int $id, AuditLogger $audit): void
+    {
+        abort_unless($this->user()->canAny(['salary.adjust', 'payroll.manage']), 403);
+        $adjustment = SalaryAdjustment::where('is_recurring', true)->where('status', 'approved')->findOrFail($id);
+        $lastMonth = today()->subMonth()->endOfMonth();
+        $lockedThrough = PayrollRun::where('status', 'locked')->max('period_ends_on');
+        if ($lockedThrough && substr((string) $lockedThrough, 0, 10) > $lastMonth->toDateString()) $lastMonth = \Illuminate\Support\Carbon::parse(substr((string) $lockedThrough, 0, 10))->endOfMonth();
+        // Stopped before its first month: the last month falls before the start, so it never applies.
+        app(\App\Services\PayrollLockGuard::class)->changed($adjustment->employee_id, $lastMonth->copy()->addDay()->toDateString(), 'salary adjustment', '2999-12-31');
+        $adjustment->update(['recurring_until' => $lastMonth->toDateString()]);
+        $audit->record('salary.adjustment_stopped', $adjustment, ['last_month' => $lastMonth->format('Y-m')]);
+        $this->toast('Recurring adjustment stopped after '.$lastMonth->format('M Y').'.');
     }
 
     public function closeModal(): void
