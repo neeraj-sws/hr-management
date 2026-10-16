@@ -487,6 +487,10 @@ class AttendanceService
     public function rules(AttendanceEmployee $employee, string $date): array
     {
         $configured = $this->policies->forEmployee($employee, 'attendance.rules', $date, []);
+        // Grace and the half-day threshold are current operational settings, not historical values:
+        // resolve them as of today so changing grace in Settings applies to all attendance (old and new),
+        // instead of only days on/after the date the setting was last saved.
+        $current = $this->policies->forEmployee($employee, 'attendance.rules', today()->toDateString(), $configured);
         $hours = $this->policies->forEmployee($employee, 'work.hours', $date, []);
         $dailyHours = $this->dailyHours($employee, $date);
 
@@ -494,9 +498,9 @@ class AttendanceService
 
         return [
             'work_start' => $shift ? substr((string) $shift->start_time, 0, 5) : ($employee->work_start ?: ($hours['start_time'] ?? null)),
-            'grace_minutes' => $shift && $shift->grace_minutes !== null ? $shift->grace_minutes : max(0, (int) ($configured['grace_minutes'] ?? 0)),
+            'grace_minutes' => $shift && $shift->grace_minutes !== null ? $shift->grace_minutes : max(0, (int) ($current['grace_minutes'] ?? 0)),
             'shift' => $shift?->name,
-            'half_day_seconds' => (int) round(((float) ($configured['half_day_hours'] ?? $dailyHours / 2)) * 3600),
+            'half_day_seconds' => (int) round(((float) ($current['half_day_hours'] ?? $dailyHours / 2)) * 3600),
             'daily_seconds' => (int) round($dailyHours * 3600),
         ];
     }
@@ -518,7 +522,8 @@ class AttendanceService
         if (! $employee || ! $session->check_in) return 0;
         $rules = $this->rules($employee, $session->work_date->toDateString());
         if (! $rules['work_start']) return 0;
-        $expected = Carbon::parse($session->work_date->toDateString().' '.$rules['work_start']);
+        // Count lateness only after the grace window, so an arrival within grace is 0 — consistent with isLate().
+        $expected = Carbon::parse($session->work_date->toDateString().' '.$rules['work_start'])->addMinutes((int) ($rules['grace_minutes'] ?? 0));
 
         return $session->check_in->gt($expected) ? (int) $expected->diffInMinutes($session->check_in) : 0;
     }

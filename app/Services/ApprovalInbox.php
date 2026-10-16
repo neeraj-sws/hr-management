@@ -121,8 +121,8 @@ class ApprovalInbox
         return match (true) {
             $subject instanceof LeaveRequest => $subject->status === 'pending' && ($user->can('leave.manage') || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
             $subject instanceof OvertimeRequest => $subject->status === 'pending' && ($user->canAny(['hr.manage', 'employees.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
-            $subject instanceof AttendanceCorrection => $subject->status === 'pending' && ($user->can('attendance.correct') || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
-            $subject instanceof ExpenseClaim => $subject->status === 'pending' && ($user->can('expenses.manage') || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
+            $subject instanceof AttendanceCorrection => $subject->status === 'pending' && ($user->canAny(['attendance.correct', 'approvals.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
+            $subject instanceof ExpenseClaim => $subject->status === 'pending' && ($user->canAny(['expenses.manage', 'approvals.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
             $subject instanceof PayrollRun => $subject->status === 'draft',
             $subject instanceof EmployeeFinalSettlement => $subject->status === 'pending',
             default => $subject->status === 'pending',
@@ -194,8 +194,8 @@ class ApprovalInbox
         return match (true) {
             $subject instanceof LeaveRequest => $user->can('leave.manage') || $this->managesEmployee($user, $subject->employee),
             $subject instanceof OvertimeRequest => $user->canAny(['hr.manage', 'employees.manage']) || $this->managesEmployee($user, $subject->employee),
-            $subject instanceof AttendanceCorrection => $user->can('attendance.correct') || $this->managesEmployee($user, $subject->employee),
-            $subject instanceof ExpenseClaim => $user->can('expenses.manage') || $this->managesEmployee($user, $subject->employee),
+            $subject instanceof AttendanceCorrection => $user->canAny(['attendance.correct', 'approvals.manage']) || $this->managesEmployee($user, $subject->employee),
+            $subject instanceof ExpenseClaim => $user->canAny(['expenses.manage', 'approvals.manage']) || $this->managesEmployee($user, $subject->employee),
             default => $user->canAny(self::TYPES[$approval->approvable_type][1] ?? ['-']),
         };
     }

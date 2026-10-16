@@ -57,7 +57,7 @@ class ExpenseService
     {
         $manager = ApprovalInbox::approverFor($employee);
 
-        return Notifier::withPermission('expenses.manage')->push($manager ? User::find($manager) : null)->filter()->unique('id')->values();
+        return Notifier::withPermission('expenses.manage', 'approvals.manage')->push($manager ? User::find($manager) : null)->filter()->unique('id')->values();
     }
 
     public function decide(ExpenseClaim $claim, int $approverId, bool $approve, ?string $note = null): ExpenseClaim

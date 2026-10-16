@@ -66,7 +66,6 @@
             <div><span>Department</span><strong>{{ $payslip->employee->department?->name ?? '—' }}</strong></div>
             <div><span>Pay period</span><strong>{{ $item->run->period_starts_on->format('d M') }} – {{ $item->run->period_ends_on->format('d M Y') }}</strong></div>
             <div><span>Date of joining</span><strong>{{ $payslip->employee->joined_at?->format('d M Y') ?? '—' }}</strong></div>
-            <div><span>Payroll status</span><strong>{{ ucfirst($item->run->status) }}</strong></div>
             <div><span>Paid on</span><strong>{{ $item->payments->max('paid_on')?->format('d M Y') ?? '—' }}</strong></div>
         </div>
         <div class="slip-days">

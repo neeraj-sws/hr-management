@@ -41,5 +41,8 @@ class AppServiceProvider extends ServiceProvider
 
         // @hms($seconds) prints any duration as HH:MM:SS, the one format used across the app.
         \Illuminate\Support\Facades\Blade::directive('hms', fn (string $expression) => "<?php echo e(\\App\\Support\\Duration::hms({$expression})); ?>");
+
+        // A day's attendance changing flags any draft payroll covering it for recalculation.
+        \App\Models\AttendanceSession::observe(\App\Observers\AttendanceSessionObserver::class);
     }
 }

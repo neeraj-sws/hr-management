@@ -48,8 +48,9 @@
                 @if($canDecide)
                     <div class="toolbar"><label class="field grow"><span>Reject with reason</span><input wire:model="rejectNote" placeholder="What needs to be corrected?"></label><button class="btn btn-danger" wire:click="reject">Reject</button></div>
                 @endif
+                @php($runHasOt = $selected->items->contains(fn ($i) => (float) $i->overtime_amount > 0 || (float) $i->overtime_hours > 0))
                 <div class="table-wrap"><table class="table">
-                    <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th><th class="num">OT</th><th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th></th></tr></thead>
+                    <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th>@if($runHasOt)<th class="num">OT</th>@endif<th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th></th></tr></thead>
                     <tbody>
                     @forelse($selected->items as $item)
                         @php($paid = (float) $item->payments->sum('amount'))
@@ -57,7 +58,7 @@
                         <tr wire:key="pi-{{ $item->id }}">
                             <td><strong>{{ $item->employee?->name }}</strong><small>{{ $item->employee?->employee_code }}</small></td>
                             <td class="num nowrap">{{ $item->working_days }} / {{ (float) $item->present_days }} / {{ (float) $item->paid_leave_days }} / {{ (float) $item->unpaid_leave_days }}</td>
-                            <td class="num">{{ number_format((float) $item->overtime_amount, 2) }}<small>{{ (float) $item->overtime_hours }} h</small></td>
+                            @if($runHasOt)<td class="num">{{ number_format((float) $item->overtime_amount, 2) }}<small>{{ (float) $item->overtime_hours }} h</small></td>@endif
                             <td class="num">{{ number_format((float) $item->gross_amount, 2) }}</td>
                             <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
                             <td class="num"><strong>{{ number_format((float) $item->net_amount, 2) }}</strong></td>
@@ -88,8 +89,27 @@
     @if($breakdown)
         <x-modal title="Calculation · {{ $breakdown->employee?->name }}">
             <div class="modal-body"><table class="table"><tbody>
-                @foreach(($breakdown->calculation_breakdown ?? []) as $label => $value)
-                    @if(is_scalar($value))<tr><td>{{ str($label)->replace('_', ' ')->title() }}</td><td class="num">{{ is_numeric($value) ? (fmod((float) $value, 1) ? number_format((float) $value, 2) : $value) : $value }}</td></tr>@endif
+                @php($data = $breakdown->calculation_data ?? [])
+                @php($wd = (int) ($data['working_days_per_month'] ?? 0))
+                @php($bd = $breakdown->calculation_breakdown ?? [])
+                @php($otKeys = ['approved_overtime_minutes', 'holiday_overtime_minutes', 'overtime_multiplier', 'holiday_overtime_multiplier', 'overtime_amount'])
+                @php($hasOt = (float) ($bd['overtime_amount'] ?? 0) > 0 || (int) ($bd['approved_overtime_minutes'] ?? 0) > 0 || (int) ($bd['holiday_overtime_minutes'] ?? 0) > 0)
+                @php($absentDays = max(0, (float) ($breakdown->working_days ?? 0) - (float) ($breakdown->present_days ?? 0) - (float) ($breakdown->paid_leave_days ?? 0)))
+                @if(! empty($data['monthly_salary']))
+                    <tr><td><strong>Monthly salary (basic, as configured)</strong></td><td class="num"><strong>{{ number_format((float) $data['monthly_salary'], 2) }}</strong></td></tr>
+                    <tr><td>Per-day rate <small>monthly ÷ {{ $wd ?: '—' }} working days</small></td><td class="num">{{ $wd ? number_format((float) $data['monthly_salary'] / $wd, 2) : '—' }}</td></tr>
+                    <tr><td>Working days in this period</td><td class="num">{{ (float) ($breakdown->working_days ?? 0) }}</td></tr>
+                    @if($wd && $absentDays > 0)
+                        <tr><td>Less: absent / unpaid days <small>{{ $absentDays }} × per-day rate (not paid)</small></td><td class="num">− {{ number_format((float) $data['monthly_salary'] / $wd * $absentDays, 2) }}</td></tr>
+                    @endif
+                @endif
+                @foreach($bd as $label => $value)
+                    @continue(in_array($label, $otKeys, true) && ! $hasOt)
+                    @if($label === 'base_salary' && is_scalar($value))
+                        <tr><td>Base salary earned <small>per-day rate × {{ (float) ($breakdown->present_days ?? 0) }} present day(s)</small></td><td class="num">{{ fmod((float) $value, 1) ? number_format((float) $value, 2) : $value }}</td></tr>
+                    @elseif(is_scalar($value))
+                        <tr><td>{{ str($label)->replace('_', ' ')->title() }}</td><td class="num">{{ is_numeric($value) ? (fmod((float) $value, 1) ? number_format((float) $value, 2) : $value) : $value }}</td></tr>
+                    @endif
                     @if($label === 'statutory_components' && is_array($value))@foreach($value as $c)<tr><td>{{ $c['name'] ?? $c['key'] }} ({{ $c['type'] ?? '' }})</td><td class="num">{{ number_format((float) ($c['amount'] ?? 0), 2) }}</td></tr>@endforeach @endif
                 @endforeach
             </tbody></table></div>

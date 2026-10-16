@@ -37,6 +37,16 @@ class PayrollLockGuard
     }
 
     /**
+     * Marks draft payroll runs covering [from, to] as needing recalculation, without
+     * blocking. Used when attendance for a day changes (check-in/out, import), so a
+     * draft run never shows stale present-days until it is recalculated.
+     */
+    public function flagDrafts(string $from, ?string $to = null): void
+    {
+        $this->runs($from, $to ?? $from)->where('status', 'draft')->update(['needs_recalculation' => true]);
+    }
+
+    /**
      * Like changed(), but a day inside an approved or locked payroll does not block:
      * returns true when the caller must, after applying the change, call
      * PayrollCarryOver::settle() so the difference reaches the next payroll.
