@@ -142,6 +142,15 @@ class WorkCalendar
         return "{$label} ".self::WEEKDAYS[(int) $day->isoWeekday()].' — weekly off';
     }
 
+    /** Why a non-working day is off, in words: "3rd Saturday — weekly off", "holiday" or "Sunday — weekly off". */
+    public static function offDayReason(string $date, array $calendar): string
+    {
+        if ($special = self::specialOffReason($date, $calendar)) return $special;
+        if (in_array(Carbon::parse($date)->toDateString(), self::offHolidays($calendar), true)) return 'holiday';
+
+        return self::WEEKDAYS[(int) Carbon::parse($date)->isoWeekday()].' — weekly off';
+    }
+
     /**
      * The special offs (week-of-month offs and moved weekly offs) from a date on.
      *

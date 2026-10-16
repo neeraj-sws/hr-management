@@ -110,13 +110,19 @@ class HrWorkflowService
         // Half-day and short leave apply to a single working day; a full-day leave can span a range.
         if ($duration !== 'full') {
             if (! $data['starts_on']->isSameDay($data['ends_on'])) throw ValidationException::withMessages(['ends_on' => 'A half-day or short leave is for a single day.']);
-            if (! $this->isConfiguredWorkday($data['starts_on']->toDateString(), $employee ? $this->policyConfiguration($employee, 'calendar.working_days', $data['starts_on']->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]) : ['days' => [1, 2, 3, 4, 5], 'holidays' => []])) {
-                throw ValidationException::withMessages(['starts_on' => 'This day is not a configured working day.']);
+            $calendar = $employee ? $this->policyConfiguration($employee, 'calendar.working_days', $data['starts_on']->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]) : ['days' => [1, 2, 3, 4, 5], 'holidays' => []];
+            if (! $this->isConfiguredWorkday($data['starts_on']->toDateString(), $calendar)) {
+                throw ValidationException::withMessages(['starts_on' => $data['starts_on']->format('D d M Y').' is not a working day for you ('.\App\Support\WorkCalendar::offDayReason($data['starts_on']->toDateString(), $calendar).'), so no leave is needed.']);
             }
             $days = LeaveRequest::DURATION_DAYS[$duration];
         } else {
             $days = $this->businessDaysBetween($data['starts_on'], $data['ends_on'], $employee);
-            if ($days < 1) throw ValidationException::withMessages(['starts_on' => 'The selected date range contains no configured working days.']);
+            if ($days < 1) {
+                $calendar = $employee ? $this->policyConfiguration($employee, 'calendar.working_days', $data['starts_on']->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]) : ['days' => [1, 2, 3, 4, 5], 'holidays' => []];
+                throw ValidationException::withMessages(['starts_on' => $data['starts_on']->isSameDay($data['ends_on'])
+                    ? $data['starts_on']->format('D d M Y').' is not a working day for you ('.\App\Support\WorkCalendar::offDayReason($data['starts_on']->toDateString(), $calendar).'), so no leave is needed.'
+                    : $data['starts_on']->format('d M').' – '.$data['ends_on']->format('d M Y').' has no working days for you (only weekly offs or holidays), so no leave is needed.']);
+            }
         }
         $year = LeaveYear::of($data['starts_on']);
         return DB::transaction(function () use ($employee, $data, $days, $year) {

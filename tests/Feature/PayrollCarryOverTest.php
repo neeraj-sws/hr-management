@@ -142,4 +142,16 @@ class PayrollCarryOverTest extends TestCase
         $this->actingAs($this->admin)->get(route('people.teams'))->assertOk()->assertSee('1 member')->assertSee('Team · Alpha')->assertDontSeeHtml('<span class="pill">Carry Employee</span>');
         $this->actingAs($this->admin)->get(route('people.managers'))->assertOk()->assertSee('1 direct report')->assertSee('Reports to Carry Manager');
     }
+
+    public function test_leave_on_a_weekly_off_explains_why_no_leave_is_needed(): void
+    {
+        app(\App\Services\PeopleOperationsService::class)->setPolicy('calendar.working_days', 'calendar', 'Working calendar', \App\Support\WorkCalendar::normalise(['days' => [1, 2, 3, 4, 5, 6], 'holidays' => [], 'off_weeks' => ['6' => [3]]]), null, $this->admin->id, '2026-01-01');
+        $sick = LeaveType::where('name', 'Unpaid Leave')->firstOrFail();
+        $ask = fn (string $from, string $to, string $duration = 'full') => \Livewire\Livewire::actingAs($this->employee->user)->test(\App\Livewire\Leave\Requests::class)
+            ->call('create')->set('leaveTypeId', $sick->id)->set('duration', $duration)->set('startsOn', $from)->set('endsOn', $to)->set('reason', 'Fever')->call('submit');
+        $ask('2026-10-17', '2026-10-17')->assertSee('Sat 17 Oct 2026 is not a working day for you (3rd Saturday — weekly off), so no leave is needed.');
+        $ask('2026-10-18', '2026-10-18', 'half')->assertSee('Sun 18 Oct 2026 is not a working day for you (Sunday — weekly off)');
+        $ask('2026-10-17', '2026-10-18')->assertSee('17 Oct – 18 Oct 2026 has no working days for you');
+        $ask('2026-10-24', '2026-10-24')->assertHasNoErrors(); // the 4th Saturday is a working day
+    }
 }
