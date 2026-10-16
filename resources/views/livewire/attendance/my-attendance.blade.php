@@ -68,7 +68,8 @@
 
     <section class="card">
         <div class="card-head">
-            <div><h2>{{ $monthStart->format('F Y') }}</h2><p>{{ ($summary['present'] ?? 0) + ($summary['late'] ?? 0) + ($summary['half_day'] ?? 0) }} present · {{ $summary['late'] ?? 0 }} late · {{ $summary['half_day'] ?? 0 }} half-day · {{ $summary['on_leave'] ?? 0 }} leave · {{ $summary['absent'] ?? 0 }} absent</p></div>
+            <div><h2>{{ $monthStart->format('F Y') }}</h2><p>{{ ($summary['present'] ?? 0) + ($summary['late'] ?? 0) + ($summary['half_day'] ?? 0) }} present · {{ $summary['late'] ?? 0 }} late · {{ $summary['half_day'] ?? 0 }} half-day · {{ $summary['on_leave'] ?? 0 }} leave · {{ $summary['absent'] ?? 0 }} absent</p>
+                @if($time['days'])<p class="small">Actual working time <strong>@hms($time['worked'])</strong> of @hms($time['required']) required on {{ $time['days'] }} {{ str('day')->plural($time['days']) }}@if($time['worked'] < $time['required']) · <span style="color:var(--amber)">@hms($time['required'] - $time['worked']) short</span>@endif · In–out time @hms($time['span']) (break @hms($time['break']), idle @hms($time['idle']))</p>@endif</div>
             <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="month" max="{{ now()->format('Y-m') }}"></label>
         </div>
         <div class="table-wrap"><table class="table">

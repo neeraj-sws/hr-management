@@ -112,6 +112,15 @@ class Corrections extends Component
         elseif ($this->tab === 'approvals') $query->whereIn('id', $inbox->pending($user, AttendanceCorrection::class)->pluck('approvable_id')->all() ?: [0]);
         else $query->when(! $user->canAny(['attendance.correct', 'hr.manage']), fn ($q) => $q->whereIn('employee_id', $this->teamEmployeeIds()->all() ?: [0]));
         $deciding = $this->decidingId ? AttendanceCorrection::with(['employee', 'session'])->find($this->decidingId) : null;
+        $attendance = app(\App\Services\AttendanceService::class);
+        // The form shows what is recorded for the chosen day, including the actual working time.
+        $recorded = null;
+        $payrollNotice = null;
+        if ($this->showForm && $own && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->workDate)) {
+            $session = AttendanceSession::where('employee_id', $own->id)->whereDate('work_date', $this->workDate)->latest('id')->first();
+            $recorded = ['session' => $session, 'worked' => $session ? $attendance->workedSeconds($session) : null, 'required' => (int) round($attendance->dailyHours($own, $this->workDate) * 3600)];
+            $payrollNotice = app(\App\Services\PayrollLockGuard::class)->closedNotice($own->id, $this->workDate);
+        }
 
         return $this->page('livewire.attendance.corrections', [
             'corrections' => $query->paginate(15),
@@ -119,6 +128,23 @@ class Corrections extends Component
             'canApprove' => $this->canApprove(),
             'pendingCount' => $this->canApprove() ? $inbox->pending($user, AttendanceCorrection::class)->count() : 0,
             'deciding' => $deciding,
+            'decidingWorked' => $deciding?->session ? $attendance->workedSeconds($deciding->session) : null,
+            'decidingAfter' => $deciding ? $this->workedAfter($deciding) : null,
+            'decidingNotice' => $deciding && $deciding->status === 'pending' ? app(\App\Services\PayrollLockGuard::class)->closedNotice($deciding->employee_id, $deciding->work_date->toDateString()) : null,
+            'recorded' => $recorded,
+            'payrollNotice' => $payrollNotice,
         ], 'Attendance Corrections');
+    }
+
+    /** Working time the day would have once the correction is applied (same rule as the approval: span − break − idle). */
+    private function workedAfter(AttendanceCorrection $correction): ?int
+    {
+        $session = $correction->session;
+        $in = $correction->requested_check_in ?? $session?->check_in;
+        $out = $correction->requested_check_out ?? $session?->check_out;
+        if (! $in || ! $out || $out->lte($in)) return null;
+        $break = $correction->requested_break_minutes !== null ? $correction->requested_break_minutes * 60 : (int) $session?->break_seconds;
+
+        return (int) max($in->diffInSeconds($out) - $break - (int) $session?->idle_seconds, 0);
     }
 }

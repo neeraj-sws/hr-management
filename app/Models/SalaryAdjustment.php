@@ -20,13 +20,17 @@ class SalaryAdjustment extends Model
         'performance_deduction' => 'Performance deduction',
         'earning' => 'Other earning',
         'deduction' => 'Other deduction',
+        'arrear' => 'Arrear (earlier period)',
+        'arrear_recovery' => 'Recovery (earlier period)',
     ];
 
-    public const DEDUCTION_KINDS = ['performance_deduction', 'deduction'];
+    public const DEDUCTION_KINDS = ['performance_deduction', 'deduction', 'arrear_recovery'];
 
-    protected $fillable = ['employee_id','effective_on','amount','kind','is_recurring','recurring_until','status','reason','requested_by','decided_by','decided_at','payroll_item_id'];
+    protected $fillable = ['employee_id','effective_on','amount','kind','is_recurring','recurring_until','status','reason','requested_by','decided_by','decided_at','payroll_item_id','carried_from_payroll_item_id'];
     protected $casts = ['effective_on'=>'date','recurring_until'=>'date','is_recurring'=>'boolean','amount'=>'decimal:2','decided_at'=>'datetime'];
     public function employee(){return $this->belongsTo(AttendanceEmployee::class);}
+    /** The earlier (approved/locked) payroll item this arrear or recovery corrects. */
+    public function carriedFrom(){return $this->belongsTo(PayrollItem::class, 'carried_from_payroll_item_id');}
 
     public function label(): string
     {

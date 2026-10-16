@@ -61,6 +61,19 @@ class MyAttendance extends Component
         $start = Carbon::createFromFormat('Y-m', $this->month)->startOfMonth();
         $end = $start->copy()->endOfMonth()->min(today());
         $days = $attendance->days($employee, $start, $end);
+        // The month's actual working time (in–out less breaks and idle) next to the in–out time and what was required.
+        $time = ['worked' => 0, 'span' => 0, 'break' => 0, 'idle' => 0, 'required' => 0, 'days' => 0];
+        foreach ($days as $day) {
+            $s = $day['session'];
+            if (! $s?->check_in) continue;
+            $worked = $attendance->workedSeconds($s);
+            $time['days']++;
+            $time['worked'] += $worked;
+            $time['break'] += (int) $s->break_seconds;
+            $time['idle'] += $s->idleSeconds();
+            $time['span'] += $s->check_out ? (int) $s->check_in->diffInSeconds($s->check_out) : $worked + (int) $s->break_seconds + $s->idleSeconds();
+            $time['required'] += (int) round($attendance->dailyHours($employee, $day['date']) * 3600);
+        }
 
         return $this->page('livewire.attendance.my-attendance', [
             'employee' => $employee,
@@ -73,6 +86,7 @@ class MyAttendance extends Component
             'locationRequired' => (bool) (app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_web'] ?? false),
             'days' => $days,
             'summary' => $days->countBy('status'),
+            'time' => $time,
             'monthStart' => $start,
         ], 'My Attendance');
     }

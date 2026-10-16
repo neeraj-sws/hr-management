@@ -52,7 +52,7 @@ class PeopleOperationsService
         return DB::transaction(function () use ($request, $approver, $approve, $minutes, $note) {
             $request = OvertimeRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
             if ($request->status !== 'pending') throw ValidationException::withMessages(['overtime'=>'This overtime request has already been decided.'])->status(409);
-            if ($approve) app(PayrollLockGuard::class)->changed($request->employee_id, $request->work_date->toDateString(), 'overtime');
+            $carry = $approve && app(PayrollLockGuard::class)->changedOrCarry($request->employee_id, $request->work_date->toDateString(), 'overtime');
             $approved = $approve ? ($minutes ?? $request->requested_minutes) : null;
             if ($approved !== null && ($approved < 1 || $approved > $request->requested_minutes)) throw ValidationException::withMessages(['minutes'=>'Approved minutes must be within the requested amount.']);
             if ($approved !== null) {
@@ -65,6 +65,7 @@ class PeopleOperationsService
             $request->update(['status'=>$approve?'approved':'rejected','approved_minutes'=>$approved,'decided_by'=>$approver,'decided_at'=>now(),'decision_note'=>$note]);
             $this->decideApproval(OvertimeRequest::class, $request->id, $approver, $approve, $note);
             $this->audit->record($approve?'overtime.approved':'overtime.rejected', $request, ['approved_minutes'=>$approved]);
+            if ($carry) app(PayrollCarryOver::class)->settle($request->employee_id, $request->work_date->toDateString(), $request->work_date->toDateString(), "Overtime on {$request->work_date->format('d M Y')}", $approver);
             $request->employee?->user?->notify(new ApprovalRequested('OvertimeRequest', $request->id, ($approve ? "Your overtime request for {$request->work_date->format('d M Y')} was approved ({$approved} min)." : "Your overtime request for {$request->work_date->format('d M Y')} was rejected.").($note ? " Note: {$note}" : '')));
             return $request->fresh();
         });

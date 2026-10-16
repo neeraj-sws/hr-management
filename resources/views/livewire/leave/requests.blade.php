@@ -51,7 +51,7 @@
 
     @if($showForm)
         <x-modal title="Request leave">
-            <form wire:submit="submit"><div class="modal-body"><x-errors /><div class="form-grid">
+            <form wire:submit="submit"><div class="modal-body"><x-errors />@if($payrollNotice)<div class="alert alert-warn">{{ $payrollNotice }}</div>@endif<div class="form-grid">
                 <x-field label="Leave type" name="leaveTypeId" full><select wire:model.live="leaveTypeId"><option value="">Select type</option>@foreach($balances as $b)<option value="{{ $b['type']->id }}">{{ $b['type']->name }} — {{ $b['type']->paid ? round($b['remaining'], 2).' day(s) available' : 'unpaid' }}</option>@endforeach</select></x-field>
                 <div class="full small muted" style="margin-top:-6px">
                     @foreach($balances as $b)
@@ -60,7 +60,7 @@
                 </div>
                 <x-field label="Duration" name="duration" full><select wire:model.live="duration"><option value="full">Full day (one or more days)</option><option value="half">Half day</option><option value="short">Short leave (part of a day)</option></select></x-field>
                 <x-field label="From" name="startsOn"><input type="date" wire:model.live="startsOn"></x-field>
-                @if($duration === 'full')<x-field label="To" name="endsOn"><input type="date" wire:model="endsOn" x-bind:min="$wire.startsOn"></x-field>@endif
+                @if($duration === 'full')<x-field label="To" name="endsOn"><input type="date" wire:model.live="endsOn" x-bind:min="$wire.startsOn"></x-field>@endif
                 <x-field label="Reason" name="reason" full><textarea wire:model="reason"></textarea></x-field>
             </div><p class="small muted mt">Only your working days are counted — weekly offs (including off Saturdays and moved weekly offs) and holidays are skipped. Half day = 0.5 day, short leave = 0.25 day. Paid leave beyond your balance is allowed only for leave types with advance leave, within the configured limit.</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Submit request</button></div></form>

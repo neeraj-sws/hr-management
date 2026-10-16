@@ -289,7 +289,7 @@ class HardCasesTest extends TestCase
         $this->assertTrue(AuditLog::where('action', 'penalty.waived')->exists());
     }
 
-    public function test_13_locked_payroll_refuses_every_change_with_409(): void
+    public function test_13_locked_payroll_refuses_admin_changes_and_carries_employee_requests_forward(): void
     {
         SalaryProfile::create(['employee_id' => $this->employee->id, 'monthly_salary' => 22000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 22, 'standard_daily_hours' => 8]);
         AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-05', 'check_in' => '2026-10-05 09:00:00', 'status' => 'completed']);
@@ -311,18 +311,24 @@ class HardCasesTest extends TestCase
         } catch (\Illuminate\Validation\ValidationException $e) {
             $this->assertStringContainsString('1 leave request, 1 overtime request', $e->getMessage());
         }
-        // … but a run locked earlier (before this rule) still refuses every change.
+        // … but a run locked earlier (before this rule) still refuses admin pay changes.
         $run->update(['status' => 'locked', 'locked_by' => $this->admin->id, 'locked_at' => now()]);
-        $net = (float) PayrollItem::where('payroll_run_id', $run->id)->value('net_amount');
+        $item = PayrollItem::where('payroll_run_id', $run->id)->firstOrFail();
+        $net = (float) $item->net_amount;
 
-        $this->expectFailure(fn () => $people->decideOvertime($ot, $this->managerUser->id, true), 409);
         $this->expectFailure(fn () => $people->decideFinancialRequest(EmployeePenalty::class, $penalty->id, $this->admin->id, true), 409);
         $this->expectFailure(fn () => $people->decideFinancialRequest(SalaryAdjustment::class, $adjustment->id, $this->admin->id, true), 409);
-        $this->expectFailure(fn () => $workflow->decideLeave($leave, $this->managerUser->id, true), 409);
         $this->expectFailure(fn () => app(\App\Services\PayrollLockGuard::class)->changed($this->employee->id, '2026-10-16', 'salary', '2999-12-31'), 409);
         $this->expectFailure(fn () => $workflow->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id));
+
+        // The employee's overtime and leave are still decided; the pay difference goes to the next payroll.
+        $people->decideOvertime($ot, $this->managerUser->id, true);
+        $workflow->decideLeave($leave, $this->managerUser->id, true); // unpaid leave on a day already unpaid: no difference
+        $carried = SalaryAdjustment::where('carried_from_payroll_item_id', $item->id)->get();
+        $this->assertCount(1, $carried);
+        $this->assertSame(['arrear', '187.50', '2026-11-01', 'approved'], [$carried[0]->kind, $carried[0]->amount, $carried[0]->effective_on->toDateString(), $carried[0]->status], '60 min × 1.5 × ₹125/h');
         $this->assertSame('locked', $run->fresh()->status);
-        $this->assertEquals($net, (float) PayrollItem::where('payroll_run_id', $run->id)->value('net_amount'), 'Untouched');
+        $this->assertEquals($net, (float) $item->fresh()->net_amount, 'Untouched');
     }
 
     public function test_14_salary_revision_mid_month_is_split_by_effective_date(): void

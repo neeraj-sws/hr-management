@@ -142,7 +142,12 @@ class Requests extends Component
 
         $types = LeaveType::where('is_active', true)->orderBy('name')->get();
 
+        // Leave for a month whose salary is already processed is still possible; the employee is told how it is settled.
+        $validDates = preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->startsOn) && (! $this->endsOn || preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->endsOn));
+        $payrollNotice = $this->showForm && $own && $validDates ? app(\App\Services\PayrollLockGuard::class)->closedNotice($own->id, $this->startsOn, max($this->startsOn, $this->endsOn ?: $this->startsOn)) : null;
+
         return $this->page('livewire.leave.requests', [
+            'payrollNotice' => $payrollNotice,
             'requests' => $query->paginate(15),
             'canApprove' => $canApprove,
             'pendingCount' => $canApprove ? $inbox->pending($user, LeaveRequest::class)->count() : 0,

@@ -12,7 +12,7 @@
         @forelse($managers as $manager)
             <tr><td><a href="{{ route('people.employees.show', $manager) }}"><strong>{{ $manager->name }}</strong></a><small>{{ $manager->designation ?? $manager->employee_code }} @unless($manager->user?->hasRole('Manager'))· no Manager role @endunless</small></td>
                 <td>{{ $manager->department?->name ?? '—' }}</td>
-                <td>@if($manager->directReports->isNotEmpty())<a href="{{ route('people.employees', ['manager' => $manager->id]) }}" title="Show these employees"><strong>{{ $manager->directReports->count() }}</strong></a><small>{{ $manager->directReports->pluck('name')->join(', ') }}</small>@else 0 @endif</td>
+                <td><x-people-count :people="$manager->directReports" :title="'Reports to '.$manager->name" label="direct report" empty="0" />@if($manager->directReports->isNotEmpty())<small><a href="{{ route('people.employees', ['manager' => $manager->id]) }}">open in Employees</a></small>@endif</td>
                 <td class="num">{{ $manager->pending_leave }}</td><td class="num">{{ $manager->pending_overtime }}</td><td class="num">@if($manager->overdue_tasks)<x-badge status="overdue">{{ $manager->overdue_tasks }}</x-badge>@else 0 @endif</td></tr>
         @empty
             <tr><td colspan="6"><x-empty title="No managers yet" icon="user-check">Grant the Manager role or set a manager on an employee.</x-empty></td></tr>
