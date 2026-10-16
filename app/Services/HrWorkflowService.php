@@ -154,9 +154,10 @@ class HrWorkflowService
         });
     }
 
-    public function decideLeave(LeaveRequest $leave, int $approverId, bool $approve, ?string $note = null): LeaveRequest
+    /** $notify = false for bulk history (attendance import): no message per imported day. */
+    public function decideLeave(LeaveRequest $leave, int $approverId, bool $approve, ?string $note = null, bool $notify = true): LeaveRequest
     {
-        return DB::transaction(function () use ($leave, $approverId, $approve, $note) {
+        return DB::transaction(function () use ($leave, $approverId, $approve, $note, $notify) {
             $leave = LeaveRequest::whereKey($leave->id)->lockForUpdate()->firstOrFail();
             if ($leave->status !== 'pending') throw ValidationException::withMessages(['leave' => 'This request has already been decided.'])->status(409);
             if ($approve) app(PayrollLockGuard::class)->changed($leave->employee_id, $leave->starts_on->toDateString(), 'leave', $leave->ends_on->toDateString());
@@ -180,7 +181,7 @@ class HrWorkflowService
             $this->audit->record($approve ? 'leave.approved' : 'leave.rejected', $leave, ['approver_id' => $approverId]);
             $by = \App\Models\User::find($approverId)?->name ?? 'Your approver';
             $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
-            Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, $approve ? "{$by} approved your leave ({$range})." : "{$by} rejected your leave ({$range})".($note ? ": {$note}" : '.'));
+            if ($notify) Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, $approve ? "{$by} approved your leave ({$range})." : "{$by} rejected your leave ({$range})".($note ? ": {$note}" : '.'));
             return $leave->fresh();
         });
     }

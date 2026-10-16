@@ -20,6 +20,7 @@
         @endif
         <input type="file" name="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required>
         <label class="check"><input type="checkbox" name="update_existing" value="1"> Update records that already exist</label>
+        @if($type === 'attendance')<label class="field"><span>Leave rows saved as</span><select name="leave_type_id" title="A status like &quot;Sick Leave&quot; uses that type; plain &quot;Leave&quot; uses this one">@foreach(\App\Models\LeaveType::where('is_active', true)->orderByRaw("CASE WHEN name LIKE '%unpaid%' THEN 0 ELSE 1 END")->orderBy('name')->get(['id', 'name']) as $lt)<option value="{{ $lt->id }}">{{ $lt->name }}</option>@endforeach</select></label>@endif
         @if($type === 'attendance')@if(\App\Support\Access::isAdmin(auth()->user()))<label class="check" title="For migrating old history: days inside a locked payroll are saved too; that payroll is not recalculated. Admins only."><input type="checkbox" name="into_locked" value="1"> Old data: also import into locked payroll months</label>@endif@endif
         <button class="btn btn-primary" type="submit" x-bind:disabled="busy"><span x-show="busy" class="spinner"></span>Import</button>
         <a class="btn btn-sm" href="{{ route('imports.template', $type) }}"><x-icon name="download" class="icon-sm" />Excel template</a>

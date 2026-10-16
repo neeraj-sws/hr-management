@@ -36,11 +36,12 @@
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name or Employee ID"></label>
             <label class="field"><span>Month</span><select wire:model.live="month"><option value="">All months</option>@foreach($months as $m)<option value="{{ $m }}">{{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $m)->format('M Y') }}</option>@endforeach</select></label>
             <label class="field"><span>Employee</span><select wire:model.live="employee"><option value="">Everyone</option>@foreach($people as $p)<option value="{{ $p->id }}">{{ $p->name }} ({{ $p->employee_code }})</option>@endforeach</select></label>
+            <label class="field"><span>Leave</span><select wire:model.live="leave"><option value="">Any</option><option value="taken">Took leave</option><option value="without_application">Without application leave</option><option value="short">Short leave</option><option value="paid">Paid leave</option><option value="none">No leave</option></select></label>
             <label class="field"><span>Status</span><select wire:model.live="status"><option value="">Any</option>@foreach($statuses as $s)<option value="{{ $s }}">{{ $s }}</option>@endforeach</select></label>
         </div>
-        <div class="pill-row" style="padding:0 18px 12px"><span class="pill"><b>{{ $totals['rows'] }}</b> rows</span><span class="pill">Paid <b>₹{{ number_format($totals['paid'], 2) }}</b></span><span class="pill">Remaining <b>₹{{ number_format($totals['remains'], 2) }}</b></span>@if($totals['unlinked'])<span class="pill"><b>{{ $totals['unlinked'] }}</b> not linked to an employee</span>@endif</div>
+        <div class="pill-row" style="padding:0 18px 12px"><span class="pill"><b>{{ $totals['rows'] }}</b> rows</span><span class="pill">Leave days <b>{{ $totals['leave_days'] }}</b></span>@if($totals['without_application'])<span class="pill" style="color:var(--red)">Without application <b>{{ $totals['without_application'] }}</b></span>@endif<span class="pill">Paid <b>₹{{ number_format($totals['paid'], 2) }}</b></span><span class="pill">Remaining <b>₹{{ number_format($totals['remains'], 2) }}</b></span>@if($totals['unlinked'])<span class="pill"><b>{{ $totals['unlinked'] }}</b> not linked to an employee</span>@endif</div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Month</th><th>Employee</th><th class="num">Basic</th><th class="num">Present / paid days</th><th class="num">Late min</th><th class="num">Deduction</th><th class="num">Salary before adj.</th><th class="num">Bonus / TDS</th><th class="num">Total</th><th class="num">Paid</th><th class="num">Remains</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Month</th><th>Employee</th><th class="num">Basic</th><th class="num">Present / paid days</th><th>Leave</th><th class="num">Late min</th><th class="num">Deduction</th><th class="num">Salary before adj.</th><th class="num">Bonus / TDS</th><th class="num">Total</th><th class="num">Paid</th><th class="num">Remains</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @forelse($records as $r)
                 @php($money = fn ($v) => $v === null ? '—' : number_format((float) $v, 2))
@@ -49,6 +50,7 @@
                     <td><strong>{{ $r->name }}</strong><small>@if($r->employee){{ $r->employee->employee_code }}@else not in HRMS @endif @if($r->notes) · 📝 note @endif</small></td>
                     <td class="num">{{ $money($r->basic_salary) }}</td>
                     <td class="num">{{ $r->present_days !== null ? (float) $r->present_days : '—' }} / {{ $r->total_salary_paid_days !== null ? (float) $r->total_salary_paid_days : '—' }}</td>
+                    <td class="small nowrap" style="text-align:left"><div>Leave <b>{{ (float) $r->leave_days }}</b> · paid <b>{{ (float) $r->paid_leave }}</b></div>@if((float) $r->without_application_leave || (float) $r->without_application_short_leave || (float) $r->short_leave_minutes)<div style="color:var(--red)">W/o application <b>{{ (float) $r->without_application_leave }}</b> · short <b>{{ (float) $r->without_application_short_leave }}</b>@if((float) $r->short_leave_minutes) · {{ (float) $r->short_leave_minutes }} min @endif</div>@endif</td>
                     <td class="num">{{ $r->late_coming_minutes !== null ? (float) $r->late_coming_minutes : '—' }}</td>
                     <td class="num">{{ $money($r->total_payment_deduction) }}</td>
                     <td class="num">{{ $money($r->salary_before_adjustment) }}</td>
@@ -60,7 +62,7 @@
                     <td><button class="btn btn-sm" wire:click="open({{ $r->id }})">All columns</button></td>
                 </tr>
             @empty
-                <tr><td colspan="13"><x-empty title="No legacy salary rows yet" icon="file">Upload the old salary workbook above.</x-empty></td></tr>
+                <tr><td colspan="14"><x-empty title="No legacy salary rows yet" icon="file">Upload the old salary workbook above.</x-empty></td></tr>
             @endforelse
             </tbody>
         </table></div>

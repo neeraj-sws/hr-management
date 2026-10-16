@@ -44,8 +44,16 @@ class Records extends Component
             ->when($this->status, fn ($q, $status) => $q->where('status', $status))
             ->orderByDesc('work_date')->orderBy('employee_id')->paginate(25);
 
+        // One employee chosen: list every day of the range (leave, weekly off / 3rd Saturday, absent too), newest first.
+        $dayEmployee = $this->employee ? AttendanceEmployee::with('department')->find($this->employee) : null;
+        $dayRows = $dayEmployee && ! $this->status && \Illuminate\Support\Carbon::parse($this->from)->diffInDays($this->to) <= 400
+            ? $attendance->days($dayEmployee, \Illuminate\Support\Carbon::parse($this->from), \Illuminate\Support\Carbon::parse($this->to))->reverse()->values()->all()
+            : null;
+
         return $this->page('livewire.attendance.records', [
             'sessions' => $sessions,
+            'dayRows' => $dayRows,
+            'dayEmployee' => $dayEmployee,
             'attendance' => $attendance,
             'employees' => AttendanceEmployee::orderBy('name')->get(['id', 'name', 'employee_code']),
             'departments' => Department::orderBy('name')->get(),

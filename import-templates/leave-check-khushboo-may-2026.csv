@@ -1,0 +1,8 @@
+Employee ID,Date,Status,Punch In Time,Lunch In Time,Lunch Out Time,Punch Out Time
+EMP-02,2026-05-04,Present,09:35,13:30,14:10,18:45
+EMP-02,2026-05-05,Leave,,,,
+EMP-02,2026-05-06,Annual Leave,,,,
+EMP-02,2026-05-07,Absent,,,,
+EMP-02,2026-05-09,Third Saturday,,,,
+EMP-02,2026-05-10,Weekly Off,,,,
+EMP-02,2026-05-11,Present,10:05,13:20,14:00,19:10

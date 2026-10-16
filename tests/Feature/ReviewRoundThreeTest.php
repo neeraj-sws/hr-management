@@ -195,7 +195,7 @@ class ReviewRoundThreeTest extends TestCase
         $this->assertSame([], $result['errors']);
         $session = \App\Models\AttendanceSession::whereHas('employee', fn ($q) => $q->where('employee_code', 'EMP-002'))->firstOrFail();
         $this->assertSame(['08:47', '18:30', 35 * 60], [$session->check_in->format('H:i'), $session->check_out->format('H:i'), (int) $session->break_seconds], 'Lunch Out − Lunch In is the break');
-        $this->assertStringContainsString('"Leave" — no attendance created', implode(' ', $result['notes']));
+        $this->assertStringContainsString('EMP-004 01 Oct 2026 — saved as approved Unpaid Leave', implode(' ', $result['notes']));
 
         $csv = $this->get(route('imports.template', ['attendance', 'format' => 'csv']))->assertOk()->getContent();
         $this->assertStringContainsString('EMP-002,2026-10-01,Present,08:47,13:15,13:50,18:30,09:43,00:35,09:08,17,2026-10-02,1', $csv);
@@ -241,7 +241,7 @@ class ReviewRoundThreeTest extends TestCase
         file_put_contents($path, "Employee ID,Date,Status,Punch In Time,Punch Out Time\nEMP-001,2026-04-01,Present,10:00,19:00\nEMP-001,2026-04-02,Absent,,\n");
         $r = app(\App\Services\ImportService::class)->attendance(new \Illuminate\Http\UploadedFile($path, 'attendance-import-khushboo-april-2026.csv', null, null, true), $this->admin->id);
         $this->assertSame([1, []], [$r['created'], $r['errors']], json_encode($r));
-        $this->assertStringContainsString('imported for Khushboo Sharma (SWS-130)', $r['notes'][0]);
+        $this->assertStringContainsString('imported for Khushboo Sharma (SWS-130)', implode(' ', $r['notes']));
         $this->assertSame(1, \App\Models\AttendanceSession::where('employee_id', $k->id)->count());
 
         // No name in the file name: still the clear error.
@@ -295,6 +295,27 @@ class ReviewRoundThreeTest extends TestCase
         $this->assertSame([5, 1, 0], [$r['created'], $r['kept'], $r['skipped']], json_encode($r));
         $this->assertStringContainsString('locked payroll period(s) 01 Sep – 30 Sep 2026; those locked payrolls were not recalculated', $r['notes'][0]);
         $this->assertSame('locked', $run->fresh()->status);
+    }
+
+    public function test_leave_rows_in_an_attendance_sheet_become_approved_leave(): void
+    {
+        $e = $this->employee('SWS-170', ['name' => 'Khushboo Verma']);
+        $csv = "Employee ID,Date,Status,Punch In Time,Punch Out Time\n"
+            ."SWS-170,2026-04-01,Present,10:00,19:00\n"
+            ."SWS-170,2026-04-02,Leave,,\n"
+            ."SWS-170,2026-04-03,Absent,,\n"
+            ."SWS-170,2026-04-04,Third Saturday,,\n"
+            ."SWS-170,2026-04-06,Annual Leave,,\n";
+        $r = app(\App\Services\ImportService::class)->attendance(\Illuminate\Http\UploadedFile::fake()->createWithContent('k.csv', $csv), $this->admin->id);
+
+        $this->assertSame(['present' => 1, 'leave' => 1, 'absent' => 1, 'off' => 1], $r['day_counts'], json_encode($r));
+        $leave = \App\Models\LeaveRequest::with('leaveType')->where('employee_id', $e->id)->firstOrFail();
+        $this->assertSame(['approved', 'Unpaid Leave', '2026-04-02'], [$leave->status, $leave->leaveType->name, $leave->starts_on->toDateString()], 'Plain "Leave" uses Unpaid Leave');
+        $this->assertStringContainsString('Row 6: Annual Leave could not be saved — Leave balance is not configured', $r['errors'][0] ?? '', 'A status naming a paid type uses that type and its balance check');
+        $this->assertSame(0, \App\Models\LeaveRequest::where('employee_id', $e->id)->whereDate('starts_on', '2026-04-06')->count(), 'Nothing half-saved');
+        $this->assertSame(0, $e->user->notifications()->get()->filter(fn ($n) => ($n->data['kind'] ?? '') === 'LeaveRequest')->count(), 'No message per imported day');
+        $days = app(\App\Services\AttendanceService::class)->days($e, \Illuminate\Support\Carbon::parse('2026-04-01'), \Illuminate\Support\Carbon::parse('2026-04-03'))->pluck('status', 'date')->all();
+        $this->assertSame(['on_leave', 'absent'], [$days['2026-04-02'], $days['2026-04-03']], 'The leave day shows as On leave, the absent day as Absent');
     }
 
     public function test_an_employees_sheet_is_never_imported_into_another_employee(): void
@@ -391,6 +412,21 @@ class ReviewRoundThreeTest extends TestCase
         $this->assertStringContainsString('old month-wise salary sheet', $r['notes'][0]);
         $this->assertSame(0, \App\Models\SalaryProfile::count(), 'Salary profiles are not touched');
         $this->get(route('payroll.salary'))->assertSee('Open Legacy Salary');
+    }
+
+    public function test_legacy_salary_can_be_filtered_by_leave(): void
+    {
+        $a = $this->employee('EMP-81', ['name' => 'Asha']);
+        $b = $this->employee('EMP-82', ['name' => 'Bina']);
+        $base = ['payroll_month' => '2026-04', 'basic_salary' => 10000];
+        \App\Models\LegacySalaryRecord::create($base + ['employee_id' => $a->id, 'name' => 'Asha', 'name_key' => 'asha', 'leave_days' => 3, 'without_application_leave' => 2]);
+        \App\Models\LegacySalaryRecord::create($base + ['employee_id' => $b->id, 'name' => 'Bina', 'name_key' => 'bina', 'leave_days' => 0, 'without_application_leave' => 0]);
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\LegacySalary::class)
+            ->assertSee('Asha')->assertSee('Bina')->assertSee('Leave days')
+            ->set('leave', 'without_application')->assertViewHas('records', fn ($r) => $r->pluck('name')->all() === ['Asha'])
+            ->set('leave', 'none')->assertViewHas('records', fn ($r) => $r->pluck('name')->all() === ['Bina'])
+            ->set('leave', 'taken')->assertViewHas('records', fn ($r) => $r->pluck('name')->all() === ['Asha']);
     }
 
     public function test_legacy_salary_template_csv_and_flat_month_column(): void

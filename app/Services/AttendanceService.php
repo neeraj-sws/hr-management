@@ -543,7 +543,8 @@ class AttendanceService
         $sessions = AttendanceSession::with('employee')->where('employee_id', $employee->id)
             ->whereDate('work_date', '>=', $from->toDateString())->whereDate('work_date', '<=', $to->toDateString())
             ->get()->keyBy(fn ($session) => $session->work_date->toDateString());
-        $leaves = LeaveRequest::where('employee_id', $employee->id)->where('status', 'approved')
+        $marks = \App\Models\AttendanceDayMark::where('employee_id', $employee->id)->whereDate('work_date', '>=', $from->toDateString())->whereDate('work_date', '<=', $to->toDateString())->get()->keyBy(fn ($m) => $m->work_date->toDateString());
+        $leaves = LeaveRequest::with('leaveType')->where('employee_id', $employee->id)->where('status', 'approved')
             ->whereDate('starts_on', '<=', $to->toDateString())->whereDate('ends_on', '>=', $from->toDateString())->get();
         $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', $to->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         $joined = $employee->joined_at ? Carbon::parse($employee->joined_at)->startOfDay() : null;
@@ -555,7 +556,9 @@ class AttendanceService
             $date = $day->toDateString();
             $session = $sessions->get($date);
             $workday = \App\Support\WorkCalendar::isWorkday($date, $calendar);
-            $onLeave = $leaves->contains(fn ($leave) => $leave->starts_on->toDateString() <= $date && $leave->ends_on->toDateString() >= $date);
+            $leaveToday = $leaves->first(fn ($leave) => $leave->starts_on->toDateString() <= $date && $leave->ends_on->toDateString() >= $date);
+            $onLeave = $leaveToday !== null;
+            $mark = $session === null && ! $onLeave ? $marks->get($date) : null;
             $conflict = $session !== null && $onLeave ? ($resolutions[$date] ?? 'open') : null;
             $status = match (true) {
                 $conflict === 'open' => 'leave_conflict',
@@ -564,12 +567,20 @@ class AttendanceService
                 $session !== null && $this->isLate($session) => 'late',
                 $session !== null => 'present',
                 $onLeave => 'on_leave',
+                // What an imported sheet said for the day wins over the calendar's guess.
+                $mark !== null => ['off' => 'weekend', 'holiday' => 'holiday'][$mark->status] ?? 'absent',
                 ! $workday => in_array($date, $calendar['holidays'] ?? [], true) ? 'holiday' : 'weekend',
                 $day->gte(today()) => 'upcoming',
                 $joined && $day->lt($joined) => 'not_joined',
                 default => 'absent',
             };
-            $days->push(['date' => $date, 'status' => $status, 'session' => $session]);
+            $label = match (true) {
+                $mark !== null => $mark->label,
+                $status === 'on_leave' => $leaveToday?->leaveType?->name,
+                $status === 'weekend' => \App\Support\WorkCalendar::specialOffReason($date, $calendar),
+                default => null,
+            };
+            $days->push(['date' => $date, 'status' => $status, 'session' => $session, 'label' => $label]);
         }
 
         return $days;

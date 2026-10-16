@@ -136,8 +136,10 @@ class ImportService
 
     /** $forEmployeeId: the file is one person's sheet — every row is theirs and the Employee ID column is not needed. */
     /** $intoLockedPayroll (admins only): old history may also be saved on days of a locked payroll; that payroll is not recalculated. */
-    public function attendance(UploadedFile $file, int $actorId, bool $updateExisting = false, ?int $forEmployeeId = null, bool $intoLockedPayroll = false): array
+    public function attendance(UploadedFile $file, int $actorId, bool $updateExisting = false, ?int $forEmployeeId = null, bool $intoLockedPayroll = false, ?int $leaveTypeId = null): array
     {
+        $dayCounts = ['present' => 0, 'leave' => 0, 'absent' => 0, 'off' => 0];
+        $defaultLeaveType = $this->defaultLeaveType($leaveTypeId);
         $forEmployee = $forEmployeeId ? AttendanceEmployee::find($forEmployeeId) : null;
         [$rows, $error] = $this->read($file, self::ATTENDANCE_COLUMNS, $forEmployee ? ['work_date'] : self::ATTENDANCE_REQUIRED);
         if ($error) return $this->summary(errors: [$error]);
@@ -168,7 +170,23 @@ class ImportService
             } elseif ($lockedRun) { $lockedBlocked[$lockedRun->period_starts_on->format('d M').' – '.$lockedRun->period_ends_on->format('d M Y')][] = $line; continue; }
 
             $status = strtolower(trim((string) ($row['status'] ?? '')));
+            // A leave day becomes an approved leave, so it shows as "On leave" (not absent) everywhere.
+            if (self::isLeaveStatus($status)) {
+                $message = $this->importLeaveDay($employee, $date, $status, $defaultLeaveType, $actorId, (bool) $lockedRun);
+                if (str_starts_with($message, 'error:')) { $errors[] = "Row {$line}: ".substr($message, 6); continue; }
+                $notes[] = "Row {$line}: {$employee->employee_code} {$date->format('d M Y')} — {$message}";
+                $dayCounts['leave']++;
+                $touched[$employee->id][] = $date->toDateString();
+                continue;
+            }
             if (self::isNoAttendanceStatus($status)) {
+                $markStatus = str_contains($status, 'absent') || $status === 'a' ? 'absent' : (str_contains($status, 'holiday') || $status === 'h' ? 'holiday' : 'off');
+                $markStatus === 'absent' ? $dayCounts['absent']++ : $dayCounts['off']++;
+                // Remember what the sheet said, so Attendance shows "Third Saturday" / "Weekly Off" / "Absent" for that day.
+                if (! AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $date->toDateString())->exists()) {
+                    \App\Models\AttendanceDayMark::updateOrCreate(['employee_id' => $employee->id, 'work_date' => $date->toDateString()], ['status' => $markStatus, 'label' => mb_substr(ucwords(trim((string) $row['status'])), 0, 100), 'source' => 'import', 'created_by' => $actorId]);
+                    $touched[$employee->id][] = $date->toDateString();
+                }
                 $timesGiven = collect(['check_in', 'lunch_in', 'lunch_out', 'check_out'])->contains(fn ($c) => trim((string) ($row[$c] ?? '')) !== '');
                 $notes[] = "Row {$line}: {$employee->employee_code} {$date->format('d M Y')} is \"".ucwords($status).'" — no attendance created'.($timesGiven ? ' (the time columns should be blank on such rows; they were ignored)' : '').'.';
                 continue;
@@ -218,6 +236,8 @@ class ImportService
             if ($session) { $session->update($changes); $session->increment('server_version'); $updated++; }
             else { AttendanceSession::create(['employee_id' => $employee->id, 'work_date' => $date->toDateString(), ...$changes]); $created++; }
             $touched[$employee->id][] = $date->toDateString();
+            $dayCounts['present']++;
+            \App\Models\AttendanceDayMark::where('employee_id', $employee->id)->whereDate('work_date', $date->toDateString())->delete(); // worked after all
         }
 
         $this->audit->record('attendance.imported', null, ['file' => $file->getClientOriginalName(), 'created' => $created, 'updated' => $updated, 'kept' => $kept, 'skipped' => count($errors) + array_sum(array_map('count', $this->missingCodes)), 'unknown_codes' => array_keys($this->missingCodes), 'for_employee_id' => $forEmployee?->id, 'update_existing' => $updateExisting]);
@@ -234,13 +254,14 @@ class ImportService
         $errors = [...$this->missingCodeErrors(), ...$errors];
 
         if ($guessNote) array_unshift($notes, $guessNote);
+        if (array_sum($dayCounts)) array_unshift($notes, "Days in the file: {$dayCounts['present']} present (attendance saved), {$dayCounts['leave']} leave (saved as approved leave), {$dayCounts['absent']} absent and {$dayCounts['off']} weekly off / holiday (no record needed — they show from the calendar).");
         if (! empty($lockedDays)) array_unshift($notes, 'Saved as history inside locked payroll period(s) '.implode(', ', array_keys($lockedDays)).'; those locked payrolls were not recalculated.');
 
         // Where the imported days can be seen: the employee(s) and the date range.
         $allDates = collect($touched ?? [])->flatten()->sort()->values();
         $imported = $allDates->isEmpty() ? null : ['employee_ids' => array_keys($touched), 'from' => $allDates->first(), 'to' => $allDates->last()];
 
-        return [...$this->summary($created, $updated, $kept, $errors, $notes, count($rows), $skipped), 'unknown_codes' => $unknownCodes, 'imported' => $imported];
+        return [...$this->summary($created, $updated, $kept, $errors, $notes, count($rows), $skipped), 'unknown_codes' => $unknownCodes, 'imported' => $imported, 'day_counts' => $dayCounts];
     }
 
     /** Header row plus one example row for the downloadable template. */
@@ -340,6 +361,55 @@ class ImportService
 
         return in_array($status, self::NO_ATTENDANCE_STATUSES, true)
             || (bool) preg_match('/\b(leave|absent|holiday|off|saturday|sunday)\b/', $status);
+    }
+
+    /** "Leave", "Sick Leave", "CL", "Paid leave" … (but not "Weekly off" / holidays). */
+    public static function isLeaveStatus(string $status): bool
+    {
+        $status = strtolower(trim($status));
+
+        return in_array($status, ['l', 'cl', 'sl', 'pl', 'el', 'lwp', 'on leave'], true) || (bool) preg_match('/\bleave\b/', $status);
+    }
+
+    /** Leave type for leave rows: the one chosen on the form, else "Unpaid Leave", else the first active type. */
+    private function defaultLeaveType(?int $id): ?\App\Models\LeaveType
+    {
+        return ($id ? \App\Models\LeaveType::find($id) : null)
+            ?? \App\Models\LeaveType::where('is_active', true)->where('name', 'like', '%unpaid%')->first()
+            ?? \App\Models\LeaveType::where('is_active', true)->orderBy('id')->first();
+    }
+
+    /**
+     * Saves one leave day as an approved leave. A status naming a leave type ("Sick Leave") uses that type.
+     * Paid leave is taken from the balance through the normal approval; inside a locked payroll month
+     * (old history, admin option) the day is recorded without touching the balance or the payroll.
+     *
+     * @return string what happened, or "error:…"
+     */
+    private function importLeaveDay(AttendanceEmployee $employee, Carbon $date, string $status, ?\App\Models\LeaveType $default, int $actorId, bool $inLockedPayroll): string
+    {
+        $type = \App\Models\LeaveType::where('is_active', true)->get()->first(fn ($t) => str_contains($status, strtolower($t->name))) ?? $default;
+        if (! $type) return 'error:no leave type is set up (Leave → Settings).';
+        $day = $date->toDateString();
+        $existing = \App\Models\LeaveRequest::where('employee_id', $employee->id)->whereIn('status', ['pending', 'approved'])->whereDate('starts_on', '<=', $day)->whereDate('ends_on', '>=', $day)->first();
+        if ($existing) return "already has {$existing->status} leave on that day — kept.";
+        if (AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $day)->exists()) return 'error:there is attendance on that day, so it cannot also be a leave day.';
+
+        $leave = \App\Models\LeaveRequest::create(['employee_id' => $employee->id, 'leave_type_id' => $type->id, 'starts_on' => $day, 'ends_on' => $day, 'duration' => 'full', 'days' => 1, 'reason' => 'Imported from attendance sheet', 'status' => $inLockedPayroll ? 'approved' : 'pending', 'decided_by' => $inLockedPayroll ? $actorId : null, 'decided_at' => $inLockedPayroll ? now() : null]);
+        if ($inLockedPayroll) {
+            $this->audit->record('leave.imported', $leave, ['type' => $type->name, 'locked_payroll' => true]);
+
+            return "saved as approved {$type->name} (locked payroll month: balance and payroll unchanged).";
+        }
+        try {
+            app(HrWorkflowService::class)->decideLeave($leave, $actorId, true, 'Imported from attendance sheet', false);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $leave->delete();
+
+            return 'error:'.$type->name.' could not be saved — '.collect($e->errors())->flatten()->first();
+        }
+
+        return "saved as approved {$type->name}.";
     }
 
     /** "EMP-001" codes that were not found => rows, so one missing code is reported once (not on every row). */

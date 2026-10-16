@@ -19,17 +19,29 @@
         <div class="table-wrap"><table class="table">
             <thead><tr><th>Date</th><th>Employee</th><th>In</th><th>Out</th><th class="num">Active</th><th class="num">Idle</th><th class="num">Break</th><th>Screen time</th><th class="num">Late by</th><th>Source</th><th>Status</th></tr></thead>
             <tbody>
+            @if($dayRows)
+                {{-- One employee: every day of the range, incl. leave, weekly off / 3rd Saturday and absent days. --}}
+                @forelse($dayRows as $day)
+                    @if($day['session'])
+                        @include('livewire.attendance.partials.record-row', ['s' => $day['session']])
+                    @else
+                        <tr class="day-row day-{{ $day['status'] }}"><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D d M Y') }}</td><td><strong>{{ $dayEmployee?->name }}</strong><small>{{ $dayEmployee?->department?->name }}</small></td>
+                            <td colspan="8" class="small muted" style="text-align:left">{{ ['on_leave' => 'On leave', 'weekend' => 'Weekly off', 'holiday' => 'Holiday', 'absent' => 'No attendance', 'upcoming' => 'Upcoming', 'not_joined' => 'Before joining'][$day['status']] ?? '' }}@if($day['label']) · <strong>{{ $day['label'] }}</strong>@endif</td>
+                            <td>@if($day['status'] === 'weekend')<x-badge tone="violet">{{ $day['label'] ?: 'Weekly off' }}</x-badge>@elseif($day['status'] === 'on_leave')<x-badge status="on_leave">{{ $day['label'] ?: 'On leave' }}</x-badge>@else<x-badge :status="$day['status']" />@endif</td></tr>
+                    @endif
+                @empty
+                    <tr><td colspan="11"><x-empty title="No days in this range" icon="calendar" /></td></tr>
+                @endforelse
+            @else
             @forelse($sessions as $s)
-                <tr><td class="nowrap">{{ $s->work_date->format('D d M Y') }}</td><td><strong>{{ $s->employee?->name }}</strong><small>{{ $s->employee?->department?->name }}</small></td>
-                    <td>{{ $s->check_in?->format('h:i A') }}@if($s->check_in_photo_path) <a href="{{ route('attendance.photo', [$s, 'in']) }}" target="_blank" title="Check-in selfie">📸</a>@endif @if($s->check_in_latitude !== null)<small title="{{ $s->check_in_latitude }}, {{ $s->check_in_longitude }}">{{ $s->checkInOffice ? 'at '.$s->checkInOffice->name : ($s->check_in_distance_meters !== null ? number_format($s->check_in_distance_meters).' m from office' : 'location shared') }}</small>@endif @if($s->check_in_ip)<small class="muted">IP {{ $s->check_in_ip }}</small>@endif</td><td>{{ $s->check_out?->format('h:i A') ?? '—' }}@if($s->check_out_photo_path) <a href="{{ route('attendance.photo', [$s, 'out']) }}" target="_blank" title="Check-out selfie">📸</a>@endif @if($s->check_out_latitude !== null)<small title="{{ $s->check_out_latitude }}, {{ $s->check_out_longitude }}">{{ $s->checkOutOffice ? 'at '.$s->checkOutOffice->name : ($s->check_out_distance_meters !== null ? number_format($s->check_out_distance_meters).' m from office' : 'location shared') }}</small>@endif @if($s->check_out_ip)<small class="muted">IP {{ $s->check_out_ip }}</small>@endif</td>
-                    <td class="num">@hms($attendance->workedSeconds($s))</td><td class="num">@hms($s->idleSeconds())</td><td class="num">@hms((int) $s->break_seconds)</td><td class="nowrap">@include('livewire.attendance.partials.screen-time', ['s' => $s])</td>
-                    <td class="num">{{ $attendance->lateMinutes($s) ? \App\Support\Duration::fromMinutes($attendance->lateMinutes($s)) : '—' }}</td><td class="small">{{ $s->device?->computer_name ?? 'Web / mobile' }}</td>
-                    <td><x-badge :status="$attendance->isHalfDay($s) ? 'half_day' : ($attendance->isLate($s) ? 'late' : $s->status)" /></td></tr>
+                @include('livewire.attendance.partials.record-row', ['s' => $s])
             @empty
                 <tr><td colspan="10"><x-empty title="No attendance in this range" icon="calendar" /></td></tr>
             @endforelse
+            @endif
             </tbody>
         </table></div>
-        {{ $sessions->links() }}
+        @unless($dayRows){{ $sessions->links() }}@endunless
+        @if($dayRows)<div class="card-foot small muted">{{ collect($dayRows)->where('session', '!=', null)->count() }} present · {{ collect($dayRows)->where('status', 'on_leave')->count() }} on leave · {{ collect($dayRows)->where('status', 'weekend')->count() + collect($dayRows)->where('status', 'holiday')->count() }} off / holiday · {{ collect($dayRows)->where('status', 'absent')->count() }} absent</div>@endif
     </section>
 </div>

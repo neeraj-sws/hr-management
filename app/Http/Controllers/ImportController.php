@@ -38,7 +38,7 @@ class ImportController extends Controller
         abort_unless($request->user()->canAny(['hr.manage', 'employees.manage']), 403);
         if ($error = $this->fileError($request)) return back()->with('import_result', ['kind' => 'Attendance', 'rows' => 0, 'created' => 0, 'updated' => 0, 'kept' => 0, 'skipped' => 0, 'errors' => [$error], 'notes' => []]);
         $intoLocked = $request->boolean('into_locked') && \App\Support\Access::isAdmin($request->user());
-        $result = $import->attendance($request->file('file'), $request->user()->id, $request->boolean('update_existing'), $request->integer('employee_id') ?: null, $intoLocked);
+        $result = $import->attendance($request->file('file'), $request->user()->id, $request->boolean('update_existing'), $request->integer('employee_id') ?: null, $intoLocked, $request->integer('leave_type_id') ?: null);
         // A one-person sheet whose Employee ID is unknown: keep the file for a short while, so the person
         // only has to pick the employee in the result box (no second upload).
         if (count($result['unknown_codes'] ?? []) === 1 && ! $request->integer('employee_id')) {
@@ -46,7 +46,7 @@ class ImportController extends Controller
             foreach ($disk->files('import-pending') as $old) if ($disk->lastModified($old) < now()->subDay()->getTimestamp()) $disk->delete($old); // never picked up
             $token = (string) \Illuminate\Support\Str::uuid();
             $request->file('file')->storeAs('import-pending', $token.'.'.strtolower($request->file('file')->getClientOriginalExtension() ?: 'csv'), 'local');
-            $result['pending'] = ['token' => $token, 'name' => $request->file('file')->getClientOriginalName(), 'code' => $result['unknown_codes'][0], 'update_existing' => $request->boolean('update_existing'), 'into_locked' => $intoLocked];
+            $result['pending'] = ['token' => $token, 'name' => $request->file('file')->getClientOriginalName(), 'code' => $result['unknown_codes'][0], 'update_existing' => $request->boolean('update_existing'), 'into_locked' => $intoLocked, 'leave_type_id' => $request->integer('leave_type_id') ?: null];
         }
 
         return $this->afterAttendanceImport($result);
@@ -61,7 +61,7 @@ class ImportController extends Controller
         $path = collect($disk->files('import-pending'))->first(fn ($f) => str_starts_with(basename($f), $data['token'].'.'));
         if (! $path) return back()->with('import_result', ['kind' => 'Attendance', 'rows' => 0, 'created' => 0, 'updated' => 0, 'kept' => 0, 'skipped' => 0, 'errors' => ['The uploaded file is no longer available. Choose the file again and pick the employee before importing.'], 'notes' => []]);
         $file = new \Illuminate\Http\UploadedFile($disk->path($path), $data['name'], null, null, true);
-        $result = $import->attendance($file, $request->user()->id, $request->boolean('update_existing'), (int) $data['employee_id'], $request->boolean('into_locked') && \App\Support\Access::isAdmin($request->user()));
+        $result = $import->attendance($file, $request->user()->id, $request->boolean('update_existing'), (int) $data['employee_id'], $request->boolean('into_locked') && \App\Support\Access::isAdmin($request->user()), $request->integer('leave_type_id') ?: null);
         $disk->delete($path);
 
         return $this->afterAttendanceImport($result);
