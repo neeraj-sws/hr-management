@@ -73,7 +73,7 @@
             <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="month" max="{{ now()->format('Y-m') }}"></label>
         </div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th><th>Shift</th><th>Check in</th><th>Check out</th><th class="num">Worked / required</th><th class="num">Break</th><th class="num">Idle</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Shift</th><th>Check in</th><th>Check out</th><th class="num" title="Check-out minus check-in">In–out</th><th class="num">Break</th><th class="num">Idle</th><th class="num" title="In–out minus break minus idle">Actual working time</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @foreach($days->reverse() as $day)
                 @php($dayShift = app(\App\Services\ShiftService::class)->shiftFor($employee, $day['date']))
@@ -82,9 +82,12 @@
                     <td class="nowrap">@if($dayShift){{ $dayShift->name }}<small>{{ $dayShift->hours() }}</small>@else<span class="muted small">default</span>@endif</td>
                     <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td>
                     @php($worked = $day['session'] ? app(\App\Services\AttendanceService::class)->workedSeconds($day['session']) : null)
+                    @php($idle = $day['session'] ? $day['session']->idleSeconds() : null)
+                    @php($span = $day['session']?->check_in ? ($day['session']->check_out ? (int) $day['session']->check_in->diffInSeconds($day['session']->check_out) : $worked + (int) $day['session']->break_seconds + $idle) : null)
+                    <td class="num">{{ $span !== null ? \App\Support\Duration::hms($span) : '—' }}</td>
+                    <td class="num">{{ $day['session'] ? '− '.\App\Support\Duration::hms((int) $day['session']->break_seconds) : '—' }}</td>
+                    <td class="num">{{ $day['session'] ? '− '.\App\Support\Duration::hms($idle) : '—' }}</td>
                     <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}">@hms($worked)</strong><small>of @hms($required)@if($day['session']->check_out && $worked < $required) · @hms($required - $worked) short @elseif($day['session']->check_out && $worked > $required) · +@hms($worked - $required) @endif</small>@else — @endif</td>
-                    <td class="num">{{ $day['session'] ? \App\Support\Duration::hms((int) $day['session']->break_seconds) : '—' }}</td>
-                    <td class="num">{{ $day['session'] ? \App\Support\Duration::hms($day['session']->idleSeconds()) : '—' }}</td>
                     <td>@if($day['status'] === 'weekend' && ($offReason = $day['label'] ?? null))<x-badge tone="violet">Weekly off</x-badge><small>{{ $offReason }}</small>@elseif($day['status'] === 'weekend')<x-badge status="weekend">Weekly off</x-badge>@else<x-badge :status="$day['status']" />@if(! empty($day['label']))<small>{{ $day['label'] }}</small>@endif @endif</td>
                     <td>@if(in_array($day['status'], ['present', 'late', 'half_day', 'absent'], true) && (! $day['session'] || ! $day['session']->check_out || $day['status'] !== 'present'))<a class="btn btn-sm" href="{{ route('attendance.corrections', ['date' => $day['date']]) }}" title="Ask your manager to correct this day">Correct</a>@endif</td></tr>
             @endforeach

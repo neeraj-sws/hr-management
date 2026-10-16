@@ -358,7 +358,9 @@ class DesktopApp:
         finally:
             self.away_prompt_open = False
         if not answer:
-            self._flash("Kept as working time.")
+            # Tell the server, so this time is not counted as idle (older servers ignore it).
+            self._run(lambda: self.client.away(period.start.isoformat(), period.end.isoformat(), period.reason, as_work=True),
+                      lambda session: (self._set_session(session), self._flash("Kept as working time.")), lambda _e: self._flash("Kept as working time."))
             return
 
         def done(session):

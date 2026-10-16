@@ -145,6 +145,6 @@ class Corrections extends Component
         if (! $in || ! $out || $out->lte($in)) return null;
         $break = $correction->requested_break_minutes !== null ? $correction->requested_break_minutes * 60 : (int) $session?->break_seconds;
 
-        return (int) max($in->diffInSeconds($out) - $break - (int) $session?->idle_seconds, 0);
+        return (int) max($in->diffInSeconds($out) - $break - (int) $session?->idleSeconds(), 0);
     }
 }

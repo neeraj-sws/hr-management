@@ -119,7 +119,7 @@ class HardCasesTest extends TestCase
         $session = AttendanceSession::firstOrFail();
         $this->assertTrue($session->closed_automatically);
         $this->assertSame('2026-10-07 17:45:00', $session->check_out->toDateTimeString());
-        $this->assertSame(8 * 3600 + 15 * 60, (int) $session->active_seconds);
+        $this->assertSame(8 * 3600 + 15 * 60 - 10, (int) $session->active_seconds, '09:30–17:45 less the 10 s the screen was idle');
         $this->assertSame(0, $this->attendance->closeStaleSessions(), 'No duplicate closing');
         $this->attendance->checkIn($this->employee, 'web');
         $this->assertSame(2, AttendanceSession::count(), 'The new day gets its own session');

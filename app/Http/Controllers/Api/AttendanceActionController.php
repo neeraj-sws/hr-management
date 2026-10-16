@@ -42,9 +42,11 @@ class AttendanceActionController extends ApiController
     /** Desktop: the employee confirmed that time away from the computer was a break. */
     public function away(Request $request): JsonResponse
     {
-        $data = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after:from'], 'reason' => ['required', 'in:idle,locked,asleep']]);
+        $data = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after:from'], 'reason' => ['required', 'in:idle,locked,asleep'], 'as' => ['nullable', 'in:break,work']]);
         $from = Carbon::parse($data['from']);
         abort_if($from->lt(now()->subHours(24)), 422, 'Away periods older than 24 hours cannot be recorded; ask for an attendance correction instead.');
+        // "I was working" (e.g. a meeting): kept as working time, not counted as idle.
+        if (($data['as'] ?? 'break') === 'work') return $this->respond($this->attendance->recordAwayAsWork($this->apiEmployee($request), $from, Carbon::parse($data['to']), $data['reason']));
 
         return $this->respond($this->attendance->recordAway($this->apiEmployee($request), $from, Carbon::parse($data['to']), $data['reason'], 'desktop'));
     }

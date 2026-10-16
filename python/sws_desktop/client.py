@@ -77,9 +77,9 @@ class HrClient:
     def attendance(self, action: str) -> dict:
         return self.request("POST", self.ATTENDANCE[action], {"source": "desktop"})["data"]
 
-    def away(self, start: str, end: str, reason: str) -> dict:
-        """Records confirmed time away from the computer as a break (ISO-8601 times)."""
-        return self.request("POST", "/attendance/away", {"from": start, "to": end, "reason": reason})["data"]
+    def away(self, start: str, end: str, reason: str, as_work: bool = False) -> dict:
+        """Records an answered away period (ISO-8601 times): as a break, or as_work when the employee was working (not idle)."""
+        return self.request("POST", "/attendance/away", {"from": start, "to": end, "reason": reason, "as": "work" if as_work else "break"})["data"]
 
     def daily_status(self) -> dict:
         return self.request("GET", "/daily-status")

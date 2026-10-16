@@ -237,7 +237,7 @@ class AttendanceService
             $running = TaskTimeEntry::where('employee_id', $employee->id)->where('status', 'running')->first();
             if ($running) app(HrWorkflowService::class)->stopTaskTimer($employee, $running);
             $session->refresh();
-            $activeSeconds = max($session->check_in->diffInSeconds($checkOut) - (int) $session->break_seconds - (int) $session->idle_seconds, 0);
+            $activeSeconds = max($session->check_in->diffInSeconds($checkOut) - (int) $session->break_seconds - $session->idleSeconds(), 0);
             $session->update(['check_out' => $checkOut, 'active_seconds' => (int) $activeSeconds, 'status' => 'completed', 'last_sync_at' => $checkOut,
                 'check_out_latitude' => $place['latitude'], 'check_out_longitude' => $place['longitude'], 'check_out_office_id' => $place['office_id'], 'check_out_distance_meters' => $place['distance'], 'check_out_photo_path' => $photoPath, 'check_out_ip' => $this->clientIp($source)]);
             $session->increment('server_version');
@@ -292,6 +292,23 @@ class AttendanceService
      * break, after the employee confirms it. A running task timer is split so
      * the away time is not logged against the task.
      */
+    /**
+     * The employee answered "I was working" for a desktop away period (e.g. a
+     * meeting): nothing becomes a break, and that time is no longer idle.
+     */
+    public function recordAwayAsWork(AttendanceEmployee $employee, CarbonInterface $from, CarbonInterface $to, string $reason): AttendanceSession
+    {
+        $from = $this->local($from);
+        $to = $this->local($to);
+        if ($to->lte($from)) throw ValidationException::withMessages(['away' => 'The away period must end after it starts.']);
+        $session = $this->openSession($employee, $from) ?? throw ValidationException::withMessages(['away' => 'You are not checked in.']);
+        if ($from->lt($session->check_in)) $from = $session->check_in->copy();
+        $this->event($session, 'away_worked', $to, (int) $from->diffInSeconds($to), ['source' => 'desktop', 'reason' => $reason, 'from' => $from->toDateTimeString()]);
+        $this->audit->record('attendance.away_worked', $session, ['reason' => $reason, 'minutes' => intdiv((int) $from->diffInSeconds($to), 60)]);
+
+        return $session->fresh();
+    }
+
     public function recordAway(AttendanceEmployee $employee, CarbonInterface $from, CarbonInterface $to, string $reason, string $source = 'desktop'): AttendanceSession
     {
         return DB::transaction(function () use ($employee, $from, $to, $reason, $source) {
@@ -400,7 +417,7 @@ class AttendanceService
                     }
                 }
                 $session->refresh();
-                $active = (int) max($session->check_in->diffInSeconds($end) - (int) $session->break_seconds - (int) $session->idle_seconds, 0);
+                $active = (int) max($session->check_in->diffInSeconds($end) - (int) $session->break_seconds - $session->idleSeconds(), 0);
                 $session->update(['check_out' => $end, 'active_seconds' => $active, 'status' => 'completed', 'closed_automatically' => true]);
                 $session->increment('server_version');
                 $this->event($session, 'auto_check_out', $end->copy()->addSeconds(2), 0, ['source' => 'system', 'reason' => 'no check-out']);
@@ -415,10 +432,15 @@ class AttendanceService
         return $closed;
     }
 
-    /** Live worked seconds: completed sessions use stored active time, open ones are computed. */
+    /**
+     * Actual working time: in–out less break and idle. A finished day never counts
+     * more than its stored active time (a device agent may report less); open
+     * days are computed live.
+     */
     public function workedSeconds(AttendanceSession $session): int
     {
-        if ($session->check_out || ! $session->check_in) return (int) $session->active_seconds;
+        if (! $session->check_in) return (int) $session->active_seconds;
+        if ($session->check_out) return min((int) $session->active_seconds, (int) $session->actualSeconds());
         $end = now();
         // A session nobody checked out of (older than the allowed length) counts only up to its last
         // sign of activity — the same end the scheduled auto-close uses — never "until now", so the
@@ -434,7 +456,7 @@ class AttendanceService
             if ($start && Carbon::parse($start)->lt($end)) $breakSeconds += Carbon::parse($start)->diffInSeconds($end);
         }
 
-        return (int) max($session->check_in->diffInSeconds($end) - $breakSeconds - (int) $session->idle_seconds, 0);
+        return (int) max($session->check_in->diffInSeconds($end) - $breakSeconds - $session->idleSeconds(), 0);
     }
 
     /**
