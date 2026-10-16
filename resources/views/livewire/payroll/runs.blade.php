@@ -41,6 +41,7 @@
                         @if($selected->status === 'draft' && auth()->user()->can('payroll.manage'))<button class="btn btn-sm" wire:click="recalculate" wire:loading.attr="disabled">Recalculate</button>@endif
                         @if($canDecide)<button class="btn btn-sm btn-success" wire:click="approve" wire:confirm="Approve this payroll run?">Approve</button>@endif
                         @if($selected->status === 'approved' && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="lock" wire:confirm="Lock this payroll? Locked payroll cannot be changed.">Lock payroll</button>@endif
+                        @if(in_array($selected->status, ['approved', 'locked'], true) && \App\Support\Access::isAdmin(auth()->user()))<button class="btn btn-sm btn-danger" wire:click="openReopen">Reopen</button>@endif
                         <a class="btn btn-sm" href="{{ route('hr.reports.export', ['type' => 'payroll', 'from' => $selected->period_starts_on->toDateString(), 'to' => $selected->period_ends_on->toDateString()]) }}"><x-icon name="download" class="icon-sm" />CSV</a>
                     </div>
                 </div>
@@ -93,6 +94,14 @@
                 @endforeach
             </tbody></table></div>
             <div class="modal-foot"><button class="btn" wire:click="closeModal">Close</button></div>
+        </x-modal>
+    @endif
+    @if($showReopen && $selected)
+        <x-modal title="Reopen payroll · {{ $selected->period_starts_on->format('d M') }}–{{ $selected->period_ends_on->format('d M Y') }}">
+            <form wire:submit="reopen"><div class="modal-body"><x-errors />
+                <p class="small" style="margin-top:0">The run goes back to draft: attendance corrections, leave and admin check-outs for this period are allowed again, and it must be recalculated and approved again. Not possible once a salary payment is recorded. This is written to the audit log.</p>
+                <x-field label="Why is it being reopened?" name="reopenReason" full><textarea wire:model="reopenReason" rows="3" placeholder="e.g. Locked by mistake before the month ended"></textarea></x-field>
+            </div><div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-danger" wire:loading.attr="disabled">Reopen payroll</button></div></form>
         </x-modal>
     @endif
 </div>

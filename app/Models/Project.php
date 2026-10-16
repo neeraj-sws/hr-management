@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Project extends Model
 {
-    protected $fillable = ['name', 'description', 'manager_id', 'starts_on', 'ends_on', 'status'];
+    protected $fillable = ['name', 'client_name', 'description', 'manager_id', 'starts_on', 'ends_on', 'status'];
     protected $casts = ['starts_on' => 'date', 'ends_on' => 'date'];
     public function tasks(): HasMany { return $this->hasMany(Task::class); }
     public function manager() { return $this->belongsTo(AttendanceEmployee::class, 'manager_id'); }

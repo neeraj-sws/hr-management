@@ -24,6 +24,7 @@ class Projects extends Component
     public bool $showForm = false;
     public ?int $editingId = null;
     public string $name = '';
+    public string $clientName = '';
     public string $description = '';
     public ?int $managerId = null;
     public string $startsOn = '';
@@ -66,7 +67,7 @@ class Projects extends Component
         abort_unless($this->canManage(), 403);
         $project = $this->findProject($id);
         $this->resetForm();
-        $this->fill(['editingId' => $project->id, 'name' => $project->name, 'description' => (string) $project->description, 'managerId' => $project->manager_id, 'startsOn' => (string) $project->starts_on?->toDateString(), 'endsOn' => (string) $project->ends_on?->toDateString(), 'projectStatus' => $project->status, 'showForm' => true]);
+        $this->fill(['editingId' => $project->id, 'name' => $project->name, 'clientName' => (string) $project->client_name, 'description' => (string) $project->description, 'managerId' => $project->manager_id, 'startsOn' => (string) $project->starts_on?->toDateString(), 'endsOn' => (string) $project->ends_on?->toDateString(), 'projectStatus' => $project->status, 'showForm' => true]);
     }
 
     public function save(WorkService $work): void
@@ -74,6 +75,7 @@ class Projects extends Component
         abort_unless($this->canManage(), 403);
         $this->validate([
             'name' => ['required', 'string', 'max:255'],
+            'clientName' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'managerId' => ['nullable', 'exists:attendance_employees,id'],
             'startsOn' => ['nullable', 'date'],
@@ -81,7 +83,7 @@ class Projects extends Component
             'projectStatus' => ['required', 'in:planned,active,on_hold,completed'],
         ]);
         $managerId = $this->scopedToOwn() ? $this->ownEmployee()?->id : ($this->managerId ?: null);
-        $work->saveProject($this->editingId ? $this->findProject($this->editingId) : null, ['name' => $this->name, 'description' => $this->description ?: null, 'manager_id' => $managerId, 'starts_on' => $this->startsOn ?: null, 'ends_on' => $this->endsOn ?: null, 'status' => $this->projectStatus], $this->user());
+        $work->saveProject($this->editingId ? $this->findProject($this->editingId) : null, ['name' => $this->name, 'client_name' => trim($this->clientName) ?: null, 'description' => $this->description ?: null, 'manager_id' => $managerId, 'starts_on' => $this->startsOn ?: null, 'ends_on' => $this->endsOn ?: null, 'status' => $this->projectStatus], $this->user());
         $this->toast($this->editingId ? 'Project updated.' : 'Project created.');
         $this->closeModal();
     }
@@ -113,7 +115,7 @@ class Projects extends Component
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'description', 'managerId', 'startsOn', 'endsOn', 'projectStatus');
+        $this->reset('editingId', 'name', 'clientName', 'description', 'managerId', 'startsOn', 'endsOn', 'projectStatus');
         $this->resetValidation();
     }
 
@@ -138,11 +140,11 @@ class Projects extends Component
         $base = $this->mine ? $this->myProjectsQuery() : Project::query()->when($this->scopedToOwn(), fn ($q) => $q->where('manager_id', $own?->id ?? 0));
         $counts = app(\App\Services\WorkService::class)->projectCounts($base);
         $projects = (clone $base)
-            ->with(['manager', 'members:attendance_employees.id,attendance_employees.name'])
+            ->with(['manager', 'members:attendance_employees.id,attendance_employees.name'])->withCount('members')
             ->withCount(['tasks', 'tasks as completed_tasks_count' => fn ($q) => $q->where('status', 'completed'), 'tasks as overdue_tasks_count' => fn ($q) => $q->where('status', '!=', 'completed')->whereDate('due_on', '<', today())])
             ->when($this->mine, fn ($q) => $q->withCount(['tasks as my_open_tasks_count' => fn ($t) => $t->where('assignee_id', $own?->id ?? 0)->where('status', '!=', 'completed')]))
             ->withSum('tasks', 'estimated_hours')
-            ->when(trim($this->search) !== '', fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%'))
+            ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', '%'.trim($this->search).'%')->orWhere('client_name', 'like', '%'.trim($this->search).'%')))
             ->when($this->status, fn ($q, $status) => $q->where('status', $status))
             ->latest()->paginate(15);
 

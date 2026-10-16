@@ -52,6 +52,7 @@ class HrWorkflowService
         if ($task->assignee_id !== $employee->id) throw ValidationException::withMessages(['task' => 'Task is not assigned to this employee.']);
         return DB::transaction(function () use ($employee, $task) {
             AttendanceEmployee::whereKey($employee->id)->lockForUpdate()->firstOrFail();
+            app(AttendanceService::class)->stopStaleTimers($employee); // a timer forgotten yesterday must not block today
             $active = TaskTimeEntry::where('employee_id', $employee->id)->where('status', 'running')->lockForUpdate()->first();
             if ($active) throw ValidationException::withMessages(['timer' => 'Stop or pause the current timer before starting another.']);
             if ($task->status === 'completed') throw ValidationException::withMessages(['timer' => 'This task is already completed.']);
@@ -140,13 +141,13 @@ class HrWorkflowService
                 if ($deficit > (float)($limit['max_days']??5)) throw ValidationException::withMessages(['leave'=>'Requested leave exceeds the advance leave limit.']);
             }
             $leave = LeaveRequest::create(['employee_id' => $employee->id, ...$data, 'days' => $days, 'status' => 'pending']);
-            $approverId=$employee->manager?->user_id;
+            $approverId = ApprovalInbox::approverFor($employee); // admins/HR when the manager is unavailable
             ApprovalRequest::create(['approvable_type' => LeaveRequest::class, 'approvable_id' => $leave->id, 'approver_id' => $approverId, 'status' => 'pending']);
             // The manager decides; HR (leave.manage) is told as well, so a request is never stuck with one person.
             // A missing permission or channel failure must not sink the request.
             $type = LeaveType::find($data['leave_type_id']);
             $range = $data['starts_on']->isSameDay($data['ends_on']) ? $data['starts_on']->format('d M Y') : $data['starts_on']->format('d M').' – '.$data['ends_on']->format('d M Y');
-            Notifier::send(Notifier::withPermission('leave.manage')->push($employee->manager?->user), 'LeaveRequest', $leave->id, "A leave request from {$employee->name} needs review: {$type?->name}, {$range} ({$days} day/s).", route('leave.requests', ['tab' => 'approvals'], false), $employee->user_id);
+            Notifier::send(Notifier::withPermission('leave.manage')->push($approverId ? \App\Models\User::find($approverId) : null), 'LeaveRequest', $leave->id, "A leave request from {$employee->name} needs review: {$type?->name}, {$range} ({$days} day/s).", route('leave.requests', ['tab' => 'approvals'], false), $employee->user_id);
             $this->audit->record('leave.requested', $leave, ['days' => $days]);
             app(\App\Services\WhatsAppNotifier::class)->leaveApplied($leave->load(['employee.manager', 'leaveType']));
             return $leave;
@@ -315,7 +316,8 @@ class HrWorkflowService
                 $paidLeaveDays = count($paidLeaveSet);
                 $unpaidLeaveDays = count($unpaidLeaveSet);
                 $overtimePolicy = $policyResolver->forEmployee($employee, 'overtime.multiplier', $endDate->toDateString(), []);
-                $approvedOvertime = OvertimeRequest::where('employee_id',$employee->id)->where('status','approved')->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->get(['work_date','approved_minutes']);
+                // Overtime switched off in Settings: none is paid.
+                $approvedOvertime = ($overtimePolicy['enabled'] ?? true) ? OvertimeRequest::where('employee_id',$employee->id)->where('status','approved')->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->get(['work_date','approved_minutes']) : collect();
                 $approvedMinutes = 0;
                 $holidayMinutes = 0;
                 foreach ($approvedOvertime as $otRequest) {
@@ -443,9 +445,48 @@ class HrWorkflowService
         return DB::transaction(function () use ($run, $userId) {
             $run = PayrollRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
             if ($run->status !== 'approved') throw ValidationException::withMessages(['payroll' => 'Payroll must be approved before it can be locked.']);
+            // Locking a month that is still running froze its attendance (no corrections, no admin check-out).
+            if ($run->period_ends_on->gte(today())) throw ValidationException::withMessages(['payroll' => 'This payroll period ends on '.$run->period_ends_on->format('d M Y').'. It can be locked from '.$run->period_ends_on->copy()->addDay()->format('d M Y').', after the period is over.']);
+            // Requests still waiting for a decision would be stuck forever once the period is locked.
+            $from = $run->period_starts_on->toDateString();
+            $to = $run->period_ends_on->toDateString();
+            $pending = array_filter([
+                'leave' => LeaveRequest::where('status', 'pending')->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->count(),
+                'overtime' => OvertimeRequest::where('status', 'pending')->whereBetween('work_date', [$from, $to])->count(),
+                'attendance correction' => \App\Models\AttendanceCorrection::where('status', 'pending')->whereBetween('work_date', [$from, $to])->count(),
+            ]);
+            if ($pending) {
+                $list = collect($pending)->map(fn ($n, $what) => "{$n} {$what} ".str('request')->plural($n))->join(', ');
+                throw ValidationException::withMessages(['payroll' => "Decide the pending requests of this period first ({$list}) — see Approvals. Once locked they could no longer be approved."]);
+            }
             $run->update(['status' => 'locked', 'locked_by' => $userId, 'locked_at' => now()]);
             $this->audit->record('payroll.locked', $run);
             foreach ($run->items()->with('employee.user')->get() as $item) $item->employee?->user?->notify(new \App\Notifications\ApprovalRequested('PayrollRun', $run->id, 'The payroll period has been locked.'));
+            return $run->fresh();
+        });
+    }
+
+    /**
+     * Administrator: reopens an approved or locked payroll run (e.g. locked by
+     * mistake before the month ended) so attendance and leave can be corrected
+     * and the run recalculated. Not possible once a salary payment is recorded.
+     */
+    public function reopenPayroll(PayrollRun $run, \App\Models\User $actor, string $reason): PayrollRun
+    {
+        abort_unless(\App\Support\Access::isAdmin($actor), 403, 'Only an administrator can reopen a payroll run.');
+        if (mb_strlen(trim($reason)) < 5) throw ValidationException::withMessages(['reopenReason' => 'Say why the payroll is being reopened.']);
+
+        return DB::transaction(function () use ($run, $actor, $reason) {
+            $run = PayrollRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($run->status, ['approved', 'locked'], true)) throw ValidationException::withMessages(['payroll' => 'Only an approved or locked payroll can be reopened.']);
+            $payments = SalaryPayment::whereIn('payroll_item_id', $run->items()->pluck('id'))->count();
+            if ($payments) throw ValidationException::withMessages(['payroll' => "{$payments} salary payment(s) are already recorded for this period, so it cannot be reopened. Corrections for this period go into the next payroll as salary adjustments."]);
+            $before = $run->status;
+            $run->update(['status' => 'draft', 'locked_by' => null, 'locked_at' => null, 'needs_recalculation' => true]);
+            ApprovalRequest::create(['approvable_type' => PayrollRun::class, 'approvable_id' => $run->id, 'step' => 1, 'status' => 'pending']);
+            $this->audit->record('payroll.reopened', $run, ['from' => $before, 'by' => $actor->name, 'reason' => $reason]);
+            Notifier::send(Notifier::withPermission('payroll.manage', 'payroll.approve'), 'PayrollRun', $run->id, "{$actor->name} reopened the payroll for ".$run->period_starts_on->format('d M').'–'.$run->period_ends_on->format('d M Y').": {$reason}. Recalculate it before approving again.", route('payroll.runs', [], false), $actor->id);
+
             return $run->fresh();
         });
     }

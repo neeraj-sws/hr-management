@@ -6,22 +6,28 @@
                 <section class="card">
                     <div class="card-head"><div><h2>Today · {{ today()->format('d M Y') }}</h2><p>You can update it until the end of the day.</p></div></div>
                     <form class="card-body" wire:submit="save">
-                        <x-field label="Yesterday" name="yesterday"><textarea wire:model="yesterday" rows="2" placeholder="What you did yesterday"></textarea></x-field>
-                        <x-field label="Plan for today" name="plan"><textarea wire:model="plan" rows="2" placeholder="What you intend to do"></textarea></x-field>
-                        <x-field label="Completed" name="summary"><textarea id="daily-summary-field" wire:model="summary" rows="4" placeholder="What you finished or moved forward"></textarea></x-field>
+                        <x-errors />
                         @if($byProject->isNotEmpty())
-                            <div class="field"><span class="label">Project-wise status</span>
+                            <div class="field"><span class="label">Project &amp; task-wise status</span>
                                 @foreach($byProject as $row)
                                     @php($key = (string) ($row['project']?->id ?? 0))
-                                    <div class="card card-body" style="padding:10px;margin-bottom:8px" wire:key="dsp-{{ $key }}">
-                                        <strong>{{ $row['project']?->name ?? 'No project' }}</strong>
-                                        @if($row['tasks']->isNotEmpty())<small class="muted">{{ $row['tasks']->map(fn ($t) => $t->title.' ('.str($t->status)->replace('_', ' ').')')->join(', ') }}@if($row['seconds']) · @hms($row['seconds']) logged today @endif</small>@endif
-                                        <textarea wire:model="projectUpdates.{{ $key }}" rows="2" placeholder="What you did on {{ $row['project']?->name ?? 'other work' }} today"></textarea>
+                                    <div class="ds-project" wire:key="dsp-{{ $key }}">
+                                        <div class="ds-project-head"><strong>{{ $row['project']?->name ?? 'Other work (no project)' }}</strong>@if($row['project']?->client_name)<small class="muted"> · {{ $row['project']->client_name }}</small>@endif @if($row['seconds'])<span class="pill">@hms($row['seconds']) today</span>@endif</div>
+                                        @foreach($row['tasks'] as $t)
+                                            <div class="ds-task" wire:key="dst-{{ $t->id }}">
+                                                <div class="ds-task-title"><span>{{ $t->title }}</span> <x-badge :status="$t->status" />@if($t->progress !== null)<small class="muted"> {{ $t->progress }}%</small>@endif @if($t->seconds_today)<small class="muted"> · @hms($t->seconds_today)</small>@endif</div>
+                                                <input type="text" wire:model="taskNotes.{{ $t->id }}" placeholder="What you did on this task (optional)">
+                                            </div>
+                                        @endforeach
+                                        <textarea wire:model="projectUpdates.{{ $key }}" rows="2" placeholder="Overall update for {{ $row['project']?->name ?? 'other work' }} (optional)"></textarea>
                                     </div>
                                 @endforeach
                                 <span class="small muted">Your manager and the project managers are notified (in the app and by e-mail).</span>
                             </div>
                         @endif
+                        <x-field label="Completed" name="summary" :hint="$byProject->isNotEmpty() ? 'optional when you wrote project / task lines above' : null"><textarea id="daily-summary-field" wire:model="summary" rows="3" placeholder="What you finished or moved forward"></textarea></x-field>
+                        <x-field label="Yesterday" name="yesterday"><textarea wire:model="yesterday" rows="2" placeholder="What you did yesterday"></textarea></x-field>
+                        <x-field label="Plan for today" name="plan"><textarea wire:model="plan" rows="2" placeholder="What you intend to do"></textarea></x-field>
                         <x-field label="Pending work" name="pending"><textarea wire:model="pending" rows="2" placeholder="Started but not finished yet"></textarea></x-field>
                         <x-field label="Plan for tomorrow" name="tomorrowPlan"><textarea wire:model="tomorrowPlan" rows="2" placeholder="What you will pick up next working day"></textarea></x-field>
                         <x-field label="Blockers" name="blockers" hint="your manager is notified"><textarea wire:model="blockers" rows="2" placeholder="Anything stopping you"></textarea></x-field>
@@ -47,7 +53,7 @@
                 @endif
                 <div class="list">
                     @forelse($statuses as $status)
-                        <div class="list-row" style="align-items:flex-start"><div style="min-width:160px"><strong>{{ $status->employee?->name }}</strong><small>{{ $status->work_date->format('D, d M Y') }}</small></div><div class="small" style="flex:1;white-space:pre-line">@if($status->yesterday)<div><span class="muted">Yesterday:</span> {{ $status->yesterday }}</div>@endif@if($status->plan)<div><span class="muted">Plan:</span> {{ $status->plan }}</div>@endif<div><span class="muted">Completed:</span> {{ $status->summary }}</div>@foreach((array) ($status->project_updates ?? []) as $line)<div style="margin-top:4px;padding-left:8px;border-left:3px solid var(--line)"><strong>{{ $line['project'] ?? 'No project' }}</strong>@if(! empty($line['seconds'])) <span class="muted">· @hms($line['seconds'])</span>@endif @if(! empty($line['update']))<div>{{ $line['update'] }}</div>@endif @if(! empty($line['tasks']))<small>{{ collect($line['tasks'])->map(fn ($t) => $t['title'].' ('.str($t['status'])->replace('_', ' ').')')->join(', ') }}</small>@endif</div>@endforeach@if($status->pending)<div><span class="muted">Pending:</span> {{ $status->pending }}</div>@endif @if($status->tomorrow_plan)<div><span class="muted">Tomorrow:</span> {{ $status->tomorrow_plan }}</div>@endif @if($status->blockers)<div style="color:var(--red)"><span class="muted">Blockers:</span> {{ $status->blockers }}</div>@endif@if($status->notes)<div><span class="muted">Notes:</span> {{ $status->notes }}</div>@endif@if($status->submitted_at)<small>submitted {{ $status->submitted_at->format('d M, h:i A') }}</small>@endif</div></div>
+                        <div class="list-row" style="align-items:flex-start"><div style="min-width:160px"><strong>{{ $status->employee?->name }}</strong><small>{{ $status->work_date->format('D, d M Y') }}</small></div><div class="small" style="flex:1;white-space:pre-line">@if($status->yesterday)<div><span class="muted">Yesterday:</span> {{ $status->yesterday }}</div>@endif@if($status->plan)<div><span class="muted">Plan:</span> {{ $status->plan }}</div>@endif<div><span class="muted">Completed:</span> {{ $status->summary }}</div>@foreach((array) ($status->project_updates ?? []) as $line)<div style="margin-top:4px;padding-left:8px;border-left:3px solid var(--line)"><strong>{{ $line['project'] ?? 'No project' }}</strong>@if(! empty($line['seconds'])) <span class="muted">· @hms($line['seconds'])</span>@endif @if(! empty($line['update']))<div>{{ $line['update'] }}</div>@endif @foreach((array) ($line['tasks'] ?? []) as $t)<div class="small">• {{ $t['title'] }} <span class="muted">({{ str($t['status'])->replace('_', ' ') }}@if(! empty($t['seconds'])) · @hms($t['seconds'])@endif)</span>@if(! empty($t['note'])) — {{ $t['note'] }}@endif</div>@endforeach</div>@endforeach@if($status->pending)<div><span class="muted">Pending:</span> {{ $status->pending }}</div>@endif @if($status->tomorrow_plan)<div><span class="muted">Tomorrow:</span> {{ $status->tomorrow_plan }}</div>@endif @if($status->blockers)<div style="color:var(--red)"><span class="muted">Blockers:</span> {{ $status->blockers }}</div>@endif@if($status->notes)<div><span class="muted">Notes:</span> {{ $status->notes }}</div>@endif@if($status->submitted_at)<small>submitted {{ $status->submitted_at->format('d M, h:i A') }}</small>@endif</div></div>
                     @empty
                         <x-empty title="No status updates" icon="edit" />
                     @endforelse

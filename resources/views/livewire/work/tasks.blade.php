@@ -21,7 +21,9 @@
             <label class="field"><span>Priority</span><select wire:model.live="priority"><option value="">Any</option><option value="urgent">Urgent</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
             <label class="field"><span>Project</span><select wire:model.live="project"><option value="">Any</option>@foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}</option>@endforeach</select></label>
             @if(!$mine && $assignees->isNotEmpty())<label class="field"><span>Assignee</span><select wire:model.live="assignee"><option value="">Anyone</option>@foreach($assignees as $a)<option value="{{ $a->id }}">{{ $a->name }}</option>@endforeach</select></label>@endif
-            <label class="field"><span>Due</span><select wire:model.live="due"><option value="">Any time</option><option value="overdue">Overdue</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="late">Completed late</option></select></label>
+            <label class="field"><span>Due</span><select wire:model.live="due"><option value="">Any time</option><option value="overdue">Overdue</option><option value="today">Due today</option><option value="week">Next 7 days</option><option value="late">Completed late</option><option value="custom">Custom dates…</option></select></label>
+            <label class="field"><span>Sort</span><select wire:model.live="sort"><option value="newest">Newest first</option><option value="due">Due date</option><option value="priority">Priority</option></select></label>
+            @if($due === 'custom')<label class="field"><span>Due from</span><input type="date" wire:model.live="dueFrom"></label><label class="field"><span>Due to</span><input type="date" wire:model.live="dueTo"></label>@endif
         </div>
         <div class="table-wrap"><table class="table">
             <thead><tr><th>Task</th>@unless($mine)<th>Assignee</th>@endunless<th>Priority</th><th>Due</th><th class="num">Est / logged</th><th>Progress</th><th>Status</th><th></th></tr></thead>
@@ -60,7 +62,7 @@
     </section>
 
     @if($showForm)
-        <x-modal :title="$editingId ? 'Edit task' : 'Assign task'" size="lg">
+        <x-modal :title="$editingId ? 'Edit task' : ($parentId ? 'Add subtask' : 'Assign task')" size="lg">
             <form wire:submit="save"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Title" name="title" full><input wire:model="title"></x-field>
                 <x-field label="Description" name="description" full><textarea wire:model="description"></textarea></x-field>
@@ -78,47 +80,61 @@
         </x-modal>
     @endif
     @if($opened)
+        @php($loggedOpen = $work->loggedSeconds($opened))
+        @php($pctOpen = $opened->progressPercent($loggedOpen))
         <x-modal :title="$opened->title" size="lg">
-            <div class="modal-body">
-                <dl class="kv">
-                    <dt>Assignee</dt><dd>{{ $opened->assignee?->name }}</dd>
-                    <dt>Assigned by</dt><dd>{{ $opened->creator?->name ?? '—' }} · {{ $opened->created_at?->format('d M Y, h:i A') }}</dd>
-                    @if($opened->completed_at)<dt>Completed</dt><dd>{{ $opened->completed_at->format('d M Y, h:i A') }}@if($opened->wasCompletedLate()) <x-badge tone="amber">late</x-badge>@endif</dd>@endif
-                    <dt>Project</dt><dd>{{ $opened->project?->name ?? '—' }}</dd>
-                    @if($opened->parent)<dt>Subtask of</dt><dd><button type="button" class="linklike" wire:click="open({{ $opened->parent->id }})">{{ $opened->parent->title }}</button></dd>@endif
-                    <dt>Progress</dt><dd>{{ $opened->progressPercent($work->loggedSeconds($opened)) }}%</dd>
-                    <dt>Status</dt><dd><x-badge :status="$opened->status" /> · {{ $opened->priority }}@if($opened->due_on) · due {{ $opened->due_on->format('d M Y') }}@endif</dd>
-                    <dt>Logged</dt><dd>@php($loggedOpen = $work->loggedSeconds($opened))@hms($loggedOpen){{ $opened->estimated_hours !== null ? ' of '.(float) $opened->estimated_hours.' h estimated' : '' }}</dd>
-                    @if($opened->description)<dt>Description</dt><dd style="white-space:pre-line">{{ $opened->description }}</dd>@endif
-                </dl>
-                <h3 class="mt" style="font-size:14px">Subtasks</h3>
-                <div class="list">
-                    @forelse($opened->subtasks as $sub)
-                        <div class="list-row"><div><button type="button" class="linklike" wire:click="open({{ $sub->id }})"><strong>{{ $sub->title }}</strong></button><small>{{ $sub->assignee?->name }}</small></div><x-badge :status="$sub->status" /></div>
-                    @empty
-                        <p class="small muted">No subtasks.</p>
-                    @endforelse
+            <div class="modal-body task-view">
+                <div class="task-view-head">
+                    <div class="pill-row">
+                        <x-badge :status="$opened->status">{{ $opened->status === 'completed' ? 'Completed' : '' }}</x-badge>
+                        <x-badge :status="$opened->priority" />
+                        @if($opened->isOverdue())<x-badge tone="red">{{ $opened->due_on->diffInDays(today()) }} days overdue</x-badge>@elseif($opened->wasCompletedLate())<x-badge tone="amber">completed late</x-badge>@endif
+                        @if($opened->parent)<span class="pill">Subtask of <button type="button" class="linklike" wire:click="open({{ $opened->parent->id }})">{{ $opened->parent->title }}</button></span>@endif
+                    </div>
+                    <div class="task-view-progress"><div class="progress"><span style="width: {{ $pctOpen }}%"></span></div><small>{{ $pctOpen }}% done @if($opened->progress === null && $opened->status !== 'completed') (auto from time)@endif</small></div>
                 </div>
-                @if(! $opened->parent_id && (($canAssign && !$mine) || $canAddOwn))<button type="button" class="btn btn-sm mt" wire:click="create({{ $opened->id }})">+ Add subtask</button>@endif
-                <h3 class="mt" style="font-size:14px">History</h3>
-                <div class="list">
-                    @forelse($history as $event)
-                        <div class="list-row"><div><strong>{{ str($event->action)->after('task.')->replace('_', ' ')->ucfirst() }}</strong><small>{{ $event->actor?->name ?? 'System' }}@if(isset($event->metadata['duration_seconds'])) · @hms($event->metadata['duration_seconds'])@endif</small></div><span class="small muted">{{ $event->created_at?->format('d M Y, h:i A') }}</span></div>
-                    @empty
-                        <p class="small muted">No history yet.</p>
-                    @endforelse
+                <div class="task-view-grid">
+                    <div><span>Assignee</span><strong>{{ $opened->assignee?->name ?? '—' }}</strong></div>
+                    <div><span>Assigned by</span><strong>{{ $opened->creator?->name ?? '—' }}</strong><small>{{ $opened->created_at?->format('d M Y, h:i A') }}</small></div>
+                    <div><span>Project</span><strong>{{ $opened->project?->name ?? 'No project' }}</strong>@if($opened->project?->client_name)<small>{{ $opened->project->client_name }}</small>@endif</div>
+                    <div><span>Due</span><strong>{{ $opened->due_on?->format('d M Y') ?? '—' }}</strong></div>
+                    <div><span>Time logged</span><strong>@hms($loggedOpen)</strong><small>{{ $opened->estimated_hours !== null ? 'of '.(float) $opened->estimated_hours.' h estimated' : 'no estimate' }}</small></div>
+                    <div><span>Completed</span><strong>{{ $opened->completed_at?->format('d M Y, h:i A') ?? '—' }}</strong></div>
                 </div>
-                <h3 class="mt" style="font-size:14px">Comments</h3>
-                <div class="list">
-                    @forelse($opened->comments as $c)
-                        <div class="list-row" style="align-items:flex-start"><div><strong>{{ $c->author?->name ?? 'Former user' }}</strong><small>{{ $c->created_at->format('d M, h:i A') }}</small></div><div class="small" style="flex:1;white-space:pre-line;margin-left:12px">{{ $c->body }}</div></div>
-                    @empty
-                        <p class="small muted">No comments yet.</p>
-                    @endforelse
+                @if($opened->description)<div class="task-view-section"><h3>Description</h3><p style="white-space:pre-line;margin:0">{{ $opened->description }}</p></div>@endif
+                <div class="task-view-section">
+                    <div class="task-view-section-head"><h3>Subtasks @if($opened->subtasks->isNotEmpty())<span class="muted">· {{ $opened->subtasks->where('status', 'completed')->count() }}/{{ $opened->subtasks->count() }} done</span>@endif</h3>
+                        @if(! $opened->parent_id && (($canAssign && !$mine) || $canAddOwn))<button type="button" class="btn btn-sm" wire:click="create({{ $opened->id }})"><x-icon name="plus" class="icon-sm" />Add subtask</button>@endif</div>
+                    <div class="list bordered">
+                        @forelse($opened->subtasks as $sub)
+                            <div class="list-row" wire:key="sub-{{ $sub->id }}"><div><button type="button" class="linklike" wire:click="open({{ $sub->id }})"><strong>{{ $sub->title }}</strong></button><small>{{ $sub->assignee?->name }}@if($sub->due_on) · due {{ $sub->due_on->format('d M') }}@endif</small></div><x-badge :status="$sub->status" /></div>
+                        @empty
+                            <p class="small muted" style="padding:10px 14px;margin:0">No subtasks yet.</p>
+                        @endforelse
+                    </div>
                 </div>
-                <form wire:submit="addComment" class="mt"><x-field label="Add a comment" name="comment"><textarea wire:model="comment" rows="2" placeholder="Question, update or blocker"></textarea></x-field><div class="form-actions"><button class="btn btn-primary btn-sm" wire:loading.attr="disabled">Post</button></div></form>
+                <div class="task-view-section">
+                    <h3>History</h3>
+                    <ol class="timeline">
+                        @forelse($history as $event)
+                            <li><strong>{{ str($event->action)->after('task.')->replace('_', ' ')->ucfirst() }}</strong> <span class="muted">by {{ $event->actor?->name ?? 'System' }}@if(isset($event->metadata['duration_seconds'])) · @hms($event->metadata['duration_seconds'])@endif @if(isset($event->metadata['to'])) · {{ $event->metadata['to'] }}%@endif</span><small>{{ $event->created_at?->format('d M Y, h:i A') }}</small></li>
+                        @empty
+                            <li class="muted">No history yet.</li>
+                        @endforelse
+                    </ol>
+                </div>
+                <div class="task-view-section">
+                    <h3>Comments @if($opened->comments->isNotEmpty())<span class="muted">· {{ $opened->comments->count() }}</span>@endif</h3>
+                    @foreach($opened->comments as $c)
+                        <div class="comment"><div><strong>{{ $c->author?->name ?? 'Former user' }}</strong> <small class="muted">{{ $c->created_at->format('d M, h:i A') }}</small></div><div style="white-space:pre-line">{{ $c->body }}</div></div>
+                    @endforeach
+                    <form wire:submit="addComment" class="mt"><x-field label="Add a comment" name="comment"><textarea wire:model="comment" rows="2" placeholder="Question, update or blocker"></textarea></x-field><div class="form-actions"><button class="btn btn-primary btn-sm" wire:loading.attr="disabled">Post</button></div></form>
+                </div>
             </div>
-            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Close</button></div>
+            <div class="modal-foot">
+                @if(($canAssign && !$mine) || ($canAddOwn && $opened->created_by === auth()->id()))<button type="button" class="btn" wire:click="edit({{ $opened->id }})">Edit</button>@endif
+                <button type="button" class="btn" wire:click="closeModal">Close</button>
+            </div>
         </x-modal>
     @endif
 </div>

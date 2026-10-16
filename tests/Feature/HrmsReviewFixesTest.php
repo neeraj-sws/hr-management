@@ -245,6 +245,29 @@ class HrmsReviewFixesTest extends TestCase
         Livewire::actingAs($this->admin)->withQueryParams(['tab' => 'calendar'])->test(\App\Livewire\System\Settings::class)->assertSee('Weekly offs on some weeks only')->assertSee('Release weekend')->assertSee('Lata Lead');
     }
 
+    public function test_weekly_off_checkboxes_are_independent_and_employees_are_told(): void
+    {
+        // Ticking only the 3rd Saturday saves only the 3rd Saturday (it used to tick every week).
+        Livewire::actingAs($this->admin)->withQueryParams(['tab' => 'calendar'])->test(\App\Livewire\System\Settings::class)
+            ->set('workdays', [1, 2, 3, 4, 5, 6])->assertSet('offWeeks.6', [])
+            ->set('offWeeks.6', ['3'])->call('saveCalendar')->assertHasNoErrors()->assertSet('offWeeks.6', ['3']);
+        $calendar = app(\App\Services\PolicyConfigurationService::class)->forEmployee($this->employee, 'calendar.working_days', '2026-10-14');
+        $this->assertSame(['6' => [3]], $calendar['off_weeks']);
+
+        $told = $this->notificationsOf($this->employeeUser, 'WeeklyOff')->first();
+        $this->assertStringContainsString('off on the 3rd Saturday', $told->data['message']);
+        $this->assertStringContainsString('Sat 17 Oct', $told->data['message']);
+
+        // Shown on the Holidays page and in My Attendance, with a reminder the evening before.
+        $this->actingAs($this->employeeUser)->get(route('company.holidays'))->assertOk()->assertSee('Upcoming weekly offs')->assertSee('3rd Saturday — weekly off');
+        Carbon::setTestNow('2026-10-16 17:00:00');
+        $this->assertSame(2, app(\App\Services\CompanyService::class)->remindTomorrowOff(), 'The two employees with a login are reminded');
+        $this->assertTrue($this->notificationsOf($this->employeeUser, 'WeeklyOff')->contains(fn ($n) => str_contains($n->data['message'], 'tomorrow, Saturday 17 Oct, is your day off')));
+        $this->assertSame(0, app(\App\Services\CompanyService::class)->remindTomorrowOff(), 'Only once');
+        Carbon::setTestNow('2026-10-19 10:00:00');
+        $this->actingAs($this->employeeUser)->get(route('attendance.my', ['month' => '2026-10']))->assertSee('Weekly off')->assertSee('3rd Saturday — weekly off');
+    }
+
     public function test_leave_cannot_be_approved_inside_a_locked_payroll_period(): void
     {
         $annual = LeaveType::where('name', 'Annual Leave')->firstOrFail();
@@ -265,7 +288,7 @@ class HrmsReviewFixesTest extends TestCase
 
         $first = $import->salary($file([['RV-EMP', '30000', '01-09-2026', '', '9'], ['NOPE', '1000', '2026-09-01', '', ''], ['RV-LEAD', '40000', '31-02-2026', '', '']]), $this->admin->id);
         $this->assertSame([1, 0, 2], [$first['created'], $first['kept'], $first['skipped']]);
-        $this->assertStringContainsString('no employee with code "NOPE"', implode(' ', $first['errors']));
+        $this->assertStringContainsString('No employee with Employee ID "NOPE"', implode(' ', $first['errors']));
         $this->assertStringContainsString('effective_from "31-02-2026" is not a valid date', implode(' ', $first['errors']));
         $this->assertSame(9.0, (float) $this->employee->fresh()->daily_work_hours);
 
@@ -305,7 +328,7 @@ class HrmsReviewFixesTest extends TestCase
         Task::create(['title' => 'Build login', 'assignee_id' => $this->employee->id, 'project_id' => $project->id, 'status' => 'in_progress', 'priority' => 'normal']);
 
         Livewire::actingAs($this->employeeUser)->test(\App\Livewire\Work\DailyStatus::class)
-            ->assertSee('Project-wise status')->assertSee('Atlas')->assertSee('Build login')
+            ->assertSee('Project &amp; task-wise status', false)->assertSee('Atlas')->assertSee('Build login')
             ->set('summary', 'Login screen mostly done')->set('projectUpdates.'.$project->id, 'Finished the form validation')
             ->call('save')->assertHasNoErrors();
 
@@ -344,9 +367,9 @@ class HrmsReviewFixesTest extends TestCase
     {
         Storage::fake('local');
         Livewire::actingAs($this->admin)->test(Documents::class)
-            ->call('create')->call('upload')->assertHasErrors(['employeeId', 'file'])->assertSee('Choose the employee')->assertSee('Choose a file to upload')
+            ->call('create')->call('saveDocument')->assertHasErrors(['employeeId', 'file'])->assertSee('Choose the employee')->assertSee('Choose a file to upload')
             ->set('employeeId', $this->employee->id)->set('file', UploadedFile::fake()->create('contract.exe', 10))->assertHasErrors(['file'])
-            ->set('file', UploadedFile::fake()->create('contract.pdf', 120, 'application/pdf'))->call('upload')->assertHasNoErrors()->assertSet('showForm', false);
+            ->set('file', UploadedFile::fake()->create('contract.pdf', 120, 'application/pdf'))->call('saveDocument')->assertHasNoErrors()->assertSet('showForm', false);
         $document = EmployeeDocument::firstOrFail();
         $this->assertSame('contract.pdf', $document->original_name);
         Storage::disk('local')->assertExists($document->storage_path);

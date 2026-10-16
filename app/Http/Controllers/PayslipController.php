@@ -11,7 +11,7 @@ class PayslipController extends Controller
 {
     public function show(Request $request, Payslip $payslip, AuditLogger $audit): View
     {
-        $payslip->load(['employee','item.run','item.payments']);
+        $payslip->load(['employee.department','item.run','item.payments']);
         $user=$request->user();
         abort_unless($user->canAny(['payroll.manage','payroll.approve']) || $payslip->employee?->user_id===$user->id,403);
         $audit->record('payroll.payslip_viewed',$payslip,['reference'=>$payslip->reference]);

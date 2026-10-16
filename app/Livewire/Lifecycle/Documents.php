@@ -35,6 +35,7 @@ class Documents extends Component
         abort_unless($this->canManage(), 403);
         $this->reset('employeeId', 'file', 'expiresOn');
         $this->documentCategory = 'employment';
+        $this->employeeId = $this->employee; // the employee picked in the filter is preselected
         $this->resetValidation();
         $this->showForm = true;
     }
@@ -69,7 +70,8 @@ class Documents extends Component
         }
     }
 
-    public function upload(AuditLogger $audit): void
+    /** Not named "upload": that is Livewire's own JS file-upload helper, so wire:submit="upload" never reached the server. */
+    public function saveDocument(AuditLogger $audit): void
     {
         abort_unless($this->canManage(), 403);
         // On a validation error the form stays open with everything already entered (including the chosen file).

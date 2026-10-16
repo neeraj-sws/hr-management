@@ -47,6 +47,22 @@ class ApprovalInbox
      */
     public const TEAM_LEAD_TYPES = [LeaveRequest::class, OvertimeRequest::class, AttendanceCorrection::class, ExpenseClaim::class];
 
+    /**
+     * Who decides an employee's request: their manager — unless there is no
+     * manager, the manager (or their login) is inactive, or the manager is on
+     * approved leave today. Then null: the request goes to the administrators /
+     * HR who hold the permission for it (they always see unassigned requests).
+     */
+    public static function approverFor(AttendanceEmployee $employee): ?int
+    {
+        $manager = $employee->manager()->with('user')->first();
+        if (! $manager || ! $manager->is_active || ! $manager->user || ! $manager->user->is_active) return null;
+        $onLeave = LeaveRequest::where('employee_id', $manager->id)->where('status', 'approved')
+            ->whereDate('starts_on', '<=', today())->whereDate('ends_on', '>=', today())->exists();
+
+        return $onLeave ? null : $manager->user_id;
+    }
+
     /** Types this user holds any deciding permission for (plus team requests for a team lead). */
     public function typesFor(User $user): array
     {

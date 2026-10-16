@@ -83,7 +83,7 @@ class Roles extends Component
         return $this->page('livewire.system.roles', [
             'roles' => Role::withCount('users')->orderByRaw("CASE name WHEN 'Master Admin' THEN 0 WHEN 'HR' THEN 1 WHEN 'Accounts' THEN 2 WHEN 'Manager' THEN 3 ELSE 4 END")->get(),
             'permissions' => Permission::orderBy('name')->pluck('name')->groupBy(fn ($name) => str($name)->before('.')->toString()),
-            'users' => $this->tab === 'users' ? User::with('roles')->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")))->orderBy('name')->paginate(20) : null,
+            'users' => $this->tab === 'users' ? User::with('roles')->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")))->latest('id')->paginate(20) : null,
             'editing' => $this->editingUserId ? User::find($this->editingUserId) : null,
             'locked' => self::LOCKED_ROLE,
         ], 'Roles & Permissions');

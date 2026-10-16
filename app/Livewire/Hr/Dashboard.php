@@ -98,6 +98,7 @@ class Dashboard extends Component
             'canTeamAttendance' => Navigation::canAccess($user, 'attendance.dashboard'),
             'announcements' => Announcement::visibleTo($profile)->orderByDesc('is_pinned')->latest('published_at')->limit(3)->get(),
             'celebrations' => $company->celebrations(7)->take(6),
+            'nextSpecialOff' => collect(\App\Support\WorkCalendar::upcomingSpecialOffs(app(\App\Services\PolicyConfigurationService::class)->forEmployee($profile, 'calendar.working_days', $today->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]), $today, 45))->first(),
             'nextHoliday' => $company->holidays($profile, $today->year)->merge($company->holidays($profile, $today->year + 1))->first(fn ($h) => $h['date']->gte($today)),
             'probationDue' => $orgWide ? AttendanceEmployee::where('is_active', true)->whereNull('confirmed_on')->whereNotNull('probation_ends_on')->whereDate('probation_ends_on', '<=', $today->copy()->addDays(30))->orderBy('probation_ends_on')->limit(5)->get() : collect(),
             'myTraining' => $profile ? TrainingAssignment::with('course')->where('employee_id', $profile->id)->where('status', '!=', 'completed')->orderByRaw('due_on IS NULL')->orderBy('due_on')->limit(3)->get() : collect(),

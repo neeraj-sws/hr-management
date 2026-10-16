@@ -27,6 +27,11 @@ class Tasks extends Component
     #[Url] public ?int $project = null;
     #[Url] public ?int $assignee = null;
     #[Url] public string $due = '';
+    /** Custom due-date range (used when $due = 'custom'). */
+    #[Url] public string $dueFrom = '';
+    #[Url] public string $dueTo = '';
+    /** newest (default) | due | priority — open work always comes before completed work. */
+    #[Url] public string $sort = 'newest';
 
     public bool $showForm = false;
     public ?int $editingId = null;
@@ -41,6 +46,8 @@ class Tasks extends Component
     public string $dueOn = '';
     public string $workDate = '';
     public ?int $parentId = null;
+    /** Task whose view opened the form ("+ Add subtask"); shown again after saving/cancelling. */
+    public ?int $returnToId = null;
     #[Url(as: 'task')] public ?int $openId = null;
     public string $comment = '';
 
@@ -51,7 +58,8 @@ class Tasks extends Component
 
     public function updated($property): void
     {
-        if (in_array($property, ['search', 'status', 'priority', 'project', 'assignee', 'due'], true)) $this->resetPage();
+        if (in_array($property, ['search', 'status', 'priority', 'project', 'assignee', 'due', 'dueFrom', 'dueTo'], true)) $this->resetPage();
+        if ($property === 'due' && $this->due !== 'custom') $this->reset('dueFrom', 'dueTo');
     }
 
     private function canAssign(): bool
@@ -80,7 +88,13 @@ class Tasks extends Component
         $this->resetForm();
         $this->projectId = $this->project;
         if ($this->mine) { $this->assigneeId = $this->ownEmployee()?->id; $this->workDate = today()->toDateString(); }
-        if ($parentId) { $parent = $this->visibleTasks()->findOrFail($parentId); $this->parentId = $parent->id; $this->projectId = $parent->project_id; $this->assigneeId ??= $parent->assignee_id; }
+        if ($parentId) {
+            $parent = $this->visibleTasks()->findOrFail($parentId);
+            $this->parentId = $parent->id; $this->projectId = $parent->project_id; $this->assigneeId ??= $parent->assignee_id;
+            // The task view is closed while the form is open (two stacked modals hid the form), and reopened afterwards.
+            $this->returnToId = $this->openId;
+            $this->openId = null;
+        }
         $this->showForm = true;
     }
 
@@ -127,7 +141,7 @@ class Tasks extends Component
         $task = $this->editingId ? $this->visibleTasks()->findOrFail($this->editingId) : null;
         if ($task && ! $this->canAssign() && $task->created_by !== auth()->id()) abort(403);
         $work->saveTask($task, ['work_date' => $this->workDate ?: null, 'parent_id' => $this->parentId ?: null, 'title' => $this->title, 'description' => $this->description ?: null, 'project_id' => $this->projectId ?: null, 'assignee_id' => $this->assigneeId, 'priority' => $this->taskPriority, 'status' => $this->taskStatus, 'estimated_hours' => $this->estimatedHours === '' ? null : $this->estimatedHours, 'progress' => $this->taskProgress === '' ? null : (int) $this->taskProgress, 'due_on' => $this->dueOn ?: null], $this->user());
-        $this->toast($this->editingId ? 'Task updated.' : 'Task assigned.');
+        $this->toast($this->editingId ? 'Task updated.' : ($this->parentId ? 'Subtask added.' : 'Task assigned.'));
         $this->closeModal();
     }
 
@@ -169,13 +183,20 @@ class Tasks extends Component
 
     public function closeModal(): void
     {
-        if ($this->showForm) { $this->showForm = false; $this->resetForm(); return; }
+        if ($this->showForm) {
+            $this->showForm = false;
+            $back = $this->returnToId;
+            $this->resetForm();
+            if ($back) $this->openId = $back;
+
+            return;
+        }
         $this->openId = null;
     }
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'title', 'description', 'projectId', 'assigneeId', 'taskPriority', 'taskStatus', 'estimatedHours', 'taskProgress', 'dueOn', 'workDate', 'parentId');
+        $this->reset('editingId', 'title', 'description', 'projectId', 'assigneeId', 'taskPriority', 'taskStatus', 'estimatedHours', 'taskProgress', 'dueOn', 'workDate', 'parentId', 'returnToId');
         $this->resetValidation();
     }
 
@@ -201,10 +222,13 @@ class Tasks extends Component
             ->when($this->due === 'overdue', fn ($q) => $q->where('status', '!=', 'completed')->whereDate('due_on', '<', today()))
             ->when($this->due === 'today', fn ($q) => $q->whereDate('due_on', today()))
             ->when($this->due === 'week', fn ($q) => $q->whereBetween('due_on', [today()->toDateString(), today()->addDays(7)->toDateString()]))
+            ->when($this->due === 'custom' && $this->dueFrom, fn ($q) => $q->whereDate('due_on', '>=', $this->dueFrom))
+            ->when($this->due === 'custom' && $this->dueTo, fn ($q) => $q->whereDate('due_on', '<=', $this->dueTo))
             ->when($this->due === 'late', fn ($q) => $q->where('status', 'completed')->whereNotNull('due_on')->whereRaw('DATE(completed_at) > due_on'))
             ->orderByRaw("CASE WHEN status = 'completed' THEN 1 ELSE 0 END")
-            ->orderByRaw("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END")
-            ->orderByRaw('due_on IS NULL')->orderBy('due_on')->orderByDesc('completed_at')->latest('id')
+            ->when($this->sort === 'priority', fn ($q) => $q->orderByRaw("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END")->orderByRaw('due_on IS NULL')->orderBy('due_on'))
+            ->when($this->sort === 'due', fn ($q) => $q->orderByRaw('due_on IS NULL')->orderBy('due_on'))
+            ->latest('id')
             ->paginate(20);
 
         $own = $this->ownEmployee();

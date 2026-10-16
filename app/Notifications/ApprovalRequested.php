@@ -37,6 +37,11 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'ManagerChange' => 'approvals.pending',
         'AttendanceSession' => 'attendance.my',
         'AttendanceLate' => 'attendance.my',
+        'WeeklyOff' => 'company.holidays',
+        'PasswordChanged' => 'account.profile',
+        'LeaveBalance' => 'leave.balances',
+        'SalaryProfile' => 'payroll.salary',
+        'Shift' => 'attendance.my',
         'AttendanceAbsent' => 'attendance.my',
         'DailyStatus' => 'work.daily-status',
         'DailyStatusSubmitted' => 'work.daily-status',
@@ -68,7 +73,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
         'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance',
         'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders',
-        'Announcement' => 'company', 'Celebration' => 'company',
+        'Announcement' => 'company', 'Celebration' => 'company', 'WeeklyOff' => 'attendance', 'Shift' => 'attendance',
     ];
 
     /**

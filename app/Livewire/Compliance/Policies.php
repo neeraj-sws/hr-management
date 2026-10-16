@@ -34,6 +34,7 @@ class Policies extends Component
         'leave.advance_limit' => ['Advance paid leave', ['max_days' => 'Maximum advance days']],
     ];
 
+    /** Form values keyed by slot() (rule keys contain dots, which Livewire would read as nesting). */
     public array $values = [];
     public string $overrideScope = 'employee';
     public ?int $overrideTeamId = null;
@@ -48,11 +49,17 @@ class Policies extends Component
     {
         foreach (self::RULES as $key => [, $fields]) {
             $config = $policies->forEmployee(null, $key, today()->toDateString(), []);
-            foreach ($fields as $field => $label) $this->values[$key][$field] = (string) ($config[$field] ?? '0');
+            foreach ($fields as $field => $label) $this->values[self::slot($key)][$field] = (string) ($config[$field] ?? '0');
         }
         $this->assessFrom = now()->subMonthNoOverflow()->startOfMonth()->toDateString();
         $this->assessTo = now()->subMonthNoOverflow()->endOfMonth()->toDateString();
         $this->overrideFrom = today()->toDateString();
+    }
+
+    /** 'daily_status.missing' => 'daily_status__missing' */
+    public static function slot(string $key): string
+    {
+        return str_replace('.', '__', $key);
     }
 
     public function saveRule(string $key, PeopleOperationsService $people): void
@@ -60,9 +67,10 @@ class Policies extends Component
         abort_unless($this->user()->can('policies.manage'), 403);
         abort_unless(isset(self::RULES[$key]), 404);
         $rules = [];
-        foreach (self::RULES[$key][1] as $field => $label) $rules["values.{$key}.{$field}"] = ['required', 'numeric', 'min:0', 'max:1000000'];
-        $this->validate($rules, [], collect(self::RULES[$key][1])->mapWithKeys(fn ($label, $field) => ["values.{$key}.{$field}" => strtolower($label)])->all());
-        $people->setPolicy($key, 'compliance', self::RULES[$key][0], array_map('floatval', $this->values[$key]), null, auth()->id(), today()->toDateString());
+        $slot = self::slot($key);
+        foreach (self::RULES[$key][1] as $field => $label) $rules["values.{$slot}.{$field}"] = ['required', 'numeric', 'min:0', 'max:1000000'];
+        $this->validate($rules, [], collect(self::RULES[$key][1])->mapWithKeys(fn ($label, $field) => ["values.{$slot}.{$field}" => strtolower($label)])->all());
+        $people->setPolicy($key, 'compliance', self::RULES[$key][0], array_map('floatval', array_intersect_key($this->values[$slot], self::RULES[$key][1])), null, auth()->id(), today()->toDateString());
         $this->toast(self::RULES[$key][0].' rule saved (effective today).');
     }
 

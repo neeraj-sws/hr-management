@@ -304,7 +304,15 @@ class HardCasesTest extends TestCase
         $workflow = app(HrWorkflowService::class);
         $run = $workflow->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id);
         $workflow->approvePayroll($run, $this->admin->id);
-        $workflow->lockPayroll($run->fresh(), $this->admin->id);
+        // Pending leave / overtime of the period must be decided before locking …
+        try {
+            $workflow->lockPayroll($run->fresh(), $this->admin->id);
+            $this->fail('Locking with pending requests is refused');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('1 leave request, 1 overtime request', $e->getMessage());
+        }
+        // … but a run locked earlier (before this rule) still refuses every change.
+        $run->update(['status' => 'locked', 'locked_by' => $this->admin->id, 'locked_at' => now()]);
         $net = (float) PayrollItem::where('payroll_run_id', $run->id)->value('net_amount');
 
         $this->expectFailure(fn () => $people->decideOvertime($ot, $this->managerUser->id, true), 409);

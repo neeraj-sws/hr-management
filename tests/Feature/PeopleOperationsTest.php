@@ -125,6 +125,7 @@ class PeopleOperationsTest extends TestCase
         $workflow->calculatePayroll('2026-10-01','2026-10-31',$admin->id);
         $this->assertSame(2,ApprovalRequest::where('approvable_type',PayrollRun::class)->where('approvable_id',$run->id)->count());
         $workflow->approvePayroll($run,$admin->id);
+        \Illuminate\Support\Carbon::setTestNow('2026-11-02 10:00:00'); // a period can only be locked once it has ended
         $workflow->lockPayroll($run,$admin->id);
         $this->assertSame('locked',$run->fresh()->status);
     }

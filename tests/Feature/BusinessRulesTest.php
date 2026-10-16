@@ -58,6 +58,7 @@ class BusinessRulesTest extends TestCase
         }
         $hr = User::factory()->create();
         $workflow->approvePayroll($run, $hr->id);
+        \Illuminate\Support\Carbon::setTestNow('2026-11-02 10:00:00'); // a period can only be locked once it has ended
         $workflow->lockPayroll($run, $accounts->id);
         $this->expectException(ValidationException::class);
         $workflow->calculatePayroll('2026-10-01', '2026-10-31', $accounts->id);

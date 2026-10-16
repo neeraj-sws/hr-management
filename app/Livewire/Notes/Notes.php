@@ -74,6 +74,13 @@ class Notes extends Component
             $note->update($values);
         } else {
             $note = EmployeeNote::create([...$values, 'author_id' => auth()->id()]);
+            // Shared notes reach the people they are shared with (private notes notify nobody).
+            $recipients = match ($note->visibility) {
+                'manager' => collect([AttendanceEmployee::with('user')->find($note->employee_id)?->user]),
+                'team' => Team::find($note->team_id)?->members()->with('user')->get()->pluck('user') ?? collect(),
+                default => collect(),
+            };
+            \App\Services\Notifier::send($recipients->filter(), 'EmployeeNote', $note->id, $this->user()->name.' shared a note'.($note->visibility === 'team' ? ' with '.(Team::find($note->team_id)?->name ?? 'your team') : ' with you').': "'.$note->title.'"', route($note->visibility === 'team' ? 'notes.team' : 'notes.my', [], false), auth()->id());
         }
         $audit->record($this->editingId ? 'note.updated' : 'note.created', $note, ['visibility' => $note->visibility]);
         $this->closeModal();
@@ -110,12 +117,14 @@ class Notes extends Component
         $term = trim($this->search);
 
         $notes = EmployeeNote::with(['author', 'employee', 'team'])
+            // My Notes: my own private / manager notes, and notes my manager wrote about me — team notes live under Team Notes.
             ->when(! $this->teamMode, fn ($q) => $q->where(fn ($q) => $q
-                ->where('author_id', $user->id)
+                ->where(fn ($q) => $q->where('author_id', $user->id)->where('visibility', '!=', 'team'))
                 ->orWhere(fn ($q) => $q->where('visibility', 'manager')->where('employee_id', $own?->id ?? 0))))
             ->when($this->teamMode, fn ($q) => $q->where(fn ($q) => $q
                 ->where(fn ($q) => $q->where('visibility', 'team')->whereIn('team_id', $teamIds->all() ?: [0]))
                 ->orWhere(fn ($q) => $q->where('visibility', 'manager')->whereIn('employee_id', $reportIds->all() ?: [0]))
+                ->orWhere(fn ($q) => $q->where('visibility', 'team')->where('author_id', $user->id))
                 ->when($user->can('hr.manage'), fn ($q) => $q->orWhereIn('visibility', ['team', 'manager']))))
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('title', 'like', "%{$term}%")->orWhere('body', 'like', "%{$term}%")))
             ->latest('updated_at')->paginate(15);

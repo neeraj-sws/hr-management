@@ -101,6 +101,8 @@ class Settings extends Component
     public string $graceMinutes = '0';
     public string $halfDayHours = '4';
     public string $otMultiplier = '';
+    /** Overtime switched off company-wide: no requests, and payroll pays no overtime. */
+    public bool $otEnabled = true;
     public string $otMaxPerDay = '';
     public string $otHolidayMultiplier = '';
     public string $otMaxPerMonthHours = '';
@@ -138,7 +140,7 @@ class Settings extends Component
         $sheets = app(\App\Services\GoogleSheetsSync::class)->settings();
         $this->fill(['sheetsEnabled' => $sheets['enabled'], 'sheetsUrl' => $sheets['url'], 'sheetsReports' => $sheets['reports'] ?: ['attendance'], 'sheetsFrom' => today()->subDay()->toDateString(), 'sheetsTo' => $today]);
         $this->fill([
-            'offWeeks' => collect((array) ($calendar['off_weeks'] ?? []))->map(fn ($weeks) => array_map('strval', (array) $weeks))->all(),
+            'offWeeks' => \App\Support\WorkCalendar::offWeeksForForm((array) ($calendar['off_weeks'] ?? [])),
             'shifts' => array_values((array) ($calendar['shifts'] ?? [])),
             'emailEnabled' => (bool) ($email['enabled'] ?? true),
             'testEmail' => (string) $this->user()->email,
@@ -158,7 +160,7 @@ class Settings extends Component
             'startTime' => (string) ($hours['start_time'] ?? ''), 'endTime' => (string) ($hours['end_time'] ?? ''),
             'dailyHours' => (string) ($hours['standard_daily_hours'] ?? 8),
             'graceMinutes' => (string) ($rules['grace_minutes'] ?? 0), 'halfDayHours' => (string) ($rules['half_day_hours'] ?? 4),
-            'otMultiplier' => (string) ($ot['multiplier'] ?? ''), 'otMaxPerDay' => (string) ($ot['max_minutes_per_day'] ?? ''), 'otHolidayMultiplier' => (string) ($ot['holiday_multiplier'] ?? ''), 'otMaxPerMonthHours' => isset($ot['max_minutes_per_month']) ? (string) round($ot['max_minutes_per_month'] / 60, 2) : '',
+            'otEnabled' => (bool) ($ot['enabled'] ?? true), 'otMultiplier' => (string) ($ot['multiplier'] ?? ''), 'otMaxPerDay' => (string) ($ot['max_minutes_per_day'] ?? ''), 'otHolidayMultiplier' => (string) ($ot['holiday_multiplier'] ?? ''), 'otMaxPerMonthHours' => isset($ot['max_minutes_per_month']) ? (string) round($ot['max_minutes_per_month'] / 60, 2) : '',
             'workingDaysPerMonth' => (string) ($payroll['working_days_per_month'] ?? 22),
             'attendanceProration' => (bool) ($payroll['attendance_proration'] ?? true), 'includePaidLeave' => (bool) ($payroll['include_paid_leave'] ?? true), 'shortHoursDeduction' => (bool) ($payroll['short_hours_deduction'] ?? false), 'shortHoursGrace' => (string) ($payroll['short_hours_grace'] ?? 0),
             'advanceLeaveMax' => (string) ($advance['max_days'] ?? 5),
@@ -255,10 +257,13 @@ class Settings extends Component
             return;
         }
         $calendar = \App\Support\WorkCalendar::normalise(['days' => array_map('intval', $this->workdays), 'holidays' => $holidays->sort()->values()->all(), 'holiday_names' => array_intersect_key(array_map(fn ($name) => mb_substr(trim((string) $name), 0, 80), $this->holidayNames), array_flip($holidays->all())), 'holiday_types' => collect($holidays)->mapWithKeys(fn ($date) => [$date => \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $this->holidayTypes], $date)])->all(), 'off_weeks' => $this->offWeeks, 'shifts' => $this->shifts]);
+        $before = app(PolicyConfigurationService::class)->forEmployee(null, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         $people->setPolicy('calendar.working_days', 'calendar', 'Working calendar', $calendar, null, auth()->id(), today()->toDateString());
-        $this->offWeeks = collect($calendar['off_weeks'])->map(fn ($weeks) => array_map('strval', $weeks))->all();
+        $this->offWeeks = \App\Support\WorkCalendar::offWeeksForForm($calendar['off_weeks']);
         $this->shifts = $calendar['shifts'];
-        $this->toast('Working calendar saved.');
+        // Everyone hears about a change of weekly offs (in the app; Holidays page shows the dates).
+        $told = app(\App\Services\CompanyService::class)->announceWeeklyOffChange($before, $calendar, $this->user());
+        $this->toast('Working calendar saved.'.($told ? " {$told} employee(s) were notified about the weekly off change." : ''));
     }
 
     /**
@@ -301,7 +306,7 @@ class Settings extends Component
         if (! $employee) { $this->employeeOffWeeks = []; $this->employeeDays = []; return; }
         $effective = app(PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         $this->employeeDays = array_map('strval', $effective['days'] ?? [1, 2, 3, 4, 5]);
-        $this->employeeOffWeeks = collect((array) ($effective['off_weeks'] ?? []))->map(fn ($weeks) => array_map('strval', (array) $weeks))->all();
+        $this->employeeOffWeeks = \App\Support\WorkCalendar::offWeeksForForm((array) ($effective['off_weeks'] ?? []));
     }
 
     public function updatedPatternEmployeeId(): void
@@ -332,6 +337,8 @@ class Settings extends Component
     /** One standing calendar override per employee; only the keys it sets replace the company calendar. */
     private function updateEmployeeCalendar(int $employeeId, \Closure $change): void
     {
+        $employee = \App\Models\AttendanceEmployee::find($employeeId);
+        $before = $employee ? app(PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]) : [];
         $row = \App\Models\EmployeePolicyOverride::where('employee_id', $employeeId)->where('rule_key', 'calendar.working_days')->whereNull('effective_from')->first();
         $config = \App\Support\WorkCalendar::normalise($change((array) ($row?->configuration ?? [])));
         if (empty($config['off_weeks'])) unset($config['off_weeks']);
@@ -341,7 +348,9 @@ class Settings extends Component
         } else {
             \App\Models\EmployeePolicyOverride::create(['employee_id' => $employeeId, 'rule_key' => 'calendar.working_days', 'effective_from' => null, 'configuration' => $config, 'configured_by' => auth()->id()]);
         }
-        app(AuditLogger::class)->record('policy.employee_calendar_updated', \App\Models\AttendanceEmployee::find($employeeId), $config);
+        app(AuditLogger::class)->record('policy.employee_calendar_updated', $employee, $config);
+        // The employee is told about their own weekly-off change.
+        if ($employee) app(\App\Services\CompanyService::class)->announceWeeklyOffChange($before, app(PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]), $this->user(), $employee);
     }
 
     public function saveSheets(\App\Services\GoogleSheetsSync $sheets): void
@@ -435,7 +444,7 @@ class Settings extends Component
         $this->authorizeSettings();
         $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0']]);
         $ot = array_filter(['multiplier' => $this->otMultiplier === '' ? null : (float) $this->otMultiplier, 'max_minutes_per_day' => $this->otMaxPerDay === '' ? null : (int) $this->otMaxPerDay, 'holiday_multiplier' => $this->otHolidayMultiplier === '' ? null : (float) $this->otHolidayMultiplier, 'max_minutes_per_month' => $this->otMaxPerMonthHours === '' ? null : (int) round((float) $this->otMaxPerMonthHours * 60)], fn ($v) => $v !== null);
-        $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', $ot, null, auth()->id(), today()->toDateString());
+        $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['enabled' => $this->otEnabled, ...$ot], null, auth()->id(), today()->toDateString());
         $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'short_hours_grace' => (float) $this->shortHoursGrace], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.advance_limit', 'leave', 'Advance leave limit', ['max_days' => (float) $this->advanceLeaveMax], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.final_settlement', 'leave', 'Final settlement leave encashment', ['leave_encashment_enabled' => $this->encashmentEnabled, 'rate_per_day' => (float) $this->encashmentRate], null, auth()->id(), today()->toDateString());

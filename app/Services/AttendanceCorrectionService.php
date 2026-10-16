@@ -49,7 +49,8 @@ class AttendanceCorrectionService
                 'requested_check_in' => $checkIn ? $in : null, 'requested_check_out' => $out,
                 'reason' => $reason, 'status' => 'pending', 'attendance_session_id' => $session?->id, 'requested_break_minutes' => $breakMinutes,
             ]);
-            $approver = $employee->manager?->user_id;
+            // The manager decides; if there is none or they are unavailable (inactive / on leave today) it goes to the admins.
+            $approver = ApprovalInbox::approverFor($employee);
             ApprovalRequest::create(['approvable_type' => AttendanceCorrection::class, 'approvable_id' => $correction->id, 'approver_id' => $approver, 'status' => 'pending']);
             $this->audit->record('attendance.correction_requested', $correction, ['work_date' => $date->toDateString()]);
 
@@ -59,7 +60,8 @@ class AttendanceCorrectionService
         // employee's own manager — so a correction always reaches an admin. A notification problem
         // never sinks the employee's request.
         $what = collect([$correction->requested_check_in ? 'in '.$correction->requested_check_in->format('h:i A') : null, $correction->requested_check_out ? 'out '.$correction->requested_check_out->format('h:i A') : null, $correction->requested_break_minutes !== null ? 'break '.\App\Support\Duration::fromMinutes($correction->requested_break_minutes) : null])->filter()->join(', ');
-        $approvers = Notifier::withPermission('attendance.correct')->push($employee->manager?->user);
+        $approverId = ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->value('approver_id');
+        $approvers = Notifier::withPermission('attendance.correct')->push($approverId ? \App\Models\User::find($approverId) : null);
         Notifier::send($approvers, 'AttendanceCorrection', $correction->id, "An attendance correction from {$employee->name} for {$correction->work_date->format('d M Y')} ({$what}) needs review. Reason: ".\Illuminate\Support\Str::limit($reason, 120), route('attendance.corrections', ['tab' => 'approvals'], false), $employee->user_id);
         Notifier::send($employee->user, 'AttendanceCorrection', $correction->id, "Your attendance correction for {$correction->work_date->format('d M Y')} was sent for approval.", route('attendance.corrections', [], false));
 

@@ -1,5 +1,5 @@
 <div>
-    <div class="page-head"><div><h1>{{ $teamMode ? 'Team Notes' : 'My Notes' }}</h1><p>{{ $teamMode ? 'Notes shared with your teams and manager notes about your direct reports.' : 'Your private notes, notes you wrote, and notes your manager shared with you.' }}</p></div>
+    <div class="page-head"><div><h1>{{ $teamMode ? 'Team Notes' : 'My Notes' }}</h1><p>{{ $teamMode ? 'Notes shared with your teams and manager notes about your direct reports.' : 'Your own private notes and notes your manager shared with you. Team notes are under Team Notes.' }}</p></div>
         <button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />New note</button></div>
     <div class="card mb"><div class="toolbar" style="border:0"><label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Title or text"></label></div></div>
     <div class="grid grid-3">

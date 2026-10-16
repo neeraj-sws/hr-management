@@ -1,0 +1,436 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\AttendanceEmployee;
+use App\Models\Project;
+use App\Models\Task;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Livewire\Livewire;
+use Tests\TestCase;
+
+/** Tasks, projects, daily status, documents, compliance, notes, overtime switch and notifications. */
+class ReviewRoundThreeTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $admin;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed();
+        Carbon::setTestNow('2026-10-15 12:00:00');
+        $this->admin = User::where('email', 'admin@example.com')->firstOrFail();
+    }
+
+    private function employee(string $code, array $extra = []): AttendanceEmployee
+    {
+        $user = User::factory()->create(['email' => strtolower($code).'@example.com']);
+        $user->assignRole('Employee');
+
+        return AttendanceEmployee::create(['employee_code' => $code, 'name' => "Person {$code}", 'email' => $user->email, 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01', ...$extra]);
+    }
+
+    private function kinds(User $user, string $kind)
+    {
+        return $user->notifications()->get()->filter(fn ($n) => ($n->data['kind'] ?? '') === $kind)->values();
+    }
+
+    public function test_subtask_form_replaces_the_task_view_and_returns_to_it(): void
+    {
+        $e = $this->employee('EMP-1');
+        $parent = Task::create(['title' => 'Build login', 'assignee_id' => $e->id, 'status' => 'todo', 'priority' => 'normal', 'created_by' => $this->admin->id]);
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Tasks::class)
+            ->call('open', $parent->id)->assertSee('Add subtask')
+            ->call('create', $parent->id)->assertSet('showForm', true)->assertSet('openId', null)->assertSet('parentId', $parent->id)
+            ->set('title', 'Password reset screen')->call('save')->assertHasNoErrors()
+            ->assertSet('showForm', false)->assertSet('openId', $parent->id)->assertSee('Password reset screen');
+        $this->assertSame($parent->id, Task::where('title', 'Password reset screen')->value('parent_id'));
+    }
+
+    public function test_tasks_can_be_filtered_by_a_custom_due_date_range(): void
+    {
+        $e = $this->employee('EMP-1');
+        foreach (['Early' => '2026-10-02', 'Middle' => '2026-10-10', 'Late' => '2026-10-25'] as $title => $due) {
+            Task::create(['title' => "{$title} task", 'assignee_id' => $e->id, 'status' => 'todo', 'priority' => 'normal', 'due_on' => $due]);
+        }
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Tasks::class)
+            ->set('due', 'custom')->set('dueFrom', '2026-10-05')->set('dueTo', '2026-10-20')
+            ->assertSee('Middle task')->assertDontSee('Early task')->assertDontSee('Late task')
+            ->set('due', '')->assertSet('dueFrom', '')->assertSee('Early task');
+    }
+
+    public function test_projects_show_client_and_member_count(): void
+    {
+        $a = $this->employee('EMP-1');
+        $b = $this->employee('EMP-2');
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Projects::class)
+            ->call('create')->set('name', 'Portal')->set('clientName', 'BCI Industries')->call('save')->assertHasNoErrors();
+        $project = Project::where('name', 'Portal')->firstOrFail();
+        $this->assertSame('BCI Industries', $project->client_name);
+        $project->members()->attach([$a->id, $b->id]);
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Projects::class)
+            ->assertSee('BCI Industries')->assertSee('2 members')
+            ->set('search', 'BCI')->assertSee('Portal');
+    }
+
+    public function test_daily_status_is_saved_task_wise_without_a_separate_summary(): void
+    {
+        $e = $this->employee('EMP-1');
+        $project = Project::create(['name' => 'Atlas', 'status' => 'active']);
+        $task = Task::create(['title' => 'Build login', 'assignee_id' => $e->id, 'project_id' => $project->id, 'status' => 'in_progress', 'priority' => 'normal']);
+
+        Livewire::actingAs($e->user)->test(\App\Livewire\Work\DailyStatus::class)
+            ->call('save')->assertHasErrors('summary')
+            ->set('taskNotes.'.$task->id, 'Finished validation')->call('save')->assertHasNoErrors();
+
+        $status = \App\Models\DailyWorkStatus::firstOrFail();
+        $this->assertSame('Atlas › Build login: Finished validation', $status->summary);
+        $this->assertSame('Finished validation', $status->project_updates[0]['tasks'][0]['note']);
+        Livewire::actingAs($e->user)->test(\App\Livewire\Work\DailyStatus::class)->assertSet('taskNotes.'.$task->id, 'Finished validation')->assertSee('Finished validation');
+    }
+
+    public function test_compliance_rules_with_dotted_keys_save_the_entered_values(): void
+    {
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Compliance\Policies::class)
+            ->set('values.daily_status__missing.amount_per_day', '50')->set('values.daily_status__missing.grace_hours', '4')
+            ->call('saveRule', 'daily_status.missing')->assertHasNoErrors()
+            ->assertSee('amount per day: 50');
+        $config = app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'daily_status.missing', '2026-10-15', []);
+        $this->assertEquals(['amount_per_day' => 50.0, 'grace_hours' => 4.0], $config);
+    }
+
+    public function test_my_notes_and_team_notes_are_separate(): void
+    {
+        $e = $this->employee('EMP-1');
+        $team = \App\Models\Team::create(['name' => 'Web', 'is_active' => true]);
+        app(\App\Services\EmployeeService::class)->syncTeamMembers($team, [$e->id], $this->admin);
+        \App\Models\EmployeeNote::create(['author_id' => $e->user_id, 'visibility' => 'personal', 'title' => 'Private idea', 'body' => 'x']);
+        \App\Models\EmployeeNote::create(['author_id' => $e->user_id, 'visibility' => 'team', 'team_id' => $team->id, 'title' => 'Team plan', 'body' => 'y']);
+
+        $this->actingAs($e->user)->get(route('notes.my'))->assertSee('Private idea')->assertDontSee('Team plan');
+        $this->actingAs($e->user)->get(route('notes.team'))->assertSee('Team plan')->assertDontSee('Private idea');
+    }
+
+    public function test_penalties_tell_the_approvers_and_then_the_employee(): void
+    {
+        $e = $this->employee('EMP-1');
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $hr = User::factory()->create(); $hr->assignRole('HR');
+        $penalty = $people->requestPenalty($e, 250, 'Missed client call', $this->admin->id);
+        $approvers = \App\Services\Notifier::withPermission('penalties.manage');
+        $other = $approvers->first(fn ($u) => $u->id !== $this->admin->id);
+        if ($other) $this->assertStringContainsString('Penalty of 250.00 for Person EMP-1 needs approval: Missed client call', $this->kinds($other, 'EmployeePenalty')->first()->data['message']);
+        $this->assertCount(0, $this->kinds($this->admin, 'EmployeePenalty'), 'The person who raised it is not notified');
+
+        $people->decideFinancialRequest(\App\Models\EmployeePenalty::class, $penalty->id, ($other ?? $this->admin)->id, true);
+        $this->assertStringContainsString('Your penalty of 250.00 was approved', $this->kinds($e->user, 'EmployeePenalty')->first()->data['message']);
+    }
+
+    public function test_overtime_can_be_switched_off_and_goes_to_admins_when_the_manager_is_away(): void
+    {
+        $boss = $this->employee('EMP-9');
+        $e = $this->employee('EMP-1', ['manager_id' => $boss->id]);
+        $boss->update(['is_active' => false]);
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $ot = $people->requestOvertime($e, '2026-10-14', 60, 'Release');
+        $this->assertNull(\App\Models\ApprovalRequest::where('approvable_id', $ot->id)->where('approvable_type', \App\Models\OvertimeRequest::class)->value('approver_id'), 'Inactive manager: admins decide');
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\System\Settings::class)->set('tab', 'payroll')->set('otEnabled', false)->call('savePayroll')->assertHasNoErrors();
+        $this->assertFalse($people->overtimeEnabled($e));
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $people->requestOvertime($e, '2026-10-14', 30, 'More');
+    }
+
+    public function test_password_reset_notifies_the_employee(): void
+    {
+        $e = $this->employee('EMP-1');
+        app(\App\Services\EmployeeService::class)->resetPassword($e, 'NewPassword123', $this->admin);
+        $message = $this->kinds($e->user, 'PasswordChanged')->first()->data['message'];
+        $this->assertStringContainsString('changed your login password', $message);
+        $this->assertStringNotContainsString('NewPassword123', $message);
+    }
+
+    public function test_payroll_cannot_be_locked_while_requests_of_the_period_are_pending(): void
+    {
+        $e = $this->employee('EMP-1');
+        \App\Models\SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 22000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 22, 'standard_daily_hours' => 8]);
+        $leave = \App\Models\LeaveRequest::create(['employee_id' => $e->id, 'leave_type_id' => \App\Models\LeaveType::where('name', 'Unpaid Leave')->value('id'), 'starts_on' => '2026-10-12', 'ends_on' => '2026-10-12', 'days' => 1, 'reason' => 'x', 'status' => 'pending']);
+        Carbon::setTestNow('2026-11-02 10:00:00');
+        $workflow = app(\App\Services\HrWorkflowService::class);
+        $run = $workflow->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id);
+        $workflow->approvePayroll($run, $this->admin->id);
+        try {
+            $workflow->lockPayroll($run->fresh(), $this->admin->id);
+            $this->fail('Pending leave blocks the lock');
+        } catch (\Illuminate\Validation\ValidationException $err) {
+            $this->assertStringContainsString('1 leave request', $err->getMessage());
+        }
+        $leave->update(['status' => 'rejected']);
+        $this->assertSame('locked', $workflow->lockPayroll($run->fresh(), $this->admin->id)->status);
+    }
+
+    public function test_thirteen_column_attendance_template_downloads_and_imports(): void
+    {
+        foreach (['EMP-001', 'EMP-002', 'EMP-003', 'EMP-004'] as $code) $this->employee($code);
+        $response = $this->actingAs($this->admin)->get(route('imports.template', 'attendance'));
+        $response->assertOk();
+        $path = $response->baseResponse->getFile()->getPathname();
+        $rows = \App\Support\XlsxReader::rows($path);
+        $this->assertSame(array_column(\App\Services\ImportService::ATTENDANCE_SHEET, 0), $rows[0], 'Exactly the 13 columns');
+        $zip = new \ZipArchive(); $zip->open($path);
+        $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $this->assertStringContainsString('<f>IF(D2=&quot;&quot;,&quot;&quot;,MAX(0,ROUND((D2-TIME(8,30,0))*1440,0)))</f>', $sheet, 'Late minutes formula');
+        $this->assertStringContainsString('Present,Half Day,Leave,Absent,Holiday,Weekly Off', $sheet, 'Status list');
+
+        // The template itself (Excel dates and times) imports: Present / Half Day rows become attendance, Leave / Holiday rows do not.
+        $file = new \Illuminate\Http\UploadedFile($path, 'attendance.xlsx', null, null, true);
+        $result = app(\App\Services\ImportService::class)->attendance($file, $this->admin->id);
+        $this->assertSame(3, $result['created'], json_encode($result));
+        $this->assertSame([], $result['errors']);
+        $session = \App\Models\AttendanceSession::whereHas('employee', fn ($q) => $q->where('employee_code', 'EMP-002'))->firstOrFail();
+        $this->assertSame(['08:47', '18:30', 35 * 60], [$session->check_in->format('H:i'), $session->check_out->format('H:i'), (int) $session->break_seconds], 'Lunch Out − Lunch In is the break');
+        $this->assertStringContainsString('"Leave" — no attendance created', implode(' ', $result['notes']));
+
+        $csv = $this->get(route('imports.template', ['attendance', 'format' => 'csv']))->assertOk()->getContent();
+        $this->assertStringContainsString('EMP-002,2026-10-01,Present,08:47,13:15,13:50,18:30,09:43,00:35,09:08,17,2026-10-02,1', $csv);
+        $this->assertStringContainsString('EMP-004,2026-10-01,Leave,,,,,,,,,,', $csv);
+    }
+
+    public function test_attendance_sheet_with_day_offs_zero_lunch_totals_row_and_unknown_code(): void
+    {
+        $e = $this->employee('EMP-7');
+        // An unrelated later month is locked: older history (no payroll run) can still be imported.
+        \App\Models\PayrollRun::create(['period_starts_on' => '2026-09-01', 'period_ends_on' => '2026-09-30', 'status' => 'locked', 'created_by' => $this->admin->id]);
+        $csv = "Employee ID,Date,Status,Punch In Time,Lunch In Time,Lunch Out Time,Punch Out Time,Total Working Hours,Total Lunch Minutes,Out Time (After Deduct Lunch Time),Late Coming Minute,Email Send Date,Email Sent Delay\n"
+            ."EMP-7,2026-04-01,Present,10:38,14:58,15:50,20:26,,,,,\"April 3, 2026\",2\n"
+            ."EMP-7,2026-04-02,Present,12:00,00:00,00:00,16:00,,,,,-,-\n"
+            ."EMP-7,2026-04-04,Third Saturday,0,0,0,0,0,0,0,0,-,-\n"
+            ."EMP-7,2026-04-05,Weekly Off,,,,,,,,,,\n"
+            ."EMP-7,2026-04-06,Absent,,,,,,,,,,\n"
+            ."EMP-001,2026-04-07,Present,09:00,,,18:00,,,,,,\n"
+            ."EMP-001,2026-04-08,Present,09:00,,,18:00,,,,,,\n"
+            .",,,,,,,,,,751,,\n";
+        $path = tempnam(sys_get_temp_dir(), 'att').'.csv';
+        file_put_contents($path, $csv);
+        $r = app(\App\Services\ImportService::class)->attendance(new \Illuminate\Http\UploadedFile($path, 'khushboo.csv', null, null, true), $this->admin->id);
+
+        $this->assertSame([2, 2], [$r['created'], $r['skipped']], json_encode($r));
+        $this->assertSame(['No employee with Employee ID "EMP-001" (row 7, 8). Put the employee\'s code exactly as shown on the Employees page (their e-mail or full name also works) — or, for one person\'s sheet, choose them in "Import for employee" and import again.'], $r['errors']);
+        $this->assertSame(0, (int) \App\Models\AttendanceSession::whereDate('work_date', '2026-04-02')->value('break_seconds'), '00:00 lunch = no lunch');
+        $this->assertStringContainsString('"Third Saturday" — no attendance created', implode(' ', $r['notes']));
+        $this->assertSame(2, \App\Models\AttendanceSession::where('employee_id', $e->id)->count());
+
+        // A file with rows of several people is not imported for one chosen employee.
+        $khushboo = $this->employee('SWS-120');
+        $r = app(\App\Services\ImportService::class)->attendance(new \Illuminate\Http\UploadedFile($path, 'khushboo.csv', null, null, true), $this->admin->id, false, $khushboo->id);
+        $this->assertSame(0, $r['created']);
+        $this->assertStringContainsString('This file has rows for several employees (Employee ID "EMP-7", "EMP-001")', $r['errors'][0]);
+        $this->assertSame(0, \App\Models\AttendanceSession::where('employee_id', $khushboo->id)->count());
+    }
+
+    public function test_one_persons_sheet_with_a_template_code_is_matched_by_the_file_name(): void
+    {
+        $k = $this->employee('SWS-130', ['name' => 'Khushboo Sharma']);
+        $path = tempnam(sys_get_temp_dir(), 'att').'.csv';
+        file_put_contents($path, "Employee ID,Date,Status,Punch In Time,Punch Out Time\nEMP-001,2026-04-01,Present,10:00,19:00\nEMP-001,2026-04-02,Absent,,\n");
+        $r = app(\App\Services\ImportService::class)->attendance(new \Illuminate\Http\UploadedFile($path, 'attendance-import-khushboo-april-2026.csv', null, null, true), $this->admin->id);
+        $this->assertSame([1, []], [$r['created'], $r['errors']], json_encode($r));
+        $this->assertStringContainsString('imported for Khushboo Sharma (SWS-130)', $r['notes'][0]);
+        $this->assertSame(1, \App\Models\AttendanceSession::where('employee_id', $k->id)->count());
+
+        // No name in the file name: still the clear error.
+        $r = app(\App\Services\ImportService::class)->attendance(new \Illuminate\Http\UploadedFile($path, 'april.csv', null, null, true), $this->admin->id);
+        $this->assertStringContainsString('No employee with Employee ID "EMP-001"', $r['errors'][0]);
+    }
+
+    public function test_unknown_employee_id_can_be_assigned_from_the_result_without_uploading_again(): void
+    {
+        $sana = $this->employee('SWS-104');
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('attendance-april.csv', "Employee ID,Date,Status,Punch In Time,Punch Out Time\nEMP-001,2026-04-01,Present,10:00,19:00\nEMP-001,2026-04-03,Present,09:30,18:30\n");
+        $this->actingAs($this->admin)->from(route('attendance.records'))->post(route('attendance.records.import'), ['file' => $file])->assertRedirect();
+        $pending = session('import_result')['pending'];
+        $this->assertSame('EMP-001', $pending['code']);
+        $this->get(route('attendance.records'))->assertSee('Import for this employee')->assertSee('Whose sheet is');
+
+        $this->from(route('attendance.records'))->post(route('attendance.records.import-for'), ['token' => $pending['token'], 'name' => $pending['name'], 'employee_id' => $sana->id])->assertRedirect();
+        $this->assertSame(2, session('import_result')['created']);
+        $this->assertSame(2, \App\Models\AttendanceSession::where('employee_id', $sana->id)->count());
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->files('import-pending'), 'Kept file is removed after import');
+    }
+
+    public function test_import_from_the_employee_profile_saves_for_that_employee_and_opens_the_imported_days(): void
+    {
+        $k = $this->employee('SWS-140', ['name' => 'Khushboo Rao']);
+        $this->actingAs($this->admin)->get(route('people.employees.show', $k))->assertOk()->assertSee('Import for Khushboo Rao');
+        $file = \Illuminate\Http\UploadedFile::fake()->createWithContent('april.csv', "Employee ID,Date,Status,Punch In Time,Lunch In Time,Lunch Out Time,Punch Out Time\nEMP-001,2026-04-01,Present,10:38,14:58,15:50,20:26\nEMP-001,2026-04-02,Absent,,,,\nEMP-001,2026-04-03,Present,10:56,,,21:05\n");
+        $this->from(route('people.employees.show', $k))->post(route('attendance.records.import'), ['file' => $file, 'employee_id' => $k->id])
+            ->assertRedirect(route('attendance.records', ['from' => '2026-04-01', 'to' => '2026-04-03', 'employee' => $k->id]));
+        $this->assertSame(2, \App\Models\AttendanceSession::where('employee_id', $k->id)->count());
+        $this->get(route('attendance.records', ['from' => '2026-04-01', 'to' => '2026-04-03', 'employee' => $k->id]))
+            ->assertSee('The imported days are listed below')->assertSee('Khushboo Rao')->assertSee('01 Apr 2026');
+    }
+
+    public function test_old_history_goes_into_locked_payroll_months_only_when_an_admin_asks(): void
+    {
+        $e = $this->employee('SWS-150');
+        $run = \App\Models\PayrollRun::create(['period_starts_on' => '2026-09-01', 'period_ends_on' => '2026-09-30', 'status' => 'locked', 'created_by' => $this->admin->id]);
+        $csv = "Employee ID,Date,Status,Punch In Time,Punch Out Time\n".collect(range(1, 5))->map(fn ($d) => "SWS-150,2026-09-0{$d},Present,10:00,19:00")->join("\n")."\nSWS-150,2026-08-31,Present,10:00,19:00\n";
+        $upload = fn () => \Illuminate\Http\UploadedFile::fake()->createWithContent('history.csv', $csv);
+
+        $hr = User::factory()->create(); $hr->assignRole('HR');
+        $this->actingAs($hr)->from(route('attendance.records'))->post(route('attendance.records.import'), ['file' => $upload(), 'into_locked' => 1]);
+        $r = session('import_result');
+        $this->assertSame([1, 5], [$r['created'], $r['skipped']], 'Only an administrator may write into a locked month');
+        $this->assertSame(['Payroll for 01 Sep – 30 Sep 2026 is locked, so rows 2–6 (5 rows) were not imported. For old history an administrator can tick "Old data: also import into locked payroll months" (the locked payroll stays as it is), or reopen that payroll first.'], $r['errors']);
+
+        $this->actingAs($this->admin)->get(route('attendance.records'))->assertSee('Old data: also import into locked payroll months');
+        $this->from(route('attendance.records'))->post(route('attendance.records.import'), ['file' => $upload(), 'into_locked' => 1]);
+        $r = session('import_result');
+        $this->assertSame([5, 1, 0], [$r['created'], $r['kept'], $r['skipped']], json_encode($r));
+        $this->assertStringContainsString('locked payroll period(s) 01 Sep – 30 Sep 2026; those locked payrolls were not recalculated', $r['notes'][0]);
+        $this->assertSame('locked', $run->fresh()->status);
+    }
+
+    public function test_an_employees_sheet_is_never_imported_into_another_employee(): void
+    {
+        $neha = $this->employee('SWS-102', ['name' => 'Neha Joshi']);
+        $arjun = $this->employee('SWS-101', ['name' => 'Arjun Verma']);
+        $file = fn () => \Illuminate\Http\UploadedFile::fake()->createWithContent('neha.csv', "Employee ID,Date,Status,Punch In Time,Punch Out Time\nSWS-102,2026-04-01,Present,10:00,19:00\nSWS-102,2026-04-02,Present,10:00,19:00\n");
+        $import = app(\App\Services\ImportService::class);
+
+        $r = $import->attendance($file(), $this->admin->id, false, $arjun->id);
+        $this->assertSame('This sheet belongs to Neha Joshi (SWS-102), not Arjun Verma, so nothing was imported. Choose Neha Joshi — or fix the Employee ID in the file.', $r['errors'][0]);
+        $this->assertSame(0, \App\Models\AttendanceSession::where('employee_id', $arjun->id)->count());
+
+        $r = $import->attendance($file(), $this->admin->id, false, $neha->id);
+        $this->assertSame(2, $r['created'], 'Her own code is fine');
+    }
+
+    public function test_an_employees_shift_dates_can_be_edited_on_the_roster(): void
+    {
+        $e = $this->employee('SWS-101', ['name' => 'Arjun Verma']);
+        $general = \App\Models\Shift::create(['name' => 'General', 'start_time' => '09:30', 'end_time' => '18:30', 'is_active' => true]);
+        $night = \App\Models\Shift::create(['name' => 'Night', 'start_time' => '21:00', 'end_time' => '06:00', 'is_active' => true]);
+        $shifts = app(\App\Services\ShiftService::class);
+        $shifts->assign([$e->id], $general, '2026-06-01', null, $this->admin->id);
+        $shifts->assign([$e->id], $night, '2026-10-15', null, $this->admin->id);
+        $shifts->assign([$e->id], $night, '2026-10-15', '2026-10-28', $this->admin->id);
+        $this->assertSame([['General', '2026-06-01', '2026-10-14'], ['Night', '2026-10-15', null]],
+            \App\Models\EmployeeShift::with('shift')->where('employee_id', $e->id)->orderBy('starts_on')->get()->map(fn ($a) => [$a->shift->name, $a->starts_on->toDateString(), $a->ends_on?->toDateString()])->all(),
+            'Back-to-back Night periods are one period');
+
+        // Edit: Night only 15–28 Oct, then General again.
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Attendance\Shifts::class)
+            ->call('openTimeline', $e->id)->assertSee('Shift dates · Arjun Verma')->assertCount('shiftRows', 2)
+            ->set('shiftRows.1.ends_on', '2026-10-28')->call('addShiftRow')->assertSet('shiftRows.2.starts_on', '2026-10-29')
+            ->set('shiftRows.2.shift_id', (string) $general->id)->call('saveTimeline')->assertHasNoErrors();
+        $fresh = new \App\Services\ShiftService(app(\App\Services\AuditLogger::class));
+        $this->assertSame(['General', 'Night', 'Night', 'General'], [$fresh->shiftFor($e, '2026-10-14')?->name, $fresh->shiftFor($e, '2026-10-15')?->name, $fresh->shiftFor($e, '2026-10-28')?->name, $fresh->shiftFor($e, '2026-11-02')?->name]);
+        $this->assertStringContainsString('updated your shifts: General 01 Jun–14 Oct 2026; Night 15 Oct–28 Oct 2026; General 29 Oct onwards', $e->user->notifications()->get()->last(fn ($n) => ($n->data['kind'] ?? '') === 'Shift')->data['message']);
+
+        // Overlapping periods are refused with a clear message.
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Attendance\Shifts::class)
+            ->call('openTimeline', $e->id)->set('shiftRows.1.ends_on', '2026-11-05')->call('saveTimeline')->assertHasErrors('shiftRows');
+    }
+
+    /** A workbook laid out like the old "Salary Sheet 2026-2027.xlsx": one sheet per month, columns A–AM, notes under rows. */
+    private function oldSalaryWorkbook(): string
+    {
+        $headers = array_map(fn ($c) => [$c[1], 'text', 12], array_values(array_filter(\App\Services\LegacySalaryImport::COLUMNS, fn ($c) => ! in_array($c[0], ['AN', 'AO'], true))));
+        $row = fn (array $v) => array_map(fn ($k) => $v[$k] ?? '', array_keys(array_filter(\App\Services\LegacySalaryImport::COLUMNS, fn ($c) => ! in_array($c[0], ['AN', 'AO'], true))));
+        $khushboo = ['s_no' => 1, 'name' => 'Khushboo Verma', 'basic_salary' => 35000, 'salary_per_day' => 1400, 'total_monthly_days' => 30, 'total_working_days' => 25, 'per_hour_salary' => 155.5555556, 'per_minute_salary' => 2.592592593, 'present_days' => 14, 'leave_days' => 11, 'paid_leave' => 0, 'late_coming_minutes' => 751, 'late_and_hourly_leave_minutes' => 751, 'late_coming_deduction' => 1947.037037, 'total_payment_deduction' => 1947.037037, 'total_salary_paid_days' => 14, 'salary_before_adjustment' => 19600, 'salary_after_deduction' => 17652.96296, 'total_salary_with_bonus' => 17652.96296, 'salary_paid' => 13591.48, 'salary_remains' => 4061.482963, 'payment_date' => 46151, 'payment_status' => 'Partially Paid'];
+        $abheeshri = ['s_no' => 2, 'name' => 'Abheeshri', 'basic_salary' => 8000, 'present_days' => 24, 'total_salary_paid_days' => 24, 'salary_paid' => 6562.96, 'salary_remains' => 0, 'payment_status' => 'Paid'];
+        $water = ['s_no' => 3, 'name' => 'Drinking Water', 'total_working_days' => 25, 'leave_days' => 25, 'salary_paid' => 0, 'payment_status' => 'Unpaid'];
+        $note = array_fill(0, 39, ''); $note[2] = 'Abhishree : 640 (2 Days salary deducted)';
+        $side = array_fill(0, 39, ''); $side[35] = '3000 paid 12 Oct';
+
+        return \App\Support\XlsxWorkbook::toTempFile([
+            ['name' => 'April-2026', 'columns' => $headers, 'rows' => [$row($khushboo), $row($abheeshri), $note, $row($water)]],
+            ['name' => 'May-2026', 'columns' => $headers, 'rows' => [$row(['name' => 'Khushboo Verma', 's_no' => 1, 'basic_salary' => 35000, 'present_days' => 18, 'salary_paid' => 25000, 'payment_status' => 'Paid']), $side]],
+        ]);
+    }
+
+    public function test_old_salary_workbook_imports_every_month_as_written(): void
+    {
+        $k = $this->employee('EMP-11', ['name' => 'Khushboo Verma']);
+        $a = $this->employee('EMP-12', ['name' => 'Abheeshri Parmar']);
+        $file = fn () => new \Illuminate\Http\UploadedFile($this->oldSalaryWorkbook(), 'Salary Sheet 2026-2027.xlsx', null, null, true);
+        $r = app(\App\Services\LegacySalaryImport::class)->import($file(), $this->admin->id);
+
+        $this->assertSame([3, 1, ['2026-04', '2026-05']], [$r['created'], $r['skipped'], $r['months']], json_encode($r));
+        $this->assertSame(['code' => 0, 'name' => 3, 'none' => 1], $r['matched'], 'Khushboo (twice) and "Abheeshri" → Abheeshri Parmar');
+        $this->assertStringContainsString('"Drinking Water" is not an HRMS employee — 1 row(s) not imported (April-2026 row 5)', $r['errors'][0]);
+        $april = \App\Models\LegacySalaryRecord::where('payroll_month', '2026-04')->where('employee_id', $k->id)->firstOrFail();
+        $this->assertEquals([35000, 1947.037037, 4061.482963, '2026-05-09', 'Partially Paid'], [(float) $april->basic_salary, round((float) $april->late_coming_deduction, 6), round((float) $april->salary_remains, 6), $april->payment_date->toDateString(), $april->payment_status], 'Stored as written, not rounded');
+        $this->assertSame('751', $april->raw['Late coming minutes']);
+        $this->assertSame('Abhishree : 640 (2 Days salary deducted)', \App\Models\LegacySalaryRecord::where('employee_id', $a->id)->value('notes'), 'A line under a row is that row\'s note');
+        $this->assertSame('3000 paid 12 Oct', \App\Models\LegacySalaryRecord::where('payroll_month', '2026-05')->value('notes'));
+        $this->assertSame(0, \App\Models\LegacySalaryRecord::where('name', 'Drinking Water')->count(), 'Only HRMS employees are saved');
+        $this->assertSame(0, \App\Models\LegacySalaryRecord::whereNull('employee_id')->count());
+
+        $again = app(\App\Services\LegacySalaryImport::class)->import($file(), $this->admin->id);
+        $this->assertSame([0, 3], [$again['created'], $again['kept']], 'Re-import keeps rows unless asked to replace');
+        $this->actingAs($this->admin)->get(route('payroll.legacy'))->assertOk()->assertSee('Khushboo Verma')->assertSee('Apr 2026')->assertSee('4,061.48');
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\LegacySalary::class)->call('open', $april->id)->assertSee('per minute salary', false)->assertSee('2.592593');
+    }
+
+    public function test_old_salary_sheet_uploaded_on_the_salary_page_goes_to_legacy_salary(): void
+    {
+        $this->employee('EMP-11', ['name' => 'Khushboo Verma']);
+        $this->employee('EMP-12', ['name' => 'Abheeshri Parmar']);
+        $file = new \Illuminate\Http\UploadedFile($this->oldSalaryWorkbook(), 'Salary Sheet 2026-2027.xlsx', null, null, true);
+        $this->actingAs($this->admin)->from(route('payroll.salary'))->post(route('payroll.salary.import'), ['file' => $file])->assertRedirect(route('payroll.salary'));
+        $r = session('import_result');
+        $this->assertSame(['Salary', 3], [$r['kind'], $r['created']], json_encode($r));
+        $this->assertStringContainsString('old month-wise salary sheet', $r['notes'][0]);
+        $this->assertSame(0, \App\Models\SalaryProfile::count(), 'Salary profiles are not touched');
+        $this->get(route('payroll.salary'))->assertSee('Open Legacy Salary');
+    }
+
+    public function test_legacy_salary_template_csv_and_flat_month_column(): void
+    {
+        foreach (['Khushboo Verma', 'Vijay Choudhary', 'Risha Gangrade'] as $i => $n) $this->employee('EMP-'.(60 + $i), ['name' => $n]);
+        $this->actingAs($this->admin)->get(route('imports.template', 'legacy-salary'))->assertOk();
+        $csv = $this->get(route('imports.template', ['legacy-salary', 'format' => 'csv']))->assertOk()->getContent();
+        $this->assertStringContainsString('Khushboo Verma', $csv);
+        $this->assertStringContainsString('Salary par day (C/F)', $csv);
+        $this->assertStringContainsString(',2026-04', $csv);
+
+        $path = tempnam(sys_get_temp_dir(), 'leg').'.csv';
+        $bad = array_fill(0, 41, ''); $bad[0] = 4; $bad[1] = 'Bad Month'; $bad[2] = 1000; $bad[40] = '2026-13';
+        $badNumber = array_fill(0, 41, ''); $badNumber[0] = 5; $badNumber[1] = 'Bad Number'; $badNumber[2] = 'abc'; $badNumber[40] = '2026-04';
+        file_put_contents($path, $csv.implode(',', $bad)."\n".implode(',', $badNumber)."\n");
+        $r = app(\App\Services\LegacySalaryImport::class)->import(new \Illuminate\Http\UploadedFile($path, 'flat.csv', null, null, true), $this->admin->id);
+        $this->assertSame(3, $r['created'], json_encode($r));
+        $errors = implode(' ', $r['errors']);
+        $this->assertStringContainsString('Payroll Month "2026-13" must be YYYY-MM', $errors);
+        $this->assertStringContainsString('Basic salary "abc" is not a number', $errors);
+        $this->assertSame(1947.037037, round((float) \App\Models\LegacySalaryRecord::where('name', 'Khushboo Verma')->value('late_coming_deduction'), 6));
+    }
+
+    public function test_productivity_does_not_count_a_timer_left_running_for_days(): void
+    {
+        $e = $this->employee('EMP-1');
+        $task = Task::create(['title' => 'Stale', 'assignee_id' => $e->id, 'status' => 'in_progress', 'priority' => 'normal']);
+        \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-12', 'check_in' => '2026-10-12 09:00:00', 'check_out' => '2026-10-12 17:00:00', 'status' => 'completed', 'active_seconds' => 8 * 3600]);
+        \App\Models\TaskTimeEntry::create(['task_id' => $task->id, 'employee_id' => $e->id, 'started_at' => '2026-10-12 10:00:00', 'ended_at' => '2026-10-14 10:00:00', 'duration_seconds' => 48 * 3600, 'status' => 'stopped']);
+        $row = app(\App\Services\WorkService::class)->productivity(collect([$e]), '2026-10-01', '2026-10-15')->first();
+        $this->assertSame(8 * 3600, $row->logged_seconds, 'Capped at the attendance of that day');
+        $this->assertSame(40 * 3600, $row->trimmed_seconds);
+    }
+
+    public function test_document_upload_form_submits_to_the_server_and_preselects_the_filtered_employee(): void
+    {
+        $e = $this->employee('EMP-1');
+        Livewire::actingAs($this->admin)->withQueryParams(['employee' => $e->id])->test(\App\Livewire\Lifecycle\Documents::class)
+            ->call('create')->assertSet('employeeId', $e->id)
+            ->assertSeeHtml('wire:submit="saveDocument"')
+            ->call('saveDocument')->assertHasErrors(['file']);
+    }
+}

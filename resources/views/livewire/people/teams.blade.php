@@ -1,5 +1,6 @@
 <div>
-    <div class="page-head"><div><h1>Teams</h1><p>{{ $canManage ? 'All teams in the organisation.' : 'Teams you belong to or lead.' }}</p></div>@if($canManage)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Create team</button>@endif</div>
+    <div class="page-head"><div><h1>Teams</h1><p>{{ $canManage ? 'All teams in the organisation' : 'Teams you belong to or lead' }} · {{ $teams->total() }} shown · {{ $totals['active'] }} active · {{ $totals['archived'] }} archived · {{ $totals['members'] }} people in teams</p></div>@if($canManage)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Create team</button>@endif</div>
+    @unless($showForm)<x-errors />@endunless
     <div class="grid grid-3">
         @forelse($teams as $team)
             <section class="card" wire:key="team-{{ $team->id }}">
@@ -9,7 +10,7 @@
                     <p class="eyebrow">{{ $team->members->count() }} members</p>
                     <div class="pill-row">@forelse($team->members as $member)<span class="pill">{{ $member->name }}</span>@empty<span class="small muted">No members yet</span>@endforelse</div>
                 </div>
-                @if($canManage)<div class="card-foot actions"><button class="btn btn-sm" wire:click="edit({{ $team->id }})">Edit</button><button class="btn btn-sm" wire:click="archive({{ $team->id }})" wire:confirm="{{ $team->is_active ? 'Archive this team?' : 'Restore this team?' }}">{{ $team->is_active ? 'Archive' : 'Restore' }}</button></div>@endif
+                @if($canManage)<div class="card-foot actions"><button class="btn btn-sm" wire:click="edit({{ $team->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="remove({{ $team->id }})" wire:confirm="Remove the team {{ $team->name }}? Only possible when it never had members — otherwise archive it.">Remove</button><button class="btn btn-sm" wire:click="archive({{ $team->id }})" wire:confirm="{{ $team->is_active ? 'Archive this team?' : 'Restore this team?' }}">{{ $team->is_active ? 'Archive' : 'Restore' }}</button></div>@endif
             </section>
         @empty
             <div class="card" style="grid-column:1/-1"><x-empty title="No teams to show" icon="team">{{ $canManage ? 'Create a team to group employees.' : 'You have not been added to a team yet.' }}</x-empty></div>

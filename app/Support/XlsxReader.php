@@ -58,6 +58,55 @@ class XlsxReader
         }
     }
 
+    /**
+     * Every worksheet in workbook order: [['name' => sheet name, 'rows' => [row number => [column index => value]]], …].
+     * Row numbers are the Excel row numbers (so notes written under a row can be matched to it).
+     */
+    public static function sheets(string $path): array
+    {
+        $zip = new ZipArchive();
+        if ($zip->open($path) !== true) throw new \RuntimeException('The Excel file could not be opened. Save it as .xlsx (Excel Workbook) or .csv and try again.');
+        try {
+            $shared = self::sharedStrings($zip);
+            $wb = simplexml_load_string((string) $zip->getFromName('xl/workbook.xml'), \SimpleXMLElement::class, LIBXML_NONET);
+            $rel = simplexml_load_string((string) $zip->getFromName('xl/_rels/workbook.xml.rels'), \SimpleXMLElement::class, LIBXML_NONET);
+            $targets = [];
+            foreach ($rel?->Relationship ?? [] as $r) {
+                $target = ltrim((string) $r['Target'], '/');
+                $targets[(string) $r['Id']] = str_starts_with($target, 'xl/') ? $target : 'xl/'.$target;
+            }
+            $sheets = [];
+            foreach ($wb?->sheets?->sheet ?? [] as $sheet) {
+                $rid = (string) ($sheet->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')['id'] ?? '');
+                $xml = isset($targets[$rid]) ? $zip->getFromName($targets[$rid]) : false;
+                if ($xml === false) continue;
+                $doc = simplexml_load_string($xml, \SimpleXMLElement::class, LIBXML_NONET);
+                if ($doc === false) continue;
+                $doc->registerXPathNamespace('m', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+                $rows = [];
+                foreach ($doc->xpath('//m:sheetData/m:row') ?: [] as $row) {
+                    $cells = [];
+                    foreach ($row->c as $cell) {
+                        $type = (string) ($cell['t'] ?? 'n');
+                        $value = trim(match ($type) {
+                            's' => $shared[(int) $cell->v] ?? '',
+                            'inlineStr' => self::text($cell->is),
+                            'b' => ((string) $cell->v) === '1' ? 'TRUE' : 'FALSE',
+                            default => (string) $cell->v,
+                        });
+                        if ($value !== '') $cells[self::columnIndex((string) $cell['r'])] = $value;
+                    }
+                    if ($cells) $rows[(int) $row['r']] = $cells;
+                }
+                $sheets[] = ['name' => (string) $sheet['name'], 'rows' => $rows];
+            }
+
+            return $sheets;
+        } finally {
+            $zip->close();
+        }
+    }
+
     private static function sharedStrings(ZipArchive $zip): array
     {
         $xml = $zip->getFromName('xl/sharedStrings.xml');

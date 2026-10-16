@@ -15,7 +15,7 @@
 
     @if($canManage)
         <section class="card mb">
-            <div class="card-head"><div><h2>Import salary records</h2><p>Add historical salary records from Excel (.xlsx) or CSV: one row per employee per effective date.</p></div></div>
+            <div class="card-head"><div><h2>Import salary records</h2><p>Add salary profiles (monthly salary from a date) from Excel (.xlsx) or CSV: one row per HRMS employee per effective date — the Employee ID must be an existing employee.</p></div><a class="btn btn-sm" href="{{ route('payroll.legacy') }}" title="The old month-wise salary sheet (April-2026, May-2026 …): deductions, paid and remaining amounts"><x-icon name="file" class="icon-sm" />Old month-wise salary sheet →</a></div>
             @include('partials.import-form', ['type' => 'salary', 'kind' => 'Salary', 'action' => route('payroll.salary.import')])
         </section>
     @endif

@@ -263,12 +263,33 @@ class WorkService
         $completed = Task::whereIn('assignee_id', $ids)->where('status', 'completed')
             ->whereDate('completed_at', '>=', $from)->whereDate('completed_at', '<=', $to)->get()->groupBy('assignee_id');
         $open = Task::whereIn('assignee_id', $ids)->where('status', '!=', 'completed')->get()->groupBy('assignee_id');
-        $logged = TaskTimeEntry::whereIn('employee_id', $ids)->whereDate('started_at', '>=', $from)->whereDate('started_at', '<=', $to)
-            ->selectRaw('employee_id, SUM(duration_seconds) as seconds')->groupBy('employee_id')->pluck('seconds', 'employee_id');
+        // Task time per employee per day. A timer left running overnight (or for days) only counts until the end of
+        // the day it started, and a day never counts more than that day's attendance — so stale timers do not inflate it.
+        $dailyActive = DB::table('attendance_sessions')->whereIn('employee_id', $ids)->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->whereNotNull('check_in')
+            ->selectRaw('employee_id, DATE(work_date) as day, SUM(active_seconds) as active')->groupBy('employee_id', DB::raw('DATE(work_date)'))->get()
+            ->mapWithKeys(fn ($r) => [$r->employee_id.'|'.$r->day => (int) $r->active]);
+        $perDay = $rawPerDay = [];
+        foreach (TaskTimeEntry::whereIn('employee_id', $ids)->whereDate('started_at', '>=', $from)->whereDate('started_at', '<=', $to)->get(['employee_id', 'started_at', 'ended_at', 'duration_seconds', 'status']) as $entry) {
+            $dayEnd = $entry->started_at->copy()->endOfDay();
+            $raw = max(0, $entry->status === 'running' ? (int) $entry->started_at->diffInSeconds(now()) : (int) $entry->duration_seconds);
+            $seconds = min($raw, (int) $entry->started_at->diffInSeconds($dayEnd));
+            $key = $entry->employee_id.'|'.$entry->started_at->toDateString();
+            $perDay[$key] = ($perDay[$key] ?? 0) + $seconds;
+            $rawPerDay[$key] = ($rawPerDay[$key] ?? 0) + $raw;
+        }
+        $logged = [];
+        $trimmed = [];
+        foreach ($perDay as $key => $seconds) {
+            [$employeeId] = explode('|', $key);
+            $cap = $dailyActive[$key] ?? null;
+            $counted = $cap ? min($seconds, $cap) : $seconds;
+            $logged[$employeeId] = ($logged[$employeeId] ?? 0) + $counted;
+            $trimmed[$employeeId] = ($trimmed[$employeeId] ?? 0) + ($rawPerDay[$key] - $counted);
+        }
         $attendance = DB::table('attendance_sessions')->whereIn('employee_id', $ids)->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->whereNotNull('check_in')
             ->selectRaw('employee_id, COUNT(*) as days, SUM(active_seconds) as active')->groupBy('employee_id')->get()->keyBy('employee_id');
 
-        return $employees->map(function (AttendanceEmployee $employee) use ($completed, $open, $logged, $attendance) {
+        return $employees->map(function (AttendanceEmployee $employee) use ($completed, $open, $logged, $trimmed, $attendance) {
             $done = $completed->get($employee->id, collect());
             $pending = $open->get($employee->id, collect());
             $late = $done->filter(fn (Task $task) => $task->wasCompletedLate())->count();
@@ -288,6 +309,7 @@ class WorkService
                 'estimated_hours' => round($estimated, 2),
                 'logged_hours' => round($loggedSeconds / 3600, 2),
                 'logged_seconds' => $loggedSeconds,
+                'trimmed_seconds' => (int) ($trimmed[$employee->id] ?? 0),
                 'attendance_days' => (int) ($attendance[$employee->id]->days ?? 0),
                 'active_hours' => round($activeSeconds / 3600, 2),
                 'active_seconds' => $activeSeconds,

@@ -119,6 +119,7 @@ class AttendanceService
             if ($photoPath) \Illuminate\Support\Facades\Storage::disk('local')->delete($photoPath);
             throw $error;
         }
+        $this->stopStaleTimers($employee);
         app(\App\Services\WhatsAppNotifier::class)->checkedIn($employee, $session->check_in->format('h:i A'));
         // Late arrival: the employee and their manager are told straight away (Settings > late/absent alerts).
         rescue(fn () => app(AttendanceAlertService::class)->lateCheckIn($session), null, true);
@@ -135,6 +136,29 @@ class AttendanceService
         if ($source === 'admin' || app()->runningInConsole() && ! app()->runningUnitTests()) return null;
 
         return request()->ip();
+    }
+
+    /**
+     * A task timer left running from an earlier day (app closed, no check-out)
+     * is stopped at that day's last sign of activity — check-out, last sync or
+     * screen report — so it neither blocks today's timer nor counts the night.
+     *
+     * @return int timers stopped
+     */
+    public function stopStaleTimers(AttendanceEmployee $employee): int
+    {
+        $stopped = 0;
+        foreach (TaskTimeEntry::where('employee_id', $employee->id)->where('status', 'running')->where('started_at', '<', today())->get() as $entry) {
+            $day = AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $entry->started_at->toDateString())->latest('id')->first();
+            $end = collect([$day?->check_out, $day?->last_sync_at, $day?->screen_reported_at])->filter(fn ($t) => $t && $t->gt($entry->started_at))->min()
+                ?? $entry->started_at->copy()->endOfDay()->min($entry->started_at->copy()->addHours(8));
+            $entry->forceFill(['ended_at' => $end, 'duration_seconds' => (int) $entry->started_at->diffInSeconds($end), 'status' => 'stopped'])->save();
+            $entry->task?->increment('server_version');
+            $this->audit->record('task.timer_auto_stopped', $entry->task, ['entry_id' => $entry->id, 'ended_at' => $end->toDateTimeString(), 'reason' => 'left running from an earlier day']);
+            $stopped++;
+        }
+
+        return $stopped;
     }
 
     private function createCheckIn(AttendanceEmployee $employee, string $source, ?CarbonInterface $at, array $place, ?string $photoPath): AttendanceSession

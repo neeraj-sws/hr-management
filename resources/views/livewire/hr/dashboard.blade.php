@@ -70,7 +70,7 @@
             </div>
         </section>
         <section class="card">
-            <div class="card-head"><div><h2>This week</h2><p>@if($nextHoliday)Next holiday: <strong>{{ $nextHoliday['name'] }}</strong>, {{ $nextHoliday['date']->format('D d M') }}@else No upcoming holidays set @endif</p></div><a class="btn btn-sm" href="{{ route('company.celebrations') }}">Celebrations</a></div>
+            <div class="card-head"><div><h2>This week</h2>@if($nextSpecialOff)<p>Next weekly off: <strong>{{ $nextSpecialOff['date']->format('D d M') }}</strong> · {{ $nextSpecialOff['reason'] }}</p>@endif<p>@if($nextHoliday)Next holiday: <strong>{{ $nextHoliday['name'] }}</strong>, {{ $nextHoliday['date']->format('D d M') }}@else No upcoming holidays set @endif</p></div><a class="btn btn-sm" href="{{ route('company.celebrations') }}">Celebrations</a></div>
             <div class="list">
                 @forelse($celebrations as $event)
                     <div class="list-row"><div><strong>{{ $event['type'] === 'birthday' ? '🎂' : '🎉' }} {{ $event['employee']->name }}</strong><small>{{ $event['type'] === 'birthday' ? 'Birthday' : $event['years'].' '.str('year')->plural($event['years']).' at the company' }} · {{ $event['today'] ? 'today' : $event['date']->format('D d M') }}</small></div>@if($event['today'])<x-badge tone="green">Today</x-badge>@endif</div>

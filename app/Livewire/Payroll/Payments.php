@@ -59,7 +59,7 @@ class Payments extends Component
             ->when(strtotime($this->from), fn ($q) => $q->whereDate('paid_on', '>=', $this->from))
             ->when(strtotime($this->to), fn ($q) => $q->whereDate('paid_on', '<=', $this->to))
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('reference', 'like', "%{$term}%")->orWhereHas('payrollItem.employee', fn ($e) => $e->where('name', 'like', "%{$term}%"))))
-            ->latest('paid_on')->latest('id')->paginate(20);
+            ->latest('id')->paginate(20);
         $outstanding = PayrollItem::with(['employee', 'run', 'payments'])->whereHas('run', fn ($q) => $q->where('status', 'locked'))->get()
             ->map(fn ($item) => tap($item, fn ($i) => $i->setAttribute('balance', round((float) $i->net_amount - (float) $i->payments->sum('amount'), 2))))
             ->filter(fn ($item) => $item->balance > 0)->values();

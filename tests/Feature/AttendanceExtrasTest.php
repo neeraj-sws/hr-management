@@ -116,6 +116,18 @@ class AttendanceExtrasTest extends TestCase
         $this->actingAs($stranger)->get(route('attendance.photo', [$session, 'in']))->assertForbidden();
     }
 
+    public function test_timer_left_running_yesterday_no_longer_blocks_today(): void
+    {
+        AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-13', 'check_in' => '2026-10-13 10:00:00', 'status' => 'working', 'last_sync_at' => '2026-10-13 19:00:00']);
+        $task = \App\Models\Task::create(['title' => 'Stats API', 'assignee_id' => $this->employee->id, 'status' => 'in_progress', 'priority' => 'normal']);
+        $old = \App\Models\TaskTimeEntry::create(['task_id' => $task->id, 'employee_id' => $this->employee->id, 'started_at' => '2026-10-13 14:00:00', 'status' => 'running']);
+        Carbon::setTestNow('2026-10-14 10:30:00');
+        Sanctum::actingAs($this->employeeUser, ['*']);
+        $this->postJson('/api/attendance/check-in', ['source' => 'desktop'])->assertCreated();
+        $this->assertSame(['stopped', '19:00', 5 * 3600], [$old->fresh()->status, $old->fresh()->ended_at->format('H:i'), (int) $old->fresh()->duration_seconds], 'Stopped at the last activity of that day');
+        $this->postJson('/api/tasks/'.$task->id.'/start')->assertSuccessful();
+    }
+
     public function test_website_check_in_records_location_and_can_require_an_office(): void
     {
         Carbon::setTestNow('2026-10-14 09:20:00');

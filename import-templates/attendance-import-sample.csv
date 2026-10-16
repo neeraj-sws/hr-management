@@ -1,0 +1,6 @@
+﻿"Employee ID",Date,Status,"Punch In Time","Lunch In Time","Lunch Out Time","Punch Out Time","Total Working Hours","Total Lunch Minutes","Out Time (After Deduct Lunch Time)","Late Coming Minute","Email Send Date","Email Sent Delay"
+EMP-001,2026-10-01,Present,08:25,13:30,14:00,18:15,09:50,00:30,09:20,0,2026-10-01,0
+EMP-002,2026-10-01,Present,08:47,13:15,13:50,18:30,09:43,00:35,09:08,17,2026-10-02,1
+EMP-003,2026-10-01,"Half Day",08:30,,,13:00,04:30,,04:30,0,,
+EMP-004,2026-10-01,Leave,,,,,,,,,,
+EMP-001,2026-10-02,Holiday,,,,,,,,,,

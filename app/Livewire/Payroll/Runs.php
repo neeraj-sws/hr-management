@@ -79,6 +79,24 @@ class Runs extends Component
         $this->toast('Payroll locked. No further changes are possible; record payments next.');
     }
 
+    public string $reopenReason = '';
+    public bool $showReopen = false;
+
+    public function openReopen(): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($this->user()), 403);
+        $this->fill(['reopenReason' => '', 'showReopen' => true]);
+        $this->resetValidation();
+    }
+
+    public function reopen(HrWorkflowService $workflow): void
+    {
+        $this->validate(['reopenReason' => ['required', 'string', 'min:5', 'max:500']], [], ['reopenReason' => 'reason']);
+        $workflow->reopenPayroll(PayrollRun::findOrFail($this->run), $this->user(), $this->reopenReason);
+        $this->showReopen = false;
+        $this->toast('Payroll reopened as a draft. Corrections are allowed again; recalculate before approving.');
+    }
+
     public function openPayment(int $itemId): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
@@ -100,6 +118,7 @@ class Runs extends Component
     {
         $this->payingItemId = null;
         $this->breakdownItemId = null;
+        $this->showReopen = false;
     }
 
     public function render(ApprovalInbox $inbox)

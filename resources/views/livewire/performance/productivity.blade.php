@@ -19,7 +19,7 @@
                 <tr><td><strong>{{ $r->employee->name }}</strong><small>{{ $r->employee->employee_code }}</small></td>
                     <td class="num">{{ $r->completed_tasks }}</td><td class="num">{{ $r->completed_late }}</td>
                     <td style="min-width:120px">@if($r->on_time_rate !== null)<div class="progress"><span style="width: {{ $r->on_time_rate }}%;background:{{ $r->on_time_rate >= 80 ? 'var(--green)' : ($r->on_time_rate >= 50 ? 'var(--amber)' : 'var(--red)') }}"></span></div><small>{{ $r->on_time_rate }}%</small>@else<span class="muted">—</span>@endif</td>
-                    <td class="num">{{ $r->open_tasks }}</td><td class="num">{{ $r->overdue_tasks }}</td><td class="num">{{ \App\Support\Duration::fromHours($r->estimated_hours) }}</td><td class="num">@hms($r->logged_seconds)</td>
+                    <td class="num">{{ $r->open_tasks }}</td><td class="num">{{ $r->overdue_tasks }}</td><td class="num">{{ \App\Support\Duration::fromHours($r->estimated_hours) }}</td><td class="num">@hms($r->logged_seconds) @if($r->trimmed_seconds)<small style="color:var(--amber)" title="Timers left running past the day or longer than attendance">− @hms($r->trimmed_seconds) not counted</small>@endif</td>
                     <td class="num">{{ $r->attendance_days }} d<small>@hms($r->active_seconds)</small></td>
                     <td>{{ $r->utilization !== null ? $r->utilization.'%' : '—' }}<small>logged ÷ active</small></td></tr>
             @empty

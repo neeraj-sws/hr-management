@@ -86,7 +86,8 @@ class Dashboard extends Component
             ->when(! $user->canAny(['hr.manage', 'employees.manage']), fn ($q) => $q->whereIn('id', $this->teamEmployeeIds()->all() ?: [0]))
             ->when($this->department, fn ($q, $id) => $q->where('department_id', $id))
             ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%')->orWhere('employee_code', 'like', '%'.trim($this->search).'%')))
-            ->orderBy('name')->get();
+            // Newest employee number first (natural order: EMP-10 after EMP-9).
+            ->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->get();
         $since = $this->teamSince();
         if ($since) $employees = $employees->filter(fn ($e) => ! isset($since[$e->id]) || $since[$e->id] <= $this->date)->values();
         $sessions = AttendanceSession::with(['employee', 'device', 'forcedBy'])->whereIn('employee_id', $employees->pluck('id'))->whereDate('work_date', $this->date)->get()->keyBy('employee_id');

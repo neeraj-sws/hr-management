@@ -97,7 +97,7 @@ class Penalties extends Component
             ->when($this->canManage() && $this->employee, fn ($q) => $q->where('employee_id', $this->employee));
 
         return $this->page('livewire.compliance.penalties', [
-            'penalties' => (clone $query)->latest('effective_on')->latest('id')->paginate(20),
+            'penalties' => (clone $query)->latest('id')->paginate(20),
             'totals' => ['pending' => (float) (clone $query)->where('status', 'pending')->sum('amount'), 'approved' => (float) (clone $query)->where('status', 'approved')->sum('amount')],
             'canManage' => $this->canManage(),
             'decidable' => $inbox->pending($this->user(), EmployeePenalty::class)->pluck('approvable_id')->all(),

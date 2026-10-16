@@ -148,6 +148,8 @@ class EmployeeService
         $employee->user->update(['password' => Hash::make($password)]);
         $employee->user->tokens()->delete();
         $this->audit->record('user.password_reset', $employee->user, ['by' => $actor->id, 'employee_id' => $employee->id]);
+        // The person is told (in the app and by e-mail) — never the password itself.
+        Notifier::send($employee->user, 'PasswordChanged', $employee->user->id, "{$actor->name} changed your login password on ".now()->format('d M Y, h:i A').'. You were signed out of the mobile and desktop apps; sign in with the new password. If you did not ask for this, contact HR.', route('account.profile', [], false));
     }
 
     /** Tells a newly-assigned manager that this employee now reports to them, and by whom. */
@@ -170,6 +172,49 @@ class EmployeeService
         $employee->user?->notify(new ApprovalRequested('Employee', $employee->id, 'Congratulations — your employment is confirmed from '.\Illuminate\Support\Carbon::parse($date)->format('d M Y').'.', route('account.profile', [], false)));
 
         return $employee->fresh();
+    }
+
+    /**
+     * Records that make an employee part of the company's history. While any
+     * exist the employee cannot be removed — deactivate them instead, so pay,
+     * attendance and audit records stay complete.
+     *
+     * @return array<string, int> label => count (only non-zero)
+     */
+    public function historyCounts(AttendanceEmployee $employee): array
+    {
+        $counts = [
+            'attendance days' => \App\Models\AttendanceSession::where('employee_id', $employee->id)->count(),
+            'payroll entries' => \App\Models\PayrollItem::where('employee_id', $employee->id)->count(),
+            'leave requests' => \App\Models\LeaveRequest::where('employee_id', $employee->id)->count(),
+            'task time entries' => \App\Models\TaskTimeEntry::where('employee_id', $employee->id)->count(),
+            'expense claims' => \App\Models\ExpenseClaim::where('employee_id', $employee->id)->count(),
+            'people reporting to them' => AttendanceEmployee::where('manager_id', $employee->id)->count(),
+        ];
+
+        return array_filter($counts);
+    }
+
+    /**
+     * Administrator only: permanently removes an employee added by mistake
+     * (and their login), when they have no history. Audited.
+     */
+    public function remove(AttendanceEmployee $employee, User $actor): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($actor), 403, 'Only an administrator can remove an employee.');
+        if ($employee->user_id === $actor->id) throw \Illuminate\Validation\ValidationException::withMessages(['employee' => 'You cannot remove your own account.']);
+        if ($history = $this->historyCounts($employee)) {
+            $what = collect($history)->map(fn ($n, $label) => "{$n} {$label}")->join(', ');
+            throw \Illuminate\Validation\ValidationException::withMessages(['employee' => "{$employee->name} has records ({$what}), so they cannot be removed. Deactivate them instead — their history stays intact."]);
+        }
+        DB::transaction(function () use ($employee, $actor) {
+            $snapshot = $employee->only(['employee_code', 'name', 'email', 'department_id', 'manager_id', 'joined_at']);
+            $user = $employee->user;
+            $employee->tokens()->delete();
+            $employee->delete();
+            if ($user) { $user->tokens()->delete(); $user->delete(); }
+            $this->audit->record('employee.removed', null, [...$snapshot, 'removed_by' => $actor->name]);
+        });
     }
 
     public function setActive(AttendanceEmployee $employee, bool $active): AttendanceEmployee

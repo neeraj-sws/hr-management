@@ -61,8 +61,10 @@ class Balances extends Component
             LeaveLedgerEntry::record($balance, 'adjustment', (float) $this->adjustDays, $this->adjustReason);
             $audit->record('leave.balance_adjusted', $balance, ['days' => (float) $this->adjustDays, 'reason' => $this->adjustReason, 'employee_id' => $employee->id, 'leave_type' => $type->name]);
         });
+        $days = (float) $this->adjustDays;
+        \App\Services\Notifier::send($employee->user, 'LeaveBalance', $employee->id, $this->user()->name.' '.($days > 0 ? 'added' : 'deducted').' '.abs($days)." day(s) of {$type->name} ".($days > 0 ? 'to' : 'from')." your leave balance. Reason: {$this->adjustReason}", route('leave.balances', [], false), auth()->id());
         $this->closeModal();
-        $this->toast('Leave balance adjusted.');
+        $this->toast('Leave balance adjusted. The employee was notified.');
     }
 
     public function runAccrual(LeaveAccrualService $accrual): void

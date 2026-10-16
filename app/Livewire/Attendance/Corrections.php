@@ -34,6 +34,8 @@ class Corrections extends Component
         if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = ! $this->ownEmployee() || ($canApprove && app(ApprovalInbox::class)->pending($this->user(), AttendanceCorrection::class)->isNotEmpty()) ? 'approvals' : 'mine';
         if ($this->tab !== 'mine' && ! $canApprove) $this->tab = 'mine';
         if ($this->ownEmployee() && preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->prefillDate)) $this->create($this->prefillDate);
+        // Open the form from a link once; refreshing the page must not open it again.
+        $this->prefillDate = '';
     }
 
     private function canApprove(): bool

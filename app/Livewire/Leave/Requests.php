@@ -129,7 +129,7 @@ class Requests extends Component
         $user = $this->user();
         $own = $this->ownEmployee();
         $canApprove = $this->canApprove();
-        $query = LeaveRequest::with(['employee', 'leaveType', 'decider'])->latest('starts_on')->latest('id');
+        $query = LeaveRequest::with(['employee', 'leaveType', 'decider'])->latest('id'); // newest request first
         if ($this->tab === 'mine') {
             $query->where('employee_id', $own?->id ?? 0);
         } elseif ($this->tab === 'approvals') {

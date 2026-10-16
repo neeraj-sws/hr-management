@@ -68,6 +68,24 @@ class Teams extends Component
         $audit->record($team->is_active ? 'team.restored' : 'team.archived', $team);
     }
 
+    /**
+     * Removes a team created by mistake. A team that has (or had) members keeps
+     * its membership history for team policies and reports: archive it instead.
+     */
+    public function remove(int $id, AuditLogger $audit): void
+    {
+        abort_unless($this->canManage(), 403);
+        $team = Team::withCount('members')->findOrFail($id);
+        $history = \App\Models\EmployeeTeamHistory::where('team_id', $team->id)->count();
+        if ($team->members_count || $history) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['team' => "{$team->name} has ".($team->members_count ?: $history).' member record(s), so it cannot be removed. Archive it instead — its history stays for reports and team policies.']);
+        }
+        \App\Models\TeamPolicyOverride::where('team_id', $team->id)->delete();
+        $audit->record('team.removed', null, ['id' => $team->id, 'name' => $team->name]);
+        $team->delete();
+        $this->toast("Team {$team->name} removed.");
+    }
+
     public function closeModal(): void
     {
         $this->showForm = false;
@@ -89,6 +107,7 @@ class Teams extends Component
 
         return $this->page('livewire.people.teams', [
             'teams' => $teams,
+            'totals' => ['active' => Team::where('is_active', true)->count(), 'archived' => Team::where('is_active', false)->count(), 'members' => \Illuminate\Support\Facades\DB::table('employee_team')->distinct()->count('employee_id')],
             'canManage' => $this->canManage(),
             'departments' => Department::where('is_active', true)->orderBy('name')->get(),
             'employees' => $this->canManage() ? AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']) : collect(),

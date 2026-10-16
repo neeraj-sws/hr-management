@@ -34,7 +34,7 @@
 
     @if($showForm)
         <x-modal title="Request attendance correction">
-            <form wire:submit="submit"><div class="modal-body">
+            <form wire:submit="submit"><div class="modal-body"><x-errors />
                 <p class="small muted" style="margin-top:0">Fill in the correct times. Leave a time empty to keep what was recorded. A check-out earlier than the check-in counts as the next morning (night shift).</p>
                 <div class="form-grid">
                     <x-field label="Day" name="workDate" full><input type="date" wire:model.live="workDate" max="{{ today()->toDateString() }}"></x-field>
@@ -49,7 +49,7 @@
     @endif
     @if($deciding)
         <x-modal title="Review attendance correction">
-            <div class="modal-body">
+            <div class="modal-body"><x-errors />
                 <dl class="kv">
                     <dt>Employee</dt><dd>{{ $deciding->employee?->name }}</dd>
                     <dt>Day</dt><dd>{{ $deciding->work_date->format('D d M Y') }}</dd>

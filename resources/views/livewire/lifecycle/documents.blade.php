@@ -26,7 +26,7 @@
         <x-modal title="Upload document">
             {{-- Upload state is tracked here (not with wire:loading on the file), so a failed or cancelled
                  upload can never leave the button disabled; the form stays usable after any error. --}}
-            <form wire:submit="upload" x-data="{ uploading: false, progress: 0, failed: '' }"
+            <form wire:submit="saveDocument" x-data="{ uploading: false, progress: 0, failed: '' }"
                   x-on:livewire-upload-start="uploading = true; progress = 0; failed = ''"
                   x-on:livewire-upload-progress="progress = $event.detail.progress"
                   x-on:livewire-upload-finish="uploading = false"
@@ -43,7 +43,7 @@
                     @if($file && ! $errors->has('file'))<span class="small muted">Selected: {{ method_exists($file, 'getClientOriginalName') ? $file->getClientOriginalName() : '' }}</span>@endif
                 </x-field>
             </div></div>
-            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" x-bind:disabled="uploading" wire:loading.attr="disabled" wire:target="upload"><span wire:loading wire:target="upload" class="spinner"></span>Upload</button></div></form>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" x-bind:disabled="uploading" wire:loading.attr="disabled" wire:target="saveDocument"><span wire:loading wire:target="saveDocument" class="spinner"></span>Upload</button></div></form>
         </x-modal>
     @endif
 </div>

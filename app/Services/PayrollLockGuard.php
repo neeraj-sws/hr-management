@@ -21,7 +21,7 @@ class PayrollLockGuard
             ->when($employeeId, fn ($q) => $q->where(fn ($q) => $q->whereHas('items', fn ($q) => $q->where('employee_id', $employeeId))->orWhere('status', 'locked')))
             ->first();
         if ($run) {
-            throw ValidationException::withMessages(['payroll' => "Payroll for {$run->period_starts_on->format('d M')}–{$run->period_ends_on->format('d M Y')} is {$run->status}; this {$what} change is not allowed."])->status(409);
+            throw ValidationException::withMessages(['payroll' => "Payroll for {$run->period_starts_on->format('d M')}–{$run->period_ends_on->format('d M Y')} is {$run->status}; this {$what} change is not allowed. If the payroll was ".($run->status === 'locked' ? 'locked' : 'approved').' by mistake, an administrator can reopen it under Payroll (when no salary payment is recorded yet).'])->status(409);
         }
     }
 

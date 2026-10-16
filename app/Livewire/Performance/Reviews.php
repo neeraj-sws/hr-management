@@ -99,7 +99,7 @@ class Reviews extends Component
         $query = PerformanceReview::with(['employee', 'reviewer'])
             ->when($this->tab === 'mine', fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($this->tab === 'team', fn ($q) => $q->where(fn ($q) => $q->whereIn('employee_id', $this->reviewableIds()->all() ?: [0])->orWhere('reviewer_id', auth()->id())))
-            ->latest('period_ends_on')->latest('id');
+            ->latest('id');
         $reviews = (clone $query)->paginate(15);
 
         return $this->page('livewire.performance.reviews', [

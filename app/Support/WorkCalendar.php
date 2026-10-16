@@ -103,6 +103,60 @@ class WorkCalendar
         return implode('; ', $parts);
     }
 
+    /**
+     * off_weeks for the Settings checkboxes: every weekday present as a list
+     * (an absent weekday made a checkbox group act as one on/off switch, so
+     * ticking one week ticked them all).
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function offWeeksForForm(array $offWeeks): array
+    {
+        $form = [];
+        foreach (array_keys(self::WEEKDAYS) as $weekday) {
+            $form[(string) $weekday] = array_map('strval', (array) ($offWeeks[(string) $weekday] ?? $offWeeks[$weekday] ?? []));
+        }
+
+        return $form;
+    }
+
+    /**
+     * Why a date is off although it is normally a working day: a week-of-month
+     * off ("3rd Saturday off") or a moved weekly off. Null for normal days,
+     * regular weekly offs (e.g. every Sunday) and listed holidays.
+     */
+    public static function specialOffReason(string $date, array $calendar): ?string
+    {
+        $day = Carbon::parse($date);
+        $ymd = $day->toDateString();
+        foreach ((array) ($calendar['shifts'] ?? []) as $shift) {
+            if (($shift['to'] ?? null) === $ymd) return 'Weekly off moved here from '.Carbon::parse($shift['from'])->format('D d M').(! empty($shift['note']) ? ' — '.$shift['note'] : '');
+        }
+        if (! in_array((int) $day->isoWeekday(), array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]), true)) return null;
+        if (in_array($ymd, self::offHolidays($calendar), true)) return null;
+        if (! self::isNthWeekdayOff($day, (array) ($calendar['off_weeks'] ?? []))) return null;
+        [$nth, $isLast] = self::occurrence($day);
+        $weeks = array_map('intval', (array) ($calendar['off_weeks'][(string) $day->isoWeekday()] ?? []));
+        $label = in_array($nth, $weeks, true) ? self::OCCURRENCES[$nth] : 'Last';
+
+        return "{$label} ".self::WEEKDAYS[(int) $day->isoWeekday()].' — weekly off';
+    }
+
+    /**
+     * The special offs (week-of-month offs and moved weekly offs) from a date on.
+     *
+     * @return array<int, array{date: Carbon, reason: string}>
+     */
+    public static function upcomingSpecialOffs(array $calendar, Carbon $from, int $days = 90): array
+    {
+        $out = [];
+        for ($day = $from->copy()->startOfDay(), $end = $from->copy()->addDays($days); $day->lte($end); $day->addDay()) {
+            if ($reason = self::specialOffReason($day->toDateString(), $calendar)) $out[] = ['date' => $day->copy(), 'reason' => $reason];
+        }
+
+        return $out;
+    }
+
     /** Validates and normalises off_weeks / shifts entered in Settings or an employee override. */
     public static function normalise(array $calendar): array
     {

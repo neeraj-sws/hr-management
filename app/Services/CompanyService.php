@@ -123,6 +123,47 @@ class CompanyService
             });
     }
 
+    /**
+     * Tells employees when weekly offs change (a week-of-month off such as the
+     * 3rd Saturday, or a weekly off moved to another day) — everyone for a
+     * company change, or one employee for their own pattern — with the next dates.
+     *
+     * @return int people notified
+     */
+    public function announceWeeklyOffChange(array $before, array $after, User $actor, ?AttendanceEmployee $only = null): int
+    {
+        $norm = fn (array $c) => [\App\Support\WorkCalendar::normalise(['off_weeks' => $c['off_weeks'] ?? []])['off_weeks'], array_map(fn ($s) => [$s['from'], $s['to']], \App\Support\WorkCalendar::normalise(['shifts' => $c['shifts'] ?? []])['shifts']), array_map('intval', $c['days'] ?? [1, 2, 3, 4, 5])];
+        if ($norm($before) === $norm($after)) return 0;
+
+        $employees = $only ? collect([$only->loadMissing('user')]) : AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id')->get();
+        $sent = 0;
+        foreach ($employees as $employee) {
+            $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+            $next = collect(\App\Support\WorkCalendar::upcomingSpecialOffs($calendar, today(), 60))->take(3)->map(fn ($o) => $o['date']->format('D d M'))->join(', ');
+            $message = ($only ? 'Your weekly offs were updated' : 'Weekly offs were updated')." by {$actor->name}: ".\App\Support\WorkCalendar::describe($calendar).'.'.($next ? " Next special off days: {$next}." : '');
+            $sent += Notifier::send($employee->user, 'WeeklyOff', $employee->id, $message, route('company.holidays', [], false), $actor->id);
+        }
+        $this->audit->record('holiday.weekly_off_announced', $only, ['people' => $sent]);
+
+        return $sent;
+    }
+
+    /** The evening before a special off day (3rd Saturday, moved weekly off), everyone it applies to is reminded once. */
+    public function remindTomorrowOff(?Carbon $today = null): int
+    {
+        $tomorrow = ($today ?? today())->copy()->addDay()->toDateString();
+        $sent = 0;
+        foreach (AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id')->get() as $employee) {
+            $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', $tomorrow, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+            $reason = \App\Support\WorkCalendar::specialOffReason($tomorrow, $calendar);
+            if (! $reason || ! $employee->user) continue;
+            if ($employee->user->notifications()->where('data->kind', 'WeeklyOff')->whereDate('created_at', today())->exists()) continue;
+            $sent += Notifier::send($employee->user, 'WeeklyOff', $employee->id, 'Reminder: tomorrow, '.Carbon::parse($tomorrow)->format('l d M').", is your day off ({$reason}).", route('company.holidays', [], false));
+        }
+
+        return $sent;
+    }
+
     /** ISO weekdays (1 = Monday) that are working days. */
     public function workingDays(?AttendanceEmployee $employee): array
     {

@@ -207,6 +207,7 @@
     @elseif($tab === 'payroll')
         <section class="card">
             <form class="card-body" wire:submit="savePayroll"><div class="form-grid">
+                <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="otEnabled"> <span><strong>Overtime is allowed</strong> <span class="muted small">— untick to switch overtime off: employees cannot request it and payroll pays no overtime</span></span></label>
                 <x-field label="Overtime multiplier" name="otMultiplier" hint="required before paying approved OT"><input type="number" step="0.05" min="0" max="10" wire:model="otMultiplier" placeholder="employer-defined"></x-field>
                 <x-field label="Max overtime minutes / day" name="otMaxPerDay" hint="optional"><input type="number" min="1" max="1440" wire:model="otMaxPerDay"></x-field>
                 <x-field label="Weekly-off / holiday overtime multiplier" name="otHolidayMultiplier" hint="optional; replaces the normal rate on those days"><input type="number" step="0.05" min="0" max="10" wire:model="otHolidayMultiplier" placeholder="same as normal"></x-field>

@@ -16,9 +16,10 @@
         @foreach($rules as $key => [$label, $fields])
             <section class="card">
                 <div class="card-head"><div><h2>{{ $label }}</h2><p>Applies to everyone unless an employee override is set below.</p></div></div>
+                @php($ruleSlot = \App\Livewire\Compliance\Policies::slot($key))
                 <form class="card-body stack" wire:submit="saveRule('{{ $key }}')">
                     @foreach($fields as $field => $fieldLabel)
-                        <x-field :label="$fieldLabel" :name="'values.'.$key.'.'.$field"><input type="number" step="0.01" min="0" wire:model="values.{{ $key }}.{{ $field }}" @disabled(!$canConfigure)></x-field>
+                        <x-field :label="$fieldLabel" :name="'values.'.$ruleSlot.'.'.$field"><input type="number" step="0.01" min="0" wire:model="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)></x-field>
                     @endforeach
                     @if($canConfigure)<div><button class="btn btn-primary btn-sm">Save rule</button></div>@endif
                 </form>

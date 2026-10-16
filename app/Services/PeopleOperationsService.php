@@ -29,11 +29,19 @@ class PeopleOperationsService
 {
     public function __construct(private readonly AuditLogger $audit) {}
 
+    /** Company setting (Settings → Payroll): overtime can be switched off for everyone. */
+    public function overtimeEnabled(?AttendanceEmployee $employee = null, ?string $date = null): bool
+    {
+        return (bool) (app(PolicyConfigurationService::class)->forEmployee($employee, 'overtime.multiplier', $date ?? today()->toDateString(), [])['enabled'] ?? true);
+    }
+
     public function requestOvertime(AttendanceEmployee $employee, string $date, int $minutes, string $reason): OvertimeRequest
     {
+        if (! $this->overtimeEnabled($employee)) throw ValidationException::withMessages(['minutes' => 'Overtime is switched off by the company (Settings → Payroll).']);
         return DB::transaction(function () use ($employee, $date, $minutes, $reason) {
             $request = OvertimeRequest::create(['employee_id'=>$employee->id,'work_date'=>$date,'requested_minutes'=>$minutes,'reason'=>$reason,'status'=>'pending']);
-            $this->approval(OvertimeRequest::class, $request->id, $employee->manager?->user_id);
+            // The manager decides; when they are unavailable (none / inactive / on leave) it goes to overtime managers.
+            $this->approval(OvertimeRequest::class, $request->id, ApprovalInbox::approverFor($employee), "{$employee->name} requested {$minutes} min overtime for ".Carbon::parse($date)->format('d M Y').": {$reason}");
             $this->audit->record('overtime.requested', $request, ['minutes'=>$minutes]);
             return $request;
         });
@@ -57,7 +65,7 @@ class PeopleOperationsService
             $request->update(['status'=>$approve?'approved':'rejected','approved_minutes'=>$approved,'decided_by'=>$approver,'decided_at'=>now(),'decision_note'=>$note]);
             $this->decideApproval(OvertimeRequest::class, $request->id, $approver, $approve, $note);
             $this->audit->record($approve?'overtime.approved':'overtime.rejected', $request, ['approved_minutes'=>$approved]);
-            $request->employee?->user?->notify(new ApprovalRequested('OvertimeRequest', $request->id, $approve ? 'Your overtime request was approved.' : 'Your overtime request was rejected.'));
+            $request->employee?->user?->notify(new ApprovalRequested('OvertimeRequest', $request->id, ($approve ? "Your overtime request for {$request->work_date->format('d M Y')} was approved ({$approved} min)." : "Your overtime request for {$request->work_date->format('d M Y')} was rejected.").($note ? " Note: {$note}" : '')));
             return $request->fresh();
         });
     }
@@ -119,7 +127,7 @@ class PeopleOperationsService
     {
         if ($amount <= 0 || $installment <= 0 || $installment > $amount) throw ValidationException::withMessages(['amount'=>'Advance and installment amounts must be positive; installment cannot exceed advance.']);
         $advance = SalaryAdvance::create(['employee_id'=>$employee->id,'amount'=>$amount,'installment_amount'=>$installment,'requested_on'=>today(),'reason'=>$reason,'requested_by'=>$userId,'status'=>'pending']);
-        $this->approval(SalaryAdvance::class, $advance->id);
+        $this->approval(SalaryAdvance::class, $advance->id, null, "{$employee->name} requested a salary advance of ".number_format($amount, 2)." (recover ".number_format($installment, 2)." per month): {$reason}");
         $this->audit->record('salary.advance_requested', $advance);
         return $advance;
     }
@@ -141,6 +149,7 @@ class PeopleOperationsService
             $record->update($changes);
             $this->decideApproval($modelClass, $id, $approver, $approve, $note);
             $this->audit->record($approve?'financial_request.approved':'financial_request.rejected', $record, ['type'=>$modelClass]);
+            $this->notifyFinancialDecision($record->fresh(), $approver, $approve, $note);
             return $record->fresh();
         });
     }
@@ -245,7 +254,7 @@ class PeopleOperationsService
     {
         if ($amount <= 0) throw ValidationException::withMessages(['amount'=>'Penalty must be greater than zero.']);
         $penalty = EmployeePenalty::create(['employee_id'=>$employee->id,'policy_rule_id'=>$ruleId,'effective_on'=>today(),'amount'=>$amount,'reason'=>$reason,'requested_by'=>$actor,'status'=>'pending']);
-        $this->approval(EmployeePenalty::class,$penalty->id);
+        $this->approval(EmployeePenalty::class,$penalty->id, null, "Penalty of ".number_format($amount, 2)." for {$employee->name} needs approval: {$reason}", $actor);
         $this->audit->record('penalty.requested',$penalty);
         return $penalty;
     }
@@ -490,14 +499,42 @@ class PeopleOperationsService
         });
     }
 
-    private function approval(string $type, int $id, ?int $approver=null): void
+    /**
+     * Opens the approval and tells whoever decides it: the named approver, or
+     * everyone holding the deciding permission (never the person who raised it).
+     */
+    private function approval(string $type, int $id, ?int $approver=null, ?string $message=null, ?int $requestedBy=null): void
     {
         ApprovalRequest::create(['approvable_type'=>$type,'approvable_id'=>$id,'approver_id'=>$approver,'status'=>'pending']);
         $label=[OvertimeRequest::class=>'An overtime',SalaryAdjustment::class=>'A salary adjustment',SalaryAdvance::class=>'A salary advance',EmployeePenalty::class=>'A penalty'][$type]??'A';
-        $notification=new ApprovalRequested(class_basename($type),$id,"{$label} request needs review.");
-        if($approver){User::whereKey($approver)->first()?->notify($notification);return;}
+        if ($message === null) {
+            $record = $type::with('employee')->find($id);
+            $message = match (true) {
+                $record instanceof EmployeePenalty => 'Penalty of '.number_format((float) $record->amount, 2)." for {$record->employee?->name} needs approval: {$record->reason}",
+                $record instanceof SalaryAdjustment => 'Salary adjustment ('.$record->label().' '.number_format((float) $record->amount, 2).") for {$record->employee?->name} needs approval.",
+                default => "{$label} request needs review.",
+            };
+        }
         $permission=match($type){SalaryAdjustment::class=>'salary.adjust',SalaryAdvance::class=>'salary.advance',EmployeePenalty::class=>'penalties.manage',OvertimeRequest::class=>'overtime.manage',default=>null};
-        if($permission)foreach(User::permission($permission)->get() as $user)$user->notify($notification);
+        $recipients = $approver ? User::whereKey($approver)->get() : ($permission ? Notifier::withPermission($permission) : collect());
+        $recipients = $recipients->filter()->reject(fn ($u) => $requestedBy && $u->id === $requestedBy);
+        Notifier::send($recipients, class_basename($type), $id, $message, route('approvals.center', [], false), $requestedBy);
+    }
+
+    /** The employee (and whoever raised it) hear the decision on a penalty, advance or salary adjustment. */
+    private function notifyFinancialDecision(object $record, int $approver, bool $approve, ?string $note): void
+    {
+        $record->loadMissing('employee.user');
+        $amount = number_format((float) $record->amount, 2);
+        $what = match (true) { $record instanceof EmployeePenalty => "penalty of {$amount}", $record instanceof SalaryAdvance => "salary advance of {$amount}", default => 'salary adjustment ('.$record->label()." {$amount})" };
+        $verdict = $approve ? 'approved' : 'rejected';
+        $suffix = ($note ? " Note: {$note}" : '');
+        $kind = class_basename($record);
+        Notifier::send($record->employee?->user, $kind, $record->id, 'Your '.$what.' was '.$verdict.($record instanceof EmployeePenalty && $approve ? ' and will be deducted in payroll' : '').'.'.$suffix, null, $approver);
+        $requester = $record->requested_by ? User::find($record->requested_by) : null;
+        if ($requester && $requester->id !== $approver && $requester->id !== $record->employee?->user_id) {
+            Notifier::send($requester, $kind, $record->id, ucfirst($what).' for '.$record->employee?->name.' was '.$verdict.'.'.$suffix, route('approvals.center', [], false), $approver);
+        }
     }
 
     private function decideApproval(string $type, int $id, int $approver, bool $approve, ?string $note): void

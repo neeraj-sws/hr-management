@@ -20,6 +20,11 @@ class Employees extends Component
     #[Url] public string $search = '';
     #[Url] public ?int $department = null;
     #[Url] public string $status = 'active';
+    /** Joined between these dates (empty = any). */
+    #[Url] public string $joinedFrom = '';
+    #[Url] public string $joinedTo = '';
+    /** Only people reporting to this manager (opened from Managers). */
+    #[Url(as: 'manager')] public ?int $reportsTo = null;
 
     public bool $showForm = false;
     public ?int $editingId = null;
@@ -48,7 +53,7 @@ class Employees extends Component
 
     public function updated($property): void
     {
-        if (in_array($property, ['search', 'department', 'status'], true)) $this->resetPage();
+        if (in_array($property, ['search', 'department', 'status', 'joinedFrom', 'joinedTo', 'reportsTo'], true)) $this->resetPage();
     }
 
     public function create(): void
@@ -151,6 +156,15 @@ class Employees extends Component
         $this->toast($employee->is_active ? 'Employee deactivated and access revoked.' : 'Employee reactivated.');
     }
 
+    /** Administrator: removes an employee added by mistake (only when they have no records). */
+    public function remove(int $id, EmployeeService $service): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($this->user()), 403, 'Only an administrator can remove an employee.');
+        $employee = AttendanceEmployee::with('user')->findOrFail($id);
+        $service->remove($employee, $this->user());
+        $this->toast("{$employee->name} was removed.");
+    }
+
     public function closeModal(): void
     {
         $this->showForm = false;
@@ -172,7 +186,11 @@ class Employees extends Component
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('designation', 'like', "%{$term}%")))
             ->when($this->department, fn ($q, $id) => $q->where('department_id', $id))
             ->when($this->status !== 'all', fn ($q) => $q->where('is_active', $this->status === 'active'))
-            ->orderBy('name')->paginate(15);
+            ->when($this->reportsTo, fn ($q, $id) => $q->where('manager_id', $id))
+            ->when(strtotime($this->joinedFrom), fn ($q) => $q->whereDate('joined_at', '>=', $this->joinedFrom))
+            ->when(strtotime($this->joinedTo), fn ($q) => $q->whereDate('joined_at', '<=', $this->joinedTo))
+            // Newest employee number first (natural order: EMP-10 after EMP-9).
+            ->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->paginate(15);
 
         return $this->page('livewire.people.employees', [
             'employees' => $employees,
@@ -181,6 +199,7 @@ class Employees extends Component
             'teams' => Team::where('is_active', true)->orderBy('name')->get(),
             'counts' => ['active' => AttendanceEmployee::where('is_active', true)->count(), 'inactive' => AttendanceEmployee::where('is_active', false)->count()],
             'pwEmployee' => $this->pwEmployeeId ? AttendanceEmployee::find($this->pwEmployeeId) : null,
+            'reportsToManager' => $this->reportsTo ? AttendanceEmployee::find($this->reportsTo) : null,
             'isAdmin' => \App\Support\Access::isAdmin($this->user()),
         ], 'Employees');
     }

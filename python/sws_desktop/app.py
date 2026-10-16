@@ -36,6 +36,12 @@ STATUS_LABEL = {"working": "Working", "on_break": "On break", "completed": "Day 
 ATTENDANCE_LABEL = {"check_in": "Check in", "break_start": "Start break", "break_end": "Resume work", "check_out": "Check out"}
 
 
+def hms(seconds) -> str:
+    """Every duration in the app as HH:MM:SS (same format as the website)."""
+    seconds = max(0, int(seconds or 0))
+    return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
+
+
 def parse_time(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
 
@@ -270,11 +276,11 @@ class DesktopApp:
         self.task_buttons["start"].pack(side="right")
         self.task_hint = tk.Label(tasks_frame, text="Select a task, then use the buttons above (double-click starts or pauses its timer).", fg=MUTED, bg="white", anchor="w")
         self.task_hint.pack(fill="x", pady=(6, 0))
-        columns = ("title", "project", "due", "logged", "status")
+        columns = ("title", "project", "due", "logged", "progress", "status")
         self.tree = ttk.Treeview(tasks_frame, columns=columns, show="headings", selectmode="browse", height=8)
-        for column, title, width in (("title", "Task", 260), ("project", "Project", 130), ("due", "Due", 90), ("logged", "Logged", 70), ("status", "Status", 110)):
+        for column, title, width in (("title", "Task", 250), ("project", "Project", 120), ("due", "Due", 90), ("logged", "Logged", 80), ("progress", "Progress", 70), ("status", "Status", 110)):
             self.tree.heading(column, text=title)
-            self.tree.column(column, width=width, anchor="w")
+            self.tree.column(column, width=width, anchor="w" if column == "title" else "center")
         self.tree.tag_configure("running", foreground=GREEN)
         self.tree.tag_configure("overdue", foreground=RED)
         self.tree.tag_configure("odd", background=STRIPE)
@@ -437,10 +443,10 @@ class DesktopApp:
         win = tk.Toplevel(self.root, bg="white", padx=18, pady=14)
         win.title("Daily status")
         win.transient(self.root)
-        win.geometry("460x600")
+        win.geometry("460x760")
         tk.Label(win, text="Today's status", font=("Segoe UI", 13, "bold"), fg=NAVY, bg="white").pack(anchor="w")
         boxes = {}
-        for key, label, height in (("yesterday", "Yesterday", 2), ("plan", "Plan for today", 3), ("summary", "Completed *", 5), ("blockers", "Blockers (your manager is notified)", 3), ("notes", "Notes", 2)):
+        for key, label, height in (("yesterday", "Yesterday", 2), ("plan", "Plan for today", 2), ("summary", "Completed *", 4), ("pending", "Pending work", 2), ("tomorrow_plan", "Plan for tomorrow", 2), ("blockers", "Blockers (your manager is notified)", 2), ("notes", "Notes", 2)):
             tk.Label(win, text=label, bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 2))
             box = tk.Text(win, height=height, wrap="word", font=("Segoe UI", 10), relief="solid", bd=1, highlightthickness=0)
             box.pack(fill="x")
@@ -465,7 +471,7 @@ class DesktopApp:
                 self._flash("Daily status saved." + (" Your manager was told about the blocker." if values["blockers"] else ""), GREEN)
                 win.destroy()
 
-            self._run(lambda: self.client.save_daily_status(values["plan"], values["summary"], values["blockers"], values["notes"], values["yesterday"]), done,
+            self._run(lambda: self.client.save_daily_status(values["plan"], values["summary"], values["blockers"], values["notes"], values["yesterday"], values["pending"], values["tomorrow_plan"]), done,
                       lambda e: note.config(text=("You are offline; try again when connected." if isinstance(e, ApiError) and e.is_network else (e.first_message if isinstance(e, ApiError) else str(e))), fg=RED))
 
         ttk.Button(win, text="Save status", style="Primary.TButton", command=save).pack(fill="x", pady=(12, 0))
@@ -658,7 +664,7 @@ class DesktopApp:
         if session:
             active = int(session.get("screen_active_seconds") or 0) + int(self.screen_active)
             idle = int(session.get("screen_idle_seconds") or 0) + int(self.screen_idle)
-            self.screen_label.config(text=f"Screen time today: {active // 3600}:{active % 3600 // 60:02d} in use · {idle // 3600}:{idle % 3600 // 60:02d} idle" if active + idle else "Screen time starts counting while you are checked in.")
+            self.screen_label.config(text=f"Screen time today: {hms(active)} in use · {hms(idle)} idle" if active + idle else "Screen time starts counting while you are checked in.")
         else:
             self.screen_label.config(text="")
         self.root.after(1000, self._tick)
@@ -689,7 +695,8 @@ class DesktopApp:
             stripe = "odd" if index % 2 else "even"
             tags = (("running", stripe) if task.get("timer_running_since") else ("overdue", stripe) if task.get("overdue") else (stripe,))
             due = datetime.strptime(task["due_on"][:10], "%Y-%m-%d").strftime("%d %b %Y") if task.get("due_on") else "—"
-            self.tree.insert("", "end", iid=str(task["id"]), values=(task["title"], (task.get("project") or {}).get("name", "—"), due, f"{logged // 3600}:{logged % 3600 // 60:02d}", status), tags=tags)
+            progress = f"{int(task['progress'])}%" if task.get("progress") is not None else "—"
+            self.tree.insert("", "end", iid=str(task["id"]), values=(task["title"], (task.get("project") or {}).get("name", "—"), due, hms(logged), progress, status), tags=tags)
         if selected and self.tree.exists(selected[0]):
             self.tree.selection_set(selected[0])
         self._update_task_buttons()

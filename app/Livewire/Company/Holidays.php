@@ -32,6 +32,8 @@ class Holidays extends Component
             // Week-of-month offs (e.g. 3rd Saturday) and weekly offs moved to another day this year.
             'pattern' => \App\Support\WorkCalendar::describe($calendar = app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5]])),
             'shifts' => collect((array) ($calendar['shifts'] ?? []))->filter(fn ($s) => str_starts_with((string) $s['from'], (string) $this->year) || str_starts_with((string) $s['to'], (string) $this->year))->values(),
+            // Upcoming special off days (3rd Saturday etc., moved weekly offs) for the next 3 months, or the chosen year.
+            'specialOffs' => \App\Support\WorkCalendar::upcomingSpecialOffs($calendar, $this->year === (int) today()->year ? today() : \Illuminate\Support\Carbon::create($this->year, 1, 1), $this->year === (int) today()->year ? 90 : 365),
             'canEdit' => $this->user()->can('policies.manage'),
         ], 'Holidays');
     }

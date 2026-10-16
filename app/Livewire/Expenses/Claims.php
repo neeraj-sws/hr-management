@@ -100,7 +100,7 @@ class Claims extends Component
     {
         $user = $this->user();
         $own = $this->ownEmployee();
-        $query = ExpenseClaim::with(['employee', 'decider'])->latest('spent_on')->latest('id');
+        $query = ExpenseClaim::with(['employee', 'decider'])->latest('id'); // newest claim first
         if ($this->tab === 'mine') $query->where('employee_id', $own?->id ?? 0);
         elseif ($this->tab === 'approvals') $query->whereIn('id', $inbox->pending($user, ExpenseClaim::class)->pluck('approvable_id')->all() ?: [0]);
         else $query->when(! $user->canAny(['expenses.manage', 'hr.manage']), fn ($q) => $q->whereIn('employee_id', $this->teamEmployeeIds()->all() ?: [0]));

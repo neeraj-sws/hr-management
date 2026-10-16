@@ -84,8 +84,8 @@ class HrClient:
     def daily_status(self) -> dict:
         return self.request("GET", "/daily-status")
 
-    def save_daily_status(self, plan: str, summary: str, blockers: str, notes: str, yesterday: str = "") -> dict:
-        return self.request("POST", "/daily-status", {"yesterday": yesterday or None, "plan": plan or None, "summary": summary, "blockers": blockers or None, "notes": notes or None})["data"]
+    def save_daily_status(self, plan: str, summary: str, blockers: str, notes: str, yesterday: str = "", pending: str = "", tomorrow_plan: str = "") -> dict:
+        return self.request("POST", "/daily-status", {"yesterday": yesterday or None, "plan": plan or None, "summary": summary, "pending": pending or None, "tomorrow_plan": tomorrow_plan or None, "blockers": blockers or None, "notes": notes or None})["data"]
 
     def acknowledge_screen_capture(self) -> dict:
         return self.request("POST", "/monitoring/acknowledge", {})["data"]

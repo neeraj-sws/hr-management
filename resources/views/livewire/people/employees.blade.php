@@ -6,11 +6,15 @@
             <button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Add employee</button>
         </div>
     </div>
+    @unless($showForm || $pwEmployee)<x-errors />@endunless
+    @if($reportsToManager)<div class="alert alert-info">Showing people who report to <strong>{{ $reportsToManager->name }}</strong> ({{ $employees->total() }}). <button type="button" class="btn btn-sm" wire:click="$set('reportsTo', null)">Show everyone</button></div>@endif
 
     <section class="card">
         <div class="toolbar">
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name, code, email or designation"></label>
             <label class="field"><span>Department</span><select wire:model.live="department"><option value="">All departments</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
+            <label class="field"><span>Joined from</span><input type="date" wire:model.live="joinedFrom"></label>
+            <label class="field"><span>Joined to</span><input type="date" wire:model.live="joinedTo" x-bind:min="$wire.joinedFrom" max="{{ today()->toDateString() }}"></label>
             <label class="field"><span>Status</span><select wire:model.live="status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select></label>
             <span wire:loading class="spinner" style="margin-bottom:10px"></span>
         </div>
@@ -20,7 +24,7 @@
             @forelse($employees as $employee)
                 <tr wire:key="emp-{{ $employee->id }}">
                     <td><a href="{{ route('people.employees.show', $employee) }}"><strong>{{ $employee->name }}</strong></a><small>{{ $employee->employee_code }} · {{ $employee->designation ?? '—' }}</small></td>
-                    <td class="small">@if($employee->email ?? $employee->user?->email)<a href="mailto:{{ $employee->email ?? $employee->user?->email }}">{{ $employee->email ?? $employee->user?->email }}</a>@else — @endif</td>
+                    <td class="small nowrap">@if($mail = ($employee->email ?? $employee->user?->email))<a href="mailto:{{ $mail }}">{{ $mail }}</a> <button type="button" class="btn btn-sm btn-ghost" title="Copy email" aria-label="Copy email" x-data="{ copied: false }" x-on:click="navigator.clipboard.writeText(@js($mail)); copied = true; setTimeout(() => copied = false, 1500)"><span x-show="! copied">⧉</span><span x-show="copied" style="color:var(--green)">✓</span></button>@else — @endif</td>
                     <td>{{ $employee->department?->name ?? '—' }}</td>
                     <td>{{ $employee->manager?->name ?? '—' }}</td>
                     <td>{{ $employee->teams->pluck('name')->join(', ') ?: '—' }}</td>
@@ -31,6 +35,7 @@
                     <td><div class="row-actions">
                         <button class="btn btn-sm" wire:click="edit({{ $employee->id }})">Edit</button>
                         @if($employee->user_id && $isAdmin)<button class="btn btn-sm" wire:click="openPassword({{ $employee->id }})">Reset password</button>@endif
+                        @if($isAdmin && $employee->user_id !== auth()->id())<button class="btn btn-sm btn-danger" wire:click="remove({{ $employee->id }})" wire:confirm="Permanently remove {{ $employee->name }} ({{ $employee->employee_code }}) and their login? Only possible if they have no attendance, payroll, leave or other records.">Remove</button>@endif
                         @if($employee->user_id !== auth()->id())
                             <button class="btn btn-sm {{ $employee->is_active ? 'btn-danger' : '' }}" wire:click="toggleActive({{ $employee->id }})" wire:confirm="{{ $employee->is_active ? 'Deactivate '.$employee->name.'? Their login and device tokens will be revoked.' : 'Reactivate '.$employee->name.'?' }}">{{ $employee->is_active ? 'Deactivate' : 'Reactivate' }}</button>
                         @endif

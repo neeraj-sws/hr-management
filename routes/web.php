@@ -44,6 +44,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/attendance/records', Livewire\Attendance\Records::class)->middleware('access:hr.manage,employees.manage')->name('attendance.records');
     Route::get('/attendance/{session}/photo/{kind}', [HrFileController::class, 'attendancePhoto'])->name('attendance.photo');
     Route::post('/attendance/records/import', [ImportController::class, 'attendance'])->middleware('access:hr.manage,employees.manage')->name('attendance.records.import');
+    Route::post('/attendance/records/import/for-employee', [ImportController::class, 'attendanceFor'])->middleware('access:hr.manage,employees.manage')->name('attendance.records.import-for');
     Route::get('/attendance/corrections', Livewire\Attendance\Corrections::class)->middleware('access:profile,attendance.correct,approvals.manage')->name('attendance.corrections');
     Route::get('/attendance/conflicts', Livewire\Attendance\Conflicts::class)->middleware('access:attendance.correct,leave.manage,hr.manage')->name('attendance.conflicts');
     Route::get('/attendance/devices', Livewire\Attendance\Devices::class)->middleware('access:employees.manage,hr.manage')->name('attendance.devices');
@@ -69,6 +70,8 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Payroll
     Route::get('/payroll/salary', Livewire\Payroll\Salary::class)->middleware('access:profile,payroll.manage,payroll.approve,hr.manage')->name('payroll.salary');
     Route::post('/payroll/salary/import', [ImportController::class, 'salary'])->middleware('access:payroll.manage,hr.manage')->name('payroll.salary.import');
+    Route::get('/payroll/legacy-salary', Livewire\Payroll\LegacySalary::class)->middleware('access:payroll.manage,hr.manage')->name('payroll.legacy');
+    Route::post('/payroll/legacy-salary/import', [ImportController::class, 'legacySalary'])->middleware('access:payroll.manage,hr.manage')->name('payroll.legacy.import');
     Route::get('/imports/{type}/template', [ImportController::class, 'template'])->middleware('access:payroll.manage,hr.manage,employees.manage')->name('imports.template');
     Route::get('/payroll/runs', Livewire\Payroll\Runs::class)->middleware('access:payroll.manage,payroll.approve')->name('payroll.runs');
     Route::get('/payroll/approvals', Livewire\Payroll\Runs::class)->middleware('access:payroll.approve')->name('payroll.approvals');

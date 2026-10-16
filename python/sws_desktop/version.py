@@ -1,3 +1,3 @@
 """Desktop app version; bump it for every installer you publish."""
 
-VERSION = "1.9.0"
+VERSION = "1.10.0"

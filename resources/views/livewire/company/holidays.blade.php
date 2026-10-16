@@ -9,6 +9,14 @@
     @if($next)
         <section class="card card-body"><span class="eyebrow">Next holiday</span><h2 style="margin:4px 0">{{ $next['name'] }}</h2><p class="muted" style="margin:0">{{ $next['date']->format('l, d F Y') }} · {{ $next['date']->isToday() ? 'today' : 'in '.(int) today()->diffInDays($next['date']).' '.str('day')->plural((int) today()->diffInDays($next['date'])) }}</p></section>
     @endif
+    @if($specialOffs)
+        <section class="card">
+            <div class="card-head"><div><h2>Upcoming weekly offs</h2><p>Days that are off although they are normally working days (e.g. the 3rd Saturday). You get a reminder the evening before.</p></div></div>
+            <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Day</th><th>Why</th></tr></thead><tbody>
+                @foreach($specialOffs as $off)<tr><td class="nowrap">{{ $off['date']->format('d M Y') }}</td><td>{{ $off['date']->format('l') }}</td><td>{{ $off['reason'] }}</td></tr>@endforeach
+            </tbody></table></div>
+        </section>
+    @endif
     @if($shifts->isNotEmpty())
         <section class="card card-body"><span class="eyebrow">Weekly off moved</span>@foreach($shifts as $shift)<div class="small"><strong>{{ \Illuminate\Support\Carbon::parse($shift['from'])->format('D d M') }}</strong> is a working day; <strong>{{ \Illuminate\Support\Carbon::parse($shift['to'])->format('D d M Y') }}</strong> is off instead.@if(! empty($shift['note'])) {{ $shift['note'] }}@endif</div>@endforeach</section>
     @endif

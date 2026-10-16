@@ -39,7 +39,7 @@
     </section>
     @if($closingId)
         <x-modal title="Check out on behalf of the employee">
-            <form wire:submit="closeSession"><div class="modal-body"><div class="form-grid">
+            <form wire:submit="closeSession"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Check-out time" name="closeTime"><input type="time" wire:model="closeTime"></x-field>
                 <x-field label="Reason" name="closeReason"><select wire:model.live="closeReason"><option value="">Select a reason</option>@foreach(\App\Models\AttendanceSession::FORCED_CHECKOUT_REASONS as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
                 <x-field :label="$closeReason === 'other' ? 'Explanation (required)' : 'Explanation (optional)'" name="closeNote" full><textarea wire:model="closeNote" rows="2" placeholder="e.g. Left at 6 PM, confirmed by the team lead"></textarea></x-field>

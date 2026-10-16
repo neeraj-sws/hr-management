@@ -111,7 +111,7 @@ class Courses extends Component
             'courses' => TrainingCourse::withCount([
                 'assignments' => fn ($q) => $scope ? $q->whereIn('employee_id', $scope) : $q,
                 'assignments as completed_count' => fn ($q) => ($scope ? $q->whereIn('employee_id', $scope) : $q)->where('status', 'completed'),
-            ])->when(! $this->canManage(), fn ($q) => $q->where('is_active', true))->orderByDesc('is_active')->orderBy('title')->paginate(15),
+            ])->when(! $this->canManage(), fn ($q) => $q->where('is_active', true))->orderByDesc('is_active')->latest('id')->paginate(15),
             'canManage' => $this->canManage(),
             'assigning' => $this->assigningId ? TrainingCourse::find($this->assigningId) : null,
             'employees' => $this->assigningId ? $this->assignable()->get(['id', 'name', 'employee_code']) : collect(),

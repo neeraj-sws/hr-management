@@ -11,18 +11,19 @@
     </div>
     <section class="card">
         <div class="toolbar">
-            <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Project name"></label>
+            <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Project or client name"></label>
             <label class="field"><span>Status</span><select wire:model.live="status"><option value="">Any</option><option value="planned">Planned</option><option value="active">Active</option><option value="on_hold">On hold</option><option value="completed">Completed</option></select></label>
         </div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Project</th><th>Manager</th><th>Members</th><th>Timeline</th><th>Progress</th>@if($mine)<th class="num">My open tasks</th>@else<th class="num">Est. time</th>@endif<th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Project</th><th>Client</th><th>Manager</th><th>Members</th><th>Timeline</th><th>Progress</th>@if($mine)<th class="num">My open tasks</th>@else<th class="num">Est. time</th>@endif<th>Status</th><th></th></tr></thead>
             <tbody>
             @forelse($projects as $project)
                 @php($pct = $project->tasks_count ? round($project->completed_tasks_count / $project->tasks_count * 100) : 0)
                 <tr wire:key="p-{{ $project->id }}">
                     <td><strong>{{ $project->name }}</strong><small>{{ \Illuminate\Support\Str::limit($project->description, 70) }}</small></td>
+                    <td>{{ $project->client_name ?: '—' }}</td>
                     <td>{{ $project->manager?->name ?? '—' }}</td>
-                    <td class="small">{{ $project->members->count() ? \Illuminate\Support\Str::limit($project->members->pluck('name')->join(', '), 60) : 'Anyone in scope' }}</td>
+                    <td class="small">@if($project->members_count)<strong>{{ $project->members_count }} {{ str('member')->plural($project->members_count) }}</strong><small title="{{ $project->members->pluck('name')->join(', ') }}">{{ \Illuminate\Support\Str::limit($project->members->pluck('name')->join(', '), 60) }}</small>@else<strong>0 members</strong><small>anyone in scope</small>@endif</td>
                     <td class="nowrap small">{{ $project->starts_on?->format('d M Y') ?? '—' }} → {{ $project->ends_on?->format('d M Y') ?? '—' }}</td>
                     <td style="min-width:150px"><div class="progress"><span style="width: {{ $pct }}%"></span></div><small>{{ $project->completed_tasks_count }}/{{ $project->tasks_count }} done @if($project->overdue_tasks_count)· <span style="color:var(--red)">{{ $project->overdue_tasks_count }} overdue</span>@endif</small></td>
                     @if($mine)<td class="num">{{ $project->my_open_tasks_count }}</td>@else<td class="num">{{ \App\Support\Duration::fromHours($project->tasks_sum_estimated_hours) }}</td>@endif
@@ -33,7 +34,7 @@
                     </div></td>
                 </tr>
             @empty
-                <tr><td colspan="8"><x-empty :title="$mine ? 'You are not on any project yet' : 'No projects yet'" icon="folder">{{ $mine ? 'Projects appear here when you are added to one or given a task in it.' : 'Create a project to group related tasks.' }}</x-empty></td></tr>
+                <tr><td colspan="9"><x-empty :title="$mine ? 'You are not on any project yet' : 'No projects yet'" icon="folder">{{ $mine ? 'Projects appear here when you are added to one or given a task in it.' : 'Create a project to group related tasks.' }}</x-empty></td></tr>
             @endforelse
             </tbody>
         </table></div>
@@ -44,6 +45,7 @@
         <x-modal :title="$editingId ? 'Edit project' : 'New project'">
             <form wire:submit="save"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Name" name="name" full><input wire:model="name"></x-field>
+                <x-field label="Client name" name="clientName" hint="optional" full><input wire:model="clientName" placeholder="Who the project is for"></x-field>
                 <x-field label="Description" name="description" full><textarea wire:model="description"></textarea></x-field>
                 @unless($scoped)<x-field label="Manager" name="managerId" hint="notified when assigned"><select wire:model="managerId"><option value="">—</option>@foreach($managers as $m)<option value="{{ $m->id }}">{{ $m->name }}</option>@endforeach</select></x-field>@endunless
                 <x-field label="Status" name="projectStatus"><select wire:model="projectStatus"><option value="planned">Planned</option><option value="active">Active</option><option value="on_hold">On hold</option><option value="completed">Completed</option></select></x-field>

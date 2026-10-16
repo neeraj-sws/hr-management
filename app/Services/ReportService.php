@@ -91,7 +91,7 @@ class ReportService
         return match ($type) {
             'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'day_status', 'session_status', 'check_in_ip', 'check_out_ip'],
             'leave' => ['id', 'employee_code', 'employee_name', 'leave_type', 'paid', 'starts_on', 'ends_on', 'days', 'status', 'decided_at'],
-            'projects' => ['id', 'project', 'manager', 'status', 'starts_on', 'ends_on', 'members', 'tasks', 'completed_tasks', 'open_tasks', 'overdue_tasks', 'progress_pct', 'estimated_hours', 'logged_hours'],
+            'projects' => ['id', 'project', 'client', 'manager', 'status', 'starts_on', 'ends_on', 'members', 'tasks', 'completed_tasks', 'open_tasks', 'overdue_tasks', 'progress_pct', 'estimated_hours', 'logged_hours'],
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
             'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
             'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance'],
@@ -287,7 +287,7 @@ class ReportService
                 $tasks = $p->tasks;
                 $done = $tasks->where('status', 'completed')->count();
 
-                return ['id' => $p->id, 'project' => $p->name, 'manager' => $p->manager?->name, 'status' => $p->status, 'starts_on' => $p->starts_on?->toDateString(), 'ends_on' => $p->ends_on?->toDateString(),
+                return ['id' => $p->id, 'project' => $p->name, 'client' => $p->client_name, 'manager' => $p->manager?->name, 'status' => $p->status, 'starts_on' => $p->starts_on?->toDateString(), 'ends_on' => $p->ends_on?->toDateString(),
                     'members' => (int) $p->members_count, 'tasks' => $tasks->count(), 'completed_tasks' => $done, 'open_tasks' => $tasks->count() - $done,
                     'overdue_tasks' => $tasks->filter(fn (Task $t) => $t->isOverdue())->count(), 'progress_pct' => $tasks->count() ? (int) round($done / $tasks->count() * 100) : 0,
                     'estimated_hours' => (float) $tasks->sum('estimated_hours'), 'logged_hours' => $tasks->sum(fn (Task $t) => $this->work->loggedSeconds($t)) / 3600];

@@ -49,7 +49,21 @@
 
     {{-- ATTENDANCE --}}
     <div x-show="tab === 'attendance'" x-cloak>
-        <section class="card"><div class="card-head"><h2>Recent attendance</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'attendance', 'employee' => $employee->id]) }}">Full report →</a></div>
+        @if(auth()->user()->canAny(['hr.manage', 'employees.manage']))
+            <section class="card mb">
+                <div class="card-head"><div><h2>Import {{ $employee->name }}'s attendance (Excel)</h2><p>Upload this employee's sheet (one row per day). Every row is saved for {{ $employee->name }} — the Employee ID column in the file is not needed. Afterwards the imported days open in Attendance records.</p></div></div>
+                <form method="POST" action="{{ route('attendance.records.import') }}" enctype="multipart/form-data" class="card-body toolbar" style="border:0" x-data="{ busy: false }" x-on:submit="busy = true">
+                    @csrf
+                    <input type="hidden" name="employee_id" value="{{ $employee->id }}">
+                    <input type="file" name="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" required>
+                    <label class="check"><input type="checkbox" name="update_existing" value="1"> Update days that already exist</label>
+                    @if(\App\Support\Access::isAdmin(auth()->user()))<label class="check" title="For migrating old history: days inside a locked payroll are saved too; that payroll is not recalculated. Admins only."><input type="checkbox" name="into_locked" value="1"> Old data: also import into locked payroll months</label>@endif
+                    <button class="btn btn-primary" type="submit" x-bind:disabled="busy"><span x-show="busy" class="spinner"></span>Import for {{ $employee->name }}</button>
+                    <a class="btn btn-sm" href="{{ route('imports.template', 'attendance') }}"><x-icon name="download" class="icon-sm" />Excel template</a>
+                </form>
+            </section>
+        @endif
+        <section class="card"><div class="card-head"><h2>Recent attendance</h2><span><a class="link-sm" href="{{ route('attendance.records', ['employee' => $employee->id, 'from' => now()->subYear()->toDateString(), 'to' => today()->toDateString()]) }}">All days (incl. imported) →</a> · <a class="link-sm" href="{{ route('reports.show', ['type' => 'attendance', 'employee' => $employee->id]) }}">Full report →</a></span></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Status</th></tr></thead><tbody>
                 @foreach($recentDays as $day)<tr><td>{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D d M') }}</td><td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td><td><x-badge :status="$day['status']" /></td></tr>@endforeach
             </tbody></table></div>

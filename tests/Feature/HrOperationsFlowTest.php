@@ -147,6 +147,7 @@ class HrOperationsFlowTest extends TestCase
         $this->actingAs($hrUser);
         Livewire::test(Runs::class)->set('run', $run->id)->call('approve')->assertHasNoErrors();
         $this->actingAs($accountsUser);
+        Carbon::setTestNow('2026-11-02 10:00:00'); // a period can only be locked once it has ended
         Livewire::test(Runs::class)->set('run', $run->id)->call('lock')->assertHasNoErrors();
         Livewire::test(Runs::class)->set('run', $run->id)->call('recalculate')->assertHasErrors('payroll');
         Livewire::test(Runs::class)->set('run', $run->id)->call('openPayment', $item->id)->set('paymentAmount', '500')->set('paymentReference', 'BANK-001')->call('pay')->assertHasNoErrors();
@@ -162,7 +163,7 @@ class HrOperationsFlowTest extends TestCase
         $this->actingAs($employeeUser);
         Livewire::test(Payslips::class)->assertSee('PS-');
         $payslip = Payslip::where('payroll_item_id', $item->id)->firstOrFail();
-        $this->get(route('hr.payslips.show', $payslip))->assertOk()->assertSee('Net payable')->assertSee('Total paid');
+        $this->get(route('hr.payslips.show', $payslip))->assertOk()->assertSee('Net pay')->assertSee('Rupees')->assertSee('Total paid');
         $this->actingAs($managerUser)->get(route('hr.payslips.show', $payslip))->assertForbidden();
         Carbon::setTestNow();
     }

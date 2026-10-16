@@ -69,6 +69,7 @@ class MyAttendance extends Component
             'rules' => $attendance->rules($employee, today()->toDateString()),
             'late' => $session ? $attendance->isLate($session) : false,
             'selfieRequired' => $attendance->selfieRequired($employee, 'web'),
+            'calendar' => app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]),
             'locationRequired' => (bool) (app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_web'] ?? false),
             'days' => $days,
             'summary' => $days->countBy('status'),

@@ -121,7 +121,9 @@ class Salary extends Component
         // The current record's hours are the employee's working day everywhere (attendance, payroll, settings).
         AttendanceEmployee::whereKey($this->profileEmployeeId)->update(['monthly_salary' => $latest->monthly_salary, 'daily_work_hours' => $latest->standard_daily_hours]);
         $audit->record('salary.profile_configured', $profile, ['monthly_salary' => (float) $this->monthly, 'effective_from' => $this->effectiveFrom, 'components' => $rows]);
-        $message = $this->correcting ? 'Salary corrected.' : 'Salary profile saved.';
+        $employee = AttendanceEmployee::with('user')->find($this->profileEmployeeId);
+        \App\Services\Notifier::send($employee?->user, 'SalaryProfile', $profile->id, 'Your salary '.($this->correcting ? 'record was corrected' : 'was updated').': '.number_format((float) $this->monthly, 2).' per month from '.\Illuminate\Support\Carbon::parse($this->effectiveFrom)->format('d M Y').'.', null, auth()->id());
+        $message = $this->correcting ? 'Salary corrected. The employee was notified.' : 'Salary profile saved. The employee was notified.';
         $this->profileEmployeeId = null;
         $this->correcting = false;
         $this->toast($message);

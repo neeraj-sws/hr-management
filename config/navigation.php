@@ -55,6 +55,7 @@ return [
         ['label' => 'Payslips', 'route' => 'payroll.payslips', 'icon' => 'file'],
         ['label' => 'Advances', 'route' => 'payroll.advances', 'icon' => 'trending'],
         ['label' => 'Payments', 'route' => 'payroll.payments', 'icon' => 'credit-card'],
+        ['label' => 'Legacy Salary', 'route' => 'payroll.legacy', 'icon' => 'file'],
     ]],
     ['heading' => 'Performance', 'items' => [
         ['label' => 'Performance', 'route' => 'performance.reviews', 'icon' => 'star'],

@@ -19,3 +19,4 @@ Schedule::command('work:remind-daily-status')->weekdays()->dailyAt('18:15')->wit
 Schedule::command('attendance:absence-alerts')->everyFifteenMinutes()->between('09:00', '20:00')->withoutOverlapping();
 Schedule::command('work:reconcile-task-hours --fix')->dailyAt('01:30')->withoutOverlapping();
 Schedule::command('sheets:sync')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('hr:weekly-off-reminders')->dailyAt('17:00')->withoutOverlapping();

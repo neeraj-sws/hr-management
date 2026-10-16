@@ -83,7 +83,7 @@ class Overtime extends Component
     {
         $user = $this->user();
         $own = $this->ownEmployee();
-        $query = OvertimeRequest::with(['employee', 'decider'])->latest('work_date')->latest('id');
+        $query = OvertimeRequest::with(['employee', 'decider'])->latest('id'); // newest request first
         if ($this->tab === 'mine') $query->where('employee_id', $own?->id ?? 0);
         elseif ($this->tab === 'approvals') $query->whereIn('id', $inbox->pending($user, OvertimeRequest::class)->pluck('approvable_id')->all() ?: [0]);
         else $query->when(! $user->canAny(['hr.manage', 'employees.manage']), fn ($q) => $q->whereIn('employee_id', $this->teamEmployeeIds()->all() ?: [0]));

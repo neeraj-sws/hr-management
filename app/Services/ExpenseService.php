@@ -34,7 +34,7 @@ class ExpenseService
                     'amount' => round((float) $data['amount'], 2), 'description' => $data['description'],
                     'receipt_path' => $path, 'receipt_name' => $receipt?->getClientOriginalName(), 'status' => 'pending',
                 ]);
-                $approver = $employee->manager?->user_id;
+                $approver = ApprovalInbox::approverFor($employee); // admins/HR when the manager is unavailable
                 ApprovalRequest::create(['approvable_type' => ExpenseClaim::class, 'approvable_id' => $claim->id, 'approver_id' => $approver, 'status' => 'pending']);
                 $this->audit->record('expense.submitted', $claim, ['amount' => (float) $claim->amount, 'category' => $claim->category]);
 
@@ -55,7 +55,9 @@ class ExpenseService
     /** People who may decide an employee's claim: their manager and expense administrators. */
     public function approvers(AttendanceEmployee $employee): \Illuminate\Support\Collection
     {
-        return Notifier::withPermission('expenses.manage')->push($employee->manager?->user)->filter()->unique('id')->values();
+        $manager = ApprovalInbox::approverFor($employee);
+
+        return Notifier::withPermission('expenses.manage')->push($manager ? User::find($manager) : null)->filter()->unique('id')->values();
     }
 
     public function decide(ExpenseClaim $claim, int $approverId, bool $approve, ?string $note = null): ExpenseClaim

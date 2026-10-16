@@ -34,6 +34,10 @@ class Shifts extends Component
     public string $startsOn = '';
     public string $endsOn = '';
 
+    /** "Edit shift dates" for one employee: their whole timeline, row = [shift_id, starts_on, ends_on]. */
+    public ?int $timelineEmployeeId = null;
+    public array $shiftRows = [];
+
     public function mount(): void
     {
         $this->week = preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->week) ? Carbon::parse($this->week)->startOfWeek()->toDateString() : today()->startOfWeek()->toDateString();
@@ -77,10 +81,15 @@ class Shifts extends Component
         $this->toast('Shift saved.');
     }
 
-    public function openAssign(?int $shiftId = null, ?int $employeeId = null): void
+    /** $date: the roster day that was clicked — the assignment starts there (not on Monday of the week). */
+    public function openAssign(?int $shiftId = null, ?int $employeeId = null, ?string $date = null): void
     {
         $this->authorizeShifts();
-        $this->fill(['shiftId' => (string) ($shiftId ?? Shift::where('is_active', true)->value('id') ?? ''), 'employeeIds' => $employeeId ? [(string) $employeeId] : [], 'startsOn' => $this->week, 'endsOn' => '']);
+        $from = $date && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? $date : max($this->week, today()->toDateString());
+        $current = $employeeId ? app(ShiftService::class)->shiftFor(AttendanceEmployee::findOrFail($employeeId), $from) : null;
+        $this->fill(['shiftId' => (string) ($shiftId ?? $current?->id ?? Shift::where('is_active', true)->value('id') ?? ''), 'employeeIds' => $employeeId ? [(string) $employeeId] : [], 'startsOn' => $from,
+            // A roster cell changes that one day; widen "Until" for a longer period (blank = until changed).
+            'endsOn' => $date && $employeeId ? $from : '']);
         $this->resetValidation();
         $this->showAssign = true;
     }
@@ -95,13 +104,62 @@ class Shifts extends Component
         ], ['employeeIds.required' => 'Select at least one employee.'], ['shiftId' => 'shift', 'startsOn' => 'start date', 'endsOn' => 'end date']);
         $count = $shifts->assign(array_map('intval', $this->employeeIds), Shift::findOrFail($this->shiftId), $this->startsOn, $this->endsOn ?: null, auth()->id());
         $this->showAssign = false;
-        $this->toast("Shift assigned to {$count} ".str('employee')->plural($count).'.');
+        $this->toast("Shift assigned to {$count} ".str('employee')->plural($count).' from '.Carbon::parse($this->startsOn)->format('d M').($this->endsOn ? ' to '.Carbon::parse($this->endsOn)->format('d M') : '').'. They were notified.');
+    }
+
+    public function openTimeline(int $employeeId, ShiftService $shifts): void
+    {
+        $this->authorizeShifts();
+        $employee = AttendanceEmployee::findOrFail($employeeId);
+        $this->timelineEmployeeId = $employee->id;
+        $this->shiftRows = $shifts->assignmentsOf($employee)->map(fn ($a) => ['shift_id' => (string) $a->shift_id, 'starts_on' => $a->starts_on->toDateString(), 'ends_on' => (string) $a->ends_on?->toDateString()])->all();
+        $this->resetValidation();
+    }
+
+    public function addShiftRow(): void
+    {
+        $last = end($this->shiftRows) ?: null;
+        $from = $last && $last['ends_on'] !== '' ? Carbon::parse($last['ends_on'])->addDay()->toDateString() : today()->toDateString();
+        $this->shiftRows[] = ['shift_id' => (string) (Shift::where('is_active', true)->value('id') ?? ''), 'starts_on' => $from, 'ends_on' => ''];
+    }
+
+    public function removeShiftRow(int $index): void
+    {
+        unset($this->shiftRows[$index]);
+        $this->shiftRows = array_values($this->shiftRows);
+    }
+
+    public function saveTimeline(ShiftService $shifts): void
+    {
+        $this->authorizeShifts();
+        $this->validate(['shiftRows.*.shift_id' => ['required', 'exists:shifts,id'], 'shiftRows.*.starts_on' => ['required', 'date'], 'shiftRows.*.ends_on' => ['nullable', 'date']],
+            ['shiftRows.*.shift_id.required' => 'Choose a shift on every row.', 'shiftRows.*.starts_on.required' => 'Every row needs a "From" date.']);
+        $employee = AttendanceEmployee::findOrFail($this->timelineEmployeeId);
+        $shifts->replaceAssignments($employee, $this->shiftRows, auth()->id());
+        $this->timelineEmployeeId = null;
+        $this->toast("{$employee->name}'s shift dates saved. They were notified.");
+    }
+
+    /** What each person actually worked on the roster days: "employee|date" => [in, out, worked seconds, required seconds]. */
+    private function actuals(array $employeeIds, array $dates): array
+    {
+        $attendance = app(\App\Services\AttendanceService::class);
+        $out = [];
+        $people = AttendanceEmployee::whereIn('id', $employeeIds)->get()->keyBy('id');
+        foreach (\App\Models\AttendanceSession::whereIn('employee_id', $employeeIds)->whereDate('work_date', '>=', reset($dates))->whereDate('work_date', '<=', end($dates))->get() as $s) {
+            $key = $s->employee_id.'|'.$s->work_date->toDateString();
+            $out[$key] = ['in' => $s->check_in, 'out' => $s->check_out, 'worked' => ($out[$key]['worked'] ?? 0) + $attendance->workedSeconds($s),
+                'required' => (int) round($attendance->dailyHours($people[$s->employee_id], $s->work_date->toDateString()) * 3600)];
+        }
+
+        return $out;
     }
 
     public function closeModal(): void
     {
         $this->showShiftForm = false;
         $this->showAssign = false;
+        $this->timelineEmployeeId = null;
     }
 
     public function render(ShiftService $shifts)
@@ -118,6 +176,8 @@ class Shifts extends Component
             'departments' => Department::orderBy('name')->get(['id', 'name']),
             'dates' => $dates,
             'roster' => $shifts->roster($employees->getCollection(), $dates),
+            'actuals' => $this->actuals($employees->getCollection()->pluck('id')->all(), $dates),
+            'timelineEmployee' => $this->timelineEmployeeId ? AttendanceEmployee::find($this->timelineEmployeeId) : null,
         ], 'Shifts & Roster');
     }
 }
