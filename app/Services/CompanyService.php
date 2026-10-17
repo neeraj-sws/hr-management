@@ -15,10 +15,14 @@ class CompanyService
 {
     public function __construct(private readonly AuditLogger $audit, private readonly PolicyConfigurationService $policies) {}
 
-    /** Creates or updates an announcement; a newly published one notifies its audience. */
-    public function saveAnnouncement(array $data, User $author, ?Announcement $announcement = null): Announcement
+    /**
+     * Creates or updates an announcement; a newly published one notifies its audience in the app.
+     * With $email the full announcement is also e-mailed to everyone in the audience (whatever their
+     * e-mail preferences, which otherwise keep company news in the app).
+     */
+    public function saveAnnouncement(array $data, User $author, ?Announcement $announcement = null, bool $email = false): Announcement
     {
-        return DB::transaction(function () use ($data, $author, $announcement) {
+        return DB::transaction(function () use ($data, $author, $announcement, $email) {
             $data['department_id'] = $data['audience'] === 'department' ? $data['department_id'] : null;
             $data['team_id'] = $data['audience'] === 'team' ? $data['team_id'] : null;
             $isNew = ! $announcement;
@@ -26,10 +30,13 @@ class CompanyService
             $announcement->fill($data)->save();
             $this->audit->record($isNew ? 'announcement.published' : 'announcement.updated', $announcement, ['audience' => $announcement->audience]);
             if ($isNew) {
-                $notification = new ApprovalRequested('Announcement', $announcement->id, 'Announcement: '.$announcement->title);
+                $notification = new ApprovalRequested('Announcement', $announcement->id, 'Announcement: '.$announcement->title, null, ! $email);
                 foreach ($this->audienceUsers($announcement) as $user) {
-                    if ($user->id !== $author->id) $user->notify($notification);
+                    if ($user->id === $author->id) continue;
+                    $user->notify($notification);
+                    if ($email) rescue(fn () => $user->notify(new \App\Notifications\AnnouncementEmail($announcement)), null, true);
                 }
+                if ($email) $this->audit->record('announcement.emailed', $announcement, ['audience' => $announcement->audience]);
             }
 
             return $announcement;

@@ -22,6 +22,7 @@ class Announcements extends Component
     public string $departmentId = '';
     public string $teamId = '';
     public bool $isPinned = false;
+    public bool $sendEmail = false;
     public string $expiresOn = '';
 
     private function canManage(): bool
@@ -36,7 +37,7 @@ class Announcements extends Component
         $this->fill([
             'editingId' => $a?->id, 'title' => $a?->title ?? '', 'body' => $a?->body ?? '', 'audience' => $a?->audience ?? 'all',
             'departmentId' => (string) ($a?->department_id ?? ''), 'teamId' => (string) ($a?->team_id ?? ''),
-            'isPinned' => (bool) $a?->is_pinned, 'expiresOn' => (string) $a?->expires_on?->toDateString(),
+            'isPinned' => (bool) $a?->is_pinned, 'expiresOn' => (string) $a?->expires_on?->toDateString(), 'sendEmail' => false,
         ]);
         $this->resetValidation();
         $this->showForm = true;
@@ -57,9 +58,9 @@ class Announcements extends Component
             'title' => $this->title, 'body' => $this->body, 'audience' => $this->audience,
             'department_id' => $this->departmentId ?: null, 'team_id' => $this->teamId ?: null,
             'is_pinned' => $this->isPinned, 'expires_on' => $this->expiresOn ?: null,
-        ], $this->user(), $this->editingId ? Announcement::findOrFail($this->editingId) : null);
+        ], $this->user(), $this->editingId ? Announcement::findOrFail($this->editingId) : null, ! $this->editingId && $this->sendEmail);
         $this->showForm = false;
-        $this->toast($this->editingId ? 'Announcement updated.' : 'Announcement published and sent to its audience.');
+        $this->toast($this->editingId ? 'Announcement updated.' : ($this->sendEmail ? 'Announcement published, sent in the app and e-mailed to its audience.' : 'Announcement published and sent to its audience.'));
     }
 
     public function delete(int $id, CompanyService $company): void
