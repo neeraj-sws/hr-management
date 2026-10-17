@@ -28,7 +28,7 @@
                 @forelse($employees as $e)
                     <tr wire:key="s-{{ $e->id }}"><td><strong>{{ $e->name }}</strong><small>{{ $e->employee_code }}</small></td><td>{{ $e->department?->name ?? '—' }}</td>
                         <td class="num">{{ $e->salaryProfile ? number_format((float) $e->salaryProfile->monthly_salary, 2) : '—' }}</td><td>{{ $e->salaryProfile?->effective_from?->format('d M Y') ?? '—' }}</td>
-                        <td class="num">{{ $e->salaryProfile?->working_days_per_month ?? '—' }}</td><td class="num">{{ $e->salaryProfile ? (float) $e->salaryProfile->standard_daily_hours : '—' }}</td>
+                        <td class="num">@if($e->salaryProfile)@php($sd = $salaryDays[$e->id] ?? null){{ $sd['days'] ?? $e->salaryProfile->working_days_per_month }}@if($sd['auto'] ?? false)<small title="Counted from the calendar: Sundays, the off Saturdays (e.g. 3rd Saturday) and unpaid holidays are left out. Changes every month.">auto · {{ $sd['month'] }}</small>@endif @else — @endif</td><td class="num">{{ $e->salaryProfile ? (float) $e->salaryProfile->standard_daily_hours : '—' }}</td>
                         <td>@if($canManage)@if($e->salaryProfile)<button type="button" class="btn btn-sm" wire:click="correctProfile({{ $e->id }})">Edit</button> @endif<button type="button" class="btn btn-sm" wire:click="editProfile({{ $e->id }})">Revise</button>@endif</td></tr>
                 @empty<tr><td colspan="7"><x-empty title="No employees" icon="users" /></td></tr>@endforelse
             </tbody></table></div>
@@ -53,7 +53,8 @@
             <form wire:submit="saveProfile"><div class="modal-body"><x-errors />@if($correcting)<p class="small muted" style="margin:-4px 0 10px">Fixing the current salary record in place. Keep the effective date to overwrite it, or change it to add a new revision.</p>@endif<div class="form-grid">
                 <x-field label="Monthly salary" name="monthly"><input type="number" step="0.01" min="0" wire:model="monthly"></x-field>
                 <x-field label="Effective from" name="effectiveFrom"><input type="date" wire:model="effectiveFrom"></x-field>
-                <x-field label="Working days per month" name="workingDays"><input type="number" min="1" max="31" wire:model="workingDays"></x-field>
+                @if($autoDays)<div class="field"><span class="label">Working days per month</span><p class="small muted" style="margin:6px 0 0">Auto from the calendar — {{ $autoDays['month'] }} has <strong>{{ $autoDays['days'] }}</strong> working days. Sundays, the off Saturdays (e.g. 3rd Saturday) and unpaid holidays are left out, so it changes every month.</p></div>
+                @else<x-field label="Working days per month" name="workingDays" hint="fixed — turn on auto in Settings > Payroll"><input type="number" min="1" max="31" wire:model="workingDays"></x-field>@endif
                 <x-field label="Standard hours per day" name="dailyHours"><input type="number" step="0.25" min="0.25" max="24" wire:model="dailyHours"></x-field>
             </div>
             <div class="field mt"><span class="label">Salary structure <span class="muted small">— earnings must add up to the monthly salary; leave empty to use the company template</span></span>

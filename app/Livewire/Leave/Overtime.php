@@ -30,6 +30,14 @@ class Overtime extends Component
         $canApprove = $this->user()->can('overtime.manage');
         if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = $this->ownEmployee() ? 'mine' : 'approvals';
         if ($this->tab !== 'mine' && ! $canApprove) $this->tab = 'mine';
+        // "Request overtime" from My Attendance: open the form for that day and the extra minutes worked.
+        $date = (string) request()->query('date', '');
+        if ($this->ownEmployee() && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $this->create();
+            $this->workDate = $date;
+            $this->minutes = (string) max(0, (int) request()->query('minutes', 0)) ?: '';
+            $this->reason = 'Worked beyond my shift on '.\Illuminate\Support\Carbon::parse($date)->format('d M Y');
+        }
     }
 
     public function create(): void

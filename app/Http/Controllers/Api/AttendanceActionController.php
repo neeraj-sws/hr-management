@@ -21,27 +21,32 @@ class AttendanceActionController extends ApiController
 
     public function checkIn(Request $request): JsonResponse
     {
+        $this->trackDesktop($request);
         return $this->respond($this->attendance->checkIn($this->apiEmployee($request), $this->source($request), null, $this->location($request), $request->file('photo')), 201);
     }
 
     public function startBreak(Request $request): JsonResponse
     {
+        $this->trackDesktop($request);
         return $this->respond($this->attendance->startBreak($this->apiEmployee($request), $this->source($request)));
     }
 
     public function endBreak(Request $request): JsonResponse
     {
+        $this->trackDesktop($request);
         return $this->respond($this->attendance->endBreak($this->apiEmployee($request), $this->source($request)));
     }
 
     public function checkOut(Request $request): JsonResponse
     {
+        $this->trackDesktop($request);
         return $this->respond($this->attendance->checkOut($this->apiEmployee($request), $this->source($request), null, $this->location($request), $request->file('photo')));
     }
 
     /** Desktop: the employee confirmed that time away from the computer was a break. */
     public function away(Request $request): JsonResponse
     {
+        $this->trackDesktop($request, true);
         $data = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after:from'], 'reason' => ['required', 'in:idle,locked,asleep']]);
         $from = Carbon::parse($data['from']);
         abort_if($from->lt(now()->subHours(24)), 422, 'Away periods older than 24 hours cannot be recorded; ask for an attendance correction instead.');
@@ -51,6 +56,7 @@ class AttendanceActionController extends ApiController
 
     public function heartbeat(Request $request): JsonResponse
     {
+        $this->trackDesktop($request, true);
         $data = $request->validate(['screen_active_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'], 'screen_idle_seconds' => ['nullable', 'integer', 'min:0', 'max:3600']]);
 
         return $this->respond($this->attendance->heartbeat($this->apiEmployee($request), (int) ($data['screen_active_seconds'] ?? 0), (int) ($data['screen_idle_seconds'] ?? 0)));
@@ -77,6 +83,36 @@ class AttendanceActionController extends ApiController
         $request->validate(['latitude' => ['nullable', 'numeric', 'between:-90,90'], 'longitude' => ['nullable', 'numeric', 'between:-180,180'], 'accuracy' => ['nullable', 'numeric', 'min:0']]);
 
         return $request->filled(['latitude', 'longitude']) ? $request->only(['latitude', 'longitude', 'accuracy']) : null;
+    }
+
+    /**
+     * The desktop app signs in with the employee's own account (one token per computer), so its computer is
+     * listed under Attendance > Devices from that token: name, Windows user and app version (sent as headers),
+     * last seen. Revoking it there deletes the token, which signs that computer out.
+     */
+    private function trackDesktop(Request $request, bool $desktopOnly = false): void
+    {
+        if (! $desktopOnly && $request->input('source') !== 'desktop') return;
+        $token = $request->user()?->currentAccessToken();
+        if (! $token instanceof \Laravel\Sanctum\PersonalAccessToken || ! $token->getKey()) return;
+        // Listing the computer must never get in the way of the attendance action itself.
+        rescue(fn () => $this->rememberDesktop($request, $token), null, true);
+    }
+
+    private function rememberDesktop(Request $request, \Laravel\Sanctum\PersonalAccessToken $token): void
+    {
+        $employee = $this->apiEmployee($request);
+        $device = \App\Models\AttendanceDevice::firstOrNew(['device_id' => 'desktop-'.$token->id]);
+        if ($device->exists && $device->last_seen_at?->gt(now()->subMinute()) && $device->employee_id === $employee->id) return; // at most one write a minute
+        $device->fill([
+            'employee_id' => $employee->id,
+            'computer_name' => mb_substr((string) ($request->header('X-Computer-Name') ?: $device->computer_name ?: $token->name), 0, 255),
+            'windows_user' => $request->header('X-Windows-User') ? mb_substr($request->header('X-Windows-User'), 0, 255) : $device->windows_user,
+            'app_version' => $request->header('X-App-Version') ? mb_substr($request->header('X-App-Version'), 0, 50) : $device->app_version,
+            'last_seen_at' => now(),
+            'is_active' => true,
+        ]);
+        $device->forceFill(['personal_access_token_id' => $token->id])->save();
     }
 
     private function source(Request $request): string

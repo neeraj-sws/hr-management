@@ -36,6 +36,8 @@ class Navigation
             ->flatMap(fn ($middleware) => explode(',', Str::after($middleware, 'access:')))
             ->all();
         if (! Access::allows($user, $rules)) return false;
+        // Overtime switched off in Settings > Payroll: its page and report leave the menu.
+        if (($routeName === 'leave.overtime' || ($routeName === 'reports.show' && ($params['type'] ?? '') === 'overtime')) && ! app(\App\Services\PeopleOperationsService::class)->overtimeEnabled()) return false;
 
         if ($routeName === 'reports.show') {
             return app(ReportService::class)->canView($user, (string) ($params['type'] ?? ''));
