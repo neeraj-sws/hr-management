@@ -35,7 +35,7 @@
                     <td class="nowrap">@if($leave->duration === 'full'){{ $leave->starts_on->format('d M') }} – {{ $leave->ends_on->format('d M Y') }}@else{{ $leave->starts_on->format('d M Y') }}<small>{{ \App\Models\LeaveRequest::DURATION_LABELS[$leave->duration] ?? 'Full day' }}</small>@endif</td>
                     <td class="num">{{ (float) $leave->days }}</td>
                     <td style="max-width:280px;white-space:normal">{{ $leave->reason }}@if($leave->decision_note)<small>Note: {{ $leave->decision_note }}</small>@endif</td>
-                    <td><x-badge :status="$leave->status" />@if($leave->decider)<small>by {{ $leave->decider->name }}</small>@endif</td>
+                    <td><x-badge :status="$leave->status" />@if($leave->decider)<small>by {{ $leave->decider->name }}</small>@endif @foreach($leave->conflictResolutions as $settled)<small style="color:{{ $settled->resolution === 'worked' ? 'var(--green)' : 'var(--muted)' }}">{{ $settled->work_date->format('d M') }}: {{ $settled->resolution === 'worked' ? 'worked — counted as a working day'.($leave->leaveType?->paid ? ', leave day returned to balance' : '') : 'counted as leave' }}</small>@endforeach</td>
                     <td><div class="row-actions">
                         @if($tab === 'approvals')<button class="btn btn-sm btn-primary" wire:click="openDecision({{ $leave->id }})">Review</button>@endif
                         @if($tab === 'mine' && $leave->status === 'pending')<button class="btn btn-sm btn-danger" wire:click="cancel({{ $leave->id }})" wire:confirm="Cancel this leave request?">Cancel</button>@endif

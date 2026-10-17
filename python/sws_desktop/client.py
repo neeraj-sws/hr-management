@@ -2,7 +2,29 @@
 
 from __future__ import annotations
 
+import getpass
+import platform
+
 import requests
+
+try:
+    from .version import VERSION as APP_VERSION
+except ImportError:  # run as a plain script
+    APP_VERSION = ""
+
+
+def _computer_headers() -> dict:
+    """Identify this computer so HR sees it under Attendance > Devices (name, Windows user, app version)."""
+    headers = {"X-App-Version": APP_VERSION}
+    try:
+        headers["X-Computer-Name"] = platform.node()[:255]
+    except Exception:  # never block a request over this
+        pass
+    try:
+        headers["X-Windows-User"] = getpass.getuser()[:255]
+    except Exception:
+        pass
+    return {k: v for k, v in headers.items() if v}
 
 
 class ApiError(Exception):
@@ -33,7 +55,7 @@ class HrClient:
         self.session = session or requests.Session()
 
     def request(self, method: str, path: str, payload: dict | None = None):
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", **_computer_headers()}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         try:
@@ -54,7 +76,8 @@ class HrClient:
         raise ApiError(message or f"Request failed ({response.status_code})", response.status_code, errors)
 
     # Authentication -------------------------------------------------------
-    def login(self, email: str, password: str, device_name: str = "SWS HR Desktop") -> str:
+    def login(self, email: str, password: str, device_name: str = "") -> str:
+        device_name = device_name or f"SWS HR Desktop on {platform.node() or 'this computer'}"[:255]
         body = self.request("POST", "/auth/token", {"email": email, "password": password, "device_name": device_name})
         self.token = body["token"]
         return self.token
@@ -91,7 +114,7 @@ class HrClient:
         return self.request("POST", "/monitoring/acknowledge", {})["data"]
 
     def upload_screenshot(self, image: bytes, captured_at: str) -> dict:
-        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.token}"}
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.token}", **_computer_headers()}
         try:
             response = self.session.post(f"{self.base_url}/api/monitoring/screenshots", data={"captured_at": captured_at}, files={"image": ("screen.jpg", image, "image/jpeg")}, headers=headers, timeout=max(self.timeout, 60))
         except requests.RequestException as exc:

@@ -143,6 +143,8 @@ class ReviewRoundThreeTest extends TestCase
 
         Livewire::actingAs($this->admin)->test(\App\Livewire\System\Settings::class)->set('tab', 'payroll')->set('otEnabled', false)->call('savePayroll')->assertHasNoErrors();
         $this->assertFalse($people->overtimeEnabled($e));
+        $this->actingAs($e->user)->get(route('attendance.my'))->assertOk()->assertDontSee('href="'.route('leave.overtime').'"', false);
+        $this->assertFalse(\App\Support\Navigation::canAccess($this->admin, 'leave.overtime'), 'Hidden from the menu for everyone while switched off');
         $this->expectException(\Illuminate\Validation\ValidationException::class);
         $people->requestOvertime($e, '2026-10-14', 30, 'More');
     }
@@ -154,6 +156,58 @@ class ReviewRoundThreeTest extends TestCase
         $message = $this->kinds($e->user, 'PasswordChanged')->first()->data['message'];
         $this->assertStringContainsString('changed your login password', $message);
         $this->assertStringNotContainsString('NewPassword123', $message);
+    }
+
+    /** Mon–Sat working, only the 3rd Saturday off (plus Sunday) — as the company works. */
+    private function thirdSaturdayCalendar(): void
+    {
+        app(\App\Services\PeopleOperationsService::class)->setPolicy('calendar.working_days', 'calendar', 'Working calendar', \App\Support\WorkCalendar::normalise(['days' => [1, 2, 3, 4, 5, 6], 'holidays' => [], 'off_weeks' => ['6' => [3]]]), null, $this->admin->id, '2026-01-01');
+    }
+
+    public function test_work_on_third_saturday_sunday_or_leave_is_extra_working_but_other_saturdays_are_normal_days(): void
+    {
+        $this->thirdSaturdayCalendar();
+        $e = $this->employee('EMP-90', ['name' => 'Khushboo Verma']);
+        \App\Models\SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 26000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 26, 'standard_daily_hours' => 8]);
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['multiplier' => 1.5, 'holiday_multiplier' => 2], null, $this->admin->id, '2026-01-01');
+        $work = fn (string $day, string $in, string $out) => \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => $day, 'check_in' => "{$day} {$in}:00", 'check_out' => "{$day} {$out}:00", 'status' => 'completed', 'active_seconds' => Carbon::parse("{$day} {$in}")->diffInSeconds(Carbon::parse("{$day} {$out}"))]);
+        $work('2026-09-12', '10:00', '18:00'); // 2nd Saturday: a normal working day
+        $work('2026-09-19', '10:00', '14:00'); // 3rd Saturday (off): 4 h extra
+        $work('2026-09-20', '10:00', '13:00'); // Sunday: 3 h extra
+        $work('2026-09-22', '10:00', '12:00'); // on a full-day leave: 2 h extra
+        $work('2026-09-23', '10:00', '22:00'); // normal day until night: extra only via overtime request
+        \App\Models\LeaveRequest::create(['employee_id' => $e->id, 'leave_type_id' => \App\Models\LeaveType::where('name', 'Unpaid Leave')->value('id'), 'starts_on' => '2026-09-22', 'ends_on' => '2026-09-22', 'days' => 1, 'reason' => 'x', 'status' => 'approved']);
+        $ot = $people->requestOvertime($e, '2026-09-19', 60, 'Sat'); // overtime asked for an extra day: not paid twice
+        $people->decideOvertime($ot, $this->admin->id, true);
+        Carbon::setTestNow('2026-10-02 10:00:00');
+
+        $run = app(\App\Services\HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id);
+        $b = $run->items()->where('employee_id', $e->id)->firstOrFail()->calculation_breakdown;
+        $this->assertSame(['2026-09-19' => 'off', '2026-09-20' => 'off', '2026-09-22' => 'leave'], array_map(fn ($d) => $d['type'], $b['extra_work']['dates']), 'Only the 3rd Saturday, Sunday and the leave day are extra; the 2nd Saturday is a normal day');
+        $this->assertEquals([3, 9 * 3600, 2.0], [$b['extra_work']['days'], $b['extra_work']['seconds'], $b['extra_work']['multiplier']]);
+        $this->assertEquals(round(26000 / (26 * 8) * 9 * 2, 2), $b['extra_work']['amount'], '9 h × hourly rate × the weekly-off multiplier');
+        $this->assertSame(60, $b['extra_work']['overtime_minutes_not_paid_twice']);
+        $this->assertEquals(0, (float) $b['overtime_amount'], 'The night on 23 Sep is not paid without an overtime request');
+        $this->assertSame(1, \App\Models\LeaveRequest::where('employee_id', $e->id)->where('status', 'approved')->count(), 'The leave stays');
+
+        $days = app(\App\Services\AttendanceService::class)->days($e, Carbon::parse('2026-09-12'), Carbon::parse('2026-09-23'))->keyBy('date');
+        $this->assertSame([false, true, true, true, false], [$days['2026-09-12']['extra'], $days['2026-09-19']['extra'], $days['2026-09-20']['extra'], $days['2026-09-22']['extra'], $days['2026-09-23']['extra']]);
+        $this->actingAs($e->user)->get(route('attendance.my', ['month' => '2026-09']))->assertOk();
+        $this->get(route('leave.overtime', ['date' => '2026-09-23', 'minutes' => 240]))->assertOk()->assertSee('Worked beyond my shift on 23 Sep 2026');
+    }
+
+    public function test_extra_working_can_be_switched_off(): void
+    {
+        $this->thirdSaturdayCalendar();
+        $e = $this->employee('EMP-91');
+        \App\Models\SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 26000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 26, 'standard_daily_hours' => 8]);
+        \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-17', 'check_in' => '2026-10-17 10:00:00', 'check_out' => '2026-10-17 14:00:00', 'status' => 'completed', 'active_seconds' => 4 * 3600]); // 3rd Saturday of October
+        Livewire::actingAs($this->admin)->test(\App\Livewire\System\Settings::class)->set('tab', 'payroll')->assertSet('extraWorkAuto', true)->set('extraWorkAuto', false)->call('savePayroll')->assertHasNoErrors();
+        // The switch applies from the day it is saved (15 Oct), so October's payroll uses it.
+        Carbon::setTestNow('2026-11-02 10:00:00');
+        $b = app(\App\Services\HrWorkflowService::class)->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id)->items()->where('employee_id', $e->id)->firstOrFail()->calculation_breakdown;
+        $this->assertSame([false, 1, 0.0], [$b['extra_work']['enabled'], $b['extra_work']['days'], (float) $b['extra_work']['amount']], 'Recorded, but not paid');
     }
 
     public function test_payroll_cannot_be_locked_while_requests_of_the_period_are_pending(): void
@@ -316,6 +370,195 @@ class ReviewRoundThreeTest extends TestCase
         $this->assertSame(0, $e->user->notifications()->get()->filter(fn ($n) => ($n->data['kind'] ?? '') === 'LeaveRequest')->count(), 'No message per imported day');
         $days = app(\App\Services\AttendanceService::class)->days($e, \Illuminate\Support\Carbon::parse('2026-04-01'), \Illuminate\Support\Carbon::parse('2026-04-03'))->pluck('status', 'date')->all();
         $this->assertSame(['on_leave', 'absent'], [$days['2026-04-02'], $days['2026-04-03']], 'The leave day shows as On leave, the absent day as Absent');
+    }
+
+    public function test_work_on_an_off_day_is_extra_working_automatically_but_extra_hours_need_overtime(): void
+    {
+        $e = $this->employee('SWS-180');
+        \App\Models\SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 22000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 22, 'standard_daily_hours' => 8]);
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'short_hours_deduction' => true, 'short_hours_grace' => 0], null, $this->admin->id, '2026-01-01');
+        $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['multiplier' => 1.5, 'holiday_multiplier' => 2], null, $this->admin->id, '2026-01-01');
+        // Saturday 17 Oct (weekly off): 4 h worked. Monday 12 Oct: a 12 h day (4 h beyond the shift) — not requested.
+        \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-17', 'check_in' => '2026-10-17 10:00:00', 'check_out' => '2026-10-17 14:00:00', 'status' => 'completed', 'active_seconds' => 4 * 3600]);
+        \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-12', 'check_in' => '2026-10-12 09:00:00', 'check_out' => '2026-10-12 21:00:00', 'status' => 'completed', 'active_seconds' => 12 * 3600]);
+        // An overtime request for the Saturday too: it must not be paid twice.
+        \App\Models\OvertimeRequest::create(['employee_id' => $e->id, 'work_date' => '2026-10-17', 'requested_minutes' => 240, 'approved_minutes' => 240, 'reason' => 'x', 'status' => 'approved']);
+        Carbon::setTestNow('2026-11-02 10:00:00');
+        $run = app(\App\Services\HrWorkflowService::class)->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id);
+        $b = \App\Models\PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $e->id)->firstOrFail()->calculation_breakdown;
+
+        $hourly = 22000 / (22 * 8);
+        $this->assertSame(['2026-10-17'], array_keys($b['extra_work']['dates']), 'Only the off day is extra working');
+        $this->assertEquals(round($hourly * 4 * 2, 2), $b['extra_work']['amount'], '4 h × hourly × weekly-off multiplier 2');
+        $this->assertSame(240, $b['extra_work']['overtime_minutes_not_paid_twice']);
+        $this->assertEquals(0, $b['overtime_amount'], 'No overtime: the Saturday is already extra, the Monday was not requested');
+        $this->assertSame(8 * 3600, $b['short_hours']['required_seconds'], 'Short hours look at the Monday only — the Saturday is never "short"');
+
+        $day = collect(app(\App\Services\AttendanceService::class)->days($e, Carbon::parse('2026-10-17'), Carbon::parse('2026-10-17')))->first();
+        $this->assertTrue($day['extra']);
+        Carbon::setTestNow('2026-10-20 12:00:00');
+        Livewire::actingAs($e->user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('Extra working')->assertSee('Request overtime');
+    }
+
+    public function test_the_desktop_app_computer_is_listed_under_devices_and_can_be_revoked(): void
+    {
+        $e = $this->employee('SWS-190', ['name' => 'Shweta Pathak']);
+        $token = $e->user->createToken('SWS HR Desktop on SHWETA-PC')->plainTextToken;
+        $headers = ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json', 'X-Computer-Name' => 'SHWETA-PC', 'X-Windows-User' => 'shweta', 'X-App-Version' => '1.11.0'];
+
+        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 60], $headers)->assertOk();
+        $device = \App\Models\AttendanceDevice::where('employee_id', $e->id)->firstOrFail();
+        $this->assertSame(['SHWETA-PC', 'shweta', '1.11.0', true], [$device->computer_name, $device->windows_user, $device->app_version, (bool) $device->is_active]);
+        $this->postJson('/api/attendance/heartbeat', [], $headers)->assertOk();
+        $this->assertSame(1, \App\Models\AttendanceDevice::where('employee_id', $e->id)->count(), 'One row per computer');
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Attendance\Devices::class)->assertSee('SHWETA-PC')->assertSee('Shweta Pathak')
+            ->call('revoke', $device->id);
+        $this->assertFalse((bool) $device->fresh()->is_active);
+        $this->app['auth']->forgetGuards();
+        $this->postJson('/api/attendance/heartbeat', [], $headers)->assertUnauthorized();
+    }
+
+    public function test_per_day_salary_can_use_each_months_working_days_from_the_calendar(): void
+    {
+        $e = $this->employee('SWS-200');
+        \App\Models\SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 35000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 22, 'standard_daily_hours' => 9]);
+        $people = app(\App\Services\PeopleOperationsService::class);
+        // Mon–Sat working, every 3rd Saturday off (Sundays off) — like the old salary sheet.
+        $people->setPolicy('calendar.working_days', 'calendar', 'Calendar', ['days' => [1, 2, 3, 4, 5, 6], 'holidays' => [], 'off_weeks' => ['6' => [3]]], null, $this->admin->id, '2026-01-01');
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'divisor' => 'calendar'], null, $this->admin->id, '2026-01-01');
+        // Present on 20 of September's 25 working days.
+        $worked = 0;
+        for ($d = Carbon::parse('2026-09-01'); $d->lte(Carbon::parse('2026-09-30')) && $worked < 20; $d->addDay()) {
+            if (! \App\Support\WorkCalendar::isWorkday($d->toDateString(), ['days' => [1, 2, 3, 4, 5, 6], 'off_weeks' => ['6' => [3]]])) continue;
+            \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => $d->toDateString(), 'check_in' => $d->toDateString().' 09:30:00', 'check_out' => $d->toDateString().' 18:30:00', 'status' => 'completed', 'active_seconds' => 9 * 3600]);
+            $worked++;
+        }
+        Carbon::setTestNow('2026-10-05 10:00:00');
+        $run = app(\App\Services\HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id);
+        $item = \App\Models\PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $e->id)->firstOrFail();
+
+        $this->assertSame(25, (int) $item->working_days, 'September: 30 days − 4 Sundays − the 3rd Saturday = 25');
+        $this->assertSame(['2026-09' => 25], $item->calculation_data['month_divisors']);
+        $this->assertEquals(28000.0, round((float) $item->calculation_breakdown['base_salary'], 2), '35000 ÷ 25 × 20 days = 28,000 (as in the sheet)');
+    }
+
+    public function test_remind_on_daily_status_always_reaches_people_who_have_not_submitted(): void
+    {
+        $e = $this->employee('SWS-210', ['name' => 'Fahad Shaikh']);
+        \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-15', 'check_in' => '2026-10-15 09:30:00', 'status' => 'working']);
+        // The automatic evening reminder already went out today …
+        app(\App\Services\WorkService::class)->remindDailyStatus('2026-10-15');
+        $this->assertSame(1, $e->user->notifications()->count());
+
+        // … HR's Remind still reaches him, by e-mail too.
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\DailyStatus::class)->assertSee('Fahad Shaikh')->call('remindMissing')
+            ->assertDispatched('toast', fn ($name, $p) => str_contains(json_encode($p), 'Reminder sent to 1 person (in the app and by e-mail)'));
+        $note = $e->user->notifications()->get()->first(fn ($n) => ($n->data['kind'] ?? '') === 'DailyStatusRequested');
+        $this->assertStringContainsString('reminds you to submit your daily work status for 15 Oct', $note->data['message']);
+        $this->assertSame('work', \App\Notifications\ApprovalRequested::groupFor('DailyStatusRequested'), 'Work group: e-mailed by default');
+
+        // Pressing again within the hour does not spam.
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\DailyStatus::class)->call('remindMissing')
+            ->assertDispatched('toast', fn ($name, $p) => str_contains(json_encode($p), 'already reminded in the last hour'));
+    }
+
+    public function test_daily_status_and_dashboard_show_own_work_to_employees_and_the_team_to_managers(): void
+    {
+        $khushboo = $this->employee('EMP-02', ['name' => 'Khushboo Verma']);
+        $risha = $this->employee('EMP-01', ['name' => 'Risha Gangrade', 'manager_id' => $khushboo->id]);
+        $vijay = $this->employee('EMP-03', ['name' => 'Vijay Choudhary']);
+        \App\Models\DailyWorkStatus::create(['employee_id' => $risha->id, 'work_date' => '2026-10-15', 'summary' => 'Risha tested the HRMS module', 'submitted_at' => now()]);
+        \App\Models\DailyWorkStatus::create(['employee_id' => $vijay->id, 'work_date' => '2026-10-15', 'summary' => 'Vijay built the payroll screen', 'submitted_at' => now()]);
+        Task::create(['title' => 'Vijay secret task', 'assignee_id' => $vijay->id, 'status' => 'in_progress', 'priority' => 'normal']);
+
+        // A manager opening the notification link sees that report's status first.
+        $this->actingAs($khushboo->user)->get(route('work.daily-status', ['employee' => $risha->id, 'date' => '2026-10-15']))->assertOk()
+            ->assertSee('Team updates')->assertSeeInOrder(['Risha tested the HRMS module', 'Plan for today'])->assertDontSee('Vijay built the payroll screen');
+        Livewire::actingAs($khushboo->user)->test(\App\Livewire\Work\DailyStatus::class)->assertSee('Risha tested the HRMS module')->assertDontSee('Vijay built the payroll screen');
+
+        // An employee sees only their own — even with another person's id in the link.
+        $this->actingAs($vijay->user)->get(route('work.daily-status', ['employee' => $risha->id]))->assertOk()
+            ->assertSee('My history')->assertDontSee('Risha tested the HRMS module');
+        $this->actingAs($risha->user)->get(route('dashboard'))->assertOk()->assertDontSee('Vijay secret task')->assertDontSee('Vijay built the payroll screen');
+
+        // A project manager also sees the members of their project.
+        $project = Project::create(['name' => 'Payroll', 'status' => 'active', 'manager_id' => $vijay->id]);
+        $project->members()->attach($risha->id);
+        $this->actingAs($vijay->user)->get(route('work.daily-status'))->assertSee('Risha tested the HRMS module');
+    }
+
+    public function test_daily_status_project_filter_shows_only_that_projects_part(): void
+    {
+        $risha = $this->employee('EMP-01', ['name' => 'Risha Gangrade']);
+        $vijay = $this->employee('EMP-03', ['name' => 'Vijay Choudhary']);
+        $hrms = Project::create(['name' => 'HRMS Module', 'status' => 'active']);
+        $pay = Project::create(['name' => 'Payanyfee.in', 'status' => 'active']);
+        \App\Models\DailyWorkStatus::create(['employee_id' => $risha->id, 'work_date' => '2026-10-15', 'summary' => 'Two projects', 'submitted_at' => now(), 'project_updates' => [
+            ['project_id' => $hrms->id, 'project' => 'HRMS Module', 'update' => 'Tested attendance import', 'tasks' => [], 'seconds' => 0],
+            ['project_id' => $pay->id, 'project' => 'Payanyfee.in', 'update' => 'No work done', 'tasks' => [], 'seconds' => 0],
+        ]]);
+        \App\Models\DailyWorkStatus::create(['employee_id' => $vijay->id, 'work_date' => '2026-10-15', 'summary' => 'Only payanyfee', 'submitted_at' => now(), 'project_updates' => [
+            ['project_id' => $pay->id, 'project' => 'Payanyfee.in', 'update' => 'Built checkout', 'tasks' => [], 'seconds' => 0],
+        ]]);
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\DailyStatus::class)
+            ->set('project', $hrms->id)
+            ->assertSee('Tested attendance import')->assertDontSee('No work done')->assertDontSee('Built checkout')
+            ->set('project', $pay->id)
+            ->assertSee('Built checkout')->assertSee('No work done')->assertDontSee('Tested attendance import');
+    }
+
+    public function test_late_and_early_penalties_can_use_the_employees_salary_per_minute(): void
+    {
+        $e = $this->employee('SWS-220', ['name' => 'Risha Gangrade', 'work_start' => '09:30', 'work_end' => '18:30']);
+        \App\Models\SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 10000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 25, 'standard_daily_hours' => 9]);
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 25], null, $this->admin->id, '2026-01-01');
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Compliance\Policies::class)
+            ->assertSee('salary per minute')
+            ->set('values.attendance__late_penalty.salary_rate', '1')->set('values.attendance__late_penalty.amount_per_minute', '0')
+            ->set('values.attendance__late_penalty.grace_minutes', '0')->set('values.attendance__late_penalty.max_amount', '0')
+            ->call('saveRule', 'attendance.late_penalty')->assertHasNoErrors();
+
+        // 10:10 instead of 09:30 = 40 late minutes × (10,000 ÷ 25 ÷ 9 ÷ 60 = 0.7407) = 29.63
+        \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-15', 'check_in' => '2026-10-15 10:10:00', 'check_out' => '2026-10-15 18:30:00', 'status' => 'completed']);
+        Carbon::setTestNow('2026-10-16 10:00:00');
+        $people->assessCompliance('2026-10-15', '2026-10-15', $this->admin->id);
+        $penalty = \App\Models\EmployeePenalty::where('employee_id', $e->id)->firstOrFail();
+        $this->assertEquals(round(40 * 10000 / 25 / 9 / 60, 2), (float) $penalty->amount);
+        $this->assertSame('Late by 40 minutes', $penalty->reason);
+    }
+
+    public function test_a_settled_leave_conflict_is_shown_to_the_employee(): void
+    {
+        $e = $this->employee('SWS-230', ['name' => 'Risha Gangrade']);
+        $annual = \App\Models\LeaveType::where('name', 'Annual Leave')->firstOrFail();
+        \App\Models\LeaveBalance::create(['employee_id' => $e->id, 'leave_type_id' => $annual->id, 'year' => \App\Support\LeaveYear::of('2026-10-14'), 'entitled_days' => 20, 'used_days' => 1]);
+        $leave = \App\Models\LeaveRequest::create(['employee_id' => $e->id, 'leave_type_id' => $annual->id, 'starts_on' => '2026-10-14', 'ends_on' => '2026-10-14', 'days' => 1, 'reason' => 'have work', 'status' => 'approved', 'decided_by' => $this->admin->id]);
+        \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-14', 'check_in' => '2026-10-14 09:30:00', 'check_out' => '2026-10-14 18:30:00', 'status' => 'completed']);
+
+        app(\App\Services\LeaveConflictService::class)->resolve($leave, '2026-10-14', 'worked', $this->admin->id);
+
+        $this->assertStringContainsString('HR counted it as a working day and the leave day was returned to your balance', $e->user->notifications()->get()->last()->data['message']);
+        Livewire::actingAs($e->user)->test(\App\Livewire\Leave\Requests::class)->assertSee('14 Oct: worked — counted as a working day, leave day returned to balance');
+    }
+
+    public function test_a_manager_sees_team_reports_and_an_employee_none(): void
+    {
+        $boss = $this->employee('EMP-02', ['name' => 'Khushboo Verma']);
+        $risha = $this->employee('EMP-01', ['name' => 'Risha Gangrade', 'manager_id' => $boss->id]);
+        $vijay = $this->employee('EMP-03', ['name' => 'Vijay Choudhary']);
+        foreach ([$risha, $vijay] as $p) \App\Models\AttendanceSession::create(['employee_id' => $p->id, 'work_date' => '2026-10-14', 'check_in' => '2026-10-14 09:30:00', 'check_out' => '2026-10-14 18:30:00', 'status' => 'completed']);
+
+        $this->actingAs($boss->user)->get(route('dashboard'))->assertSee(route('reports.show', 'attendance'), false)->assertDontSee(route('reports.show', 'payroll'), false);
+        $this->get(route('reports.show', ['type' => 'attendance', 'from' => '2026-10-01', 'to' => '2026-10-15']))->assertOk()->assertSee('Risha Gangrade')->assertDontSee('Vijay Choudhary');
+        $this->get(route('reports.show', 'payroll'))->assertForbidden();
+
+        $this->actingAs($vijay->user)->get(route('reports.show', 'attendance'))->assertForbidden();
+        $this->assertFalse(app(\App\Services\ReportService::class)->canView($vijay->user, 'productivity'), 'An employee without a team has no reports');
     }
 
     public function test_an_employees_sheet_is_never_imported_into_another_employee(): void

@@ -214,10 +214,12 @@ class HardCasesTest extends TestCase
         $this->assertSame('leave_conflict', $this->attendance->days($this->employee, Carbon::parse('2026-10-15'), Carbon::parse('2026-10-15'))->first()['status']);
         $this->assertCount(2, app(LeaveConflictService::class)->open('2026-10-01', '2026-10-31'));
 
-        // Default precedence = attendance: 15th and 19th paid once as work, 20th unpaid.
+        // Default: a full-day leave stays a leave and the work that day is extra working, paid on top (never as a normal day too).
         $run = app(HrWorkflowService::class)->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id);
         $item = PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $this->employee->id)->firstOrFail();
-        $this->assertEquals([2, 0, 1], [(float) $item->present_days, (float) $item->paid_leave_days, (float) $item->unpaid_leave_days]);
+        $this->assertEquals([0, 1, 2], [(float) $item->present_days, (float) $item->paid_leave_days, (float) $item->unpaid_leave_days]);
+        $this->assertSame(['2026-10-15', '2026-10-19'], array_keys($item->calculation_breakdown['extra_work']['dates']));
+        $this->assertGreaterThan(0, $item->calculation_breakdown['extra_work']['amount']);
 
         // HR: the 15th was really worked → leave day back; the 19th counts as unpaid leave.
         app(LeaveConflictService::class)->resolve($paidLeave, '2026-10-15', 'worked', $this->admin->id);

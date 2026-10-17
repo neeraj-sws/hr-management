@@ -228,8 +228,11 @@ class WorkService
         return $count;
     }
 
-    public function remindDailyStatus(string $date, ?array $employeeIds = null): int
+    public function remindDailyStatus(string $date, ?array $employeeIds = null, ?\App\Models\User $by = null): int
     {
+        // "Remind" pressed by HR / a manager: always sent (at most once an hour per person), in the app and by e-mail.
+        if ($by) return $this->requestDailyStatus($date, $employeeIds, $by);
+
         $submitted = \App\Models\DailyWorkStatus::whereDate('work_date', $date)->pluck('employee_id');
         $people = AttendanceEmployee::with('user')->where('is_active', true)->whereNotIn('id', $submitted)
             ->when($employeeIds !== null, fn ($q) => $q->whereIn('id', $employeeIds ?: [0]))
@@ -240,6 +243,23 @@ class WorkService
             if ($person->user->notifications()->where('data->kind', 'DailyStatusReminder')->whereDate('created_at', today())->exists()) continue;
             $person->user->notify(new ApprovalRequested('DailyStatusReminder', $person->id, 'Please submit your daily work status for '.\Illuminate\Support\Carbon::parse($date)->format('d M').'.', route('work.daily-status', [], false)));
             $sent++;
+        }
+
+        return $sent;
+    }
+
+    /** Manual reminder from the Daily Work Status page; returns how many people were reminded. */
+    private function requestDailyStatus(string $date, ?array $employeeIds, \App\Models\User $by): int
+    {
+        $submitted = \App\Models\DailyWorkStatus::whereDate('work_date', $date)->pluck('employee_id');
+        $people = AttendanceEmployee::with('user')->where('is_active', true)->whereNotIn('id', $submitted)
+            ->when($employeeIds !== null, fn ($q) => $q->whereIn('id', $employeeIds ?: [0]))
+            ->whereHas('sessions', fn ($q) => $q->whereDate('work_date', $date))->get();
+        $sent = 0;
+        foreach ($people as $person) {
+            if (! $person->user || $person->user_id === $by->id) continue;
+            if ($person->user->notifications()->where('data->kind', 'DailyStatusRequested')->where('created_at', '>=', now()->subHour())->exists()) continue;
+            $sent += Notifier::send($person->user, 'DailyStatusRequested', $person->id, "{$by->name} reminds you to submit your daily work status for ".\Illuminate\Support\Carbon::parse($date)->format('d M').": what you completed, pending work and tomorrow's plan.", route('work.daily-status', [], false), $by->id);
         }
 
         return $sent;
