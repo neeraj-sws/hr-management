@@ -97,6 +97,9 @@ class TaskController extends ApiController
 
     private function validated(Request $request, bool $own = false): array
     {
+        // Desktop app versions up to 1.9 send "medium"; it is the "normal" priority.
+        if ($request->input('priority') === 'medium') $request->merge(['priority' => 'normal']);
+
         return $request->validate([
             'work_date' => ['nullable', 'date', 'before_or_equal:today'],
             'parent_id' => ['nullable', 'exists:tasks,id'],

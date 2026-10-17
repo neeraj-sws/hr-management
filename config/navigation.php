@@ -108,6 +108,7 @@ return [
         ['label' => 'Export Center', 'route' => 'reports.exports', 'icon' => 'download'],
     ]],
     ['heading' => 'Monitoring', 'items' => [
+        ['label' => 'Monitoring Policy', 'route' => 'monitoring.policy', 'icon' => 'eye'],
         ['label' => 'Screenshots', 'route' => 'monitoring.screenshots', 'icon' => 'monitor'],
         ['label' => 'Capture Report', 'route' => 'reports.show', 'params' => ['type' => 'screenshots'], 'icon' => 'chart'],
         ['label' => 'App Usage', 'route' => 'reports.show', 'params' => ['type' => 'app_usage'], 'icon' => 'chart'],

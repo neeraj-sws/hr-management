@@ -103,6 +103,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         private readonly int $recordId,
         private readonly string $message,
         private readonly ?string $url = null,
+        private readonly bool $allowEmail = true, // false when the e-mail goes separately (e.g. an announcement e-mailed to everyone)
     ) {
         $this->afterCommit();
     }
@@ -117,7 +118,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         // Phone push goes with the in-app notification unless switched off for the group.
         if (in_array('database', $channels, true) && self::preference($saved, $group, 'push') && ExpoPushChannel::enabled() && PushToken::where('user_id', $notifiable->getKey())->exists()) $channels[] = ExpoPushChannel::class;
         // E-mail never breaks the action that triggered it (see SafeMailChannel).
-        if (self::preference($saved, $group, 'email') && ! empty($notifiable->email) && ($notifiable->is_active ?? true) && SafeMailChannel::enabled()) $channels[] = SafeMailChannel::class;
+        if ($this->allowEmail && self::preference($saved, $group, 'email') && ! empty($notifiable->email) && ($notifiable->is_active ?? true) && SafeMailChannel::enabled()) $channels[] = SafeMailChannel::class;
 
         return $channels;
     }

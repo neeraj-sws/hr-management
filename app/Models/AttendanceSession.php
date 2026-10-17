@@ -100,13 +100,30 @@ class AttendanceSession extends Model
     }
 
     /**
-     * Idle time to show for the day. The desktop app reports untouched-screen
-     * time with every heartbeat (screen_idle_seconds); older device agents
-     * report idle_seconds at sync. Whichever source is tracking is shown, so
-     * the value keeps updating during the day.
+     * Idle time for the day, taken off the working time. The desktop app reports
+     * untouched-screen time with every heartbeat (screen_idle_seconds); older
+     * device agents report idle_seconds at sync. Whichever source is tracking
+     * counts, so the value keeps updating during the day. Away periods the
+     * employee already answered for are not idle again: "it was a break" is in
+     * the break time, "I was working" (e.g. a meeting) is working time.
      */
     public function idleSeconds(): int
     {
-        return max((int) $this->idle_seconds, (int) $this->screen_idle_seconds);
+        $screenIdle = (int) $this->screen_idle_seconds;
+        if ($screenIdle > 0) {
+            $events = $this->relationLoaded('events') ? $this->events : $this->events()->whereIn('event_type', ['break_end', 'away_worked'])->get();
+            $answered = $events->filter(fn ($e) => $e->event_type === 'away_worked' || ($e->event_type === 'break_end' && in_array($e->metadata['reason'] ?? null, ['idle', 'locked'], true)))->sum('duration_seconds');
+            $screenIdle = max(0, $screenIdle - (int) $answered);
+        }
+
+        return max((int) $this->idle_seconds, $screenIdle);
+    }
+
+    /** Actual working time of a finished day: in–out less break and idle. */
+    public function actualSeconds(): ?int
+    {
+        if (! $this->check_in || ! $this->check_out) return null;
+
+        return (int) max($this->check_in->diffInSeconds($this->check_out) - (int) $this->break_seconds - $this->idleSeconds(), 0);
     }
 }

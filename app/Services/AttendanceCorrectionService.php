@@ -73,7 +73,7 @@ class AttendanceCorrectionService
         return DB::transaction(function () use ($correction, $approverId, $approve, $note) {
             $correction = AttendanceCorrection::whereKey($correction->id)->lockForUpdate()->firstOrFail();
             if ($correction->status !== 'pending') throw ValidationException::withMessages(['correction' => 'This correction has already been decided.'])->status(409);
-            if ($approve) app(PayrollLockGuard::class)->changed($correction->employee_id, $correction->work_date->toDateString(), 'attendance');
+            $carry = $approve && app(PayrollLockGuard::class)->changedOrCarry($correction->employee_id, $correction->work_date->toDateString(), 'attendance');
             if (! $approve && ! trim((string) $note)) throw ValidationException::withMessages(['decisionNote' => 'Add a reason when rejecting.']);
 
             if ($approve) $correction->attendance_session_id = $this->apply($correction, $approverId)->id;
@@ -81,6 +81,7 @@ class AttendanceCorrectionService
             ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->where('status', 'pending')
                 ->update(['approver_id' => $approverId, 'status' => $approve ? 'approved' : 'rejected', 'decided_at' => now(), 'comment' => $note]);
             $this->audit->record($approve ? 'attendance.correction_approved' : 'attendance.correction_rejected', $correction);
+            if ($carry) app(PayrollCarryOver::class)->settle($correction->employee_id, $correction->work_date->toDateString(), $correction->work_date->toDateString(), 'Attendance correction for '.$correction->work_date->format('d M Y'), $approverId);
             $day = $correction->work_date->format('d M');
             $by = User::find($approverId)?->name ?? 'Your approver';
             Notifier::send($correction->employee?->user, 'AttendanceCorrection', $correction->id, $approve ? "{$by} approved your attendance correction for {$day}." : "{$by} rejected your attendance correction for {$day}: {$note}");
@@ -132,7 +133,7 @@ class AttendanceCorrectionService
                 }
             }
             $changes += ['check_out' => $checkOut, 'status' => 'completed', 'break_seconds' => $breakSeconds,
-                'active_seconds' => (int) max($checkIn->diffInSeconds($checkOut) - $breakSeconds - (int) $session->idle_seconds, 0)];
+                'active_seconds' => (int) max($checkIn->diffInSeconds($checkOut) - $breakSeconds - $session->idleSeconds(), 0)];
         }
         $session->update($changes);
         $session->increment('server_version');

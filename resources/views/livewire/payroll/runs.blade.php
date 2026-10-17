@@ -48,8 +48,9 @@
                 @if($canDecide)
                     <div class="toolbar"><label class="field grow"><span>Reject with reason</span><input wire:model="rejectNote" placeholder="What needs to be corrected?"></label><button class="btn btn-danger" wire:click="reject">Reject</button></div>
                 @endif
+                @php($runHasOt = $selected->items->contains(fn ($i) => (float) $i->overtime_amount > 0 || (float) $i->overtime_hours > 0))
                 <div class="table-wrap"><table class="table">
-                    <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th><th class="num">OT</th><th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th></th></tr></thead>
+                    <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th>@if($runHasOt)<th class="num">OT</th>@endif<th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th></th></tr></thead>
                     <tbody>
                     @forelse($selected->items as $item)
                         @php($paid = (float) $item->payments->sum('amount'))
@@ -57,7 +58,7 @@
                         <tr wire:key="pi-{{ $item->id }}">
                             <td><strong>{{ $item->employee?->name }}</strong><small>{{ $item->employee?->employee_code }}</small></td>
                             <td class="num nowrap">{{ $item->working_days }} / {{ (float) $item->present_days }} / {{ (float) $item->paid_leave_days }} / {{ (float) $item->unpaid_leave_days }}</td>
-                            <td class="num">{{ number_format((float) $item->overtime_amount, 2) }}<small>{{ (float) $item->overtime_hours }} h</small></td>
+                            @if($runHasOt)<td class="num">{{ number_format((float) $item->overtime_amount, 2) }}<small>{{ (float) $item->overtime_hours }} h</small></td>@endif
                             <td class="num">{{ number_format((float) $item->gross_amount, 2) }}</td>
                             <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
                             <td class="num"><strong>{{ number_format((float) $item->net_amount, 2) }}</strong></td>
@@ -94,7 +95,10 @@
                 {{-- The person's own monthly (basic) salary first, then how this month's pay is worked out from it. --}}
                 <tr style="background:var(--canvas)"><td><strong>Monthly basic salary</strong><small>from the salary profile</small></td><td class="num"><strong>{{ number_format($monthly, 2) }}</strong></td></tr>
                 @if($days > 0)<tr><td>Per-day rate<small>{{ number_format($monthly, 2) }} ÷ {{ $days }} working days{{ ($cd['divisor'] ?? 'fixed') === 'calendar' ? ' (this month, from the calendar)' : '' }}</small></td><td class="num">{{ number_format($monthly / $days, 2) }}</td></tr>@endif
+                @php($otKeys = ['approved_overtime_minutes', 'holiday_overtime_minutes', 'overtime_multiplier', 'holiday_overtime_multiplier', 'overtime_amount'])
+                @php($hasOt = (float) ($breakdown->calculation_breakdown['overtime_amount'] ?? 0) > 0 || (int) ($breakdown->calculation_breakdown['approved_overtime_minutes'] ?? 0) > 0)
                 @foreach(($breakdown->calculation_breakdown ?? []) as $label => $value)
+                    @continue(in_array($label, $otKeys, true) && ! $hasOt)
                     @if(is_scalar($value))<tr><td>{{ ['base_salary' => 'Salary earned (per-day rate × days paid)'][$label] ?? str($label)->replace('_', ' ')->title() }}</td><td class="num">{{ is_numeric($value) ? (fmod((float) $value, 1) ? number_format((float) $value, 2) : $value) : $value }}</td></tr>@endif
                     @if($label === 'statutory_components' && is_array($value))@foreach($value as $c)<tr><td>{{ $c['name'] ?? $c['key'] }} ({{ $c['type'] ?? '' }})</td><td class="num">{{ number_format((float) ($c['amount'] ?? 0), 2) }}</td></tr>@endforeach @endif
                 @endforeach

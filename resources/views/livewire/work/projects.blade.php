@@ -23,7 +23,7 @@
                     <td><strong>{{ $project->name }}</strong><small>{{ \Illuminate\Support\Str::limit($project->description, 70) }}</small></td>
                     <td>{{ $project->client_name ?: '—' }}</td>
                     <td>{{ $project->manager?->name ?? '—' }}</td>
-                    <td class="small">@if($project->members_count)<strong>{{ $project->members_count }} {{ str('member')->plural($project->members_count) }}</strong><small title="{{ $project->members->pluck('name')->join(', ') }}">{{ \Illuminate\Support\Str::limit($project->members->pluck('name')->join(', '), 60) }}</small>@else<strong>0 members</strong><small>anyone in scope</small>@endif</td>
+                    <td class="small"><x-people-count :people="$project->members" :title="'Members · '.$project->name" empty="Anyone in scope" /></td>
                     <td class="nowrap small">{{ $project->starts_on?->format('d M Y') ?? '—' }} → {{ $project->ends_on?->format('d M Y') ?? '—' }}</td>
                     <td style="min-width:150px"><div class="progress"><span style="width: {{ $pct }}%"></span></div><small>{{ $project->completed_tasks_count }}/{{ $project->tasks_count }} done @if($project->overdue_tasks_count)· <span style="color:var(--red)">{{ $project->overdue_tasks_count }} overdue</span>@endif</small></td>
                     @if($mine)<td class="num">{{ $project->my_open_tasks_count }}</td>@else<td class="num">{{ \App\Support\Duration::fromHours($project->tasks_sum_estimated_hours) }}</td>@endif

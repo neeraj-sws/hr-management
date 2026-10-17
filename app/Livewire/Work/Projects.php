@@ -140,7 +140,7 @@ class Projects extends Component
         $base = $this->mine ? $this->myProjectsQuery() : Project::query()->when($this->scopedToOwn(), fn ($q) => $q->where('manager_id', $own?->id ?? 0));
         $counts = app(\App\Services\WorkService::class)->projectCounts($base);
         $projects = (clone $base)
-            ->with(['manager', 'members:attendance_employees.id,attendance_employees.name'])->withCount('members')
+            ->with(['manager', 'members' => fn ($q) => $q->select('attendance_employees.id', 'attendance_employees.name', 'attendance_employees.employee_code', 'attendance_employees.designation')->orderBy('attendance_employees.name')])->withCount('members')
             ->withCount(['tasks', 'tasks as completed_tasks_count' => fn ($q) => $q->where('status', 'completed'), 'tasks as overdue_tasks_count' => fn ($q) => $q->where('status', '!=', 'completed')->whereDate('due_on', '<', today())])
             ->when($this->mine, fn ($q) => $q->withCount(['tasks as my_open_tasks_count' => fn ($t) => $t->where('assignee_id', $own?->id ?? 0)->where('status', '!=', 'completed')]))
             ->withSum('tasks', 'estimated_hours')

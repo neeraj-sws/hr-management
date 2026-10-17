@@ -101,6 +101,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/recruitment/candidates/{candidate}/resume', [HrFileController::class, 'resume'])->name('recruitment.resume');
 
     // Monitoring (optional screen capture)
+    Route::get('/monitoring/policy', Livewire\Monitoring\Policy::class)->middleware('access:profile,monitoring.view,monitoring.manage')->name('monitoring.policy');
     Route::get('/monitoring/screenshots', Livewire\Monitoring\Screenshots::class)->middleware('access:profile,monitoring.view,approvals.manage')->name('monitoring.screenshots');
     Route::get('/monitoring/screenshots/{screenshot}/image', [HrFileController::class, 'screenshot'])->name('monitoring.screenshot');
 

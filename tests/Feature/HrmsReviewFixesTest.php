@@ -178,9 +178,9 @@ class HrmsReviewFixesTest extends TestCase
     {
         $this->assertSame('30:00:05', Duration::hms(30 * 3600 + 5), 'Hours never wrap at 24');
         AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-13', 'check_in' => '2026-10-13 09:00:00', 'check_out' => '2026-10-13 17:00:00', 'active_seconds' => 27000, 'break_seconds' => 1800, 'screen_idle_seconds' => 125, 'status' => 'completed']);
-        $this->actingAs($this->admin)->get(route('attendance.records', ['from' => '2026-10-13', 'to' => '2026-10-13']))->assertOk()->assertSee('07:30:00')->assertSee('00:02:05');
+        $this->actingAs($this->admin)->get(route('attendance.records', ['from' => '2026-10-13', 'to' => '2026-10-13']))->assertOk()->assertSee('07:27:55')->assertSee('00:02:05');
         $row = app(\App\Services\ReportService::class)->rows($this->admin, 'attendance', ['from' => '2026-10-13', 'to' => '2026-10-13'])->first();
-        $this->assertSame(['07:30:00', '00:02:05', '00:30:00'], [$row['active_time'], $row['idle_time'], $row['break_time']], 'Reports match the attendance screens');
+        $this->assertSame(['07:27:55', '00:02:05', '00:30:00'], [$row['active_time'], $row['idle_time'], $row['break_time']], 'Reports match the attendance screens: 8 h in–out less 30 min break less 2:05 idle');
     }
 
     // 4. Corrections & forced check-out ----------------------------------------------------
@@ -268,15 +268,15 @@ class HrmsReviewFixesTest extends TestCase
         $this->actingAs($this->employeeUser)->get(route('attendance.my', ['month' => '2026-10']))->assertSee('Weekly off')->assertSee('3rd Saturday — weekly off');
     }
 
-    public function test_leave_cannot_be_approved_inside_a_locked_payroll_period(): void
+    public function test_leave_in_a_locked_period_without_pay_for_the_employee_is_approved_without_carry_over(): void
     {
         $annual = LeaveType::where('name', 'Annual Leave')->firstOrFail();
         Carbon::setTestNow('2026-09-01 10:00:00');
         $leave = app(HrWorkflowService::class)->requestLeave($this->employee, ['leave_type_id' => $annual->id, 'duration' => 'full', 'starts_on' => Carbon::parse('2026-09-10'), 'ends_on' => Carbon::parse('2026-09-10'), 'reason' => 'Doctor']);
         Carbon::setTestNow('2026-10-14 15:00:00');
         PayrollRun::create(['period_starts_on' => '2026-09-01', 'period_ends_on' => '2026-09-30', 'status' => 'locked', 'created_by' => $this->admin->id]);
-        $this->expectException(ValidationException::class);
-        app(HrWorkflowService::class)->decideLeave($leave, $this->leadUser->id, true);
+        $this->assertSame('approved', app(HrWorkflowService::class)->decideLeave($leave, $this->leadUser->id, true)->status);
+        $this->assertSame(0, \App\Models\SalaryAdjustment::where('employee_id', $this->employee->id)->count(), 'Not in that payroll: nothing to carry');
     }
 
     // 6. Imports -----------------------------------------------------------------------------

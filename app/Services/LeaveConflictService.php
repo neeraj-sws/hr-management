@@ -55,9 +55,9 @@ class LeaveConflictService
     {
         if (! in_array($resolution, ['worked', 'leave'], true)) throw ValidationException::withMessages(['resolution' => 'Choose worked or leave.']);
         if ($date < $leave->starts_on->toDateString() || $date > $leave->ends_on->toDateString()) throw ValidationException::withMessages(['date' => 'This day is not part of the leave.']);
-        app(PayrollLockGuard::class)->changed($leave->employee_id, $date, 'leave');
+        $carry = app(PayrollLockGuard::class)->changedOrCarry($leave->employee_id, $date, 'leave');
 
-        return DB::transaction(function () use ($leave, $date, $resolution, $actor, $note) {
+        return DB::transaction(function () use ($leave, $date, $resolution, $actor, $note, $carry) {
             if (LeaveConflictResolution::where('employee_id', $leave->employee_id)->whereDate('work_date', $date)->lockForUpdate()->exists()) {
                 throw ValidationException::withMessages(['date' => 'This day has already been resolved.'])->status(409);
             }
@@ -72,6 +72,7 @@ class LeaveConflictService
                 }
             }
             $this->audit->record('leave.conflict_resolved', $record, ['date' => $date, 'resolution' => $resolution, 'leave_request_id' => $leave->id]);
+            if ($carry) app(PayrollCarryOver::class)->settle($leave->employee_id, $date, $date, 'Leave/attendance overlap on '.Carbon::parse($date)->format('d M Y').' counted as '.($resolution === 'worked' ? 'work' : 'leave'), $actor);
             // The employee hears how the day was settled (and that a paid leave day came back).
             $leave->loadMissing('employee.user', 'leaveType');
             Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, Carbon::parse($date)->format('d M Y').': you had '.($leave->leaveType?->name ?? 'leave').' and also worked. '.($resolution === 'worked' ? 'HR counted it as a working day'.($leave->leaveType?->paid ? ' and the leave day was returned to your balance.' : '.') : 'HR counted it as leave.'), route('leave.requests', [], false), $actor);

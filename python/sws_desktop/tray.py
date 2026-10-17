@@ -49,6 +49,22 @@ class Tray:
         if self._icon:
             self._icon.title = title
 
+    # The tooltip always says when screen capture is on ("SWS HR - Working · screen capture ON").
+    _status = ""
+    _capture = False
+
+    def set_status(self, status: str) -> None:
+        self._status = status
+        self._refresh_title()
+
+    def set_capture(self, on: bool) -> None:
+        self._capture = on
+        self._refresh_title()
+
+    def _refresh_title(self) -> None:
+        parts = ["SWS HR"] + ([f"- {self._status}"] if self._status else []) + (["· screen capture ON"] if self._capture else [])
+        self.set_title(" ".join(parts))
+
     def stop(self) -> None:
         if self._icon:
             self._icon.stop()

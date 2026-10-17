@@ -80,6 +80,7 @@ class Settings extends Component
     public string $captureWindowStart = '';
     public string $captureWindowEnd = '';
     public string $captureRetention = '30';
+    public string $capturePurpose = '';
 
     // Office locations
     public bool $requireLocation = false;
@@ -160,7 +161,7 @@ class Settings extends Component
             'selfieWeb' => (bool) ($selfie['required_web'] ?? false), 'selfieMobile' => (bool) ($selfie['required_mobile'] ?? false),
             'alertsEnabled' => (bool) ($alerts['enabled'] ?? true), 'absentAfter' => (string) ($alerts['absent_after'] ?? '11:00'),
             'captureEnabled' => (bool) ($capture['enabled'] ?? false), 'captureInterval' => (string) ($capture['interval_minutes'] ?? 10), 'captureActiveOnly' => (bool) ($capture['active_only'] ?? true),
-            'captureWindowStart' => (string) ($capture['window_start'] ?? ''), 'captureWindowEnd' => (string) ($capture['window_end'] ?? ''), 'captureRetention' => (string) ($capture['retention_days'] ?? 30),
+            'captureWindowStart' => (string) ($capture['window_start'] ?? ''), 'captureWindowEnd' => (string) ($capture['window_end'] ?? ''), 'captureRetention' => (string) ($capture['retention_days'] ?? 30), 'capturePurpose' => (string) ($capture['purpose'] ?? ''),
             'startTime' => (string) ($hours['start_time'] ?? ''), 'endTime' => (string) ($hours['end_time'] ?? ''),
             'dailyHours' => (string) ($hours['standard_daily_hours'] ?? 8),
             'graceMinutes' => (string) ($rules['grace_minutes'] ?? 0), 'halfDayHours' => (string) ($rules['half_day_hours'] ?? 4),
@@ -526,8 +527,10 @@ class Settings extends Component
     public function saveCapturePolicy(PeopleOperationsService $people): void
     {
         abort_unless($this->user()->can('monitoring.manage'), 403);
-        $this->validate(['captureInterval' => ['required', Rule::in(array_map('strval', \App\Services\ScreenCaptureService::INTERVALS))], 'captureWindowStart' => ['nullable', 'date_format:H:i', 'required_with:captureWindowEnd'], 'captureWindowEnd' => ['nullable', 'date_format:H:i', 'required_with:captureWindowStart'], 'captureRetention' => ['required', 'integer', 'min:1', 'max:365']], [], ['captureInterval' => 'interval', 'captureWindowStart' => 'window start', 'captureWindowEnd' => 'window end', 'captureRetention' => 'retention']);
-        $people->setPolicy('monitoring.screenshots', 'monitoring', 'Screen capture', array_filter(['enabled' => $this->captureEnabled, 'interval_minutes' => (int) $this->captureInterval, 'active_only' => $this->captureActiveOnly, 'window_start' => $this->captureWindowStart ?: null, 'window_end' => $this->captureWindowEnd ?: null, 'retention_days' => (int) $this->captureRetention], fn ($v) => $v !== null), null, auth()->id(), today()->toDateString());
+        $this->validate(['captureInterval' => ['required', Rule::in(array_map('strval', \App\Services\ScreenCaptureService::INTERVALS))], 'captureWindowStart' => ['nullable', 'date_format:H:i', 'required_with:captureWindowEnd'], 'captureWindowEnd' => ['nullable', 'date_format:H:i', 'required_with:captureWindowStart'], 'captureRetention' => ['required', 'integer', 'min:1', 'max:365'], 'capturePurpose' => ['nullable', 'string', 'max:500']], [], ['captureInterval' => 'interval', 'captureWindowStart' => 'window start', 'captureWindowEnd' => 'window end', 'captureRetention' => 'retention', 'capturePurpose' => 'purpose']);
+        $people->setPolicy('monitoring.screenshots', 'monitoring', 'Screen capture', array_filter(['enabled' => $this->captureEnabled, 'interval_minutes' => (int) $this->captureInterval, 'active_only' => $this->captureActiveOnly, 'window_start' => $this->captureWindowStart ?: null, 'window_end' => $this->captureWindowEnd ?: null, 'retention_days' => (int) $this->captureRetention, 'purpose' => trim($this->capturePurpose) ?: null], fn ($v) => $v !== null), null, auth()->id(), today()->toDateString());
+        // Everyone with capture on is told about the new terms (in-app and by e-mail).
+        app(\App\Services\ScreenCaptureService::class)->notifyAll();
         $this->toast($this->captureEnabled ? 'Screen capture is on for all employees.' : 'Saved. Capture runs only for employees you switch on below.');
     }
 
@@ -548,7 +551,7 @@ class Settings extends Component
     {
         $canCapture = $this->user()->can('monitoring.manage');
         $captureEmployees = $canCapture && $this->tab === 'capture'
-            ? \App\Models\AttendanceEmployee::with('department')->where('is_active', true)->orderBy('name')->get()->map(fn ($e) => ['employee' => $e, 'on' => app(\App\Services\ScreenCaptureService::class)->policy($e)['enabled']])
+            ? \App\Models\AttendanceEmployee::with('department')->where('is_active', true)->orderBy('name')->with('user')->get()->map(fn ($e) => ['employee' => $e, 'on' => ($p = app(\App\Services\ScreenCaptureService::class)->policy($e))['enabled'], 'acknowledged' => app(\App\Services\ScreenCaptureService::class)->isAcknowledged($e->user, $p), 'acknowledged_at' => $e->user?->screen_capture_acknowledged_at])
             : collect();
 
         $calendarOverrides = $this->tab === 'calendar'
