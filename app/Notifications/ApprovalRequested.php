@@ -39,6 +39,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'AttendanceLate' => 'attendance.my',
         'WeeklyOff' => 'company.holidays',
         'PasswordChanged' => 'account.profile',
+        'DailyStatusRequested' => 'work.daily-status',
         'LeaveBalance' => 'leave.balances',
         'SalaryProfile' => 'payroll.salary',
         'Shift' => 'attendance.my',
@@ -70,7 +71,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     ];
 
     private const KIND_GROUP = [
-        'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
+        'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
         'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance',
         'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders',
         'Announcement' => 'company', 'Celebration' => 'company', 'WeeklyOff' => 'attendance', 'Shift' => 'attendance',

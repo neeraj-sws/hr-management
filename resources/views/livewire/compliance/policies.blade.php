@@ -19,7 +19,14 @@
                 @php($ruleSlot = \App\Livewire\Compliance\Policies::slot($key))
                 <form class="card-body stack" wire:submit="saveRule('{{ $key }}')">
                     @foreach($fields as $field => $fieldLabel)
+                        @if($field === 'salary_rate')
+                            {{-- How much a minute costs: a fixed amount, or the employee's own salary per minute (salary ÷ working days ÷ hours ÷ 60). --}}
+                            <x-field label="Deduction per minute" :name="'values.'.$ruleSlot.'.'.$field"><select wire:model.live="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)><option value="0">Fixed amount (below)</option><option value="1">Employee's salary per minute</option></select></x-field>
+                        @elseif($field === 'amount_per_minute' && (string) ($values[$ruleSlot]['salary_rate'] ?? '0') === '1')
+                            <p class="small muted" style="margin:0">Each minute costs the employee's salary per minute: monthly salary ÷ the month's working days ÷ hours in the working day ÷ 60 (e.g. 10,000 ÷ 25 ÷ 9 ÷ 60 = 0.74).</p>
+                        @else
                         <x-field :label="$fieldLabel" :name="'values.'.$ruleSlot.'.'.$field"><input type="number" step="0.01" min="0" wire:model="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)></x-field>
+                        @endif
                     @endforeach
                     @if($canConfigure)<div><button class="btn btn-primary btn-sm">Save rule</button></div>@endif
                 </form>

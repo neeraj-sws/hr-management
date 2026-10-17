@@ -607,7 +607,9 @@ class AttendanceService
                 $status === 'weekend' => \App\Support\WorkCalendar::specialOffReason($date, $calendar),
                 default => null,
             };
-            $days->push(['date' => $date, 'status' => $status, 'session' => $session, 'label' => $label]);
+            // Worked on a weekly off / 3rd Saturday / holiday, or on a full-day leave (unless HR settled that day): extra working.
+            $extra = $session !== null && (! $workday || ($leaveToday && $leaveToday->duration === 'full' && ! in_array($resolutions[$date] ?? null, ['worked', 'leave'], true)));
+            $days->push(['date' => $date, 'status' => $status, 'session' => $session, 'label' => $label, 'extra' => $extra, 'extra_reason' => $extra ? (! $workday ? (\App\Support\WorkCalendar::specialOffReason($date, $calendar) ?: (in_array($date, $calendar['holidays'] ?? [], true) ? 'Holiday' : 'Weekly off')) : ($leaveToday->leaveType?->name ?? 'Leave')) : null]);
         }
 
         return $days;

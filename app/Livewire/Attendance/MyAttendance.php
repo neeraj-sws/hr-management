@@ -77,6 +77,7 @@ class MyAttendance extends Component
 
         return $this->page('livewire.attendance.my-attendance', [
             'employee' => $employee,
+            'overtimeOn' => app(\App\Services\PeopleOperationsService::class)->overtimeEnabled($employee),
             'session' => $session,
             'worked' => $session ? $attendance->workedSeconds($session) : 0,
             'rules' => $attendance->rules($employee, today()->toDateString()),

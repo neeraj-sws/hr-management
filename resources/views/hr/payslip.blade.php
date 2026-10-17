@@ -44,6 +44,7 @@
     @php((float) $item->adjustments_amount > 0 ? $earnings->push(['Adjustments', (float) $item->adjustments_amount]) : $deductions->push(['Adjustments', abs((float) $item->adjustments_amount)]))
 @endif
 @if((float) $item->overtime_amount > 0)@php($earnings->push(['Overtime ('.(float) $item->overtime_hours.' h)', (float) $item->overtime_amount]))@endif
+@if((float) ($b['extra_work']['amount'] ?? 0) > 0)@php($earnings->push(['Extra working ('.$b['extra_work']['days'].' off / leave '.str('day')->plural($b['extra_work']['days']).', '.\App\Support\Duration::hms((int) $b['extra_work']['seconds']).($b['extra_work']['multiplier'] != 1 ? ' × '.(float) $b['extra_work']['multiplier'] : '').')', (float) $b['extra_work']['amount']]))@endif
 @foreach(($b['statutory_components'] ?? []) as $c)
     @php(($c['type'] ?? '') === 'deduction' ? $deductions->push([$c['name'] ?? $c['key'], (float) ($c['amount'] ?? 0)]) : $earnings->push([$c['name'] ?? $c['key'], (float) ($c['amount'] ?? 0)]))
 @endforeach

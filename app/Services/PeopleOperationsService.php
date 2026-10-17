@@ -260,6 +260,24 @@ class PeopleOperationsService
         return $penalty;
     }
 
+    /**
+     * Rate per minute for the late / early check-out rules: the fixed "amount per minute", or — when the rule says
+     * "salary_rate" — the employee's own salary per minute: monthly salary ÷ that month's working days (calendar or the
+     * fixed divisor, as payroll uses) ÷ hours in the working day ÷ 60, like the old salary sheet.
+     */
+    public function penaltyRatePerMinute(AttendanceEmployee $employee, array $config, string $date): float
+    {
+        if (empty($config['salary_rate'])) return (float) ($config['amount_per_minute'] ?? 0);
+        $profile = $employee->salaryProfiles()->whereDate('effective_from', '<=', $date)->orderByDesc('effective_from')->orderByDesc('id')->first()
+            ?? $employee->salaryProfiles()->orderBy('effective_from')->first();
+        if (! $profile || (float) $profile->monthly_salary <= 0) return 0.0;
+        $payroll = $this->policy($employee, 'payroll.calculation', [], $date);
+        $days = app(HrWorkflowService::class)->salaryDaysFor($employee, $date, $profile)['days'];
+        $hours = (float) ($payroll['standard_daily_hours'] ?? $profile->standard_daily_hours ?: app(AttendanceService::class)->dailyHours($employee, $date));
+
+        return (float) $profile->monthly_salary / max(1, $days) / max(0.5, $hours) / 60;
+    }
+
     public function assessCompliance(string $start,string $end,int $actor):int
     {
         if($end<$start)throw ValidationException::withMessages(['period'=>'The end date must be on or after the start date.']);
@@ -271,7 +289,7 @@ class PeopleOperationsService
             $workStart=app(AttendanceService::class)->rules($employee,$session->work_date->toDateString())['work_start'];
             if(!$workStart)continue;
             $config=$this->policy($employee,'attendance.late_penalty',$rule?->configuration??[],$session->work_date->toDateString());
-            $perMinute=(float)($config['amount_per_minute']??0);if($perMinute<=0)continue;
+            $perMinute=$this->penaltyRatePerMinute($employee,$config,$session->work_date->toDateString());if($perMinute<=0)continue;
             $expected=Carbon::parse($session->work_date->toDateString().' '.$workStart);
             $late=max(0,(int)ceil($expected->diffInMinutes($session->check_in)- (float)($config['grace_minutes']??0)));
             $amount=$this->capped($late*$perMinute,$config);
@@ -336,7 +354,7 @@ class PeopleOperationsService
             if ($session->check_out && ! $session->closed_automatically) {
                 $config = $this->policy($employee, 'attendance.early_checkout', [], $date);
                 $early = max(0, $attendance->earlyMinutes($session) - (int) ($config['grace_minutes'] ?? 0));
-                if ($early > 0) $raise($employee, 'attendance.early_checkout', "early:{$employee->id}:{$date}", $date, $this->capped($early * (float) ($config['amount_per_minute'] ?? 0), $config), "Checked out {$early} minutes early", ['early_minutes' => $early]);
+                if ($early > 0) $raise($employee, 'attendance.early_checkout', "early:{$employee->id}:{$date}", $date, $this->capped($early * $this->penaltyRatePerMinute($employee, $config, $date), $config), "Checked out {$early} minutes early", ['early_minutes' => $early]);
             }
 
             // Worked, but no task entered for the day.

@@ -88,7 +88,8 @@ class ProjectCountsTest extends TestCase
     {
         $reports = app(ReportService::class);
         $all = $reports->rows($this->admin, 'projects', ['from' => '2026-10-01', 'to' => '2026-10-31'])->keyBy('project');
-        $this->assertSame(['CRM', 'Portal', 'Billing'], $all->keys()->all(), 'Active first (by name), then on hold; a project finished in 2025 is outside October');
+        $this->assertSame($all->pluck('id')->sort()->values()->all(), $all->pluck('id')->values()->all(), 'Listed by ID (1, 2, 3 …)');
+        $this->assertEqualsCanonicalizing(['CRM', 'Portal', 'Billing'], $all->keys()->all(), 'A project finished in 2025 is outside October');
         $billing = $all['Billing'];
         $this->assertSame([2, 1, 1, 1, 50], [$billing['tasks'], $billing['completed_tasks'], $billing['open_tasks'], $billing['overdue_tasks'], $billing['progress_pct']]);
         $this->assertSame('10:00:00', $billing['estimated_time']);

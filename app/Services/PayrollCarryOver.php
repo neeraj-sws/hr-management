@@ -16,8 +16,8 @@ use Illuminate\Support\Collection;
  * is added to the employee's next payroll as an approved arrear (or recovered
  * as a deduction), linked to the payroll item it corrects.
  *
- * Only the attendance-driven part of pay is compared: days paid, overtime and
- * the short-hours deduction. Adjustments already carried for the same item are
+ * Only the attendance-driven part of pay is compared: days paid, overtime,
+ * extra working and the short-hours deduction. Adjustments already carried for the same item are
  * subtracted, so approving several changes for one month carries each
  * difference once.
  */
@@ -38,7 +38,7 @@ class PayrollCarryOver
             $now = $this->payroll->attendancePay($employee, $run->period_starts_on->toDateString(), $run->period_ends_on->toDateString());
             if ($now === null) continue;
             $breakdown = $item->calculation_breakdown ?? [];
-            $paid = round((float) ($breakdown['base_salary'] ?? 0) + (float) $item->overtime_amount - (float) ($breakdown['short_hours']['amount'] ?? 0), 2);
+            $paid = round((float) ($breakdown['base_salary'] ?? 0) + (float) $item->overtime_amount + (float) ($breakdown['extra_work']['amount'] ?? 0) - (float) ($breakdown['short_hours']['amount'] ?? 0), 2);
             $carried = (float) SalaryAdjustment::where('carried_from_payroll_item_id', $item->id)->where('status', 'approved')->get()->sum(fn (SalaryAdjustment $a) => $a->signedAmount());
             $difference = round($now['total'] - $paid - $carried, 2);
             if (abs($difference) < 0.01) continue;

@@ -114,9 +114,21 @@ class DailyStatus extends Component
     /** Manager/HR nudges people who checked in but have not written today's status. */
     public function remindMissing(): void
     {
-        abort_unless($this->user()->canAny(['hr.manage', 'employees.manage', 'attendance.view']), 403);
-        $sent = app(\App\Services\WorkService::class)->remindDailyStatus(today()->toDateString(), $this->user()->canAny(['hr.manage', 'employees.manage']) ? null : $this->teamEmployeeIds()->all());
-        $this->toast("Reminder sent to {$sent} ".str('person')->plural($sent).'.');
+        $orgWide = $this->user()->canAny(['hr.manage', 'employees.manage']);
+        $scope = $orgWide ? null : $this->statusScope();
+        abort_unless($orgWide || $scope->count() > 1, 403);
+        $sent = app(\App\Services\WorkService::class)->remindDailyStatus(today()->toDateString(), $scope?->all(), $this->user());
+        $this->toast($sent ? "Reminder sent to {$sent} ".str('person')->plural($sent).' (in the app and by e-mail).' : 'Everyone listed was already reminded in the last hour — try again later.');
+    }
+
+    /** Own employee, direct reports and members of projects this person manages. */
+    private function statusScope(): \Illuminate\Support\Collection
+    {
+        $own = $this->ownEmployee();
+        if (! $own) return collect();
+        $projectMembers = Project::where('manager_id', $own->id)->with('members:attendance_employees.id')->get()->flatMap(fn ($p) => $p->members->pluck('id'));
+
+        return $this->teamEmployeeIds()->merge($projectMembers)->unique()->values();
     }
 
     public function render()
@@ -124,18 +136,22 @@ class DailyStatus extends Component
         $user = $this->user();
         $own = $this->ownEmployee();
         $orgWide = $user->canAny(['hr.manage', 'employees.manage']);
-        $canSeeTeam = $orgWide || $user->can('attendance.view');
-        $scope = $orgWide ? null : $this->teamEmployeeIds();
+        // Who the signed-in person may read: HR everyone; a manager their direct reports; a project manager the
+        // members of their projects; everyone else only themselves.
+        $scope = $orgWide ? null : $this->statusScope();
+        $canSeeTeam = $orgWide || $scope->count() > 1;
         $statuses = DailyWorkStatus::with('employee')
             ->when(! $canSeeTeam, fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($canSeeTeam && $scope, fn ($q) => $q->whereIn('employee_id', $scope->all() ?: [0]))
             ->when($this->date, fn ($q, $d) => $q->whereDate('work_date', $d))
-            ->when($this->employee, fn ($q, $id) => $q->where('employee_id', $id))
-            ->when($this->project, fn ($q, $id) => $q->where('project_updates', 'like', '%"project_id":'.(int) $id.',%'))
+            ->when($this->employee && ($scope === null || $scope->contains($this->employee)), fn ($q) => $q->where('employee_id', $this->employee))
+            // project_updates is JSON: MySQL stores it as {"project_id": 5, …} (with a space), SQLite without.
+            ->when($this->project, fn ($q, $id) => $q->where(fn ($q) => $q->where('project_updates', 'like', '%"project_id":'.(int) $id.',%')->orWhere('project_updates', 'like', '%"project_id": '.(int) $id.',%')))
             ->latest('work_date')->latest('id')->paginate(15);
 
         $missing = collect();
-        if ($canSeeTeam && today()->isWeekday()) {
+        // "Missing today" on the company's working days (Saturdays too where they are worked).
+        if ($canSeeTeam && \App\Support\WorkCalendar::isWorkday(today()->toDateString(), app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5]]))) {
             $submitted = DailyWorkStatus::whereDate('work_date', today())->pluck('employee_id');
             $missing = AttendanceEmployee::where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))
                 ->whereNotIn('id', $submitted)->whereHas('sessions', fn ($q) => $q->whereDate('work_date', today()))->orderBy('name')->get();

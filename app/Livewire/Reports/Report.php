@@ -72,6 +72,20 @@ class Report extends Component
             'departments' => Department::orderBy('name')->get(['id', 'name']),
             'teams' => Team::orderBy('name')->get(['id', 'name']),
             'usesEmployees' => $this->type !== 'audit',
+            // Existing values to pick from in the Search box (actions for Audit, titles / names elsewhere).
+            'suggestions' => $this->searchSuggestions($scopeIds),
         ], $reports->label($this->type).' report');
     }
+
+    /** @return array<int, string> */
+    private function searchSuggestions($scopeIds): array
+    {
+        return match ($this->type) {
+            'audit' => \App\Models\AuditLog::query()->distinct()->orderBy('action')->limit(500)->pluck('action')->all(),
+            'tasks' => \App\Models\Task::whereIn('assignee_id', $scopeIds)->distinct()->orderBy('title')->limit(500)->pluck('title')->all(),
+            'projects' => \App\Models\Project::orderBy('name')->limit(500)->pluck('name')->all(),
+            default => AttendanceEmployee::whereIn('id', $scopeIds)->orderBy('name')->get(['name', 'employee_code'])->flatMap(fn ($e) => [$e->name, $e->employee_code])->filter()->unique()->values()->all(),
+        };
+    }
+
 }

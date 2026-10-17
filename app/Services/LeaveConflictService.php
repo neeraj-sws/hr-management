@@ -73,6 +73,9 @@ class LeaveConflictService
             }
             $this->audit->record('leave.conflict_resolved', $record, ['date' => $date, 'resolution' => $resolution, 'leave_request_id' => $leave->id]);
             if ($carry) app(PayrollCarryOver::class)->settle($leave->employee_id, $date, $date, 'Leave/attendance overlap on '.Carbon::parse($date)->format('d M Y').' counted as '.($resolution === 'worked' ? 'work' : 'leave'), $actor);
+            // The employee hears how the day was settled (and that a paid leave day came back).
+            $leave->loadMissing('employee.user', 'leaveType');
+            Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, Carbon::parse($date)->format('d M Y').': you had '.($leave->leaveType?->name ?? 'leave').' and also worked. '.($resolution === 'worked' ? 'HR counted it as a working day'.($leave->leaveType?->paid ? ' and the leave day was returned to your balance.' : '.') : 'HR counted it as leave.'), route('leave.requests', [], false), $actor);
 
             return $record;
         });

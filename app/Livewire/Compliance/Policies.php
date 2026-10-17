@@ -19,10 +19,10 @@ class Policies extends Component
     use InteractsWithHr, \Livewire\WithPagination;
 
     public const RULES = [
-        'attendance.late_penalty' => ['Late attendance', ['amount_per_minute' => 'Amount per late minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
+        'attendance.late_penalty' => ['Late attendance', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per late minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
         'attendance.unauthorized_absence' => ['Unauthorized absence', ['amount_per_day' => 'Amount per absent workday']],
         'task.late_penalty' => ['Late / overdue tasks', ['amount_per_day' => 'Amount per overdue workday', 'max_amount' => 'Maximum per task']],
-        'attendance.early_checkout' => ['Early check-out', ['amount_per_minute' => 'Amount per early minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
+        'attendance.early_checkout' => ['Early check-out', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per early minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
         'task.missing_entry' => ['No task entered for a worked day', ['amount_per_day' => 'Amount per day']],
         'task.late_entry' => ['Task entered late (after the day it was for)', ['amount' => 'Amount per late task', 'grace_hours' => 'Grace hours after the day ends']],
         'daily_status.missing' => ['Daily status not submitted', ['amount_per_day' => 'Amount per day', 'grace_hours' => 'Grace hours after the day ends']],
