@@ -47,6 +47,8 @@ class EmployeeService
         // Sent after the employee is saved: a notification or e-mail problem can no longer turn a
         // successful save into a "500 Server Error" (the employee used to be created anyway).
         $this->notifyManagerAssigned($employee, $actor);
+        // Joining while screen capture is on (company-wide): the new employee is told at once.
+        rescue(fn () => app(ScreenCaptureService::class)->notifyIfNeeded($employee->fresh('user')), null, true);
 
         return $employee;
     }

@@ -62,6 +62,7 @@ class DesktopApp:
         self.desktop_attendance_allowed = True  # admin can turn desktop attendance off for an employee
         self.last_presence_poll: datetime | None = None
         self.capture_policy: dict | None = None
+        self.capture_notice_shown: dict | None = None  # the notice (terms) shown in this app run
         self.last_capture: datetime | None = None
         self.prefs = settings.load_settings()
         settings.ensure_dir()
@@ -218,6 +219,10 @@ class DesktopApp:
         self.title_label.pack(anchor="w")
         self.subtitle_label = tk.Label(names, text="HR & Work Management", font=("Segoe UI", 9), fg="#9db3d6", bg=NAVY, anchor="w")
         self.subtitle_label.pack(anchor="w")
+        # Capture indicator: always visible in the header while screen capture is on for this employee.
+        self.capture_badge = tk.Label(brand, text="", font=("Segoe UI", 9, "bold"), fg="white", bg=NAVY, padx=10, pady=3, cursor="hand2")
+        self.capture_badge.pack(side="left", padx=(16, 0))
+        self.capture_badge.bind("<Button-1>", lambda _e: self._open_capture_policy())
         ttk.Button(header, text="Sign out", style="Header.TButton", command=self.logout).pack(side="right")
         ttk.Button(header, text="Refresh", style="Header.TButton", command=self.refresh).pack(side="right", padx=8)
         ttk.Button(header, text="Daily status", style="Header.TButton", command=self._open_daily_status).pack(side="right")
@@ -506,14 +511,60 @@ class DesktopApp:
 
     # Screen capture ---------------------------------------------------------
     def _apply_capture_policy(self, policy: dict | None):
-        self.capture_policy = policy
+        on = bool(policy and policy.get("enabled"))
+        # Nothing is captured until the employee has seen the notice (in this app run, or acknowledged before).
+        if on and not policy.get("acknowledged") and self.capture_notice_shown != policy.get("notice"):
+            self.capture_policy = None
+            self.root.after(0, lambda: self._show_capture_notice(policy))
+        else:
+            self.capture_policy = policy
+        if hasattr(self, "capture_badge") and self.capture_badge.winfo_exists():
+            self.capture_badge.config(text="● Screen capture ON" if on else "", bg="#c62828" if on else NAVY)
+        if getattr(self, "tray", None):
+            self.tray.set_capture(on)
         if not hasattr(self, "capture_label") or not self.capture_label.winfo_exists():
             return
-        if not policy or not policy.get("enabled"):
+        if not on:
             self.capture_label.config(text="")
             return
         window = f", {policy['window_start']}-{policy['window_end']}" if policy.get("window_start") else ""
-        self.capture_label.config(text=f"Screen capture on: every {policy['interval_minutes']} min while working{window}. Not during breaks or after check-out.")
+        self.capture_label.config(text=f"Screen capture on: a screenshot may be taken every {policy['interval_minutes']} min while working{window}. Not during breaks or after check-out. Click the red sign above for the policy.")
+
+    def _show_capture_notice(self, policy: dict):
+        """First-time notice: shown before any capture, until the employee confirms it (again when the terms change)."""
+        if self.capture_notice_shown == policy.get("notice"):
+            return
+        self.capture_notice_shown = policy.get("notice") or {}
+        notice = policy.get("notice") or {}
+        lines = [
+            "Your employer has turned on screen capture for you.",
+            "",
+            "• " + notice.get("frequency", f"A screenshot may be taken every {policy.get('interval_minutes', 10)} minutes."),
+            "• " + notice.get("when", "Only while you are checked in and working."),
+            "• Why: " + notice.get("purpose", ""),
+            "• Who can see them: " + notice.get("viewers", ""),
+            "• " + notice.get("retention", ""),
+            "• " + notice.get("never", ""),
+            "",
+            "A red \"● Screen capture ON\" sign stays at the top of this window while it is active.",
+            "",
+            "Click OK to confirm you have read this. (Click the red sign any time to open the full policy.)",
+        ]
+        self._show_window()
+        messagebox.showinfo("Screen capture is on", "\n".join(lines), parent=self.root)
+        self.capture_policy = policy
+
+        def done(_result):
+            self.capture_policy = {**policy, "acknowledged": True}
+            self._flash("Thank you — your confirmation of the monitoring policy is recorded.", GREEN)
+
+        self._run(self.client.acknowledge_screen_capture, done, lambda _e: None)
+
+    def _open_capture_policy(self):
+        url = ((self.me or {}).get("policies") or {}).get("screen_capture", {}) or {}
+        url = url.get("policy_url") if isinstance(url, dict) else None
+        if url:
+            webbrowser.open(url)
 
     def _capture(self, at: datetime):
         def work():
@@ -524,7 +575,10 @@ class DesktopApp:
             if isinstance(error, ApiError) and not error.is_network:
                 self._flash(f"Screen capture skipped: {error.first_message}", MUTED)
 
-        self._run(work, lambda _r: None, failed)
+        def sent(_result):
+            self._flash(f"Screenshot taken at {at.astimezone().strftime('%I:%M %p')} (screen capture is on).", MUTED)
+
+        self._run(work, sent, failed)
 
     def _toggle_autostart(self):
         wanted = self.autostart_var.get()
@@ -645,7 +699,7 @@ class DesktopApp:
                 text += f"   ·   Out {check_out.astimezone().strftime('%I:%M %p')}"
             self.session_label.config(text=text)
             if getattr(self, "tray", None):
-                self.tray.set_title(f"SWS HR - {STATUS_LABEL.get(session['status'], session['status'])}")
+                self.tray.set_status(STATUS_LABEL.get(session['status'], session['status']))
             if self.desktop_attendance_allowed and not check_out:
                 self.att_buttons["break_end" if session["status"] == "on_break" else "break_start"].pack(fill="x", pady=4)
                 self.att_buttons["check_out"].pack(fill="x", pady=4)

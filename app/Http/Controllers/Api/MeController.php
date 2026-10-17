@@ -33,7 +33,11 @@ class MeController extends ApiController
                 'attendance_sources' => $employee ? app(\App\Services\AttendanceService::class)->allowedSources($employee) : ['web', 'mobile', 'desktop'],
                 'app_usage' => $employee ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : false,
                 'window_titles' => $employee ? app(\App\Services\AppUsageService::class)->titlesEnabledFor($employee) : false,
-                'screen_capture' => $employee ? [...app(\App\Services\ScreenCaptureService::class)->policy($employee), 'acknowledged' => true] : null,
+                'screen_capture' => $employee ? (function ($captures) use ($employee, $user) {
+                    $policy = $captures->policy($employee);
+
+                    return [...$policy, 'acknowledged' => $captures->isAcknowledged($user, $policy), 'notice' => $captures->describe($policy), 'policy_url' => route('monitoring.policy')];
+                })(app(\App\Services\ScreenCaptureService::class)) : null,
                 'away_prompt_minutes' => (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['away_prompt_minutes' => 10])['away_prompt_minutes'] ?? 10),
             ],
         ]]);

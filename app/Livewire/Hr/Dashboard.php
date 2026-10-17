@@ -59,7 +59,13 @@ class Dashboard extends Component
         $myBalances = $profile ? $profile->leaveBalances()->with('leaveType')->where('year', \App\Support\LeaveYear::current())->get()
             ->filter(fn ($balance) => $balance->leaveType?->paid)->map(fn ($balance) => ['type' => $balance->leaveType?->name, 'remaining' => app(LeaveAccrualService::class)->balance($profile, $balance->leaveType, \App\Support\LeaveYear::current())['remaining']]) : collect();
 
+        // Monitoring transparency: the employee always sees on their dashboard when screen capture is on.
+        $captures = app(\App\Services\ScreenCaptureService::class);
+        $capturePolicy = $profile ? $captures->policy($profile) : null;
+        $capture = $capturePolicy && $capturePolicy['enabled'] ? ['terms' => $captures->describe($capturePolicy), 'acknowledged' => $captures->isAcknowledged($this->user(), $capturePolicy)] : null;
+
         return $this->page('livewire.hr.dashboard', [
+            'capture' => $capture,
             'orgWide' => $orgWide,
             'profile' => $profile,
             'metrics' => [

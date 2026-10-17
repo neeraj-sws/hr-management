@@ -23,11 +23,14 @@ use Illuminate\Validation\ValidationException;
 class ScreenCaptureService
 {
     public const INTERVALS = [5, 10, 15, 30];
+    public const DEFAULT_PURPOSE = 'To confirm working time and to support work reviews.';
+    public const VIEWERS = 'You, your current manager, and HR/administrators with the monitoring permission. Every view and download is logged.';
+    public const NEVER_RECORDED = 'Keystrokes, passwords, webcam, microphone and clipboard are never recorded.';
     public const IMAGE_RULES = ['required', 'file', 'max:4096', 'mimes:jpg,jpeg,png'];
 
     public function __construct(private readonly PolicyConfigurationService $policies, private readonly AttendanceService $attendance, private readonly AuditLogger $audit) {}
 
-    /** @return array{enabled: bool, interval_minutes: int, active_only: bool, window_start: ?string, window_end: ?string, retention_days: int} */
+    /** @return array{enabled: bool, interval_minutes: int, active_only: bool, window_start: ?string, window_end: ?string, retention_days: int, purpose: string} */
     public function policy(?AttendanceEmployee $employee): array
     {
         $p = $this->policies->forEmployee($employee, 'monitoring.screenshots', today()->toDateString(), []);
@@ -39,7 +42,66 @@ class ScreenCaptureService
             'window_start' => $p['window_start'] ?? null,
             'window_end' => $p['window_end'] ?? null,
             'retention_days' => max(1, min(365, (int) ($p['retention_days'] ?? 30))),
+            'purpose' => trim((string) ($p['purpose'] ?? '')) ?: self::DEFAULT_PURPOSE,
         ];
+    }
+
+    /** A fingerprint of what the employee is told; when it changes they are told (and asked) again. */
+    public function terms(array $policy): string
+    {
+        return hash('sha256', json_encode([$policy['interval_minutes'], $policy['active_only'], $policy['window_start'], $policy['window_end'], $policy['retention_days'], $policy['purpose']]));
+    }
+
+    /** The employee has acknowledged the capture terms that apply to them now. */
+    public function isAcknowledged(?User $user, array $policy): bool
+    {
+        return $user !== null && $user->screen_capture_ack_terms === $this->terms($policy);
+    }
+
+    /** "Up to one screenshot every 10 minutes, while you are checked in and working, 09:00–18:00…" */
+    public function describe(array $policy): array
+    {
+        $window = $policy['window_start'] && $policy['window_end'] ? " between {$policy['window_start']} and {$policy['window_end']}" : '';
+
+        return [
+            'frequency' => "A screenshot of your screen may be taken every {$policy['interval_minutes']} minutes{$window}.",
+            'when' => 'Only while you are checked in and working — never before check-in, during a break or after check-out'.($policy['active_only'] ? ', and not while the computer is idle or locked.' : '.'),
+            'purpose' => $policy['purpose'],
+            'viewers' => self::VIEWERS,
+            'retention' => "Screenshots are deleted automatically after {$policy['retention_days']} days.",
+            'never' => self::NEVER_RECORDED,
+        ];
+    }
+
+    /**
+     * Tells the employee (in-app and by e-mail) that screen capture is on for
+     * them and what it means — once per version of the terms: when it is
+     * switched on, when they join while it is on, or when the terms change.
+     */
+    public function notifyIfNeeded(AttendanceEmployee $employee): bool
+    {
+        $user = $employee->user;
+        if (! $user || ! ($user->is_active ?? true) || ! $employee->is_active) return false;
+        $policy = $this->policy($employee);
+        if (! $policy['enabled']) return false;
+        $terms = $this->terms($policy);
+        if ($user->screen_capture_notified_terms === $terms) return false;
+        $user->forceFill(['screen_capture_notified_terms' => $terms])->save();
+        rescue(fn () => $user->notify(new \App\Notifications\ScreenCaptureNotice($employee->id, $this->describe($policy))), null, true);
+        $this->audit->record('screen_capture.notice_sent', $employee, ['interval_minutes' => $policy['interval_minutes']]);
+
+        return true;
+    }
+
+    /** Everyone with capture on who has not been told about the current terms (after a policy change, and hourly). */
+    public function notifyAll(): int
+    {
+        $sent = 0;
+        AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id')->orderBy('id')->chunkById(200, function ($employees) use (&$sent) {
+            foreach ($employees as $employee) if ($this->notifyIfNeeded($employee)) $sent++;
+        });
+
+        return $sent;
     }
 
     /**
@@ -51,14 +113,16 @@ class ScreenCaptureService
         abort_unless($actor->can('monitoring.manage'), 403, 'Only an administrator can change screen capture.');
         app(PeopleOperationsService::class)->setPolicy('monitoring.screenshots', 'monitoring', 'Screen capture', ['enabled' => $enabled], $employee->id, $actor->id, today()->toDateString());
         $this->audit->record($enabled ? 'screen_capture.enabled_for_employee' : 'screen_capture.disabled_for_employee', $employee, ['by' => $actor->id]);
+        if ($enabled) $this->notifyIfNeeded($employee->fresh('user'));
     }
 
+    /** "I have read this": records which version of the terms the person acknowledged. */
     public function acknowledge(User $user): void
     {
-        if (! $user->screen_capture_acknowledged_at) {
-            $user->forceFill(['screen_capture_acknowledged_at' => now()])->save();
-            $this->audit->record('screen_capture.acknowledged', $user);
-        }
+        $terms = $this->terms($this->policy($user->employeeProfile));
+        if ($user->screen_capture_ack_terms === $terms) return;
+        $user->forceFill(['screen_capture_acknowledged_at' => now(), 'screen_capture_ack_terms' => $terms])->save();
+        $this->audit->record('screen_capture.acknowledged', $user);
     }
 
     public function store(AttendanceEmployee $employee, UploadedFile $image, Carbon $capturedAt): Screenshot

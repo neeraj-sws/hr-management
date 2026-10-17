@@ -145,10 +145,11 @@
         @else
         <section class="card">
             <div class="card-head"><div><h2>Employees</h2><p>Switch screen capture on only for the people you choose. Nothing is captured for anyone else.</p></div></div>
-            <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Department</th><th>Screen capture</th><th></th></tr></thead><tbody>
+            <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Department</th><th>Screen capture</th><th>Employee informed</th><th></th></tr></thead><tbody>
                 @foreach($captureEmployees as $row)
                     <tr><td><strong>{{ $row['employee']->name }}</strong> <span class="small muted">{{ $row['employee']->employee_code }}</span></td><td>{{ $row['employee']->department?->name ?? '—' }}</td>
                         <td>@if($row['on'])<x-badge tone="green">on</x-badge>@else<x-badge tone="gray">off</x-badge>@endif</td>
+                        <td>@if(! $row['on'])<span class="muted">—</span>@elseif($row['acknowledged'])<x-badge tone="green">acknowledged</x-badge><small>{{ $row['acknowledged_at']?->format('d M Y, h:i A') }}</small>@else<x-badge tone="amber">not yet</x-badge><small>{{ $row['employee']->user ? 'notice sent; waiting for "I understand"' : 'no login' }}</small>@endif</td>
                         <td class="num"><button type="button" class="btn btn-sm {{ $row['on'] ? '' : 'btn-primary' }}" wire:click="toggleEmployeeCapture({{ $row['employee']->id }})" wire:loading.attr="disabled">{{ $row['on'] ? 'Turn off' : 'Turn on' }}</button></td></tr>
                 @endforeach
             </tbody></table></div>
@@ -164,7 +165,9 @@
                     <x-field label="Only between (start)" name="captureWindowStart" hint="optional work window"><input type="time" wire:model="captureWindowStart"></x-field>
                     <x-field label="and (end)" name="captureWindowEnd"><input type="time" wire:model="captureWindowEnd"></x-field>
                     <label class="check full"><input type="checkbox" wire:model="captureActiveOnly"> Only when the computer is in use (skip if idle or screen locked)</label>
+                    <x-field label="Purpose (shown to employees)" name="capturePurpose" full hint="why screenshots are taken"><textarea wire:model="capturePurpose" maxlength="500" placeholder="{{ \App\Services\ScreenCaptureService::DEFAULT_PURPOSE }}"></textarea></x-field>
                 </div>
+                <p class="small muted">When capture is turned on for someone, when they join while it is on, or when these rules change, the employee gets an in-app notice and an e-mail with the frequency, purpose, who can see the screenshots and how long they are kept. They see the full policy under <a href="{{ route('monitoring.policy') }}">Monitoring policy</a> and confirm it in the desktop app.</p>
                 <div class="form-actions"><button class="btn btn-primary">Save rules</button></div>
             </form>
         </section>

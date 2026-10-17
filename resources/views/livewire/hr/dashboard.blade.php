@@ -13,6 +13,13 @@
         @endif
     </div>
 
+    @if($capture)
+        <div class="alert {{ $capture['acknowledged'] ? 'alert-info' : 'alert-warn' }}" role="status">
+            <strong>● Screen monitoring is ON for you.</strong> {{ $capture['terms']['frequency'] }} Only while you are checked in and working — not during breaks or after check-out.
+            <small>Why: {{ $capture['terms']['purpose'] }} · <a href="{{ route('monitoring.policy') }}">{{ $capture['acknowledged'] ? 'Monitoring policy' : 'Read the monitoring policy and confirm' }}</a></small>
+        </div>
+    @endif
+
     @if($profile)
         <div class="grid grid-3 mb">
             <section class="card card-body">
