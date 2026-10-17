@@ -386,8 +386,8 @@ class DesktopApp:
         title_entry = tk.Entry(win, font=("Segoe UI", 10), relief="solid", bd=1)
         title_entry.pack(fill="x")
         tk.Label(win, text="Priority", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
-        priority = tk.StringVar(value="medium")
-        ttk.Combobox(win, textvariable=priority, values=["low", "medium", "high", "urgent"], state="readonly").pack(fill="x")
+        priority = tk.StringVar(value="normal")  # the server's priorities: low, normal, high, urgent
+        ttk.Combobox(win, textvariable=priority, values=["low", "normal", "high", "urgent"], state="readonly").pack(fill="x")
 
         # Due date picker (optional): day / month / year drop-downs, no typing.
         today = datetime.now()

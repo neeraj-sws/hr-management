@@ -97,7 +97,10 @@ class ApiTest extends TestCase
         $payload = ['title' => 'API task', 'assignee_id' => $this->employee->id, 'priority' => 'high', 'estimated_hours' => 3, 'due_on' => '2026-10-09'];
         $this->as($employeeToken)->postJson('/api/tasks', [...$payload, 'assignee_id' => $this->manager->id])->assertForbidden(); // not for someone else
         $this->as($employeeToken)->postJson('/api/tasks', [...$payload, 'title' => 'My own task'])->assertCreated()->assertJsonPath('data.assignee.id', $this->employee->id);
-        Task::where('title', 'My own task')->delete(); // keep the counts below about assigned work
+        // The desktop app (up to 1.9) sends "medium" for the normal priority.
+        $this->as($employeeToken)->postJson('/api/tasks', ['title' => 'From the desktop app', 'priority' => 'medium'])->assertCreated()->assertJsonPath('data.priority', 'normal');
+        $this->as($employeeToken)->postJson('/api/tasks', ['title' => 'Bad priority', 'priority' => 'whenever'])->assertUnprocessable()->assertJsonValidationErrors(['priority']);
+        Task::whereIn('title', ['My own task', 'From the desktop app'])->delete(); // keep the counts below about assigned work
         $this->as($managerToken)->postJson('/api/tasks', ['assignee_id' => $this->employee->id])->assertUnprocessable()->assertJsonValidationErrors(['title', 'priority']);
         $this->as($managerToken)->postJson('/api/tasks', [...$payload, 'assignee_id' => $this->outsider->id])->assertUnprocessable()->assertJsonValidationErrors('assignee_id');
         $taskId = $this->as($managerToken)->postJson('/api/tasks', $payload)->assertCreated()->json('data.id');
