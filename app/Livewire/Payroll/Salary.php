@@ -196,7 +196,7 @@ class Salary extends Component
         if ($this->canManage() || $user->can('payroll.approve')) {
             $employees = AttendanceEmployee::with(['salaryProfile', 'department'])->where('is_active', true)
                 ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%')->orWhere('employee_code', 'like', '%'.trim($this->search).'%')))
-                ->orderBy('name')->paginate(15);
+                ->inCodeOrder()->paginate(15);
         }
         $adjustments = SalaryAdjustment::with('employee')
             ->when(! $user->canAny(['salary.adjust', 'payroll.manage', 'payroll.approve']), fn ($q) => $q->where('employee_id', $own?->id ?? 0))

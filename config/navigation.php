@@ -18,6 +18,8 @@ return [
         ['label' => 'Org Chart', 'route' => 'company.org-chart', 'icon' => 'team'],
     ]],
     ['heading' => 'People', 'items' => [
+        // Only people who manage someone see it (access:manager on the route).
+        ['label' => 'My team', 'route' => 'people.my-team', 'icon' => 'team'],
         ['label' => 'Employees', 'route' => 'people.employees', 'icon' => 'users'],
         ['label' => 'Departments', 'route' => 'people.departments', 'icon' => 'building'],
         ['label' => 'Teams', 'route' => 'people.teams', 'icon' => 'team'],

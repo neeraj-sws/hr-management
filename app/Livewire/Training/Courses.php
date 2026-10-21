@@ -42,7 +42,7 @@ class Courses extends Component
     /** Employees this user may assign to: everyone for HR, direct reports for managers. */
     private function assignable()
     {
-        $query = AttendanceEmployee::where('is_active', true)->orderBy('name');
+        $query = AttendanceEmployee::where('is_active', true)->inCodeOrder();
         if (! $this->canManage()) $query->where('manager_id', $this->ownEmployee()?->id ?? 0);
 
         return $query;

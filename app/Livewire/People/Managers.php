@@ -19,7 +19,7 @@ class Managers extends Component
         $managers = AttendanceEmployee::with(['department', 'user.roles', 'directReports' => fn ($q) => $q->where('is_active', true)->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')])
             ->where('is_active', true)
             ->where(fn ($q) => $q->whereHas('directReports')->orWhereHas('user.roles', fn ($r) => $r->where('name', 'Manager')))
-            ->orderBy('name')->get()
+            ->inCodeOrder()->get()
             ->map(function (AttendanceEmployee $manager) {
                 $ids = $manager->directReports->pluck('id');
                 $manager->setAttribute('pending_leave', LeaveRequest::whereIn('employee_id', $ids)->where('status', 'pending')->count());

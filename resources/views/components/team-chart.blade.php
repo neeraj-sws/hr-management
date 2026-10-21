@@ -1,7 +1,7 @@
 @props(['root'])
 {{-- A manager and everyone under them (direct and indirect reports), drawn like the Org Chart. --}}
 @php
-    $people = \App\Models\AttendanceEmployee::with('department')->where('is_active', true)->orderBy('name')->get();
+    $people = \App\Models\AttendanceEmployee::with('department')->where('is_active', true)->inCodeOrder()->get();
     $children = $people->groupBy('manager_id');
     $countReports = function (int $id, int $depth = 0) use (&$countReports, $children): int {
         if ($depth > 20) return 0;

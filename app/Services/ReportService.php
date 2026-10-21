@@ -95,7 +95,7 @@ class ReportService
     private function rawColumns(string $type): array
     {
         return match ($type) {
-            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'day_status', 'session_status', 'check_in_ip', 'check_out_ip'],
+            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'day', 'day_status', 'note', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'session_status', 'check_in_ip', 'check_out_ip'],
             'leave' => ['id', 'employee_code', 'employee_name', 'leave_type', 'paid', 'starts_on', 'ends_on', 'days', 'status', 'decided_at'],
             'projects' => ['id', 'project', 'client', 'manager', 'status', 'starts_on', 'ends_on', 'members', 'tasks', 'completed_tasks', 'open_tasks', 'overdue_tasks', 'progress_pct', 'estimated_hours', 'logged_hours'],
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
@@ -127,14 +127,7 @@ class ReportService
         $ids = $this->employeeIds($user, $type, $filters);
 
         $rows = match ($type) {
-            'attendance' => AttendanceSession::with('employee.department')->whereIn('employee_id', $ids)
-                ->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->orderByDesc('work_date')->orderBy('employee_id')
-                ->when($limit, fn ($q) => $q->limit($limit))->get()
-                ->map(function (AttendanceSession $s) {
-                    $status = $this->attendance->isHalfDay($s) ? 'half_day' : ($this->attendance->isLate($s) ? 'late' : 'present');
-
-                    return ['employee_code' => $s->employee?->employee_code, 'employee_name' => $s->employee?->name, 'department' => $s->employee?->department?->name, 'work_date' => $s->work_date?->toDateString(), 'check_in' => $s->check_in?->format('h:i:s A'), 'check_out' => $s->check_out?->format('h:i:s A'), 'active_hours' => $this->hours($this->attendance->workedSeconds($s)), 'idle_hours' => $this->hours($s->idleSeconds()), 'break_hours' => $this->hours($s->break_seconds), 'screen_active_hours' => $this->hours($s->screen_active_seconds), 'screen_idle_hours' => $this->hours($s->screen_idle_seconds), 'late_minutes' => $this->attendance->lateMinutes($s), 'early_minutes' => $this->attendance->earlyMinutes($s), 'day_status' => $status, 'session_status' => $s->status, 'check_in_ip' => $s->check_in_ip, 'check_out_ip' => $s->check_out_ip];
-                }),
+            'attendance' => $this->attendanceDays($ids, $from, $to, $filters['day_status'] ?? null, $limit),
             'leave' => LeaveRequest::with(['employee', 'leaveType'])->whereIn('employee_id', $ids)
                 ->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->orderByDesc('starts_on')
                 ->when($limit, fn ($q) => $q->limit($limit))->get()
@@ -210,6 +203,13 @@ class ReportService
         }
 
         $rows = $rows->map(fn (array $row) => $this->formatDurations($row));
+        // Every per-employee report reads in employee-number order (EMP-01, EMP-02 … EMP-10), keeping each
+        // employee's own rows in their date order. Salary lists months newest first, so it keeps its own order.
+        if ($type !== 'salary' && $rows->isNotEmpty() && array_key_exists('employee_code', $rows->first())) {
+            $rows = $rows->values()->map(fn ($row, $i) => [$row, $i])
+                ->sortBy(fn ($pair) => sprintf('%04d|%s|%08d', strlen((string) $pair[0]['employee_code']), $pair[0]['employee_code'], $pair[1]))
+                ->map(fn ($pair) => $pair[0]);
+        }
 
         return $limit ? $rows->take($limit)->values() : $rows->values();
     }
@@ -358,6 +358,41 @@ class ReportService
     private function hours(mixed $seconds): float
     {
         return ((int) $seconds) / 3600;
+    }
+
+    /** Kinds of day in the attendance report (and its Day filter). */
+    public const DAY_STATUSES = ['present' => 'Present', 'late' => 'Late', 'half_day' => 'Half-day', 'on_leave' => 'On leave', 'holiday' => 'Holiday', 'weekend' => 'Weekly off', 'absent' => 'Absent', 'leave_conflict' => 'Worked on a leave day'];
+
+    /**
+     * Every day of the range for each employee (employee-code order, then date): worked days with their times,
+     * and leave, holidays, weekly offs and absences too. Days before joining, after leaving and in the future are left out.
+     */
+    private function attendanceDays($ids, string $from, string $to, ?string $only, ?int $limit): Collection
+    {
+        $rows = collect();
+        $end = min($to, today()->toDateString());
+        $employees = AttendanceEmployee::with('department')->whereIn('id', $ids)->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->get();
+        foreach ($employees as $e) {
+            $start = max($from, $e->joined_at?->toDateString() ?? $from);
+            $last = $e->exit_date ? min($end, $e->exit_date->toDateString()) : $end;
+            if ($start > $last) continue;
+            foreach ($this->attendance->days($e, \Illuminate\Support\Carbon::parse($start), \Illuminate\Support\Carbon::parse($last)) as $day) {
+                if (in_array($day['status'], ['upcoming', 'not_joined'], true)) continue;
+                if ($only && $day['status'] !== $only) continue;
+                $s = $day['session'];
+                $rows->push(['employee_code' => $e->employee_code, 'employee_name' => $e->name, 'department' => $e->department?->name, 'work_date' => $day['date'],
+                    'day' => \Illuminate\Support\Carbon::parse($day['date'])->format('D'), 'day_status' => $day['status'],
+                    'note' => $day['extra'] ? 'Extra working · '.$day['extra_reason'] : ($day['label'] ?: null),
+                    'check_in' => $s?->check_in?->format('h:i:s A'), 'check_out' => $s?->check_out?->format('h:i:s A'),
+                    'active_hours' => $s ? $this->hours($this->attendance->workedSeconds($s)) : null, 'idle_hours' => $s ? $this->hours($s->idleSeconds()) : null, 'break_hours' => $s ? $this->hours($s->break_seconds) : null,
+                    'screen_active_hours' => $s ? $this->hours($s->screen_active_seconds) : null, 'screen_idle_hours' => $s ? $this->hours($s->screen_idle_seconds) : null,
+                    'late_minutes' => $s ? $this->attendance->lateMinutes($s) : null, 'early_minutes' => $s ? $this->attendance->earlyMinutes($s) : null,
+                    'session_status' => $s?->status, 'check_in_ip' => $s?->check_in_ip, 'check_out_ip' => $s?->check_out_ip]);
+                if ($limit && $rows->count() >= $limit) return $rows;
+            }
+        }
+
+        return $rows;
     }
 
     /**

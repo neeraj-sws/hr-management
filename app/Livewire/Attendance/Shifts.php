@@ -190,7 +190,7 @@ class Shifts extends Component
         $start = Carbon::parse($this->week);
         $dates = collect(range(0, 6))->map(fn ($i) => $start->copy()->addDays($i)->toDateString())->all();
         $employees = AttendanceEmployee::with('department')->where('is_active', true)
-            ->when($this->department, fn ($q) => $q->where('department_id', $this->department))->orderBy('name')->paginate(20);
+            ->when($this->department, fn ($q) => $q->where('department_id', $this->department))->inCodeOrder()->paginate(20);
 
         return $this->page('livewire.attendance.shifts', [
             'shiftList' => Shift::withCount(['assignments' => fn ($q) => $q->where(fn ($q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', today()))])->orderBy('start_time')->get(),

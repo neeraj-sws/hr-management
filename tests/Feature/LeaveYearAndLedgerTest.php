@@ -268,7 +268,7 @@ class LeaveYearAndLedgerTest extends TestCase
 
         $this->artisan('sheets:sync')->assertSuccessful();
         Http::assertSent(fn (Request $r) => $r['secret'] === 'a-very-long-secret' && $r['sheet'] === 'Attendance' && $r['key_columns'] === ['employee_code', 'work_date']
-            && count($r['rows']) === 1 && $r['rows'][0][array_search('check_in_ip', $r['columns'], true)] === '10.0.0.7');
+            && collect($r['rows'])->contains(fn ($row) => $row[array_search('employee_code', $r['columns'], true)] === $this->employee->employee_code && $row[array_search('work_date', $r['columns'], true)] === '2026-10-12' && $row[array_search('check_in_ip', $r['columns'], true)] === '10.0.0.7'));
         $this->assertTrue($sheets->lastResult()['ok']);
 
         $result = $sheets->sync(Carbon::parse('2026-10-12'), Carbon::parse('2026-10-12'));

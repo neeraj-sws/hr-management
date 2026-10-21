@@ -27,7 +27,7 @@ class Screenshots extends Component
     /** People whose captures this user may see. */
     private function viewable()
     {
-        $query = AttendanceEmployee::where('is_active', true)->orderBy('name');
+        $query = AttendanceEmployee::where('is_active', true)->inCodeOrder();
         if ($this->user()->can('monitoring.view')) return $query;
         $own = $this->ownEmployee();
 

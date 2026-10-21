@@ -19,7 +19,7 @@ class OrgChart extends Component
 
     public function render()
     {
-        $employees = AttendanceEmployee::with('department')->where('is_active', true)->orderBy('name')->get();
+        $employees = AttendanceEmployee::with('department')->where('is_active', true)->inCodeOrder()->get();
         $byManager = $employees->groupBy(fn ($e) => $employees->contains('id', $e->manager_id) ? $e->manager_id : 0);
         $roots = $byManager->get(0, collect());
         if ($this->department) {

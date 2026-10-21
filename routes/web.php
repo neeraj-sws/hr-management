@@ -42,6 +42,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
 
         return \Illuminate\Support\Facades\Storage::disk('local')->response($employee->photo_path, null, ['Cache-Control' => 'private, max-age=86400']);
     })->name('people.photo');
+    Route::get('/people/my-team', Livewire\People\MyTeam::class)->middleware('access:manager')->name('people.my-team');
     Route::get('/people/teams', Livewire\People\Teams::class)->middleware('access:teams.manage,hr.manage,profile')->name('people.teams');
 
     // Attendance

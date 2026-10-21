@@ -108,7 +108,7 @@ class Balances extends Component
         if ($this->canManage()) {
             $team = AttendanceEmployee::where('is_active', true)
                 ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%')->orWhere('employee_code', 'like', '%'.trim($this->search).'%')))
-                ->orderBy('name')->paginate(15);
+                ->inCodeOrder()->paginate(15);
             $team->getCollection()->transform(function ($employee) use ($types, $accrual) {
                 $employee->setAttribute('balances', $types->mapWithKeys(fn ($t) => [$t->id => $accrual->balance($employee, $t, $this->year)]));
 

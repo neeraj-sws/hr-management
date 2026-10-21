@@ -151,10 +151,15 @@
 
     {{-- COMPLIANCE --}}
     <div x-show="tab === 'compliance'" x-cloak class="grid grid-2">
-        <section class="card" style="grid-column:1/-1"><div class="card-head"><div><h2>Attendance &amp; daily status history</h2><p>Last 90 days · {{ $disciplineCounts['late'] ?? 0 }} late arrivals · {{ $disciplineCounts['early'] ?? 0 }} early check-outs · {{ $disciplineCounts['no_status'] ?? 0 }} daily status missing · {{ $disciplineCounts['late_status'] ?? 0 }} submitted late</p></div></div>
+        <section class="card" style="grid-column:1/-1"><div class="card-head"><div><h2>Attendance &amp; daily status history</h2><p>{{ $disciplinePeriod }} · {{ $disciplineCounts['late'] ?? 0 }} late arrivals · {{ $disciplineCounts['early'] ?? 0 }} early check-outs · {{ $disciplineCounts['no_status'] ?? 0 }} daily status missing · {{ $disciplineCounts['late_status'] ?? 0 }} submitted late</p></div>
+                <div class="toolbar" style="border:0;padding:0">
+                    <label class="field"><span>Month</span><select wire:model.live="complianceMonth"><option value="">Last 90 days</option>@foreach($complianceMonths as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></label>
+                    <label class="field"><span>Type</span><select wire:model.live="complianceType"><option value="">All types</option><option value="late">Late arrival</option><option value="early">Early check-out</option><option value="no_status">Daily status missing</option><option value="late_status">Daily status late</option></select></label>
+                    <span wire:loading wire:target="complianceMonth,complianceType" class="spinner"></span>
+                </div></div>
             <div class="table-wrap" style="max-height:420px;overflow:auto"><table class="table"><thead><tr><th>Date</th><th>What</th><th>Details</th></tr></thead><tbody>
                 @forelse($discipline as $d)<tr><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($d['date'])->format('D d M Y') }}</td><td><x-badge :tone="['late' => 'amber', 'early' => 'amber', 'no_status' => 'red', 'late_status' => 'violet'][$d['type']]">{{ $d['label'] }}</x-badge></td><td>{{ $d['detail'] }}</td></tr>
-                @empty<tr><td colspan="3"><x-empty title="No late arrivals, early check-outs or missing daily status" icon="check-circle" /></td></tr>@endforelse
+                @empty<tr><td colspan="3"><x-empty title="Nothing to show for this month and type" icon="check-circle" /></td></tr>@endforelse
             </tbody></table></div>
         </section>
         <section class="card"><div class="card-head"><h2>Penalties</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'compliance', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
@@ -195,14 +200,14 @@
 
     {{-- HISTORY --}}
     <div x-show="tab === 'history'" x-cloak class="grid grid-2">
-        <section class="card"><div class="card-head"><div><h2>Daily status updates</h2><p>Latest 20</p></div><a class="link-sm" href="{{ route('work.daily-status', ['employee' => $employee->id]) }}">All →</a></div><div class="list">
+        <section class="card"><div class="card-head"><div><h2>Daily status updates</h2><p>Latest 10</p></div><a class="btn btn-sm" href="{{ route('work.daily-status', ['employee' => $employee->id]) }}">View all</a></div><div class="list">
             @forelse($dailyStatuses as $st)<div class="list-row"><div><strong>{{ $st->work_date->format('D d M Y') }}</strong><small style="white-space:pre-line">{{ \Illuminate\Support\Str::limit($st->summary ?: $st->plan ?: '—', 220) }}</small>@if($st->blockers)<small><strong>Blockers:</strong> {{ \Illuminate\Support\Str::limit($st->blockers, 120) }}</small>@endif</div>@if($st->submitted_at && $st->submitted_at->toDateString() > $st->work_date->toDateString())<x-badge tone="violet">late</x-badge>@else<span class="small muted nowrap">{{ $st->submitted_at?->format('h:i A') }}</span>@endif</div>
             @empty<x-empty title="No daily status submitted" icon="edit" />@endforelse
         </div></section>
         <section class="card"><div class="card-head"><h2>History</h2></div><div class="list">
             @forelse($teamHistory as $h)<div class="list-row"><div><strong>Team {{ $h->team?->name ?? 'removed team' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@empty @endforelse
             @foreach($managerHistory as $h)<div class="list-row"><div><strong>Reports to {{ $h->manager?->name ?? 'nobody' }}</strong><small>{{ $h->starts_on->format('d M Y') }} – {{ $h->ends_on?->format('d M Y') ?? 'now' }}</small></div></div>@endforeach
-            @foreach($history as $event)<div class="list-row"><div><strong>{{ str($event->action)->after('.')->replace('_', ' ')->ucfirst() }}</strong><small>{{ $event->actor?->name ?? 'System' }} · {{ $event->created_at->format('d M Y, h:i A') }}</small></div></div>@endforeach
+            @foreach($history as $event)@php($what = $event->describe())<div class="list-row"><div><strong>{{ $what['title'] }}</strong>@if($what['detail'])<small style="color:var(--ink-2)">{{ $what['detail'] }}</small>@endif<small>by {{ $event->actor?->name ?? 'System' }} · {{ $event->created_at->format('d M Y, h:i A') }}</small></div></div>@endforeach
             @if($teamHistory->isEmpty() && $managerHistory->isEmpty() && $history->isEmpty())<x-empty title="No history yet" icon="history" />@endif
         </div></section>
     </div>

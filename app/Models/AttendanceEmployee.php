@@ -84,6 +84,12 @@ class AttendanceEmployee extends Authenticatable
         return $this->photo_path ? route('people.photo', ['employee' => $this->id, 'v' => substr(md5($this->photo_path), 0, 8)]) : null;
     }
 
+    /** Employee-number order: EMP-01, EMP-02 … EMP-10 (not EMP-1, EMP-10, EMP-2). */
+    public function scopeInCodeOrder($query)
+    {
+        return $query->reorder()->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code');
+    }
+
     /** "RG" for Risha Gangrade. */
     public function initials(): string
     {

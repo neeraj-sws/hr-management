@@ -551,7 +551,7 @@ class Settings extends Component
     {
         $canCapture = $this->user()->can('monitoring.manage');
         $captureEmployees = $canCapture && $this->tab === 'capture'
-            ? \App\Models\AttendanceEmployee::with('department')->where('is_active', true)->orderBy('name')->with('user')->get()->map(fn ($e) => ['employee' => $e, 'on' => ($p = app(\App\Services\ScreenCaptureService::class)->policy($e))['enabled'], 'acknowledged' => app(\App\Services\ScreenCaptureService::class)->isAcknowledged($e->user, $p), 'acknowledged_at' => $e->user?->screen_capture_acknowledged_at])
+            ? \App\Models\AttendanceEmployee::with('department')->where('is_active', true)->inCodeOrder()->with('user')->get()->map(fn ($e) => ['employee' => $e, 'on' => ($p = app(\App\Services\ScreenCaptureService::class)->policy($e))['enabled'], 'acknowledged' => app(\App\Services\ScreenCaptureService::class)->isAcknowledged($e->user, $p), 'acknowledged_at' => $e->user?->screen_capture_acknowledged_at])
             : collect();
 
         $calendarOverrides = $this->tab === 'calendar'

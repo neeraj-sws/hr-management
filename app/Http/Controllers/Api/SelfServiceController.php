@@ -61,7 +61,7 @@ class SelfServiceController extends ApiController
     {
         $user = $this->apiUser($request);
         $own = $this->apiEmployee($request);
-        $reports = AttendanceEmployee::where('is_active', true)->where('manager_id', $own->id)->orderBy('name')->get();
+        $reports = AttendanceEmployee::where('is_active', true)->where('manager_id', $own->id)->inCodeOrder()->get();
         abort_if($reports->isEmpty() && ! $user->canAny(['approvals.manage', 'hr.manage']), 403, 'You do not manage a team.');
         $ids = $reports->pluck('id');
         $sessions = AttendanceSession::with('employee')->whereIn('employee_id', $ids)->whereDate('work_date', today())->get()->keyBy('employee_id');

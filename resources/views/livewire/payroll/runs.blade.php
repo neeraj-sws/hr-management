@@ -52,7 +52,7 @@
                 <div class="table-wrap"><table class="table">
                     <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th>@if($runHasOt)<th class="num">OT</th>@endif<th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th></th></tr></thead>
                     <tbody>
-                    @forelse($selected->items as $item)
+                    @forelse($selected->items->sortBy(fn ($i) => sprintf('%04d%s', strlen((string) $i->employee?->employee_code), $i->employee?->employee_code)) as $item)
                         @php($paid = (float) $item->payments->sum('amount'))
                         @php($deductions = round((float) $item->gross_amount - (float) $item->net_amount, 2))
                         <tr wire:key="pi-{{ $item->id }}">

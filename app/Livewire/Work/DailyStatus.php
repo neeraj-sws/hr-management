@@ -154,7 +154,7 @@ class DailyStatus extends Component
         if ($canSeeTeam && \App\Support\WorkCalendar::isWorkday(today()->toDateString(), app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5]]))) {
             $submitted = DailyWorkStatus::whereDate('work_date', today())->pluck('employee_id');
             $missing = AttendanceEmployee::where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))
-                ->whereNotIn('id', $submitted)->whereHas('sessions', fn ($q) => $q->whereDate('work_date', today()))->orderBy('name')->get();
+                ->whereNotIn('id', $submitted)->whereHas('sessions', fn ($q) => $q->whereDate('work_date', today()))->inCodeOrder()->get();
         }
 
         return $this->page('livewire.work.daily-status', [

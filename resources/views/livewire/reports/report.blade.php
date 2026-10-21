@@ -12,9 +12,10 @@
             <label class="field"><span>From</span><input type="date" wire:model.live="from"></label>
             <label class="field"><span>To</span><input type="date" wire:model.live="to" x-bind:min="$wire.from"></label>
             @if($usesEmployees)
-                <label class="field"><span>Employee</span><select wire:model.live="employee"><option value="">All in scope</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></label>
+                <label class="field"><span>Employee</span><select wire:model.live="employee"><option value="">All in scope</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->employee_code }} · {{ $e->name }}</option>@endforeach</select></label>
                 <label class="field"><span>Department</span><select wire:model.live="department"><option value="">All</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
                 <label class="field"><span>Team</span><select wire:model.live="team"><option value="">All</option>@foreach($teams as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach</select></label>
+                @if($type === 'attendance')<label class="field"><span>Day</span><select wire:model.live="day"><option value="">All days</option>@foreach($dayStatuses as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></label>@endif
             @endif
             <label class="field grow"><span>Search</span><input type="search" list="report-search-options" autocomplete="off" wire:model.live.debounce.400ms="search" placeholder="{{ ['tasks' => 'Task title', 'audit' => 'Action — type or pick from the list', 'projects' => 'Project name'][$type] ?? 'Employee name or code' }}">
                 <datalist id="report-search-options">@foreach($suggestions as $option)<option value="{{ $option }}"></option>@endforeach</datalist></label>

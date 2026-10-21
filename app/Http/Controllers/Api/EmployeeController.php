@@ -18,7 +18,7 @@ class EmployeeController extends Controller
             $profile=AttendanceEmployee::where('user_id',$user->id)->firstOrFail();
             $query->where(fn($q)=>$q->whereKey($profile->id)->orWhere('manager_id',$profile->id));
         }
-        return EmployeeResource::collection($query->orderBy('name')->paginate(50));
+        return EmployeeResource::collection($query->inCodeOrder()->paginate(50));
     }
 
     public function show(Request $request, AttendanceEmployee $employee)

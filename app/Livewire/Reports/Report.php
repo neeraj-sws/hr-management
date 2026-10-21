@@ -26,6 +26,8 @@ class Report extends Component
     #[Url] public ?int $department = null;
     #[Url] public ?int $team = null;
     #[Url] public string $search = '';
+    /** Attendance report: only one kind of day (present, late, on_leave, holiday, weekend, absent …). */
+    #[Url] public string $day = '';
 
     public function mount(string $type, ReportService $reports): void
     {
@@ -37,20 +39,20 @@ class Report extends Component
 
     public function updated($property): void
     {
-        if (in_array($property, ['from', 'to', 'employee', 'department', 'team', 'search'], true)) $this->resetPage();
+        if (in_array($property, ['from', 'to', 'employee', 'department', 'team', 'search', 'day'], true)) $this->resetPage();
     }
 
     public function resetFilters(): void
     {
         $this->resetPage();
-        $this->reset('employee', 'department', 'team', 'search');
+        $this->reset('employee', 'department', 'team', 'search', 'day');
         $this->from = now()->startOfMonth()->toDateString();
         $this->to = today()->toDateString();
     }
 
     private function filters(): array
     {
-        return array_filter(['from' => $this->from, 'to' => $this->to, 'employee_id' => $this->employee, 'department_id' => $this->department, 'team_id' => $this->team, 'search' => trim($this->search) ?: null], fn ($v) => $v !== null && $v !== '');
+        return array_filter(['from' => $this->from, 'to' => $this->to, 'employee_id' => $this->employee, 'department_id' => $this->department, 'team_id' => $this->team, 'search' => trim($this->search) ?: null, 'day_status' => $this->type === 'attendance' ? ($this->day ?: null) : null], fn ($v) => $v !== null && $v !== '');
     }
 
     public function render(ReportService $reports)
@@ -68,7 +70,8 @@ class Report extends Component
             'exportUrl' => route('hr.reports.export', ['type' => $this->type, ...$filters]),
             'exportUrlExcel' => route('hr.reports.export', ['type' => $this->type, 'format' => 'xlsx', ...$filters]),
             'types' => collect($reports->availableTypes($this->user()))->mapWithKeys(fn ($t) => [$t => $reports->label($t)]),
-            'employees' => AttendanceEmployee::whereIn('id', $scopeIds)->orderBy('name')->get(['id', 'name']),
+            'employees' => AttendanceEmployee::whereIn('id', $scopeIds)->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->get(['id', 'name', 'employee_code']),
+            'dayStatuses' => \App\Services\ReportService::DAY_STATUSES,
             'departments' => Department::orderBy('name')->get(['id', 'name']),
             'teams' => Team::orderBy('name')->get(['id', 'name']),
             'usesEmployees' => $this->type !== 'audit',

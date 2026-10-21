@@ -42,7 +42,10 @@ class Records extends Component
             ->when($this->employee, fn ($q, $id) => $q->where('employee_id', $id))
             ->when($this->department, fn ($q, $id) => $q->whereHas('employee', fn ($e) => $e->where('department_id', $id)))
             ->when($this->status, fn ($q, $status) => $q->where('status', $status))
-            ->orderByDesc('work_date')->orderBy('employee_id')->paginate(25);
+            ->orderByDesc('work_date')
+            // Within a day: employee-number order (EMP-01, EMP-02 … EMP-10).
+            ->orderBy(AttendanceEmployee::selectRaw('LENGTH(employee_code)')->whereColumn('attendance_employees.id', 'attendance_sessions.employee_id'))
+            ->orderBy(AttendanceEmployee::select('employee_code')->whereColumn('attendance_employees.id', 'attendance_sessions.employee_id'))->paginate(25);
 
         // One employee chosen: list every day of the range (leave, weekly off / 3rd Saturday, absent too), newest first.
         $dayEmployee = $this->employee ? AttendanceEmployee::with('department')->find($this->employee) : null;
@@ -55,7 +58,7 @@ class Records extends Component
             'dayRows' => $dayRows,
             'dayEmployee' => $dayEmployee,
             'attendance' => $attendance,
-            'employees' => AttendanceEmployee::orderBy('name')->get(['id', 'name', 'employee_code']),
+            'employees' => AttendanceEmployee::inCodeOrder()->get(['id', 'name', 'employee_code']),
             'departments' => Department::orderBy('name')->get(),
         ], 'Attendance');
     }

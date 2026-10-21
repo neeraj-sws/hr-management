@@ -72,6 +72,9 @@ class EmployeeService
             $previousManager = $employee->manager_id;
             $leaving = ($data['employment_type'] ?? null) === self::EX_EMPLOYEE;
             $employee->update([...array_intersect_key($data, array_flip(self::PROFILE_FIELDS)), ...($leaving ? $this->exitFields($data) : [])]);
+            // What changed, old → new, so the employee's history says exactly what was edited.
+            $changes = collect($employee->getChanges())->except(['updated_at'])
+                ->map(fn ($new, $field) => [self::auditValue($employee->getPrevious()[$field] ?? null), self::auditValue($new)])->all();
             // Marked as an ex-employee: deactivate (login, tokens and devices revoked) like any leaver.
             if ($leaving && $employee->is_active) $this->setActive($employee, false);
             // Keep the current salary record on the same working day, so Payroll never disagrees with the employee record.
@@ -86,10 +89,16 @@ class EmployeeService
                     $data['is_manager'] ? $employee->user->assignRole('Manager') : $employee->user->removeRole('Manager');
                 }
             }
-            $this->audit->record('employee.updated', $employee, ['fields' => array_keys($employee->getChanges())]);
+            if ($changes) $this->audit->record('employee.updated', $employee, ['fields' => array_keys($changes), 'changes' => $changes]);
 
             return $employee->fresh();
         });
+    }
+
+    /** A field value as it reads in the history (dates as Y-m-d). */
+    private static function auditValue(mixed $value): mixed
+    {
+        return $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : $value;
     }
 
     /** Exit details for someone recorded as an ex-employee (last working day, how they left). */
