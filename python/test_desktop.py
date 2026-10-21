@@ -116,6 +116,41 @@ class ClientTests(unittest.TestCase):
     def test_app_module_imports(self):
         import sws_desktop.app  # noqa: F401 - catches syntax errors in the GUI module
 
+    def test_break_time_is_shown_live(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)  # no window needed for the text
+        app.session_fetched_at = datetime.now(timezone.utc)
+        self.assertEqual(app._break_text(None), "")
+        self.assertEqual(app._break_text({"status": "working", "break_seconds": 0}), "☕ No break taken yet today")
+        self.assertEqual(app._break_text({"status": "working", "break_seconds": 2712}), "☕ Break today 00:45:12")
+        started = (datetime.now(timezone.utc) - timedelta(minutes=12, seconds=30)).isoformat()
+        text = app._break_text({"status": "on_break", "break_seconds": 2712, "break_started_at": started})
+        self.assertIn("On break for 00:12:3", text)
+        self.assertIn("Break today 00:57:4", text)
+        # Older servers send no break_started_at: the last break-start event is used.
+        text = app._break_text({"status": "on_break", "break_seconds": 0, "events": [{"event_type": "break_start", "event_time": started}]})
+        self.assertIn("On break for 00:12:3", text)
+
+    def test_each_sync_takes_the_servers_worked_time(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.session = {"id": 5, "status": "working", "check_out": None, "worked_seconds": 26074, "screen_active_seconds": 10}
+        app.session_fetched_at = datetime.now(timezone.utc) - timedelta(seconds=60)
+        app._set_session = Mock()
+        # The server took idle time off: its worked time is lower than what the clock had counted on to.
+        app._sync_session({"id": 5, "status": "working", "check_out": None, "worked_seconds": 26052, "screen_active_seconds": 40})
+        self.assertEqual(app.session["worked_seconds"], 26052)
+        self.assertEqual(app.session["screen_active_seconds"], 40)
+        self.assertLess((datetime.now(timezone.utc) - app.session_fetched_at).total_seconds(), 2, "The clock counts on from now")
+        app._set_session.assert_not_called()
+        # Checked out elsewhere (website / admin): the screen is redrawn.
+        app._sync_session({"id": 5, "status": "completed", "check_out": "2026-10-21T13:30:00Z", "worked_seconds": 26100})
+        app._set_session.assert_called_once()
+
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})
         session = Mock(request=Mock(return_value=response))

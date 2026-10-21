@@ -121,6 +121,20 @@ class Oct21BatchDTest extends TestCase
         $this->assertCount(0, app(ReportService::class)->rows($this->admin, 'payments', ['from' => '2026-01-01', 'to' => '2026-10-21', 'employee_id' => $e->id]), 'Outside the range: not listed');
     }
 
+    public function test_attendance_api_says_when_the_running_break_started(): void
+    {
+        $e = $this->employee('BR-1');
+        \Laravel\Sanctum\Sanctum::actingAs($e->user, ['*']);
+        Carbon::setTestNow('2026-10-21 10:00:00');
+        $this->postJson('/api/attendance/check-in', ['source' => 'desktop'])->assertSuccessful()->assertJsonPath('data.break_started_at', null);
+        Carbon::setTestNow('2026-10-21 13:00:00');
+        $this->postJson('/api/attendance/break/start', ['source' => 'desktop'])->assertSuccessful()->assertJsonPath('data.status', 'on_break');
+        Carbon::setTestNow('2026-10-21 13:20:00');
+        $started = $this->getJson('/api/attendance/today')->assertOk()->json('data.break_started_at');
+        $this->assertSame('2026-10-21 13:00', Carbon::parse($started)->setTimezone(config('app.timezone'))->format('Y-m-d H:i'));
+        $this->postJson('/api/attendance/break/end', ['source' => 'desktop'])->assertSuccessful()->assertJsonPath('data.break_started_at', null);
+    }
+
     public function test_removing_a_photo_reloads_the_page(): void
     {
         $e = $this->employee('PH-2', ['photo_path' => 'employee-photos/x.png']);

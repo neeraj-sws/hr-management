@@ -276,9 +276,11 @@ class ReportService
                 'paid_on' => $r->payment_date?->toDateString(), 'kind' => 'legacy_salary', 'employee_code' => $r->employee?->employee_code ?? $r->employee_code, 'employee_name' => $r->employee?->name ?? $r->name,
                 'for_period' => \Illuminate\Support\Carbon::parse($r->payroll_month.'-01')->format('M Y').' (old salary sheet)', 'amount' => round((float) $r->salary_paid, 2), 'method' => 'Old salary sheet',
                 'reference' => $r->notes ? \Illuminate\Support\Str::limit(str_replace("\n", ' · ', $r->notes), 120) : null, 'recorded_by' => $r->imported_by,
-                'payment_status' => $r->payment_date ? $r->payment_status : ($r->payment_status ?: 'unpaid'),
-                // Nothing paid yet: the whole month's salary is still due.
-                'remaining' => round(max(0, (float) ($r->payment_date || (float) $r->salary_remains > 0 ? $r->salary_remains : ($r->total_salary_with_bonus ?: $r->salary_after_deduction))), 2)]);
+                'payment_status' => $r->payment_status ?: ((float) $r->salary_paid > 0 ? 'paid' : 'unpaid'),
+                // What the sheet says is still due. Only a month with nothing paid and no "remains" value at all
+                // counts its whole salary as due (a month paid without a date is not unpaid).
+                'remaining' => round(max(0, (float) ($r->salary_remains !== null ? $r->salary_remains
+                    : ((float) $r->salary_paid > 0 ? 0 : ($r->total_salary_with_bonus ?? $r->salary_after_deduction ?? 0)))), 2)]);
         $rows = $salary->concat($settlement)->concat($legacy);
         $names = User::whereIn('id', $rows->pluck('recorded_by')->filter()->unique())->pluck('name', 'id');
 

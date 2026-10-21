@@ -124,6 +124,12 @@ class AttendanceActionController extends ApiController
 
     private function respond(?AttendanceSession $session, int $status = 200): JsonResponse
     {
-        return response()->json(['data' => $session ? array_merge((new AttendanceSessionResource($session->load('events')))->resolve(), ['worked_seconds' => $this->attendance->workedSeconds($session)]) : null], $status);
+        // break_started_at: when the break now running began, so the apps can show "on break for …" live.
+        $breakStart = $session && $session->status === 'on_break' ? $session->events()->where('event_type', 'break_start')->latest('event_time')->value('event_time') : null;
+
+        return response()->json(['data' => $session ? array_merge((new AttendanceSessionResource($session->load('events')))->resolve(), [
+            'worked_seconds' => $this->attendance->workedSeconds($session),
+            'break_started_at' => $breakStart ? \Illuminate\Support\Carbon::parse($breakStart)->toIso8601String() : null,
+        ]) : null], $status);
     }
 }

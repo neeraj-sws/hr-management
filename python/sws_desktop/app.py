@@ -256,7 +256,10 @@ class DesktopApp:
         self.status_pill.pack(anchor="w", pady=(2, 0))
         self.session_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 10))
         self.session_label.pack(anchor="w", pady=(6, 0))
-        self.screen_label = tk.Label(left, text="", fg=MUTED, bg="white", font=("Segoe UI", 9))
+        # Break time today, and how long the break now running has lasted (updated every second).
+        self.break_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 10))
+        self.break_label.pack(anchor="w")
+        self.screen_label =tk.Label(left, text="", fg=MUTED, bg="white", font=("Segoe UI", 9))
         self.screen_label.pack(anchor="w")
         self.capture_label = tk.Label(left, text="", fg=AMBER, bg="white", wraplength=460, justify="left", font=("Segoe UI", 9))
         self.capture_label.pack(anchor="w")
@@ -722,6 +725,7 @@ class DesktopApp:
             self.clock_label.config(text=f"{worked // 3600:02d}:{worked % 3600 // 60:02d}:{worked % 60:02d}")
         else:
             self.clock_label.config(text="--:--:--")
+        self.break_label.config(text=self._break_text(session))
         if session:
             active = int(session.get("screen_active_seconds") or 0) + int(self.screen_active)
             idle = int(session.get("screen_idle_seconds") or 0) + int(self.screen_idle)
@@ -729,6 +733,35 @@ class DesktopApp:
         else:
             self.screen_label.config(text="")
         self.root.after(1000, self._tick)
+
+    def _sync_session(self, session: dict):
+        """Takes the server's figures from each sync (every 30 s): worked time (less idle), break, status.
+        The clock then counts on from the server's number, so it always matches the website."""
+        before = self.session or {}
+        changed = (before.get("status"), before.get("check_out")) != (session.get("status"), session.get("check_out"))
+        if changed:
+            self._set_session(session)  # e.g. checked out from the website, or by an admin
+        else:
+            self.session = {**before, **session}
+            self.session_fetched_at = datetime.now(timezone.utc)
+
+    def _break_started_at(self, session: dict) -> datetime | None:
+        """When the break now running began: from the server, else the last break-start event, else when we last heard."""
+        started = parse_time(session.get("break_started_at"))
+        if not started:
+            starts = [e for e in (session.get("events") or []) if e.get("event_type") == "break_start"]
+            started = parse_time(max(starts, key=lambda e: e.get("event_time") or "").get("event_time")) if starts else None
+        return started or self.session_fetched_at
+
+    def _break_text(self, session: dict | None) -> str:
+        """'Break today 00:45:12' — and while on a break: 'On break for 00:12:30 · break today 00:57:42'."""
+        if not session:
+            return ""
+        total = int(session.get("break_seconds") or 0)
+        if session.get("status") == "on_break":
+            running = max(0, int((datetime.now(timezone.utc) - self._break_started_at(session)).total_seconds()))
+            return f"☕ On break for {hms(running)}   ·   Break today {hms(total + running)}"
+        return f"☕ Break today {hms(total)}" if total else "☕ No break taken yet today"
 
     def _selected_task(self) -> dict | None:
         selected = self.tree.selection()
@@ -800,6 +833,13 @@ class DesktopApp:
     def _apply_offline(self, action: str):
         now = datetime.now(timezone.utc).isoformat()
         session = dict(self.session or {"id": 0, "check_in": now, "check_out": None, "active_seconds": 0, "status": "working"})
+        # Offline: keep the break clock right until the server answers.
+        if action == "break_start":
+            session["break_started_at"] = now
+        elif action in ("break_end", "check_out") and session.get("status") == "on_break":
+            started = self._break_started_at(session)
+            session["break_seconds"] = int(session.get("break_seconds") or 0) + max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
+            session["break_started_at"] = None
         session["status"] = {"check_in": "working", "break_start": "on_break", "break_end": "working", "check_out": "completed"}[action]
         if action == "check_out":
             session["check_out"] = now
@@ -886,7 +926,7 @@ class DesktopApp:
                 if apps and self.app_usage_on:
                     self._run(lambda: self.client.report_app_usage(apps, titles), self._apply_usage_flags, lambda _e: None)
                 if session:
-                    self.session = {**(self.session or {}), "screen_active_seconds": session.get("screen_active_seconds", 0), "screen_idle_seconds": session.get("screen_idle_seconds", 0)}
+                    self._sync_session(session)
 
             self._run(lambda: self.client.heartbeat(active, idle), sent, lambda _e: None)
         self.root.after(SYNC_INTERVAL_MS, self._auto_sync)
