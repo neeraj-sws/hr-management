@@ -21,6 +21,8 @@ class Records extends Component
     #[Url] public ?int $employee = null;
     #[Url] public ?int $department = null;
     #[Url] public string $status = '';
+    /** One employee chosen: list | calendar (the month of From). */
+    #[Url] public string $view = 'list';
 
     public function mount(): void
     {
@@ -57,6 +59,8 @@ class Records extends Component
             'sessions' => $sessions,
             'dayRows' => $dayRows,
             'dayEmployee' => $dayEmployee,
+            'calendarMonth' => $calMonth = \Illuminate\Support\Carbon::parse($this->from)->startOfMonth(),
+            'calendarDays' => $dayEmployee && $this->view === 'calendar' ? $attendance->days($dayEmployee, $calMonth->copy(), $calMonth->copy()->endOfMonth()) : collect(),
             'attendance' => $attendance,
             'employees' => AttendanceEmployee::inCodeOrder()->get(['id', 'name', 'employee_code']),
             'departments' => Department::orderBy('name')->get(),

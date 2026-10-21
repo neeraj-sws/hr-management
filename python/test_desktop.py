@@ -151,6 +151,18 @@ class ClientTests(unittest.TestCase):
         app._sync_session({"id": 5, "status": "completed", "check_out": "2026-10-21T13:30:00Z", "worked_seconds": 26100})
         app._set_session.assert_called_once()
 
+    def test_total_time_since_check_in_is_shown(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.session_fetched_at = datetime.now(timezone.utc)
+        self.assertEqual(app._total_text(None), "")
+        done = {"status": "completed", "check_in": "2026-10-21T04:38:00Z", "check_out": "2026-10-21T13:25:45Z", "break_seconds": 5398, "idle_counted_seconds": 215}
+        self.assertEqual(app._total_text(done), "Total time 08:47:45 since check-in  (includes break 01:29:58 · idle 00:03:35)")
+        start = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        self.assertIn("Total time 02:00:0", app._total_text({"status": "working", "check_in": start, "break_seconds": 0}))
+
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})
         session = Mock(request=Mock(return_value=response))

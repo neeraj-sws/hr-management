@@ -77,10 +77,14 @@
                 </form>
             </section>
         @endif
-        <section class="card"><div class="card-head"><h2>Recent attendance</h2><span><a class="link-sm" href="{{ route('attendance.records', ['employee' => $employee->id, 'from' => now()->subYear()->toDateString(), 'to' => today()->toDateString()]) }}">All days (incl. imported) →</a> · <a class="link-sm" href="{{ route('reports.show', ['type' => 'attendance', 'employee' => $employee->id]) }}">Full report →</a></span></div>
-            <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Status</th></tr></thead><tbody>
-                @foreach($recentDays as $day)<tr><td>{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D d M') }}</td><td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td><td><x-badge :status="$day['status']" /></td></tr>@endforeach
-            </tbody></table></div>
+        <section class="card">
+            <div class="card-head"><div><h2>Attendance · {{ $calendarMonth->format('F Y') }}</h2><p>Every day of the month, imported days included</p></div>
+                <div class="toolbar" style="border:0;padding:0">
+                    <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="attendanceMonth" value="{{ $calendarMonth->format('Y-m') }}" max="{{ now()->format('Y-m') }}"></label>
+                    <a class="btn btn-sm" href="{{ route('attendance.records', ['employee' => $employee->id, 'from' => $calendarMonth->toDateString(), 'to' => $calendarMonth->copy()->endOfMonth()->min(today())->toDateString()]) }}">Day-by-day list →</a>
+                    <a class="link-sm" href="{{ route('reports.show', ['type' => 'attendance', 'employee' => $employee->id, 'from' => $calendarMonth->toDateString(), 'to' => $calendarMonth->copy()->endOfMonth()->min(today())->toDateString()]) }}">Report →</a>
+                </div></div>
+            <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" />
         </section>
     </div>
 

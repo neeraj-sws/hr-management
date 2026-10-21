@@ -16,6 +16,8 @@ class MyAttendance extends Component
     public $photo = null;
 
     #[Url] public string $month = '';
+    /** list | calendar */
+    #[Url] public string $view = 'list';
 
     public function mount(): void
     {
@@ -58,7 +60,7 @@ class MyAttendance extends Component
     {
         $employee = $this->requireEmployee();
         $session = $attendance->today($employee)?->load('events');
-        $start = Carbon::createFromFormat('Y-m', $this->month)->startOfMonth();
+        $start = Carbon::parse($this->month.'-01')->startOfMonth(); // never createFromFormat('Y-m'): it borrows today's day and jumps a month on the 29th–31st
         $end = $start->copy()->endOfMonth()->min(today());
         $days = $attendance->days($employee, $start, $end);
         // The month's actual working time (in–out less breaks and idle) next to the in–out time and what was required.

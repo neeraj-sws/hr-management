@@ -373,7 +373,7 @@ class ReportService
 
     /**
      * Every day of the range for each employee (employee-code order, then date): worked days with their times,
-     * and leave, holidays, weekly offs and absences too. Days before joining, after leaving and in the future are left out.
+     * and leave, holidays, weekly offs and absences too. Empty days before joining, days after leaving and future days are left out.
      */
     private function attendanceDays($ids, string $from, string $to, ?string $only, ?int $limit): Collection
     {
@@ -381,11 +381,15 @@ class ReportService
         $end = min($to, today()->toDateString());
         $employees = AttendanceEmployee::with('department')->whereIn('id', $ids)->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->get();
         foreach ($employees as $e) {
-            $start = max($from, $e->joined_at?->toDateString() ?? $from);
+            // Not cut at the joining date: imported attendance from before it still shows; empty days before
+            // joining come back as "not_joined" and are skipped below.
+            $start = $from;
             $last = $e->exit_date ? min($end, $e->exit_date->toDateString()) : $end;
             if ($start > $last) continue;
             foreach ($this->attendance->days($e, \Illuminate\Support\Carbon::parse($start), \Illuminate\Support\Carbon::parse($last)) as $day) {
                 if (in_array($day['status'], ['upcoming', 'not_joined'], true)) continue;
+                // Before joining only days someone actually worked (imported history) are listed.
+                if (! $day['session'] && $e->joined_at && $day['date'] < $e->joined_at->toDateString()) continue;
                 if ($only && $day['status'] !== $only) continue;
                 $s = $day['session'];
                 $rows->push(['employee_code' => $e->employee_code, 'employee_name' => $e->name, 'department' => $e->department?->name, 'work_date' => $day['date'],
@@ -415,6 +419,10 @@ class ReportService
         $items = \App\Models\PayrollItem::with(['run', 'payments'])->whereIn('employee_id', $ids)
             ->whereHas('run', fn ($q) => $q->whereDate('period_starts_on', '<=', $to)->whereDate('period_ends_on', '>=', $from))->get()
             ->groupBy(fn ($i) => $i->employee_id.'|'.$i->run->period_starts_on->format('Y-m'));
+        // Months paid from the old salary sheet: its own basic salary, working days and amounts are what was really paid.
+        $legacy = \App\Models\LegacySalaryRecord::whereIn('employee_id', $ids)
+            ->where('payroll_month', '>=', substr($from, 0, 7))->where('payroll_month', '<=', substr($to, 0, 7))->get()
+            ->keyBy(fn ($r) => $r->employee_id.'|'.$r->payroll_month);
         $rows = collect();
         $first = \Illuminate\Support\Carbon::parse($from)->startOfMonth();
         for ($month = \Illuminate\Support\Carbon::parse($to)->startOfMonth(); $month->gte($first); $month->subMonth()) {
@@ -422,6 +430,14 @@ class ReportService
                 if ($e->joined_at && $e->joined_at->gt($month->copy()->endOfMonth())) continue;
                 if ($e->exit_date && $e->exit_date->lt($month)) continue;
                 $monthEnd = $month->copy()->endOfMonth()->toDateString();
+                if ($sheet = $legacy->get($e->id.'|'.$month->format('Y-m'))) {
+                    $rows->push(['employee_code' => $e->employee_code, 'employee_name' => $e->name, 'month' => $month->format('M Y'), 'salary_type' => 'monthly',
+                        'monthly_salary' => round((float) $sheet->basic_salary, 2), 'salary_since' => 'old salary sheet', 'working_days' => (int) round((float) $sheet->total_working_days),
+                        'per_day_rate' => round((float) $sheet->salary_per_day, 2), 'payroll_payable' => round((float) ($sheet->total_salary_with_bonus ?? $sheet->salary_after_deduction), 2),
+                        'paid' => round((float) $sheet->salary_paid, 2), 'remaining' => round(max(0, (float) $sheet->salary_remains), 2), 'payroll_status' => 'old sheet']);
+                    if ($limit && $rows->count() >= $limit) return $rows;
+                    continue;
+                }
                 $profile = $e->salaryProfiles->filter(fn ($p) => $p->effective_from->toDateString() <= $monthEnd)->last();
                 if (! $profile) continue;
                 $days = app(HrWorkflowService::class)->salaryDaysFor($e, $month->toDateString(), $profile)['days'];

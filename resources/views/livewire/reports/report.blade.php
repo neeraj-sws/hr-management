@@ -1,6 +1,7 @@
 <div>
     <div class="page-head">
-        <div><p class="eyebrow">Reports</p><h1>{{ $label }} report</h1><p>The Excel/CSV export uses exactly the same query and filters as this report.</p></div>
+        <div><p class="eyebrow">Reports</p><h1>{{ $label }} report</h1><p>The Excel/CSV export uses exactly the same query and filters as this report.</p>
+            @if(in_array($type, ['performance', 'productivity'], true))<p class="small muted" style="max-width:760px">Logged time = task-timer time. A day never counts more task time than that day's actual working time (in–out less break and idle), and a timer left running only counts until midnight. <strong>Not counted time</strong> is what was left out for those two reasons — usually a timer someone forgot to stop.</p>@endif</div>
         <div class="actions">
             <a class="btn btn-primary" href="{{ $exportUrlExcel }}"><x-icon name="download" class="icon-sm" />Export Excel</a>
             <a class="btn" href="{{ $exportUrl }}"><x-icon name="download" class="icon-sm" />Export CSV</a>

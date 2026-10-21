@@ -412,9 +412,11 @@ class HrWorkflowService
         if ($approvedMinutes > 0 && ! array_key_exists('multiplier', $overtimePolicy)) throw ValidationException::withMessages(['payroll' => 'Configure an employer overtime multiplier before calculating payroll with approved overtime.']);
         $multiplier = (float) ($overtimePolicy['multiplier'] ?? 0);
         $holidayMultiplier = isset($overtimePolicy['holiday_multiplier']) ? (float) $overtimePolicy['holiday_multiplier'] : $multiplier;
+        // Per-hour rate = one day's pay ÷ hours (Settings > Payroll "Hours per day for the hourly rate", else the working day).
+        $rateHours = (float) ($payrollPolicy['hourly_rate_hours'] ?? 0) > 0 ? (float) $payrollPolicy['hourly_rate_hours'] : $standardDailyHours;
         $hourly = $profile->isDaily()
-            ? (float) $profile->daily_rate / max(0.25, $standardDailyHours)
-            : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$standardDailyHours);
+            ? (float) $profile->daily_rate / max(0.25, $rateHours)
+            : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
         $overtimeHours = $approvedMinutes/60;
         $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
         // Extra working: the hours actually worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set).

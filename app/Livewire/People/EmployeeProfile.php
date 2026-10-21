@@ -18,6 +18,8 @@ class EmployeeProfile extends Component
 
     /** Compliance tab: a month (Y-m; empty = last 90 days) and a kind (late / early / no_status / late_status; empty = all). */
     public string $complianceMonth = '';
+    /** Attendance tab: the month shown in the calendar (Y-m; empty = this month). */
+    public string $attendanceMonth = '';
     public string $complianceType = '';
 
     /** New photo being uploaded (saved as soon as it is chosen). */
@@ -126,6 +128,8 @@ class EmployeeProfile extends Component
 
         return $this->page('livewire.people.employee-profile', [
             'employee' => $employee,
+            'calendarMonth' => $calMonth = (preg_match('/^\d{4}-\d{2}$/', $this->attendanceMonth) ? \Illuminate\Support\Carbon::parse($this->attendanceMonth.'-01') : today()->startOfMonth()),
+            'calendarDays' => $attendance->days($employee, $calMonth->copy()->startOfMonth(), $calMonth->copy()->endOfMonth()),
             'discipline' => $discipline->when($this->complianceType !== '', fn ($c) => $c->where('type', $this->complianceType))->sortByDesc('date')->values(),
             'disciplineCounts' => $discipline->countBy('type'),
             'disciplinePeriod' => $month ? $month->format('F Y') : 'Last 90 days',

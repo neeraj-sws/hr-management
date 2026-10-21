@@ -129,6 +129,8 @@ class AttendanceActionController extends ApiController
 
         return response()->json(['data' => $session ? array_merge((new AttendanceSessionResource($session->load('events')))->resolve(), [
             'worked_seconds' => $this->attendance->workedSeconds($session),
+            // Idle time exactly as the website shows it (screen idle less time the employee said they were working).
+            'idle_counted_seconds' => $session->idleSeconds(),
             'break_started_at' => $breakStart ? \Illuminate\Support\Carbon::parse($breakStart)->toIso8601String() : null,
         ]) : null], $status);
     }

@@ -249,9 +249,12 @@ class DesktopApp:
         att.pack(fill="x")
         left = tk.Frame(att, bg="white")
         left.grid(row=0, column=0, sticky="w")
-        tk.Label(left, text="TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        tk.Label(left, text="ACTIVE WORK TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).pack(anchor="w")
         self.clock_label = tk.Label(left, text="--:--:--", font=("Segoe UI", 34, "bold"), fg=NAVY, bg="white")
         self.clock_label.pack(anchor="w")
+        # Second time: everything since check-in (break and idle included), same as "In–out" on the website.
+        self.total_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 11, "bold"))
+        self.total_label.pack(anchor="w")
         self.status_pill = tk.Label(left, text="Not checked in", fg=MUTED, bg="#eef1f6", font=("Segoe UI", 9, "bold"), padx=10, pady=3)
         self.status_pill.pack(anchor="w", pady=(2, 0))
         self.session_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 10))
@@ -726,6 +729,7 @@ class DesktopApp:
         else:
             self.clock_label.config(text="--:--:--")
         self.break_label.config(text=self._break_text(session))
+        self.total_label.config(text=self._total_text(session))
         if session:
             active = int(session.get("screen_active_seconds") or 0) + int(self.screen_active)
             idle = int(session.get("screen_idle_seconds") or 0) + int(self.screen_idle)
@@ -744,6 +748,20 @@ class DesktopApp:
         else:
             self.session = {**before, **session}
             self.session_fetched_at = datetime.now(timezone.utc)
+
+    def _total_text(self, session: dict | None) -> str:
+        """'Total time 08:47:45 since check-in (includes break 01:29:58 · idle 00:03:35)' — live until check-out."""
+        check_in = parse_time((session or {}).get("check_in"))
+        if not check_in:
+            return ""
+        end = parse_time(session.get("check_out")) or datetime.now(timezone.utc)
+        total = max(0, int((end - check_in).total_seconds()))
+        breaks = int(session.get("break_seconds") or 0)
+        if session.get("status") == "on_break":
+            breaks += max(0, int((datetime.now(timezone.utc) - self._break_started_at(session)).total_seconds()))
+        idle = int(session.get("idle_counted_seconds", session.get("idle_seconds")) or 0)
+        parts = [f"break {hms(breaks)}"] + ([f"idle {hms(idle)}"] if idle else [])
+        return f"Total time {hms(total)} since check-in  (includes {' · '.join(parts)})"
 
     def _break_started_at(self, session: dict) -> datetime | None:
         """When the break now running began: from the server, else the last break-start event, else when we last heard."""

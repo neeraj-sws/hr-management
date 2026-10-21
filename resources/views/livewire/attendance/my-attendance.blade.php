@@ -70,8 +70,14 @@
         <div class="card-head">
             <div><h2>{{ $monthStart->format('F Y') }}</h2><p>{{ ($summary['present'] ?? 0) + ($summary['late'] ?? 0) + ($summary['half_day'] ?? 0) }} present · {{ $summary['late'] ?? 0 }} late · {{ $summary['half_day'] ?? 0 }} half-day · {{ $summary['on_leave'] ?? 0 }} leave @if($summary['extra_work'] ?? 0)· {{ $summary['extra_work'] }} extra work @endif · {{ $summary['absent'] ?? 0 }} absent</p>
                 @if($time['days'])<p class="small">Actual working time <strong>@hms($time['worked'])</strong> of @hms($time['required']) required on {{ $time['days'] }} {{ str('day')->plural($time['days']) }}@if($time['worked'] < $time['required']) · <span style="color:var(--amber)">@hms($time['required'] - $time['worked']) short</span>@endif · In–out time @hms($time['span']) (break @hms($time['break']), idle @hms($time['idle']))</p>@endif</div>
-            <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="month" max="{{ now()->format('Y-m') }}"></label>
+            <div class="toolbar" style="border:0;padding:0">
+                <div class="seg" role="group" aria-label="View"><button type="button" @class(['btn btn-sm', 'btn-primary' => $view !== 'calendar']) wire:click="$set('view', 'list')">List</button><button type="button" @class(['btn btn-sm', 'btn-primary' => $view === 'calendar']) wire:click="$set('view', 'calendar')">Calendar</button></div>
+                <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="month" max="{{ now()->format('Y-m') }}"></label>
+            </div>
         </div>
+        @if($view === 'calendar')
+            <x-attendance-calendar :days="$days" :month="$monthStart" />
+        @else
         <div class="table-wrap"><table class="table">
             <thead><tr><th>Date</th><th>Shift</th><th>Check in</th><th>Check out</th><th class="num" title="Check-out minus check-in">In–out</th><th class="num">Break</th><th class="num">Idle</th><th class="num" title="In–out minus break minus idle">Actual working time</th><th>Status</th><th></th></tr></thead>
             <tbody>
@@ -93,5 +99,6 @@
             @endforeach
             </tbody>
         </table></div>
+        @endif
     </section>
 </div>

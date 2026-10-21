@@ -289,9 +289,14 @@ class WorkService
         $open = Task::whereIn('assignee_id', $ids)->where('status', '!=', 'completed')->get()->groupBy('assignee_id');
         // Task time per employee per day. A timer left running overnight (or for days) only counts until the end of
         // the day it started, and a day never counts more than that day's attendance — so stale timers do not inflate it.
-        $dailyActive = DB::table('attendance_sessions')->whereIn('employee_id', $ids)->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->whereNotNull('check_in')
-            ->selectRaw('employee_id, DATE(work_date) as day, SUM(active_seconds) as active')->groupBy('employee_id', DB::raw('DATE(work_date)'))->get()
-            ->mapWithKeys(fn ($r) => [$r->employee_id.'|'.$r->day => (int) $r->active]);
+        // The limit per day is the actual working time the attendance pages show (in–out less break and idle),
+        // also for a day that is still open.
+        $attendanceService = app(AttendanceService::class);
+        $dailyActive = [];
+        foreach (\App\Models\AttendanceSession::with('employee')->whereIn('employee_id', $ids)->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->whereNotNull('check_in')->get() as $session) {
+            $key = $session->employee_id.'|'.$session->work_date->toDateString();
+            $dailyActive[$key] = ($dailyActive[$key] ?? 0) + $attendanceService->workedSeconds($session);
+        }
         $perDay = $rawPerDay = [];
         foreach (TaskTimeEntry::whereIn('employee_id', $ids)->whereDate('started_at', '>=', $from)->whereDate('started_at', '<=', $to)->get(['employee_id', 'started_at', 'ended_at', 'duration_seconds', 'status']) as $entry) {
             $dayEnd = $entry->started_at->copy()->endOfDay();
@@ -306,7 +311,7 @@ class WorkService
         foreach ($perDay as $key => $seconds) {
             [$employeeId] = explode('|', $key);
             $cap = $dailyActive[$key] ?? null;
-            $counted = $cap ? min($seconds, $cap) : $seconds;
+            $counted = $cap !== null ? min($seconds, $cap) : $seconds;
             $logged[$employeeId] = ($logged[$employeeId] ?? 0) + $counted;
             $trimmed[$employeeId] = ($trimmed[$employeeId] ?? 0) + ($rawPerDay[$key] - $counted);
         }

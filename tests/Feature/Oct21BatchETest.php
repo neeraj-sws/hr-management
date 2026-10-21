@@ -1,0 +1,115 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Livewire\Attendance\MyAttendance;
+use App\Livewire\Attendance\Records;
+use App\Livewire\People\EmployeeProfile;
+use App\Models\AttendanceEmployee;
+use App\Models\AttendanceSession;
+use App\Models\LegacySalaryRecord;
+use App\Models\SalaryProfile;
+use App\Models\TaskTimeEntry;
+use App\Models\User;
+use App\Services\HrWorkflowService;
+use App\Services\PeopleOperationsService;
+use App\Services\ReportService;
+use App\Services\WorkService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Livewire\Livewire;
+use Tests\TestCase;
+
+/** 21 Oct batch E: salary report from the old sheet, hourly-rate hours, not-counted time, attendance calendar. */
+class Oct21BatchETest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $admin;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed();
+        Carbon::setTestNow('2026-10-21 12:00:00');
+        $this->admin = User::where('email', 'admin@example.com')->firstOrFail();
+    }
+
+    private function employee(string $code, array $extra = []): AttendanceEmployee
+    {
+        $user = User::factory()->create(['email' => strtolower($code).'@example.com']);
+        $user->assignRole('Employee');
+
+        return AttendanceEmployee::create(['employee_code' => $code, 'name' => "Person {$code}", 'email' => $user->email, 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2025-01-01', 'work_start' => '10:00:00', 'work_end' => '19:00:00', 'daily_work_hours' => 8.5, ...$extra]);
+    }
+
+    public function test_salary_report_uses_the_old_sheet_for_its_months(): void
+    {
+        $e = $this->employee('SR-1');
+        SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 10000, 'effective_from' => '2024-02-12', 'working_days_per_month' => 22, 'standard_daily_hours' => 8.5]);
+        LegacySalaryRecord::create(['employee_id' => $e->id, 'employee_code' => 'SR-1', 'payroll_month' => '2025-07', 'name' => $e->name, 'name_key' => 'person sr-1',
+            'basic_salary' => 11500, 'total_working_days' => 26, 'salary_per_day' => 442.31, 'total_salary_with_bonus' => 11000, 'salary_paid' => 9000, 'salary_remains' => 2000, 'payment_status' => 'Partially Paid']);
+
+        $rows = app(ReportService::class)->rows($this->admin, 'salary', ['from' => '2025-06-01', 'to' => '2025-07-31', 'employee_id' => $e->id])->keyBy('month');
+        $this->assertSame(11500.0, $rows['Jul 2025']['monthly_salary']);
+        $this->assertSame(26, $rows['Jul 2025']['working_days']);
+        $this->assertSame(442.31, $rows['Jul 2025']['per_day_rate']);
+        $this->assertSame([11000.0, 9000.0, 2000.0, 'old sheet'], [$rows['Jul 2025']['payroll_payable'], $rows['Jul 2025']['paid'], $rows['Jul 2025']['remaining'], $rows['Jul 2025']['payroll_status']]);
+        $this->assertSame('not run', $rows['Jun 2025']['payroll_status'], 'No sheet row: the salary record');
+    }
+
+    public function test_hourly_rate_hours_setting_changes_the_short_hours_deduction(): void
+    {
+        $e = $this->employee('HR-9');
+        SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 10000, 'effective_from' => '2025-01-01', 'working_days_per_month' => 25, 'standard_daily_hours' => 8.5]);
+        // One day 10:00–17:00 (7 h worked of 8.5 h): 90 minutes short.
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-09-07', 'check_in' => '2026-09-07 10:00:00', 'check_out' => '2026-09-07 17:00:00', 'active_seconds' => 25200, 'status' => 'completed']);
+        $people = app(PeopleOperationsService::class);
+        $policy = ['working_days_per_month' => 25, 'attendance_proration' => true, 'include_paid_leave' => true, 'short_hours_deduction' => true, 'short_hours_grace' => 0, 'divisor' => 'fixed'];
+
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', $policy, null, $this->admin->id, '2026-09-01');
+        $shortAt85 = app(HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id)->items->firstWhere('employee_id', $e->id)->calculation_breakdown['short_hours']['amount'];
+        $this->assertEqualsWithDelta(400 / 8.5 * 1.5, $shortAt85, 0.01);
+
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', [...$policy, 'hourly_rate_hours' => 9], null, $this->admin->id, '2026-09-01');
+        $shortAt9 = app(HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id)->items->firstWhere('employee_id', $e->id)->calculation_breakdown['short_hours']['amount'];
+        $this->assertEqualsWithDelta(400 / 9 * 1.5, $shortAt9, 0.01, 'Same as the old salary sheet: per-day ÷ 9');
+    }
+
+    public function test_task_time_is_capped_at_the_days_actual_working_time(): void
+    {
+        $e = $this->employee('TT-1');
+        // In 10:00–14:00 with a 1-hour break: 3 h actual working time; the raw active field says 4 h.
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-19', 'check_in' => '2026-10-19 10:00:00', 'check_out' => '2026-10-19 14:00:00', 'active_seconds' => 14400, 'break_seconds' => 3600, 'status' => 'completed']);
+        $task = app(WorkService::class)->saveTask(null, ['title' => 'Mockups', 'assignee_id' => $e->id], $this->admin);
+        TaskTimeEntry::create(['task_id' => $task->id, 'employee_id' => $e->id, 'started_at' => '2026-10-19 10:00:00', 'ended_at' => '2026-10-19 15:00:00', 'duration_seconds' => 18000, 'status' => 'stopped']);
+
+        $m = app(WorkService::class)->productivity(collect([$e->fresh()]), '2026-10-19', '2026-10-19')->first();
+        $worked = app(\App\Services\AttendanceService::class)->workedSeconds(AttendanceSession::with('employee')->where('employee_id', $e->id)->first());
+        $this->assertSame($worked, $m->logged_seconds, 'Counted up to the actual working time');
+        $this->assertSame(18000 - $worked, $m->trimmed_seconds);
+    }
+
+    public function test_attendance_report_shows_imported_days_before_the_joining_date(): void
+    {
+        $e = $this->employee('JN-1', ['joined_at' => '2026-10-10']);
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-09-01', 'check_in' => '2026-09-01 09:55:00', 'check_out' => '2026-09-01 19:31:00', 'active_seconds' => 33120, 'status' => 'completed']);
+
+        $rows = app(ReportService::class)->rows($this->admin, 'attendance', ['from' => '2026-09-01', 'to' => '2026-09-30', 'employee_id' => $e->id]);
+        $this->assertSame(['2026-09-01'], $rows->pluck('work_date')->all(), 'The worked day shows; empty days before joining do not');
+    }
+
+    public function test_attendance_calendar_on_profile_my_attendance_and_records(): void
+    {
+        $e = $this->employee('CA-1');
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-04-02', 'check_in' => '2026-04-02 10:13:00', 'check_out' => '2026-04-02 20:12:00', 'active_seconds' => 33300, 'status' => 'completed']);
+
+        Livewire::actingAs($this->admin)->test(EmployeeProfile::class, ['employee' => $e])
+            ->assertSee('Attendance · October 2026')
+            ->set('attendanceMonth', '2026-04')->assertSee('Attendance · April 2026')->assertSee('att-cal-grid', false)->assertSee('10:13 AM')->assertSee('Weekly off');
+
+        Livewire::actingAs($e->user)->test(MyAttendance::class)->set('month', '2026-04')->set('view', 'calendar')->assertSee('att-cal-grid', false)->assertSee('10:13 AM');
+        Livewire::actingAs($this->admin)->test(Records::class)->set('employee', $e->id)->set('from', '2026-04-01')->set('to', '2026-04-30')->set('view', 'calendar')
+            ->assertSee('April 2026')->assertSee('att-cal-grid', false)->assertSee('10:13 AM');
+    }
+}
