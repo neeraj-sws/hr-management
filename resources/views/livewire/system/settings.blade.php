@@ -2,7 +2,7 @@
     <div class="page-head"><div><h1>Settings</h1><p>Employer policies are saved as effective-dated rules starting today; history is kept and individual employees can have overrides (see Compliance). No statutory or legal rates are built in.</p></div></div>
     <x-errors />
     <div class="tabs">
-        @foreach(['leave' => 'Leave types', 'calendar' => 'Working calendar & weekly offs', 'hours' => 'Work hours & attendance', 'locations' => 'Office locations', 'capture' => 'Screen capture', 'payroll' => 'Payroll & overtime', 'statutory' => 'Statutory components', 'sheets' => 'Google Sheets', 'email' => 'E-mail', 'offboarding' => 'Offboarding'] as $key => $label)
+        @foreach(['leave' => 'Leave types', 'calendar' => 'Working calendar & weekly offs', 'hours' => 'Work hours & attendance', 'locations' => 'Office locations', 'capture' => 'Screen capture', 'payroll' => $otEnabled ? 'Payroll & overtime' : 'Payroll', 'statutory' => 'Statutory components', 'sheets' => 'Google Sheets', 'email' => 'E-mail', 'offboarding' => 'Offboarding'] as $key => $label)
             <button class="tab {{ $tab === $key ? 'active' : '' }}" wire:click="$set('tab','{{ $key }}')">{{ $label }}</button>
         @endforeach
     </div>
@@ -136,7 +136,7 @@
                 <x-field label="Absent alert after" name="absentAfter" hint="if not checked in by this time"><input type="time" wire:model="absentAfter"></x-field>
                 <label class="check full"><input type="checkbox" wire:model="applyHoursToAll"> Also set every active employee's daily hours (and their current salary record) to this value</label>
             </div>
-            <p class="small muted">Each employee's own daily hours (Employees → Edit, or Payroll → Salary) are used for attendance, overtime and payroll. The value here is the default for new employees.</p>
+            <p class="small muted">Each employee's own daily hours (Employees → Edit, or Payroll → Salary) are used for attendance{{ $otEnabled ? ', overtime' : '' }} and payroll. The value here is the default for new employees.</p>
             <div class="form-actions"><button class="btn btn-primary">Save</button></div></form>
         </section>
     @elseif($tab === 'capture')
@@ -210,15 +210,20 @@
     @elseif($tab === 'payroll')
         <section class="card">
             <form class="card-body" wire:submit="savePayroll"><div class="form-grid">
-                <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="otEnabled"> <span><strong>Overtime is allowed</strong> <span class="muted small">— untick to switch overtime off: employees cannot request it and payroll pays no overtime</span></span></label>
-                <x-field label="Overtime multiplier" name="otMultiplier" hint="required before paying approved OT"><input type="number" step="0.05" min="0" max="10" wire:model="otMultiplier" placeholder="employer-defined"></x-field>
-                <x-field label="Max overtime minutes / day" name="otMaxPerDay" hint="optional"><input type="number" min="1" max="1440" wire:model="otMaxPerDay"></x-field>
-                <x-field label="Weekly-off / holiday overtime multiplier" name="otHolidayMultiplier" hint="optional; replaces the normal rate on those days"><input type="number" step="0.05" min="0" max="10" wire:model="otHolidayMultiplier" placeholder="same as normal"></x-field>
-                <x-field label="Max overtime hours / month" name="otMaxPerMonthHours" hint="optional"><input type="number" step="0.5" min="0.25" wire:model="otMaxPerMonthHours"></x-field>
+                @if($otEnabled)
+                    <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model.live="otEnabled"> <span><strong>Overtime is allowed</strong> <span class="muted small">— untick to switch overtime off: it disappears from every screen, nobody can request it and payroll pays none</span></span></label>
+                    <x-field label="Overtime multiplier" name="otMultiplier" hint="required before paying approved OT"><input type="number" step="0.05" min="0" max="10" wire:model="otMultiplier" placeholder="employer-defined"></x-field>
+                    <x-field label="Max overtime minutes / day" name="otMaxPerDay" hint="optional"><input type="number" min="1" max="1440" wire:model="otMaxPerDay"></x-field>
+                    <x-field label="Weekly-off / holiday overtime multiplier" name="otHolidayMultiplier" hint="optional; replaces the normal rate on those days"><input type="number" step="0.05" min="0" max="10" wire:model="otHolidayMultiplier" placeholder="same as normal"></x-field>
+                    <x-field label="Max overtime hours / month" name="otMaxPerMonthHours" hint="optional"><input type="number" step="0.5" min="0.25" wire:model="otMaxPerMonthHours"></x-field>
+                @else
+                    {{-- No overtime in this company: only the switch to turn it back on. --}}
+                    <label class="check small muted" style="grid-column:1/-1"><input type="checkbox" wire:model.live="otEnabled"> Overtime is off (not used in this company). Tick only to start using it.</label>
+                @endif
                 <x-field label="Per-day salary" name="salaryDivisor" hint="what the monthly salary is divided by" full><select wire:model.live="salaryDivisor"><option value="calendar">Each month's own working days from the calendar (e.g. Sep 25, Jul 26, Aug 24)</option><option value="fixed">A fixed number of days (below), every month</option></select></x-field>
                 <x-field label="Working days per month (salary divisor)" name="workingDaysPerMonth"><input type="number" min="1" max="31" wire:model="workingDaysPerMonth"></x-field>
                 <x-field label="Advance paid leave limit (days)" name="advanceLeaveMax"><input type="number" step="0.5" min="0" wire:model="advanceLeaveMax"></x-field>
-                <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="extraWorkAuto"> <span><strong>Pay extra working automatically</strong> <span class="muted small">— work on a weekly off, 3rd Saturday, holiday or full-day leave is paid on top (hours worked × hourly rate × the weekly-off / holiday multiplier, 1× if blank). Extra hours on a normal working day are paid only through an approved overtime request.</span></span></label>
+                <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="extraWorkAuto"> <span><strong>Pay extra working automatically</strong> <span class="muted small">— work on a weekly off, 3rd Saturday, holiday or full-day leave is paid on top (hours worked × hourly rate{{ $otEnabled ? ' × the weekly-off / holiday multiplier, 1× if blank' : '' }}).@if($otEnabled) Extra hours on a normal working day are paid only through an approved overtime request.@endif</span></span></label>
                 <label class="check"><input type="checkbox" wire:model="shortHoursDeduction"> Deduct short hours: on days present, time worked below the employee's working day is deducted at the hourly rate</label>
                 <x-field label="Short-hours grace per month (hours)" name="shortHoursGrace" hint="not deducted"><input type="number" step="0.25" min="0" max="200" wire:model="shortHoursGrace"></x-field>
                 <label class="check"><input type="checkbox" wire:model="attendanceProration"> Prorate salary by attendance (unpaid absence reduces pay)</label>

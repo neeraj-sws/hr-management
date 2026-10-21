@@ -453,7 +453,7 @@ class Settings extends Component
         $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.advance_limit', 'leave', 'Advance leave limit', ['max_days' => (float) $this->advanceLeaveMax], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.final_settlement', 'leave', 'Final settlement leave encashment', ['leave_encashment_enabled' => $this->encashmentEnabled, 'rate_per_day' => (float) $this->encashmentRate], null, auth()->id(), today()->toDateString());
-        $this->toast('Payroll, overtime and leave policies saved.');
+        $this->toast($this->otEnabled ? 'Payroll, overtime and leave policies saved.' : 'Payroll and leave policies saved.');
     }
 
     public function saveStatutory(PeopleOperationsService $people): void

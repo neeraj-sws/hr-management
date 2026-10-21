@@ -14,7 +14,7 @@
         <div class="stat"><span class="stat-icon violet"><x-icon name="timer" /></span><div><span class="stat-label">Logged hours</span><span class="stat-value">{{ $metrics->logged_hours }}</span><small>{{ $metrics->active_hours }} h active attendance</small></div></div>
     </div>
 
-    @php($tabs = ['overview' => 'Overview', 'attendance' => 'Attendance', 'leave' => 'Leave & OT', 'work' => 'Work', 'payroll' => 'Payroll', 'docs' => 'Docs & assets', 'compliance' => 'Compliance'])
+    @php($tabs = ['overview' => 'Overview', 'attendance' => 'Attendance', 'leave' => $overtimeOn ? 'Leave & OT' : 'Leave', 'work' => 'Work', 'payroll' => 'Payroll', 'docs' => 'Docs & assets', 'compliance' => 'Compliance'])
     @if($canEdit || $capture !== null || $appUsageOn !== null)@php($tabs['admin'] = 'Settings & monitoring')@endif
     @php($tabs['history'] = 'History')
     <div class="tabbar" role="tablist">

@@ -76,7 +76,7 @@ class Oct21BatchTest extends TestCase
 
         Livewire::actingAs($this->admin)->test(Dashboard::class)
             ->assertDontSee('On leave today (')
-            ->call('openOnLeave')
+            ->call('openDetail', 'on_leave')
             ->assertSee('On leave today (1)')->assertSee('Person LV-1')->assertSee('Accountant')->assertSee($type->name)->assertSeeText('20 Oct – 22 Oct')->assertSeeText('3 days · back Fri 23 Oct');
     }
 
@@ -151,6 +151,34 @@ class Oct21BatchTest extends TestCase
 
         app(WorkService::class)->saveTask(null, ['title' => 'Own work', 'assignee_id' => $lead->id], $lead->user);
         $this->assertStringStartsWith('Self-assigned', AuditLog::where('action', 'task.assigned')->latest('id')->first()->summary());
+    }
+
+    public function test_every_dashboard_card_opens_its_details_list(): void
+    {
+        $in = $this->employee('DB-1', ['designation' => 'Designer', 'work_start' => '09:30:00']);
+        $this->employee('DB-2', ['designation' => 'Tester']);
+        $s = AttendanceSession::create(['employee_id' => $in->id, 'work_date' => '2026-10-21', 'check_in' => '2026-10-21 10:15:00', 'status' => 'on_break']);
+        \App\Models\AttendanceActivityEvent::create(['attendance_session_id' => $s->id, 'event_type' => 'break_start', 'event_time' => '2026-10-21 11:30:00', 'duration_seconds' => 0]);
+        app(WorkService::class)->saveTask(null, ['title' => 'Logo draft', 'assignee_id' => $in->id, 'due_on' => '2026-10-20'], $this->admin);
+
+        $page = Livewire::actingAs($this->admin)->test(Dashboard::class);
+        foreach (array_keys(Dashboard::DETAILS) as $key) {
+            $page->call('openDetail', $key)->assertHasNoErrors()->assertSee(Dashboard::DETAILS[$key].' (');
+        }
+        $page->call('openDetail', 'checked_in')->assertSee('Person DB-1')->assertSee('Designer')->assertSee('10:15 AM')
+            ->call('openDetail', 'on_break')->assertSee('11:30 AM')
+            ->call('openDetail', 'absent')->assertSee('Person DB-2')->assertSee('Tester')
+            ->tap(fn ($t) => $this->assertNotContains('Person DB-1', collect($t->viewData('details')['rows'])->pluck('0.0')->all(), 'Checked-in people are not absent'))
+            ->call('openDetail', 'open_tasks')->assertSee('Logo draft')->assertSee('Overdue')
+            ->call('closeModal')->assertSet('detail', '');
+    }
+
+    public function test_settings_hide_overtime_fields_when_overtime_is_off(): void
+    {
+        app(PeopleOperationsService::class)->setPolicy('overtime.multiplier', 'payroll', 'Overtime', ['enabled' => false], null, $this->admin->id, '2026-10-01');
+        Livewire::actingAs($this->admin)->test(\App\Livewire\System\Settings::class)->set('tab', 'payroll')
+            ->assertDontSee('Overtime multiplier')->assertDontSee('Max overtime minutes')->assertDontSee('Payroll &amp; overtime', false)
+            ->assertSee('Overtime is off');
     }
 
     public function test_document_types_include_appointment_noc_and_relieving_letters(): void

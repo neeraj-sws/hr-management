@@ -111,6 +111,9 @@ details.nav-group[open]{padding-bottom:6px}
 .stat-label{display:block;color:var(--muted);font-size:12px;font-weight:600}
 .stat-value{display:block;color:var(--navy);font-size:24px;font-weight:800;line-height:1.2;margin-top:2px}
 .stat small{display:block;color:var(--faint);font-size:11px}
+/* Dashboard cards that open a details list */
+.stat-click{cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%;transition:border-color .15s,box-shadow .15s}
+.stat-click:hover,.stat-click:focus-visible{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft);outline:none}
 .kv{display:grid;grid-template-columns:minmax(120px,40%) 1fr;gap:8px 14px;margin:0}
 .kv dt{color:var(--muted);font-size:12px}.kv dd{margin:0;font-weight:600;color:var(--ink-2)}
 .divider{height:1px;background:var(--line-2);margin:14px 0}

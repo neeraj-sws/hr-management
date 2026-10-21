@@ -1,5 +1,5 @@
 <div>
-    <div class="page-head"><div><h1>Final Settlement</h1><p>Calculated from actual records: unpaid salary since the last locked payroll, approved overtime, adjustments, configured leave encashment, penalties, outstanding advances and unpaid locked payroll.</p></div></div>
+    <div class="page-head"><div><h1>Final Settlement</h1><p>Calculated from actual records: unpaid salary since the last locked payroll, {{ app(\App\Services\PeopleOperationsService::class)->overtimeEnabled() ? 'approved overtime, ' : '' }}adjustments, configured leave encashment, penalties, outstanding advances and unpaid locked payroll.</p></div></div>
     <x-errors />
     <div class="grid grid-master">
         <section class="card">

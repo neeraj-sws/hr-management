@@ -80,11 +80,13 @@ class FinalSettlementService
             $eligible = isset($present[$day->toDateString()]) || ($includePaidLeave && isset($paidLeave[$day->toDateString()]));
             if (! $attendanceProration || $eligible) $base += (float) $profile->monthly_salary / $monthlyScheduled;
         }
-        $approvedMinutes = (int) OvertimeRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('work_date', '>=', $start->toDateString())->whereDate('work_date', '<=', $end->toDateString())->sum('approved_minutes');
-        $profile = $profiles->last();
         $overtimePolicy = $policyResolver->forEmployee($employee, 'overtime.multiplier', $end->toDateString(), []);
+        // Overtime switched off (Settings > Payroll): none is paid, as in payroll.
+        $overtimeOn = (bool) ($overtimePolicy['enabled'] ?? true);
+        $approvedMinutes = $overtimeOn ? (int) OvertimeRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('work_date', '>=', $start->toDateString())->whereDate('work_date', '<=', $end->toDateString())->sum('approved_minutes') : 0;
+        $profile = $profiles->last();
         if ($approvedMinutes > 0 && ! array_key_exists('multiplier', $overtimePolicy)) throw ValidationException::withMessages(['settlement' => 'Configure an employer overtime multiplier before calculating this settlement.']);
-        $dailyOt = OvertimeRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('work_date', '>=', $start->toDateString())->whereDate('work_date', '<=', $end->toDateString())->get(['work_date', 'approved_minutes'])->groupBy(fn ($row) => $row->work_date->toDateString());
+        $dailyOt = ! $overtimeOn ? collect() : OvertimeRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('work_date', '>=', $start->toDateString())->whereDate('work_date', '<=', $end->toDateString())->get(['work_date', 'approved_minutes'])->groupBy(fn ($row) => $row->work_date->toDateString());
         foreach ($dailyOt as $date => $rows) {
             $cap = $policyResolver->forEmployee($employee, 'overtime.multiplier', $date, [])['max_minutes_per_day'] ?? null;
             if ($cap !== null && (int) $rows->sum('approved_minutes') > (int) $cap) throw ValidationException::withMessages(['settlement' => 'Approved overtime exceeds the configured daily employer limit.']);
@@ -130,7 +132,7 @@ class FinalSettlementService
                 'penalties' => \App\Models\EmployeePenalty::where('employee_id', $case->employee_id)->where('status', 'pending')->count(),
                 'salary advances' => \App\Models\SalaryAdvance::where('employee_id', $case->employee_id)->where('status', 'pending')->count(),
                 'expense claims' => \App\Models\ExpenseClaim::where('employee_id', $case->employee_id)->where('status', 'pending')->count(),
-                'overtime requests' => \App\Models\OvertimeRequest::where('employee_id', $case->employee_id)->where('status', 'pending')->count(),
+                'overtime requests' => app(PeopleOperationsService::class)->overtimeEnabled() ? \App\Models\OvertimeRequest::where('employee_id', $case->employee_id)->where('status', 'pending')->count() : 0,
             ])->filter();
             if ($pendingFinance->isNotEmpty()) throw ValidationException::withMessages(['settlement' => 'Decide the pending '.$pendingFinance->keys()->join(', ', ' and ').' first — they change the amount due.']);
             $settlement = EmployeeFinalSettlement::firstOrNew(['lifecycle_case_id' => $case->id]);

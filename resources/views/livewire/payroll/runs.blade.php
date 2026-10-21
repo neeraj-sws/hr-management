@@ -1,6 +1,6 @@
 <div>
     <div class="page-head">
-        <div><h1>{{ $approvalsOnly ? 'Payroll Approvals' : 'Payroll' }}</h1><p>Attendance → leave → overtime → penalties → salary → adjustments → approval → lock → payment → payslip.</p></div>
+        <div><h1>{{ $approvalsOnly ? 'Payroll Approvals' : 'Payroll' }}</h1><p>Attendance → leave → {{ app(\App\Services\PeopleOperationsService::class)->overtimeEnabled() ? 'overtime → ' : '' }}penalties → salary → adjustments → approval → lock → payment → payslip.</p></div>
     </div>
     <x-errors />
 
