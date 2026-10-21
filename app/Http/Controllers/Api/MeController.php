@@ -33,6 +33,8 @@ class MeController extends ApiController
                 'attendance_sources' => $employee ? app(\App\Services\AttendanceService::class)->allowedSources($employee) : ['web', 'mobile', 'desktop'],
                 'app_usage' => $employee ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : false,
                 'window_titles' => $employee ? app(\App\Services\AppUsageService::class)->titlesEnabledFor($employee) : false,
+                // Overtime switched off in Settings > Payroll: the apps hide their overtime screens.
+                'overtime' => app(\App\Services\PeopleOperationsService::class)->overtimeEnabled($employee),
                 'screen_capture' => $employee ? (function ($captures) use ($employee, $user) {
                     $policy = $captures->policy($employee);
 

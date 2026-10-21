@@ -82,10 +82,10 @@
             @forelse($recentLeave as $lr)<div class="list-row"><div><strong>{{ $lr->leaveType?->name }}</strong><small>{{ $lr->starts_on?->format('d M') }} – {{ $lr->ends_on?->format('d M Y') }} · {{ (float) $lr->days }} day(s)</small></div><x-badge :status="$lr->status" /></div>
             @empty<x-empty title="No leave requests" icon="calendar" />@endforelse
         </div></section>
-        <section class="card"><div class="card-head"><h2>Overtime</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'overtime', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
+        @if($overtimeOn)<section class="card"><div class="card-head"><h2>Overtime</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'overtime', 'employee' => $employee->id]) }}">Full report →</a></div><div class="list">
             @forelse($overtime as $ot)<div class="list-row"><div><strong>{{ $ot->work_date?->format('d M Y') }}</strong><small>{{ $ot->approved_minutes ?? $ot->requested_minutes }} min · {{ $ot->reason }}</small></div><x-badge :status="$ot->status" /></div>
             @empty<x-empty title="No overtime" icon="timer" />@endforelse
-        </div></section>
+        </div></section>@endif
     </div>
 
     {{-- WORK --}}

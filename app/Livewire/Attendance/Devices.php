@@ -40,7 +40,9 @@ class Devices extends Component
         $device = AttendanceDevice::with('employee')->findOrFail($id);
         DB::transaction(function () use ($device) {
             if ($device->personal_access_token_id) PersonalAccessToken::whereKey($device->personal_access_token_id)->delete();
-            $device->forceFill(['personal_access_token_id' => null, 'is_active' => false])->save();
+            // A device left behind by a deleted employee cannot be updated (its employee link is broken), so it is removed.
+            if (! $device->employee) $device->delete();
+            else $device->forceFill(['personal_access_token_id' => null, 'is_active' => false])->save();
         });
         $audit->record('attendance.device_revoked', $device, ['employee_id' => $device->employee_id, 'computer_name' => $device->computer_name, 'windows_user' => $device->windows_user]);
         $this->toast('Access revoked for '.($device->computer_name ?: $device->device_id).'. It can no longer send attendance.');

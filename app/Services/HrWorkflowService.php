@@ -34,10 +34,15 @@ class HrWorkflowService
     public function createEmployee(array $data, ?int $userId = null): AttendanceEmployee
     {
         return DB::transaction(function () use ($data, $userId) {
+            $payBasis = ($data['pay_basis'] ?? 'monthly') === 'daily' ? 'daily' : 'monthly';
+            $dailyRate = $payBasis === 'daily' ? (float) ($data['daily_rate'] ?? 0) : null;
+            unset($data['pay_basis'], $data['daily_rate']);
+            // Daily wage: the monthly figure is an estimate (rate × the record's working days) used only in lists.
+            if ($payBasis === 'daily') $data['monthly_salary'] = round($dailyRate * 22, 2);
             $employee = AttendanceEmployee::create($data);
             if (isset($data['monthly_salary'])) {
                 // The salary record carries the hours entered for the employee, so Payroll shows the same working day.
-                SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
+                SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'pay_basis' => $payBasis, 'daily_rate' => $dailyRate, 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
             }
             foreach (LeaveType::where('is_active', true)->get() as $leaveType) {
                 LeaveBalance::open($employee->id, $leaveType, LeaveYear::current());
@@ -224,7 +229,7 @@ class HrWorkflowService
                     'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
-                    'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
+                    'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
                     'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
@@ -335,7 +340,7 @@ class HrWorkflowService
                 $dayProfile = $profileOn($date);
                 if (! $dayProfile) continue;
                 $segment = &$segments[$dayProfile->id];
-                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0];
+                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0, 'present' => 0];
                 if (! $this->isConfiguredWorkday($date,$calendar)) {
                     // A holiday on what would otherwise be a working day: paid or unpaid per Settings > Calendar.
                     if (in_array($date, \App\Support\WorkCalendar::offHolidays($calendar), true) && $this->isConfiguredWorkday($date, [...$calendar, 'holidays' => []])) {
@@ -345,7 +350,8 @@ class HrWorkflowService
                     unset($segment); continue;
                 }
                 $segment['scheduled']++;
-                if (isset($presentSet[$date]) || ($includePaidLeave && isset($paidLeaveSet[$date]))) $segment['eligible']++;
+                if (isset($presentSet[$date])) $segment['present']++;
+                if (isset($presentSet[$date]) ||($includePaidLeave && isset($paidLeaveSet[$date]))) $segment['eligible']++;
                 unset($segment);
             }
             $scheduledMonth = array_sum(array_column($segments, 'scheduled'));
@@ -368,6 +374,12 @@ class HrWorkflowService
             $paidMonth = array_sum(array_map(fn ($seg) => $attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled'], $segments));
             $scale = $paidMonth > $cap && $paidMonth > 0 ? $cap / $paidMonth : 1;
             foreach ($segments as $seg) {
+                // Daily wage: the day's rate for every working day actually attended (no monthly divisor or components).
+                if ($seg['profile']->isDaily()) {
+                    $basePay += (float) $seg['profile']->daily_rate * $seg['present'];
+                    $salarySegments[] = ['month' => $monthKey, 'pay_basis' => 'daily', 'daily_rate' => (float) $seg['profile']->daily_rate, 'monthly_salary' => (float) $seg['profile']->monthly_salary, 'effective_from' => $seg['profile']->effective_from->toDateString(), 'paid_days' => $seg['present']];
+                    continue;
+                }
                 $segDays = ($attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled']) * $scale;
                 $segDivisor = $calendarDivisor ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
                 $basePay += ((float) $seg['profile']->monthly_salary / max(1, $segDivisor)) * $segDays;
@@ -400,7 +412,9 @@ class HrWorkflowService
         if ($approvedMinutes > 0 && ! array_key_exists('multiplier', $overtimePolicy)) throw ValidationException::withMessages(['payroll' => 'Configure an employer overtime multiplier before calculating payroll with approved overtime.']);
         $multiplier = (float) ($overtimePolicy['multiplier'] ?? 0);
         $holidayMultiplier = isset($overtimePolicy['holiday_multiplier']) ? (float) $overtimePolicy['holiday_multiplier'] : $multiplier;
-        $hourly = (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$standardDailyHours);
+        $hourly = $profile->isDaily()
+            ? (float) $profile->daily_rate / max(0.25, $standardDailyHours)
+            : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$standardDailyHours);
         $overtimeHours = $approvedMinutes/60;
         $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
         // Extra working: the hours actually worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set).

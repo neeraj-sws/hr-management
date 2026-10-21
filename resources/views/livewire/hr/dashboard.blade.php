@@ -56,7 +56,7 @@
         <div class="stat"><span class="stat-icon violet"><x-icon name="user-minus" /></span><div><span class="stat-label">Checked out today</span><span class="stat-value">{{ $metrics['checked_out'] }}</span><small>Finished for the day</small></div></div>
         <div class="stat"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">On lunch / break now</span><span class="stat-value">{{ $metrics['on_break'] }}</span><small>Currently on a break</small></div></div>
         <div class="stat"><span class="stat-icon red"><x-icon name="user-minus" /></span><div><span class="stat-label">Absent today</span><span class="stat-value">{{ $metrics['absent'] }}</span><small>Excludes approved leave</small></div></div>
-        <div class="stat"><span class="stat-icon violet"><x-icon name="calendar" /></span><div><span class="stat-label">On leave</span><span class="stat-value">{{ $metrics['on_leave'] }}</span><small>Approved leave today</small></div></div>
+        <button type="button" class="stat" wire:click="openOnLeave" style="cursor:pointer;text-align:left" title="See who is on leave"><span class="stat-icon violet"><x-icon name="calendar" /></span><div><span class="stat-label">On leave</span><span class="stat-value">{{ $metrics['on_leave'] }}</span><small>Approved leave today · click to see who</small></div></button>
         <div class="stat"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">Late arrivals</span><span class="stat-value">{{ $metrics['late'] }}</span><small>After start time + grace</small></div></div>
         @if($projectCounts)<div class="stat"><span class="stat-icon violet"><x-icon name="layers" /></span><div><span class="stat-label">{{ ['company' => 'Active projects', 'team' => 'Team active projects', 'mine' => 'My active projects'][$projectScope] }}</span><span class="stat-value">{{ $projectCounts['active'] }}</span><small><a href="{{ route($projectScope !== 'mine' && auth()->user()->canAny(['projects.manage', 'hr.manage']) ? 'work.projects' : 'work.my-projects') }}">{{ $projectCounts['total'] }} {{ $projectScope === 'company' ? 'in the company' : ($projectScope === 'team' ? 'in your team' : 'in total') }}</a> · {{ $projectCounts['planned'] }} planned · {{ $projectCounts['on_hold'] }} on hold · {{ $projectCounts['completed'] }} completed</small></div></div>@endif
         <div class="stat"><span class="stat-icon"><x-icon name="check-square" /></span><div><span class="stat-label">Open tasks</span><span class="stat-value">{{ $metrics['active_tasks'] }}</span><small>{{ $metrics['overdue_tasks'] }} overdue</small></div></div>
@@ -167,7 +167,7 @@
                 <div class="card-head"><div><h2>Recent audit events</h2></div><a class="btn btn-sm" href="{{ route('security.audit') }}">Audit logs</a></div>
                 <div class="list">
                     @forelse($recentAudit as $event)
-                        <div class="list-row"><div><strong>{{ str($event->action)->replace(['.', '_'], ' ')->title() }}</strong><small>{{ $event->actor?->name ?? 'System' }} · {{ $event->created_at?->diffForHumans() }}</small></div><span class="small muted">{{ class_basename($event->subject_type ?? '') }} {{ $event->subject_id ? '#'.$event->subject_id : '' }}</span></div>
+                        <div class="list-row"><div><strong>{{ str($event->action)->replace(['.', '_'], ' ')->title() }}</strong><small>{{ $event->actor?->name ?? 'System' }}@if($summary = $event->summary()) · {{ $summary }}@endif · {{ $event->created_at?->diffForHumans() }}</small></div><span class="small muted">{{ class_basename($event->subject_type ?? '') }} {{ $event->subject_id ? '#'.$event->subject_id : '' }}</span></div>
                     @empty
                         <x-empty title="No audit events yet" icon="eye" />
                     @endforelse
@@ -175,4 +175,27 @@
             </section>
         @endcan
     </div>
+
+    @if($showOnLeave)
+        <x-modal title="On leave today ({{ $onLeave->count() }})" size="lg">
+            <div class="modal-body">
+                <div class="table-wrap"><table class="table">
+                    <thead><tr><th>Employee</th><th>Designation</th><th>Leave type</th><th>Duration</th></tr></thead>
+                    <tbody>
+                    @forelse($onLeave as $leave)
+                        <tr>
+                            <td><strong>{{ $leave->employee?->name }}</strong><small>{{ $leave->employee?->employee_code }}@if($leave->employee?->department) · {{ $leave->employee->department->name }}@endif</small></td>
+                            <td>{{ $leave->employee?->designation ?: '—' }}</td>
+                            <td>{{ $leave->leaveType?->name ?? '—' }}<small>{{ \App\Models\LeaveRequest::DURATION_LABELS[$leave->duration] ?? '' }}</small></td>
+                            <td class="nowrap">{{ $leave->starts_on->format('d M') }}@if(! $leave->ends_on->isSameDay($leave->starts_on)) – {{ $leave->ends_on->format('d M') }}@endif<small>{{ rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.') }} {{ str('day')->plural((float) $leave->days == 1 ? 1 : 2) }} · back {{ $leave->ends_on->copy()->addDay()->format('D d M') }}</small></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4"><x-empty title="Nobody is on leave today" icon="calendar" /></td></tr>
+                    @endforelse
+                    </tbody>
+                </table></div>
+            </div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Close</button></div>
+        </x-modal>
+    @endif
 </div>

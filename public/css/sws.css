@@ -329,4 +329,11 @@ button.pill:hover{border-color:var(--line)}
 .roster-shift strong{display:block;font-size:12px;color:var(--ink-2)}.roster-shift small{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap}
 .roster-actual{margin-top:4px;font-size:10.5px;color:var(--green);white-space:nowrap}.roster-actual b{display:block;font-size:11.5px}
 .roster-actual.short{color:var(--amber)}.roster-actual.none{color:var(--faint)}
+/* Off days on the roster: holiday (red), 3rd Saturday / moved off (amber), weekly off (violet). */
+.roster-off-holiday{background:var(--red-soft)}.roster-off-special{background:var(--amber-soft)}.roster-off-weekly{background:var(--violet-soft)}
+.roster-off-tag{display:block;margin-bottom:4px;font-size:10.5px;font-weight:700;line-height:1.25;white-space:normal}
+.roster-off-holiday .roster-off-tag{color:var(--red)}.roster-off-special .roster-off-tag{color:var(--amber)}.roster-off-weekly .roster-off-tag{color:var(--violet)}
+.roster-off .roster-shift{opacity:.6}
+.roster-legend{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 0}.roster-key{padding:2px 8px;border-radius:999px;font-weight:600}
+.roster-key.roster-off-holiday{color:var(--red)}.roster-key.roster-off-special{color:var(--amber)}.roster-key.roster-off-weekly{color:var(--violet)}
 .people-list{list-style:none;margin:0;padding:0;max-height:60vh;overflow:auto}.people-list li{display:flex;justify-content:space-between;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line-2)}.people-list li:last-child{border-bottom:0}.people-list small{color:var(--muted)}

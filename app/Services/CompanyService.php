@@ -17,8 +17,8 @@ class CompanyService
 
     /**
      * Creates or updates an announcement; a newly published one notifies its audience in the app.
-     * With $email the full announcement is also e-mailed to everyone in the audience (whatever their
-     * e-mail preferences, which otherwise keep company news in the app).
+     * Only with $email is the full announcement also e-mailed to everyone in the audience; without it
+     * nobody gets an e-mail, whatever their notification preferences.
      */
     public function saveAnnouncement(array $data, User $author, ?Announcement $announcement = null, bool $email = false): Announcement
     {
@@ -30,7 +30,8 @@ class CompanyService
             $announcement->fill($data)->save();
             $this->audit->record($isNew ? 'announcement.published' : 'announcement.updated', $announcement, ['audience' => $announcement->audience]);
             if ($isNew) {
-                $notification = new ApprovalRequested('Announcement', $announcement->id, 'Announcement: '.$announcement->title, null, ! $email);
+                // The in-app notice never e-mails: an announcement is e-mailed only when "Also send by e-mail" is ticked.
+                $notification = new ApprovalRequested('Announcement', $announcement->id, 'Announcement: '.$announcement->title, null, false);
                 foreach ($this->audienceUsers($announcement) as $user) {
                     if ($user->id === $author->id) continue;
                     $user->notify($notification);

@@ -97,6 +97,7 @@ class EmployeeProfile extends Component
             'managerHistory' => \App\Models\EmployeeManagerHistory::with('manager')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'history' => $user->canAny(['employees.manage', 'hr.manage', 'audit.view']) ? \App\Models\AuditLog::with('actor')->where('subject_type', $employee::class)->where('subject_id', $employee->id)->latest('id')->limit(15)->get() : collect(),
             'overtime' => $employee->overtimeRequests()->latest('work_date')->limit(10)->get(),
+            'overtimeOn' => app(\App\Services\PeopleOperationsService::class)->overtimeEnabled($employee),
             'expenses' => $employee->expenseClaims()->latest('spent_on')->limit(10)->get(),
             'penalties' => \App\Models\EmployeePenalty::with('policyRule')->where('employee_id', $employee->id)->latest('effective_on')->limit(10)->get(),
             'payslips' => $showSalary ? $employee->payslips()->with('item.run')->latest('issued_at')->limit(10)->get() : collect(),

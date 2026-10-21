@@ -45,6 +45,13 @@ class Employees extends Component
     public string $workEnd = '18:30';
     public string $dailyHours = '8';
     public string $monthlySalary = '';
+    /** monthly | daily (daily wage, e.g. 130 per day attended). */
+    public string $payBasis = 'monthly';
+    public string $dailyRate = '';
+    /** Ex-employee: last working day and how they left. */
+    public string $exitDate = '';
+    public string $exitType = 'resignation';
+    public string $exitReason = '';
     public array $teamIds = [];
     public bool $isManager = false;
 
@@ -54,6 +61,8 @@ class Employees extends Component
     public function updated($property): void
     {
         if (in_array($property, ['search', 'department', 'status', 'joinedFrom', 'joinedTo', 'reportsTo'], true)) $this->resetPage();
+        // Choosing "Daily wage" sets the salary to per day.
+        if ($property === 'employmentType' && $this->employmentType === 'daily_wage') $this->payBasis = 'daily';
     }
 
     public function create(): void
@@ -80,6 +89,7 @@ class Employees extends Component
             'joinedAt' => (string) $employee->joined_at?->toDateString(), 'dateOfBirth' => (string) $employee->date_of_birth?->toDateString(), 'employmentType' => $employee->employment_type ?: 'full_time', 'probationEndsOn' => (string) $employee->probation_ends_on?->toDateString(), 'noticePeriodDays' => (string) ($employee->notice_period_days ?? ''), 'workStart' => substr((string) $employee->work_start, 0, 5),
             'workEnd' => substr((string) $employee->work_end, 0, 5), 'dailyHours' => (string) (float) $employee->daily_work_hours,
             'teamIds' => $employee->teams->pluck('id')->map(fn ($id) => (string) $id)->all(), 'isManager' => (bool) $employee->user?->hasRole('Manager'),
+            'exitDate' => (string) $employee->exit_date?->toDateString(), 'exitType' => $employee->exit_type ?: 'resignation', 'exitReason' => (string) $employee->exit_reason,
         ]);
         $this->showForm = true;
     }
@@ -106,11 +116,20 @@ class Employees extends Component
             'dailyHours' => ['required', 'numeric', 'gt:0', 'max:24'],
             'teamIds' => ['array'], 'teamIds.*' => ['integer', 'exists:teams,id'],
         ];
-        if (! $employee) {
-            $rules['password'] = ['required', 'string', Password::min(12)->letters()->numbers()];
-            $rules['monthlySalary'] = ['required', 'numeric', 'min:0'];
+        $left = $this->employmentType === EmployeeService::EX_EMPLOYEE;
+        if ($left) {
+            $rules['exitDate'] = ['required', 'date', 'before_or_equal:today', ...($this->joinedAt ? ['after_or_equal:joinedAt'] : [])];
+            $rules['exitType'] = ['required', Rule::in(array_keys(EmployeeService::EXIT_TYPES))];
+            $rules['exitReason'] = ['nullable', 'string', 'max:500'];
         }
-        $this->validate($rules, [], ['employeeCode' => 'employee code', 'managerId' => 'manager', 'departmentId' => 'department', 'monthlySalary' => 'monthly salary', 'dailyHours' => 'daily hours']);
+        if (! $employee) {
+            // An ex-employee never signs in, so no password is needed.
+            $rules['password'] = $left ? ['nullable', 'string', Password::min(12)->letters()->numbers()] : ['required', 'string', Password::min(12)->letters()->numbers()];
+            $rules['payBasis'] = ['required', Rule::in(['monthly', 'daily'])];
+            if ($this->payBasis === 'daily') $rules['dailyRate'] = ['required', 'numeric', 'gt:0', 'max:1000000'];
+            else $rules['monthlySalary'] = [$left ? 'nullable' : 'required', 'numeric', 'min:0'];
+        }
+        $this->validate($rules, [], ['employeeCode' => 'employee code', 'managerId' => 'manager', 'departmentId' => 'department', 'monthlySalary' => 'monthly salary', 'dailyHours' => 'daily hours', 'dailyRate' => 'per-day salary', 'exitDate' => 'last working day', 'exitType' => 'exit type']);
 
         $data = [
             'employee_code' => $this->employeeCode, 'name' => $this->name, 'email' => $this->email,
@@ -118,13 +137,14 @@ class Employees extends Component
             'department_id' => $this->departmentId ?: null, 'manager_id' => $this->managerId ?: null,
             'joined_at' => $this->joinedAt ?: null, 'date_of_birth' => $this->dateOfBirth ?: null, 'employment_type' => $this->employmentType, 'probation_ends_on' => $this->probationEndsOn ?: null, 'notice_period_days' => $this->noticePeriodDays === '' ? null : (int) $this->noticePeriodDays, 'work_start' => $this->workStart ?: null, 'work_end' => $this->workEnd ?: null,
             'daily_work_hours' => $this->dailyHours, 'team_ids' => array_map('intval', $this->teamIds), 'is_manager' => $this->isManager,
+            ...($left ? ['exit_date' => $this->exitDate, 'exit_type' => $this->exitType, 'exit_reason' => $this->exitReason ?: null] : []),
         ];
         if ($employee) {
             $service->update($employee, $data, $this->user());
-            $this->toast('Employee updated.');
+            $this->toast($left ? 'Saved as an ex-employee. Their login and devices are switched off; their records stay.' : 'Employee updated.');
         } else {
-            $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary], $this->user());
-            $this->toast('Employee and login account created.');
+            $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary === '' ? 0 : $this->monthlySalary, 'pay_basis' => $this->payBasis, 'daily_rate' => $this->payBasis === 'daily' ? $this->dailyRate : null], $this->user());
+            $this->toast($left ? 'Ex-employee added (inactive, no login). Their old attendance and salary can now be imported.' : 'Employee and login account created.');
         }
         $this->closeModal();
     }
@@ -175,7 +195,7 @@ class Employees extends Component
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'teamIds', 'isManager');
+        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager');
         $this->resetValidation();
     }
 
@@ -185,7 +205,8 @@ class Employees extends Component
         $employees = AttendanceEmployee::with(['department', 'manager', 'user.roles', 'teams'])
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('designation', 'like', "%{$term}%")))
             ->when($this->department, fn ($q, $id) => $q->where('department_id', $id))
-            ->when($this->status !== 'all', fn ($q) => $q->where('is_active', $this->status === 'active'))
+            ->when($this->status === 'left', fn ($q) => $q->where('is_active', false)->where(fn ($q) => $q->whereNotNull('exit_date')->orWhere('employment_type', EmployeeService::EX_EMPLOYEE)))
+            ->when(! in_array($this->status, ['all', 'left'], true), fn ($q) => $q->where('is_active', $this->status === 'active'))
             ->when($this->reportsTo, fn ($q, $id) => $q->where('manager_id', $id))
             ->when(strtotime($this->joinedFrom), fn ($q) => $q->whereDate('joined_at', '>=', $this->joinedFrom))
             ->when(strtotime($this->joinedTo), fn ($q) => $q->whereDate('joined_at', '<=', $this->joinedTo))

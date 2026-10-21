@@ -31,6 +31,7 @@ class Managers extends Component
 
         return $this->page('livewire.people.managers', [
             'managers' => $this->paginateCollection($managers, 15),
+            'overtimeOn' => app(\App\Services\PeopleOperationsService::class)->overtimeEnabled(),
             'totals' => ['managers' => $managers->count(), 'reports' => $managers->sum(fn ($m) => $m->directReports->count()), 'pending_leave' => $managers->sum('pending_leave'), 'pending_overtime' => $managers->sum('pending_overtime'), 'overdue' => $managers->sum('overdue_tasks'), 'without_manager' => AttendanceEmployee::where('is_active', true)->whereNull('manager_id')->count()],
         ], 'Managers');
     }

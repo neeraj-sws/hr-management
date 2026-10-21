@@ -155,6 +155,29 @@ class Shifts extends Component
         return $out;
     }
 
+    /**
+     * Off days on the roster, per person (each may have their own calendar): "employee|date" =>
+     * ['kind' => holiday|special|weekly, 'label' => 'Diwali' / '3rd Saturday — weekly off' / 'Sunday — weekly off'].
+     */
+    private function offDays($employees, array $dates): array
+    {
+        $policies = app(\App\Services\PolicyConfigurationService::class);
+        $out = [];
+        foreach ($employees as $e) {
+            foreach ($dates as $date) {
+                $calendar = $policies->forEmployee($e, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+                if (\App\Support\WorkCalendar::isWorkday($date, $calendar)) continue;
+                $holiday = in_array($date, \App\Support\WorkCalendar::offHolidays($calendar), true);
+                $special = \App\Support\WorkCalendar::specialOffReason($date, $calendar);
+                $out[$e->id.'|'.$date] = $holiday
+                    ? ['kind' => 'holiday', 'label' => (string) ($calendar['holiday_names'][$date] ?? 'Holiday')]
+                    : ['kind' => $special ? 'special' : 'weekly', 'label' => \App\Support\WorkCalendar::offDayReason($date, $calendar)];
+            }
+        }
+
+        return $out;
+    }
+
     public function closeModal(): void
     {
         $this->showShiftForm = false;
@@ -177,6 +200,7 @@ class Shifts extends Component
             'dates' => $dates,
             'roster' => $shifts->roster($employees->getCollection(), $dates),
             'actuals' => $this->actuals($employees->getCollection()->pluck('id')->all(), $dates),
+            'offDays' => $this->offDays($employees->getCollection(), $dates),
             'timelineEmployee' => $this->timelineEmployeeId ? AttendanceEmployee::find($this->timelineEmployeeId) : null,
         ], 'Shifts & Roster');
     }

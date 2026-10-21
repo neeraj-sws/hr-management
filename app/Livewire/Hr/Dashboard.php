@@ -24,6 +24,19 @@ class Dashboard extends Component
 {
     use InteractsWithHr;
 
+    /** The "On leave" card opens a list of who is on leave today. */
+    public bool $showOnLeave = false;
+
+    public function openOnLeave(): void
+    {
+        $this->showOnLeave = true;
+    }
+
+    public function closeModal(): void
+    {
+        $this->showOnLeave = false;
+    }
+
     public function render(ApprovalInbox $inbox, AttendanceService $attendance, CompanyService $company)
     {
         $user = $this->user();
@@ -37,8 +50,10 @@ class Dashboard extends Component
         $today = today();
         $sessions = AttendanceSession::with('employee')->whereIn('employee_id', $employeeIds)->whereDate('work_date', $today)->latest('check_in')->get();
         $presentIds = $sessions->pluck('employee_id')->unique();
-        $onLeaveIds = LeaveRequest::whereIn('employee_id', $employeeIds)->where('status', 'approved')
-            ->whereDate('starts_on', '<=', $today)->whereDate('ends_on', '>=', $today)->pluck('employee_id')->unique()->diff($presentIds);
+        $leavesToday = LeaveRequest::with(['employee.department', 'leaveType'])->whereIn('employee_id', $employeeIds)->where('status', 'approved')
+            ->whereDate('starts_on', '<=', $today)->whereDate('ends_on', '>=', $today)->get();
+        $onLeaveIds = $leavesToday->pluck('employee_id')->unique()->diff($presentIds);
+        $onLeave = $leavesToday->whereIn('employee_id', $onLeaveIds->all())->unique('employee_id')->sortBy(fn ($leave) => $leave->employee?->name)->values();
         $tasks = Task::with('assignee')->whereIn('assignee_id', $employeeIds)->get();
         $completedToday = $tasks->filter(fn (Task $task) => $task->status === 'completed' && $task->completed_at?->isToday())->count();
         // Today's work = tasks finished today + open tasks that are due today or already overdue.
@@ -66,6 +81,7 @@ class Dashboard extends Component
 
         return $this->page('livewire.hr.dashboard', [
             'capture' => $capture,
+            'onLeave' => $onLeave,
             'orgWide' => $orgWide,
             'profile' => $profile,
             'metrics' => [

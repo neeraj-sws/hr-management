@@ -29,6 +29,7 @@ NAVY, BLUE, CANVAS, INK, MUTED, GREEN, RED, AMBER = "#14284b", "#3461d1", "#f4f6
 INK2, LINE, HEADER, BLUE_SOFT, GREEN_SOFT, AMBER_SOFT, RED_SOFT, STRIPE = "#334258", "#e4e9f0", "#1b355f", "#ecf2ff", "#e6f6ee", "#fff4dc", "#ffedf0", "#f8fafd"
 STATUS_TONE = {"working": (GREEN, GREEN_SOFT), "on_break": (AMBER, AMBER_SOFT), "completed": (INK2, "#eef1f6")}
 SYNC_INTERVAL_MS = 30_000
+POLICY_INTERVAL_MS = 10 * 60_000  # re-read monitoring settings so admin changes apply without signing in again
 PRESENCE_INTERVAL_MS = 5_000
 SCREEN_IDLE_AFTER_SECONDS = 60  # no keyboard/mouse for a minute (or screen locked) counts as idle
 AWAY_REASON = {"idle": "no keyboard or mouse use", "locked": "screen locked", "asleep": "computer asleep"}
@@ -306,6 +307,9 @@ class DesktopApp:
         self._tick()
         self.root.after(SYNC_INTERVAL_MS, self._auto_sync)
         self.root.after(PRESENCE_INTERVAL_MS, self._watch_presence)
+        if not getattr(self, "_policy_poll_started", False):
+            self._policy_poll_started = True
+            self.root.after(POLICY_INTERVAL_MS, self._poll_policies)
         self._render_sync()
 
     # Away time ----------------------------------------------------------------
@@ -837,6 +841,29 @@ class DesktopApp:
 
         self._run(lambda: self.offline.flush(self.client), done)
 
+    def _apply_usage_flags(self, result):
+        """The server answers each usage report with the current settings, so an admin turning
+        window titles (or app usage) on or off takes effect at the next sync — no sign-in needed."""
+        if not isinstance(result, dict):
+            return
+        if result.get("enabled") is not None:
+            self.app_usage_on = bool(result["enabled"])
+        if result.get("titles_enabled") is not None:
+            self.window_titles_on = bool(result["titles_enabled"])
+            if not self.window_titles_on:
+                self.window_titles.clear()
+
+    def _poll_policies(self):
+        """Every few minutes: pick up monitoring settings an admin changed (app usage, window titles)."""
+        if self.client.token:
+            def done(me):
+                if isinstance(me, dict):
+                    self.me = me
+                    policies = me.get("policies") or {}
+                    self._apply_usage_flags({"enabled": policies.get("app_usage"), "titles_enabled": policies.get("window_titles")})
+            self._run(self.client.me, done, lambda _e: None)
+        self.root.after(POLICY_INTERVAL_MS, self._poll_policies)
+
     def _auto_sync(self):
         if not self.client.token or not hasattr(self, "sync_label") or not self.sync_label.winfo_exists():
             return
@@ -857,7 +884,7 @@ class DesktopApp:
                     key = (row["app"], row["title"])
                     self.window_titles[key] = max(0.0, self.window_titles.get(key, 0.0) - row["seconds"])
                 if apps and self.app_usage_on:
-                    self._run(lambda: self.client.report_app_usage(apps, titles), lambda _r: None, lambda _e: None)
+                    self._run(lambda: self.client.report_app_usage(apps, titles), self._apply_usage_flags, lambda _e: None)
                 if session:
                     self.session = {**(self.session or {}), "screen_active_seconds": session.get("screen_active_seconds", 0), "screen_idle_seconds": session.get("screen_idle_seconds", 0)}
 

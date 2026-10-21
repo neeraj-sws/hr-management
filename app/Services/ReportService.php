@@ -61,6 +61,7 @@ class ReportService
     public function canView(?User $user, string $type): bool
     {
         if ($user === null || ! isset(self::TYPES[$type])) return false;
+        if ($type === 'overtime' && ! app(PeopleOperationsService::class)->overtimeEnabled()) return false;
 
         return $user->canAny(self::TYPES[$type][1]) || (in_array($type, self::TEAM_LEAD_TYPES, true) && ApprovalInbox::isTeamLead($user));
     }

@@ -38,7 +38,7 @@ export default function TeamScreen() {
           <Stat label="To approve" value={summary.pending_approvals} />
         </View>
       ) : null}
-      {summary && summary.pending_approvals > 0 ? <Card><Row title="Approvals waiting" subtitle="Leave, overtime, corrections, expenses" onPress={() => router.push('/approvals')} right={<Badge label={String(summary.pending_approvals)} tone="amber" />} /></Card> : null}
+      {summary && summary.pending_approvals > 0 ? <Card><Row title="Approvals waiting" subtitle="Leave, corrections, expenses and more" onPress={() => router.push('/approvals')} right={<Badge label={String(summary.pending_approvals)} tone="amber" />} /></Card> : null}
       {blockers.length ? (
         <Card>
           <H2>Blockers today</H2>

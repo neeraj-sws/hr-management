@@ -100,7 +100,11 @@ class WorkService
             }
             $task->fill($data)->save();
             if (! $isNew) $task->increment('server_version');
-            $this->audit->record($isNew ? 'task.assigned' : 'task.updated', $task, ['assignee_id' => $assignee->id]);
+            // Name the assignee (and whether it was self-assigned), so the audit log says who got the task.
+            $this->audit->record($isNew ? 'task.assigned' : 'task.updated', $task, array_filter([
+                'task' => $task->title, 'assignee_id' => $assignee->id, 'assignee_name' => $assignee->name, 'self_assigned' => $assignee->user_id === $actor->id,
+                'previous_assignee' => ! $isNew && $previousAssignee !== $assignee->id ? \App\Models\AttendanceEmployee::find($previousAssignee)?->name : null,
+            ], fn ($v) => $v !== null));
             if ($isNew || $previousAssignee !== $assignee->id) {
                 $details = collect([$task->project?->name ? 'project '.$task->project->name : null, $task->due_on ? 'due '.$task->due_on->format('d M Y') : null, $task->priority !== 'normal' ? $task->priority.' priority' : null])->filter()->join(', ');
                 // Assigning work to yourself needs no notification.

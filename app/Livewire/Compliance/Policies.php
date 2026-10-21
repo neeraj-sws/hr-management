@@ -105,7 +105,8 @@ class Policies extends Component
     {
         return $this->page('livewire.compliance.policies', [
             'rules' => self::RULES,
-            'overridable' => self::OVERRIDABLE,
+            // Overtime switched off in Settings > Payroll: no per-person overtime rule to set.
+            'overridable' => app(PeopleOperationsService::class)->overtimeEnabled() ? self::OVERRIDABLE : array_diff_key(self::OVERRIDABLE, ['overtime.multiplier' => true]),
             'teamOverrides' => \App\Models\TeamPolicyOverride::with('team')->whereIn('rule_key', array_keys(self::OVERRIDABLE))->latest()->get(),
             'teams' => \App\Models\Team::orderBy('name')->get(['id', 'name']),
             'canConfigure' => $this->user()->can('policies.manage'),

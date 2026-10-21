@@ -68,6 +68,8 @@ class ApprovalInbox
     {
         $types = array_keys(array_filter(self::TYPES, fn ($definition) => $user->canAny($definition[1])));
         if (self::isTeamLead($user)) $types = array_values(array_unique([...$types, ...self::TEAM_LEAD_TYPES]));
+        // Overtime switched off in Settings > Payroll: no overtime requests to decide (and none in the type filter).
+        if (! app(PeopleOperationsService::class)->overtimeEnabled()) $types = array_values(array_diff($types, [OvertimeRequest::class]));
 
         return $types;
     }

@@ -27,6 +27,8 @@ class Overtime extends Component
 
     public function mount(): void
     {
+        // Overtime switched off in Settings > Payroll: the page is gone too (not only its menu link).
+        abort_unless(app(\App\Services\PeopleOperationsService::class)->overtimeEnabled(), 404);
         $canApprove = $this->user()->can('overtime.manage');
         if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = $this->ownEmployee() ? 'mine' : 'approvals';
         if ($this->tab !== 'mine' && ! $canApprove) $this->tab = 'mine';

@@ -25,7 +25,7 @@ class SelfServiceController extends ApiController
         $user = $this->apiUser($request);
 
         return response()->json(['data' => EmployeeDocument::where('employee_id', $employee->id)->latest()->get()->map(fn ($d) => [
-            'id' => $d->id, 'name' => $d->original_name, 'category' => $d->category, 'expires_on' => $d->expires_on?->toDateString(),
+            'id' => $d->id, 'name' => $d->original_name, 'category' => \App\Livewire\Lifecycle\Documents::CATEGORIES[$d->category] ?? $d->category, 'category_key' => $d->category,'expires_on' => $d->expires_on?->toDateString(),
             'expired' => (bool) ($d->expires_on && $d->expires_on->lt(today())),
             // Opening a private file from the phone's browser: a link signed for this user, valid 5 minutes.
             'url' => URL::temporarySignedRoute('files.document', now()->addMinutes(5), ['document' => $d->id, 'user' => $user->id]),

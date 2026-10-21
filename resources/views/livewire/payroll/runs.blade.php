@@ -93,8 +93,13 @@
             @php($days = (int) ($breakdown->calculation_breakdown['working_days'] ?? $breakdown->working_days ?? 0))
             <div class="modal-body"><table class="table"><tbody>
                 {{-- The person's own monthly (basic) salary first, then how this month's pay is worked out from it. --}}
+                @if(($cd['pay_basis'] ?? 'monthly') === 'daily')
+                <tr style="background:var(--canvas)"><td><strong>Daily wage</strong><small>paid per working day attended</small></td><td class="num"><strong>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} / day</strong></td></tr>
+                <tr><td>Days present<small>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} × {{ $breakdown->present_days }} days</small></td><td class="num">{{ number_format((float) ($cd['daily_rate'] ?? 0) * $breakdown->present_days, 2) }}</td></tr>
+                @else
                 <tr style="background:var(--canvas)"><td><strong>Monthly basic salary</strong><small>from the salary profile</small></td><td class="num"><strong>{{ number_format($monthly, 2) }}</strong></td></tr>
-                @if($days > 0)<tr><td>Per-day rate<small>{{ number_format($monthly, 2) }} ÷ {{ $days }} working days{{ ($cd['divisor'] ?? 'fixed') === 'calendar' ? ' (this month, from the calendar)' : '' }}</small></td><td class="num">{{ number_format($monthly / $days, 2) }}</td></tr>@endif
+                @endif
+                @if($days > 0 && ($cd['pay_basis'] ?? 'monthly') !== 'daily')<tr><td>Per-day rate<small>{{ number_format($monthly, 2) }} ÷ {{ $days }} working days{{ ($cd['divisor'] ?? 'fixed') === 'calendar' ? ' (this month, from the calendar)' : '' }}</small></td><td class="num">{{ number_format($monthly / $days, 2) }}</td></tr>@endif
                 @php($otKeys = ['approved_overtime_minutes', 'holiday_overtime_minutes', 'overtime_multiplier', 'holiday_overtime_multiplier', 'overtime_amount'])
                 @php($hasOt = (float) ($breakdown->calculation_breakdown['overtime_amount'] ?? 0) > 0 || (int) ($breakdown->calculation_breakdown['approved_overtime_minutes'] ?? 0) > 0)
                 @foreach(($breakdown->calculation_breakdown ?? []) as $label => $value)

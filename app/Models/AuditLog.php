@@ -47,6 +47,21 @@ class AuditLog extends Model
         return self::CATEGORIES[$this->category()][0];
     }
 
+    /** One line on who the event was about, e.g. "Assigned to Risha Gangrade" or "Self-assigned". */
+    public function summary(): ?string
+    {
+        $meta = (array) ($this->metadata ?? []);
+        if (! isset($meta['assignee_id']) && ! isset($meta['assignee_name'])) return null;
+        // Older entries only stored the id.
+        $name = $meta['assignee_name'] ?? \App\Models\AttendanceEmployee::find($meta['assignee_id'])?->name;
+        $self = $meta['self_assigned'] ?? ($name && $this->actor && \App\Models\AttendanceEmployee::where('id', $meta['assignee_id'] ?? 0)->value('user_id') === $this->actor_id);
+        $line = $self ? 'Self-assigned' : ($name ? 'Assigned to '.$name : null);
+        if ($line && ! empty($meta['previous_assignee'])) $line .= ' (was '.$meta['previous_assignee'].')';
+        if ($line && ! empty($meta['task'])) $line .= ' · "'.\Illuminate\Support\Str::limit($meta['task'], 60).'"';
+
+        return $line;
+    }
+
     /** Filters to one category with the same precedence as categoryOf(). */
     public function scopeCategory(Builder $query, string $category): Builder
     {

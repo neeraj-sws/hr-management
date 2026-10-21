@@ -15,7 +15,7 @@ class Documents extends Component
 {
     use InteractsWithHr, WithFileUploads, \Livewire\WithPagination;
 
-    public const CATEGORIES = ['employment' => 'Employment contract', 'identity' => 'Identity proof', 'education' => 'Education', 'experience' => 'Experience letter', 'policy' => 'Signed policy', 'other' => 'Other'];
+    public const CATEGORIES = ['employment' => 'Employment contract', 'appointment' => 'Appointment letter', 'identity' => 'Identity proof', 'education' => 'Education', 'experience' => 'Experience letter', 'relieving' => 'Relieving letter', 'noc' => 'NOC (No Objection Certificate)', 'policy' => 'Signed policy', 'other' => 'Other'];
 
     #[Url] public ?int $employee = null;
     #[Url] public string $category = '';

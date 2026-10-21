@@ -16,7 +16,10 @@ use Laravel\Sanctum\PersonalAccessToken;
 class EmployeeService
 {
     public const PROFILE_FIELDS = ['employee_code', 'name', 'email', 'designation', 'phone', 'department_id', 'manager_id', 'joined_at', 'work_start', 'work_end', 'daily_work_hours', 'date_of_birth', 'employment_type', 'probation_ends_on', 'confirmed_on', 'notice_period_days'];
-    public const EMPLOYMENT_TYPES = ['full_time' => 'Full time', 'part_time' => 'Part time', 'contract' => 'Contract', 'intern' => 'Intern'];
+    public const EMPLOYMENT_TYPES = ['full_time' => 'Full time', 'part_time' => 'Part time', 'contract' => 'Contract', 'intern' => 'Intern', 'daily_wage' => 'Daily wage', 'ex_employee' => 'Ex-employee (left the company)'];
+    public const EXIT_TYPES = ['resignation' => 'Resignation', 'termination' => 'Termination', 'end_of_contract' => 'End of contract', 'retirement' => 'Retirement'];
+    /** Someone who has already left: kept for old attendance / salary records, with no working login. */
+    public const EX_EMPLOYEE = 'ex_employee';
 
     public function __construct(private readonly HrWorkflowService $workflow, private readonly AuditLogger $audit) {}
 
@@ -26,24 +29,33 @@ class EmployeeService
      */
     public function create(array $data, User $actor): AttendanceEmployee
     {
-        $employee = DB::transaction(function () use ($data, $actor) {
-            $user = User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => Hash::make($data['password']), 'is_active' => true]);
+        $left = ($data['employment_type'] ?? null) === self::EX_EMPLOYEE;
+        $employee = DB::transaction(function () use ($data, $actor, $left) {
+            // An ex-employee gets an inactive login with a random password: their records are kept, they cannot sign in.
+            $password = $left && empty($data['password']) ? \Illuminate\Support\Str::password(32) : $data['password'];
+            $user = User::create(['name' => $data['name'], 'email' => $data['email'], 'password' => Hash::make($password), 'is_active' => ! $left]);
             $user->assignRole('Employee');
-            if (! empty($data['is_manager'])) $user->assignRole('Manager');
+            if (! empty($data['is_manager']) && ! $left) $user->assignRole('Manager');
 
             $employee = $this->workflow->createEmployee([
                 ...array_intersect_key($data, array_flip(self::PROFILE_FIELDS)),
-                'is_active' => true,
+                ...($left ? $this->exitFields($data) : []),
+                'is_active' => ! $left,
                 'user_id' => $user->id,
                 'daily_work_hours' => $data['daily_work_hours'] ?? 8,
                 'monthly_salary' => $data['monthly_salary'] ?? 0,
+                'pay_basis' => $data['pay_basis'] ?? 'monthly',
+                'daily_rate' => $data['daily_rate'] ?? null,
             ], $actor->id);
             $this->syncTeams($employee, $data['team_ids'] ?? [], $actor, ($employee->joined_at ?? today())->toDateString());
             if ($employee->manager_id) EmployeeManagerHistory::create(['employee_id' => $employee->id, 'manager_id' => $employee->manager_id, 'starts_on' => $employee->joined_at ?? today(), 'changed_by' => $actor->id]);
             $this->audit->record('user.employee_account_created', $user, ['employee_id' => $employee->id]);
+            if ($left) $this->audit->record('employee.exit_recorded', $employee, ['exit_type' => $employee->exit_type, 'exit_date' => $employee->exit_date?->toDateString(), 'source' => 'added as ex-employee']);
 
             return $employee;
         });
+        // Nobody is told about someone who has already left.
+        if ($left) return $employee;
         // Sent after the employee is saved: a notification or e-mail problem can no longer turn a
         // successful save into a "500 Server Error" (the employee used to be created anyway).
         $this->notifyManagerAssigned($employee, $actor);
@@ -58,7 +70,10 @@ class EmployeeService
         return DB::transaction(function () use ($employee, $data, $actor) {
             if (isset($data['manager_id']) && (int) $data['manager_id'] === $employee->id) $data['manager_id'] = null;
             $previousManager = $employee->manager_id;
-            $employee->update(array_intersect_key($data, array_flip(self::PROFILE_FIELDS)));
+            $leaving = ($data['employment_type'] ?? null) === self::EX_EMPLOYEE;
+            $employee->update([...array_intersect_key($data, array_flip(self::PROFILE_FIELDS)), ...($leaving ? $this->exitFields($data) : [])]);
+            // Marked as an ex-employee: deactivate (login, tokens and devices revoked) like any leaver.
+            if ($leaving && $employee->is_active) $this->setActive($employee, false);
             // Keep the current salary record on the same working day, so Payroll never disagrees with the employee record.
             if ($employee->wasChanged('daily_work_hours')) {
                 $employee->salaryProfiles()->orderByDesc('effective_from')->orderByDesc('id')->first()?->update(['standard_daily_hours' => $employee->daily_work_hours]);
@@ -75,6 +90,15 @@ class EmployeeService
 
             return $employee->fresh();
         });
+    }
+
+    /** Exit details for someone recorded as an ex-employee (last working day, how they left). */
+    private function exitFields(array $data): array
+    {
+        $type = array_key_exists($data['exit_type'] ?? '', self::EXIT_TYPES) ? $data['exit_type'] : 'resignation';
+
+        return ['exit_date' => $data['exit_date'] ?? null, 'exit_type' => $type, 'exit_reason' => $data['exit_reason'] ?? null,
+            'resigned_on' => $type === 'resignation' ? ($data['resigned_on'] ?? $data['exit_date'] ?? null) : null];
     }
 
     /**
@@ -213,6 +237,9 @@ class EmployeeService
             $snapshot = $employee->only(['employee_code', 'name', 'email', 'department_id', 'manager_id', 'joined_at']);
             $user = $employee->user;
             $employee->tokens()->delete();
+            // Remove their attendance computers too, so no device is left pointing at a missing employee.
+            \Laravel\Sanctum\PersonalAccessToken::whereIn('id', $employee->devices()->whereNotNull('personal_access_token_id')->pluck('personal_access_token_id'))->delete();
+            $employee->devices()->delete();
             $employee->delete();
             if ($user) { $user->tokens()->delete(); $user->delete(); }
             $this->audit->record('employee.removed', null, [...$snapshot, 'removed_by' => $actor->name]);
