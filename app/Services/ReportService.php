@@ -268,16 +268,22 @@ class ReportService
             ->whereDate('paid_on', '>=', $from)->whereDate('paid_on', '<=', $to)->get()
             ->map(fn ($p) => ['paid_on' => $p->paid_on ? \Illuminate\Support\Carbon::parse($p->paid_on)->toDateString() : null, 'kind' => 'final_settlement', 'employee_code' => $p->settlement?->lifecycleCase?->employee?->employee_code, 'employee_name' => $p->settlement?->lifecycleCase?->employee?->name, 'for_period' => 'full & final', 'amount' => (float) $p->amount, 'method' => $p->method, 'reference' => $p->reference, 'recorded_by' => $p->recorded_by]);
         // Months paid from the old salary sheet (Payroll > Legacy Salary): paid / partly paid / unpaid and what is still due.
+        // A month with no payment date yet (still unpaid) is listed by its salary month instead.
         $legacy = \App\Models\LegacySalaryRecord::with('employee')->whereIn('employee_id', $ids)
-            ->whereDate('payment_date', '>=', $from)->whereDate('payment_date', '<=', $to)->get()
-            ->map(fn ($r) => ['paid_on' => $r->payment_date?->toDateString(), 'kind' => 'legacy_salary', 'employee_code' => $r->employee?->employee_code ?? $r->employee_code, 'employee_name' => $r->employee?->name ?? $r->name,
-                'for_period' => \Illuminate\Support\Carbon::createFromFormat('Y-m', $r->payroll_month)->format('M Y').' (old salary sheet)', 'amount' => round((float) $r->salary_paid, 2), 'method' => 'Old salary sheet',
+            ->where(fn ($q) => $q->where(fn ($q) => $q->whereDate('payment_date', '>=', $from)->whereDate('payment_date', '<=', $to))
+                ->orWhere(fn ($q) => $q->whereNull('payment_date')->where('payroll_month', '>=', substr($from, 0, 7))->where('payroll_month', '<=', substr($to, 0, 7))))->get()
+            ->map(fn ($r) => ['sort_date' => $r->payment_date?->toDateString() ?? \Illuminate\Support\Carbon::parse($r->payroll_month.'-01')->endOfMonth()->toDateString(),
+                'paid_on' => $r->payment_date?->toDateString(), 'kind' => 'legacy_salary', 'employee_code' => $r->employee?->employee_code ?? $r->employee_code, 'employee_name' => $r->employee?->name ?? $r->name,
+                'for_period' => \Illuminate\Support\Carbon::parse($r->payroll_month.'-01')->format('M Y').' (old salary sheet)', 'amount' => round((float) $r->salary_paid, 2), 'method' => 'Old salary sheet',
                 'reference' => $r->notes ? \Illuminate\Support\Str::limit(str_replace("\n", ' · ', $r->notes), 120) : null, 'recorded_by' => $r->imported_by,
-                'payment_status' => $r->payment_status, 'remaining' => round(max(0, (float) $r->salary_remains), 2)]);
+                'payment_status' => $r->payment_date ? $r->payment_status : ($r->payment_status ?: 'unpaid'),
+                // Nothing paid yet: the whole month's salary is still due.
+                'remaining' => round(max(0, (float) ($r->payment_date || (float) $r->salary_remains > 0 ? $r->salary_remains : ($r->total_salary_with_bonus ?: $r->salary_after_deduction))), 2)]);
         $rows = $salary->concat($settlement)->concat($legacy);
         $names = User::whereIn('id', $rows->pluck('recorded_by')->filter()->unique())->pluck('name', 'id');
 
-        return $rows->map(fn ($row) => array_merge($row, ['recorded_by' => $names[$row['recorded_by']] ?? null]))->sortByDesc('paid_on')->values();
+        return $rows->map(fn ($row) => array_merge($row, ['recorded_by' => $names[$row['recorded_by']] ?? null]))
+            ->sortByDesc(fn ($row) => $row['sort_date'] ?? $row['paid_on'])->map(fn ($row) => \Illuminate\Support\Arr::except($row, ['sort_date']))->values();
     }
 
     /**

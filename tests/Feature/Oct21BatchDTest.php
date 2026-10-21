@@ -103,6 +103,24 @@ class Oct21BatchDTest extends TestCase
         $this->assertSame(['2026-10-14'], $page->viewData('discipline')->pluck('date')->all());
     }
 
+    public function test_payments_report_lists_unpaid_old_sheet_months_by_salary_month(): void
+    {
+        $e = $this->employee('PAY-1');
+        $row = fn (string $month, array $extra) => \App\Models\LegacySalaryRecord::create(['employee_id' => $e->id, 'employee_code' => 'PAY-1', 'payroll_month' => $month, 'name' => $e->name, 'name_key' => strtolower($e->name), ...$extra]);
+        $row('2025-04', ['salary_paid' => 9000, 'salary_remains' => 0, 'payment_date' => '2025-05-09', 'payment_status' => 'Paid']);
+        $row('2025-06', ['total_salary_with_bonus' => 9500, 'salary_paid' => 0]); // never paid: no payment date
+
+        $rows = app(ReportService::class)->rows($this->admin, 'payments', ['from' => '2025-04-01', 'to' => '2025-12-31', 'employee_id' => $e->id]);
+        $this->assertSame(['Jun 2025 (old salary sheet)', 'Apr 2025 (old salary sheet)'], $rows->pluck('for_period')->all(), 'Newest first, the unpaid month by its salary month');
+        $unpaid = $rows->first();
+        $this->assertNull($unpaid['paid_on']);
+        $this->assertSame('unpaid', $unpaid['payment_status']);
+        $this->assertSame(9500.0, $unpaid['remaining']);
+        $this->assertArrayNotHasKey('sort_date', $unpaid);
+
+        $this->assertCount(0, app(ReportService::class)->rows($this->admin, 'payments', ['from' => '2026-01-01', 'to' => '2026-10-21', 'employee_id' => $e->id]), 'Outside the range: not listed');
+    }
+
     public function test_removing_a_photo_reloads_the_page(): void
     {
         $e = $this->employee('PH-2', ['photo_path' => 'employee-photos/x.png']);
