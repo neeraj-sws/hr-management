@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const colors = {
   navy: '#14284b', blue: '#3461d1', blueSoft: '#ecf2ff', ink: '#172033', ink2: '#334258', muted: '#6b778a', faint: '#94a0b2',
@@ -9,9 +9,11 @@ export const colors = {
 };
 
 export function Screen({ children, refreshing, onRefresh, padded = true }: { children: ReactNode; refreshing?: boolean; onRefresh?: () => void; padded?: boolean }) {
+  // Extra scroll room at the end so the last item is never under the phone's navigation buttons.
+  const { bottom } = useSafeAreaInsets();
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
-      <ScrollView contentContainerStyle={padded ? styles.content : undefined} refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={padded ? [styles.content, { paddingBottom: 40 + bottom }] : { paddingBottom: bottom }} refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined} keyboardShouldPersistTaps="handled">
         {children}
       </ScrollView>
     </SafeAreaView>

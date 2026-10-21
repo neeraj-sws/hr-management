@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../components/ui';
 
 /** Filled glyph when the tab is active, outline when not — the standard mobile look. */
@@ -10,6 +11,8 @@ const icon = (name: keyof typeof Ionicons.glyphMap) =>
   );
 
 export default function TabsLayout() {
+  // Room for the phone's own navigation buttons / gesture bar, so the tabs are never hidden behind them.
+  const { bottom } = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -20,7 +23,7 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.faint,
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600', marginBottom: 4 },
         tabBarIconStyle: { marginTop: 4 },
-        tabBarStyle: { height: 64, paddingTop: 6, paddingBottom: 10 },
+        tabBarStyle: { height: 64 + bottom, paddingTop: 6, paddingBottom: 10 + bottom },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home') }} />
