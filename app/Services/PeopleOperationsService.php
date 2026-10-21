@@ -286,6 +286,8 @@ class PeopleOperationsService
         foreach(\App\Models\AttendanceSession::with('employee')->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->whereNotNull('check_in')->get() as $session){
             $employee=$session->employee;
             if(!$employee)continue;
+            // Extra working on an off day is never late.
+            if(!app(AttendanceService::class)->isScheduledDay($employee,$session->work_date->toDateString()))continue;
             $workStart=app(AttendanceService::class)->rules($employee,$session->work_date->toDateString())['work_start'];
             if(!$workStart)continue;
             $config=$this->policy($employee,'attendance.late_penalty',$rule?->configuration??[],$session->work_date->toDateString());

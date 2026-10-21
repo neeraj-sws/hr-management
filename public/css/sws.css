@@ -189,7 +189,7 @@ details.nav-group[open]{padding-bottom:6px}
 
 /* ---------- Badges ---------- */
 .badge{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:2px 9px;background:#eef1f5;color:#5d6a7c;font-size:11px;font-weight:700;text-transform:capitalize;white-space:nowrap}
-.badge-green,.badge-approved,.badge-completed,.badge-paid,.badge-working,.badge-active,.badge-locked,.badge-cleared,.badge-returned,.badge-recovered,.badge-written_off,.badge-present,.badge-closed,.badge-submitted,.badge-acknowledged,.badge-hired,.badge-offer,.badge-hire{background:var(--green-soft);color:var(--green)}
+.badge-green,.badge-extra_work,.badge-approved,.badge-completed,.badge-paid,.badge-working,.badge-active,.badge-locked,.badge-cleared,.badge-returned,.badge-recovered,.badge-written_off,.badge-present,.badge-closed,.badge-submitted,.badge-acknowledged,.badge-hired,.badge-offer,.badge-hire{background:var(--green-soft);color:var(--green)}
 .badge-amber,.badge-pending,.badge-on_break,.badge-in_progress,.badge-draft,.badge-partially_paid,.badge-open,.badge-late,.badge-half_day,.badge-assigned,.badge-high,.badge-interview,.badge-on_hold,.badge-hold{background:var(--amber-soft);color:var(--amber)}
 .badge-red,.badge-rejected,.badge-overdue,.badge-absent,.badge-inactive,.badge-urgent,.badge-failed,.badge-reject,.badge-leave_conflict,.badge-lost,.badge-recovery_requested{background:var(--red-soft);color:var(--red)}
 .badge-blue,.badge-todo,.badge-normal,.badge-disbursed,.badge-on_leave,.badge-scheduled,.badge-applied{background:var(--blue-soft);color:var(--blue)}

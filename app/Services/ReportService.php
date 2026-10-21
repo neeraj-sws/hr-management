@@ -369,7 +369,7 @@ class ReportService
     }
 
     /** Kinds of day in the attendance report (and its Day filter). */
-    public const DAY_STATUSES = ['present' => 'Present', 'late' => 'Late', 'half_day' => 'Half-day', 'on_leave' => 'On leave', 'holiday' => 'Holiday', 'weekend' => 'Weekly off', 'absent' => 'Absent', 'leave_conflict' => 'Worked on a leave day'];
+    public const DAY_STATUSES = ['present' => 'Present', 'late' => 'Late', 'half_day' => 'Half-day', 'on_leave' => 'On leave', 'extra_work' => 'Extra work (off day)', 'holiday' => 'Holiday', 'weekend' => 'Weekly off', 'absent' => 'Absent', 'leave_conflict' => 'Worked on a leave day'];
 
     /**
      * Every day of the range for each employee (employee-code order, then date): worked days with their times,

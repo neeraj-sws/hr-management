@@ -135,6 +135,33 @@ class Oct21BatchDTest extends TestCase
         $this->postJson('/api/attendance/break/end', ['source' => 'desktop'])->assertSuccessful()->assertJsonPath('data.break_started_at', null);
     }
 
+    public function test_work_on_an_off_day_is_extra_work_never_late_or_half_day(): void
+    {
+        $e = $this->employee('EX-1');
+        $attendance = app(\App\Services\AttendanceService::class);
+        // Sunday 18 Oct: in at 4 PM for 3 hours.
+        $sunday = AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-18', 'check_in' => '2026-10-18 16:00:00', 'check_out' => '2026-10-18 19:00:00', 'active_seconds' => 10800, 'status' => 'completed']);
+        $sunday->load('employee');
+        $this->assertFalse($attendance->isLate($sunday));
+        $this->assertSame(0, $attendance->lateMinutes($sunday));
+        $this->assertSame(0, $attendance->earlyMinutes($sunday));
+        $this->assertFalse($attendance->isHalfDay($sunday));
+
+        $day = $attendance->days($e, Carbon::parse('2026-10-18'), Carbon::parse('2026-10-18'))->first();
+        $this->assertSame('extra_work', $day['status']);
+        $this->assertTrue($day['extra']);
+
+        // The same late arrival on a working day is still late.
+        $monday = AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-19', 'check_in' => '2026-10-19 16:00:00', 'check_out' => '2026-10-19 19:00:00', 'active_seconds' => 10800, 'status' => 'completed']);
+        $this->assertTrue($attendance->isLate($monday->load('employee')));
+
+        // No late penalty for the Sunday.
+        app(\App\Services\PeopleOperationsService::class)->setPolicy('attendance.late_penalty', 'compliance', 'Late attendance', ['amount_per_minute' => 1, 'grace_minutes' => 0], null, $this->admin->id, '2026-10-01');
+        app(\App\Services\PeopleOperationsService::class)->assessCompliance('2026-10-18', '2026-10-19', $this->admin->id);
+        $dates = \App\Models\EmployeePenalty::where('employee_id', $e->id)->get()->map(fn ($p) => $p->effective_on->toDateString())->unique()->values()->all();
+        $this->assertNotContains('2026-10-18', $dates);
+    }
+
     public function test_removing_a_photo_reloads_the_page(): void
     {
         $e = $this->employee('PH-2', ['photo_path' => 'employee-photos/x.png']);

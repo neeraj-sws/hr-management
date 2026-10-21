@@ -505,10 +505,20 @@ class AttendanceService
         ];
     }
 
+    /**
+     * True on the employee's scheduled working days. Work on a weekly off, 3rd Saturday or holiday is
+     * extra working: nobody is late, leaves early or works a half day on a day they were not due in.
+     */
+    public function isScheduledDay(AttendanceEmployee $employee, string $date): bool
+    {
+        return \App\Support\WorkCalendar::isWorkday($date, $this->policies->forEmployee($employee, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]));
+    }
+
     public function isLate(AttendanceSession $session, ?array $rules = null): bool
     {
         $employee = $session->employee;
         if (! $employee || ! $session->check_in) return false;
+        if (! $this->isScheduledDay($employee, $session->work_date->toDateString())) return false;
         $rules ??= $this->rules($employee, $session->work_date->toDateString());
         if (! $rules['work_start']) return false;
         $expected = Carbon::parse($session->work_date->toDateString().' '.$rules['work_start'])->addMinutes($rules['grace_minutes']);
@@ -520,6 +530,7 @@ class AttendanceService
     {
         $employee = $session->employee;
         if (! $employee || ! $session->check_in) return 0;
+        if (! $this->isScheduledDay($employee, $session->work_date->toDateString())) return 0;
         $rules = $this->rules($employee, $session->work_date->toDateString());
         if (! $rules['work_start']) return 0;
         // Count lateness only after the grace window, so an arrival within grace is 0 — consistent with isLate().
@@ -546,6 +557,7 @@ class AttendanceService
     public function earlyMinutes(AttendanceSession $session): int
     {
         if (! $session->check_out || ! $session->employee) return 0;
+        if (! $this->isScheduledDay($session->employee, $session->work_date->toDateString())) return 0;
         $end = $this->expectedEnd($session->employee, $session->work_date->toDateString());
 
         return $end && $session->check_out->lt($end) ? (int) $session->check_out->diffInMinutes($end) : 0;
@@ -554,6 +566,7 @@ class AttendanceService
     public function isHalfDay(AttendanceSession $session, ?array $rules = null): bool
     {
         if (! $session->check_out || ! $session->employee) return false;
+        if (! $this->isScheduledDay($session->employee, $session->work_date->toDateString())) return false;
         $rules ??= $this->rules($session->employee, $session->work_date->toDateString());
 
         return (int) $session->active_seconds < $rules['half_day_seconds'];
@@ -592,6 +605,8 @@ class AttendanceService
             $status = match (true) {
                 $conflict === 'open' => 'leave_conflict',
                 $conflict === 'leave' => 'on_leave',
+                // Worked on a weekly off / 3rd Saturday / holiday, or HR settled a leave day as extra working.
+                $session !== null && (! $workday || $conflict === 'extra') => 'extra_work',
                 $session !== null && $this->isHalfDay($session) => 'half_day',
                 $session !== null && $this->isLate($session) => 'late',
                 $session !== null => 'present',

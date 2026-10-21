@@ -17,7 +17,7 @@
     </div>
 
     <div class="stats">
-        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Present (month)</span><span class="stat-value">{{ ($summary['present'] ?? 0) + ($summary['late'] ?? 0) + ($summary['half_day'] ?? 0) }}</span><small>{{ $summary['late'] ?? 0 }} late · {{ $summary['half_day'] ?? 0 }} half-day</small></div></div>
+        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Present (month)</span><span class="stat-value">{{ ($summary['present'] ?? 0) + ($summary['late'] ?? 0) + ($summary['half_day'] ?? 0) }}</span><small>{{ $summary['late'] ?? 0 }} late · {{ $summary['half_day'] ?? 0 }} half-day @if($summary['extra_work'] ?? 0)· {{ $summary['extra_work'] }} extra work @endif</small></div></div>
         <div class="stat"><span class="stat-icon red"><x-icon name="user-minus" /></span><div><span class="stat-label">Absent (month)</span><span class="stat-value">{{ $summary['absent'] ?? 0 }}</span><small>{{ $summary['on_leave'] ?? 0 }} on leave</small></div></div>
         <div class="stat"><span class="stat-icon"><x-icon name="check-square" /></span><div><span class="stat-label">Tasks done (month)</span><span class="stat-value">{{ $metrics->completed_tasks }}</span><small>{{ $metrics->completed_late }} late · {{ $metrics->overdue_tasks }} overdue</small></div></div>
         <div class="stat"><span class="stat-icon violet"><x-icon name="timer" /></span><div><span class="stat-label">Logged hours</span><span class="stat-value">{{ $metrics->logged_hours }}</span><small>{{ $metrics->active_hours }} h active attendance</small></div></div>
