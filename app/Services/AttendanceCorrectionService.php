@@ -61,8 +61,8 @@ class AttendanceCorrectionService
         // never sinks the employee's request.
         $what = collect([$correction->requested_check_in ? 'in '.$correction->requested_check_in->format('h:i A') : null, $correction->requested_check_out ? 'out '.$correction->requested_check_out->format('h:i A') : null, $correction->requested_break_minutes !== null ? 'break '.\App\Support\Duration::fromMinutes($correction->requested_break_minutes) : null])->filter()->join(', ');
         $approverId = ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->value('approver_id');
-        $approvers = Notifier::withPermission('attendance.correct')->push($approverId ? \App\Models\User::find($approverId) : null);
-        Notifier::send($approvers, 'AttendanceCorrection', $correction->id, "An attendance correction from {$employee->name} for {$correction->work_date->format('d M Y')} ({$what}) needs review. Reason: ".\Illuminate\Support\Str::limit($reason, 120), route('attendance.corrections', ['tab' => 'approvals'], false), $employee->user_id);
+        $approvers = $this->reviewers($employee)->push($approverId ? User::find($approverId) : null);
+        Notifier::send($approvers,'AttendanceCorrection', $correction->id, "An attendance correction from {$employee->name} for {$correction->work_date->format('d M Y')} ({$what}) needs review. Reason: ".\Illuminate\Support\Str::limit($reason, 120), route('attendance.corrections', ['tab' => 'approvals'], false), $employee->user_id);
         Notifier::send($employee->user, 'AttendanceCorrection', $correction->id, "Your attendance correction for {$correction->work_date->format('d M Y')} was sent for approval.", route('attendance.corrections', [], false));
 
         return $correction;
@@ -97,9 +97,23 @@ class AttendanceCorrectionService
         $correction->update(['status' => 'cancelled', 'decided_at' => now()]);
         ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->where('status', 'pending')->update(['status' => 'cancelled', 'decided_at' => now()]);
         $this->audit->record('attendance.correction_cancelled', $correction);
-        Notifier::send(Notifier::withPermission('attendance.correct')->push($employee->manager?->user), 'AttendanceCorrection', $correction->id, "{$employee->name} cancelled their attendance correction for {$correction->work_date->format('d M Y')}.", route('attendance.corrections', ['tab' => 'all'], false), $employee->user_id);
+        Notifier::send($this->reviewers($employee), 'AttendanceCorrection', $correction->id, "{$employee->name} cancelled their attendance correction for {$correction->work_date->format('d M Y')}.", route('attendance.corrections', ['tab' => 'all'], false), $employee->user_id);
 
         return $correction;
+    }
+
+    /**
+     * Everyone who sees a correction in Pending Approvals: holders of attendance.correct or
+     * approvals.manage, the Master Admins, and the employee's own manager (even while on leave).
+     */
+    private function reviewers(AttendanceEmployee $employee): \Illuminate\Support\Collection
+    {
+        $admins = rescue(fn () => User::role('Master Admin')->where('is_active', true)->get(), collect(), false);
+
+        return Notifier::withPermission('attendance.correct', 'approvals.manage')
+            ->merge($admins)
+            ->push($employee->manager()->with('user')->first()?->user)
+            ->filter()->unique('id')->values();
     }
 
     /** Writes the approved times onto the day's session (creating it when the employee never checked in). */
