@@ -101,7 +101,7 @@ class ReportService
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
             'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
             'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance'],
-            'salary' => ['employee_code', 'employee_name', 'month', 'salary_type', 'monthly_salary', 'salary_since', 'working_days', 'per_day_rate', 'payroll_payable', 'paid', 'payroll_status'],
+            'salary' => ['employee_code', 'employee_name', 'month', 'salary_type', 'monthly_salary', 'salary_since', 'working_days', 'per_day_rate', 'payroll_payable', 'paid', 'remaining', 'payroll_status'],
             'performance' => ['employee_code', 'employee_name', 'completed_tasks', 'attendance_days', 'approved_leave_days', 'completed_late', 'overdue_tasks', 'logged_hours', 'not_counted_hours', 'active_hours', 'utilisation_pct', 'average_rating'],
             'productivity' => ['employee_code', 'employee_name', 'completed_tasks', 'completed_late', 'on_time_rate', 'open_tasks', 'overdue_tasks', 'estimated_hours', 'logged_hours', 'active_hours', 'utilization'],
             'compliance' => ['id', 'employee_code', 'employee_name', 'effective_on', 'amount', 'reason', 'rule', 'status', 'in_payroll'],
@@ -424,6 +424,8 @@ class ReportService
                     'salary_since' => $profile->effective_from->toDateString(), 'working_days' => $days,
                     'per_day_rate' => $profile->isDaily() ? (float) $profile->daily_rate : round((float) $profile->monthly_salary / max(1, $days), 2),
                     'payroll_payable' => $item ? (float) $item->net_amount : null, 'paid' => $item ? round((float) $item->payments->sum('amount'), 2) : null,
+                    // Still to pay for the month: payable less what was already paid.
+                    'remaining' => $item ? round(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2) : null,
                     'payroll_status' => $item ? $item->run->status : 'not run']);
                 if ($limit && $rows->count() >= $limit) return $rows;
             }

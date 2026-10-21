@@ -73,6 +73,7 @@ class Oct21BatchCTest extends TestCase
         $this->assertSame(12000.0, $rows->first()['monthly_salary']);
         $this->assertSame(10000.0, $rows->firstWhere('month', 'Jun 2026')['monthly_salary']);
         $this->assertSame('not run', $rows->first()['payroll_status']);
+        $this->assertArrayHasKey('remaining', $rows->first());
     }
 
     public function test_weekly_off_inside_a_leave_shows_as_weekly_off(): void
