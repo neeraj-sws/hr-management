@@ -82,18 +82,19 @@ class Oct13BatchBTest extends TestCase
         // A Manager-role user (approvals.manage only) who sees it in Pending Approvals.
         $roleManager = User::factory()->create(['email' => 'b.mgr@example.com']);
         $roleManager->assignRole('Manager');
-        // The employee's own manager, on leave today — still told about it.
+        // The employee's own manager (plain Employee role).
         $leadUser = User::factory()->create(['email' => 'b.lead@example.com']);
         $leadUser->assignRole('Employee');
         $lead = AttendanceEmployee::create(['employee_code' => 'B-LEAD', 'name' => 'Lead', 'is_active' => true, 'user_id' => $leadUser->id, 'joined_at' => '2026-01-01']);
         $this->employee->update(['manager_id' => $lead->id]);
-        \App\Models\LeaveRequest::forceCreate(['employee_id' => $lead->id, 'leave_type_id' => \App\Models\LeaveType::query()->value('id') ?? \App\Models\LeaveType::forceCreate(['name' => 'Casual', 'code' => 'CL'])->id, 'starts_on' => '2026-10-13', 'ends_on' => '2026-10-13', 'days' => 1, 'status' => 'approved', 'reason' => 'Off']);
         // A Master Admin, even when the role lost the attendance.correct permission.
         $this->admin->roles->each->revokePermissionTo('attendance.correct');
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
         app(AttendanceCorrectionService::class)->request($this->employee->fresh(), '2026-10-10', '09:30', '18:30', 'Forgot to check out that day');
 
+        // The bell notification must not wait on a queue worker.
+        $this->assertSame('sync', (new \App\Notifications\ApprovalRequested('AttendanceCorrection', 1, 'x'))->viaConnections()['database']);
         foreach ([$roleManager, $leadUser, $this->admin] as $user) {
             $this->assertTrue($user->notifications()->where('data->kind', 'AttendanceCorrection')->exists(), "{$user->email} is notified of the correction");
         }

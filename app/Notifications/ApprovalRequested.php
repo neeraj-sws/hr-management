@@ -123,6 +123,12 @@ class ApprovalRequested extends Notification implements ShouldQueue
         return $channels;
     }
 
+    /** The in-app bell is written straight away so it never waits on a queue worker; e-mail and push stay queued. */
+    public function viaConnections(): array
+    {
+        return ['database' => 'sync'];
+    }
+
     public function toMail(object $notifiable): MailMessage
     {
         $url = $this->url ?? self::urlFor($this->kind, $this->message);
