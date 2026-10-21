@@ -41,7 +41,9 @@ class AttendanceCorrectionService
             throw ValidationException::withMessages(['workDate' => 'You already have a pending correction for this day.']);
         }
 
-        if ($breakMinutes !== null && ! $session) throw ValidationException::withMessages(['breakMinutes' => 'There is no attendance on this day to correct the break of.']);
+        // With no attendance that day the approval creates it from the given check-in, so a break can come with it.
+        if ($breakMinutes !== null && ! $session && ! $checkIn) throw ValidationException::withMessages(['breakMinutes' => 'There is no attendance on this day to correct the break of.']);
+        if ($breakMinutes !== null && $in && $out && $breakMinutes * 60 >= $in->diffInSeconds($out)) throw ValidationException::withMessages(['breakMinutes' => 'The break must be shorter than the time between check-in and check-out.']);
 
         $correction = DB::transaction(function () use ($employee, $date, $checkIn, $in, $out, $reason, $session, $breakMinutes) {
             $correction = AttendanceCorrection::create([

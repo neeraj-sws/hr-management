@@ -100,6 +100,30 @@ class Oct13BatchBTest extends TestCase
         }
     }
 
+    public function test_correction_with_break_on_a_day_without_attendance_is_accepted_and_applied(): void
+    {
+        $service = app(AttendanceCorrectionService::class);
+        $correction = $service->request($this->employee, '2026-10-11', '10:00', '19:45', 'Forgot to check in', 45);
+        $this->assertSame(45, $correction->requested_break_minutes);
+
+        $service->decide($correction, $this->admin->id, true);
+        $session = \App\Models\AttendanceSession::where('employee_id', $this->employee->id)->whereDate('work_date', '2026-10-11')->firstOrFail();
+        $this->assertSame(45 * 60, (int) $session->break_seconds);
+        $this->assertSame('completed', $session->status);
+    }
+
+    public function test_correction_break_without_attendance_or_check_in_is_rejected(): void
+    {
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(AttendanceCorrectionService::class)->request($this->employee, '2026-10-11', null, null, 'Break only', 30);
+    }
+
+    public function test_correction_break_longer_than_the_day_is_rejected(): void
+    {
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(AttendanceCorrectionService::class)->request($this->employee, '2026-10-11', '10:00', '11:00', 'Too long', 90);
+    }
+
     public function test_deleting_an_announcement_removes_its_notifications(): void
     {
         $announcement = app(CompanyService::class)->saveAnnouncement(
