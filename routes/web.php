@@ -36,6 +36,12 @@ Route::middleware(['auth', 'account.active'])->group(function () {
         Route::get('/people/managers', Livewire\People\Managers::class)->name('people.managers');
     });
     Route::get('/people/employees/{employee}', Livewire\People\EmployeeProfile::class)->name('people.employees.show');
+    // Employee photo: any signed-in colleague may see it (like the org chart); stored privately.
+    Route::get('/people/photos/{employee}', function (\App\Models\AttendanceEmployee $employee) {
+        abort_unless($employee->photo_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($employee->photo_path), 404);
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->response($employee->photo_path, null, ['Cache-Control' => 'private, max-age=86400']);
+    })->name('people.photo');
     Route::get('/people/teams', Livewire\People\Teams::class)->middleware('access:teams.manage,hr.manage,profile')->name('people.teams');
 
     // Attendance
@@ -123,6 +129,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Employee lifecycle
     Route::get('/lifecycle/documents', Livewire\Lifecycle\Documents::class)->middleware('access:profile,lifecycle.manage')->name('lifecycle.documents');
     Route::get('/lifecycle/documents/{document}/download', [EmployeeDocumentController::class, 'download'])->name('hr.documents.download');
+    Route::get('/lifecycle/documents/{document}/view', [EmployeeDocumentController::class, 'view'])->name('hr.documents.view');
     Route::get('/lifecycle/assets', Livewire\Lifecycle\Assets::class)->middleware('access:profile,lifecycle.manage')->name('lifecycle.assets');
     Route::get('/lifecycle/onboarding', Livewire\Lifecycle\Cases::class)->middleware('access:lifecycle.manage')->name('lifecycle.onboarding');
     Route::get('/lifecycle/offboarding', Livewire\Lifecycle\Cases::class)->middleware('access:lifecycle.manage')->name('lifecycle.offboarding');

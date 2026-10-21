@@ -584,7 +584,9 @@ class AttendanceService
             $session = $sessions->get($date);
             $workday = \App\Support\WorkCalendar::isWorkday($date, $calendar);
             $leaveToday = $leaves->first(fn ($leave) => $leave->starts_on->toDateString() <= $date && $leave->ends_on->toDateString() >= $date);
-            $onLeave = $leaveToday !== null;
+            // A leave only counts on working days: a weekly off / 3rd Saturday / holiday inside a leave stays an off day
+            // (as in payroll, which never charges leave for those days).
+            $onLeave = $leaveToday !== null && $workday;
             $mark = $session === null && ! $onLeave ? $marks->get($date) : null;
             $conflict = $session !== null && $onLeave ? ($resolutions[$date] ?? 'open') : null;
             $status = match (true) {

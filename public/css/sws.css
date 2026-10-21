@@ -77,6 +77,8 @@ details.nav-group[open]{padding-bottom:6px}
 .profile-chip{display:flex;align-items:center;gap:10px}
 .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--blue-soft);color:var(--blue);font-weight:800;font-size:13px;flex:none}
 .avatar-lg{width:64px;height:64px;font-size:22px}
+.avatar-photo{overflow:hidden;background:var(--canvas)}.avatar-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-edit{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
 .profile-copy strong,.profile-copy small{display:block;line-height:1.25}
 .profile-copy small{color:var(--muted);font-size:11px}
 .burger{display:none;cursor:pointer;color:var(--navy)}
@@ -300,7 +302,7 @@ button.pill:hover{border-color:var(--line)}
 .table .row-actions{justify-content:center}
 .table td .progress{margin-left:auto;margin-right:auto}
 .table td .pill-row{justify-content:center}
-.badge-gray,.badge-cancelled{background:#eef1f6;color:#5b6576}
+.badge-gray,.badge-cancelled,.badge-ex_employee,.badge-not_run{background:#eef1f6;color:#5b6576}
 
 /* Task view modal */
 .task-view-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line-2)}

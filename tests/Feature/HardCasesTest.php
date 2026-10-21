@@ -430,7 +430,7 @@ class HardCasesTest extends TestCase
         Storage::fake('local');
         $people = app(PeopleOperationsService::class);
         $captures = app(ScreenCaptureService::class);
-        $shot = fn () => UploadedFile::fake()->image('s.jpg', 800, 500);
+        $shot = fn () => $this->fakeImage('s.jpg');
         $this->at('2026-10-07 09:30:00');
         $this->attendance->checkIn($this->employee, 'desktop');
         $this->expectFailure(fn () => $captures->store($this->employee->fresh('user'), $shot(), now()), null, 'turned off');

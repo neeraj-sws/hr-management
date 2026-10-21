@@ -106,7 +106,7 @@ class AttendanceExtrasTest extends TestCase
 
         Sanctum::actingAs($this->employeeUser, ['*']);
         $this->getJson('/api/me')->assertJsonPath('data.policies.selfie_required', true);
-        $this->post('/api/attendance/check-in', ['source' => 'mobile', 'photo' => UploadedFile::fake()->image('selfie.jpg', 400, 400)], ['Accept' => 'application/json'])->assertCreated();
+        $this->post('/api/attendance/check-in', ['source' => 'mobile', 'photo' => $this->fakeImage('selfie.jpg')], ['Accept' => 'application/json'])->assertCreated();
         $session = AttendanceSession::firstOrFail();
         Storage::disk('local')->assertExists($session->check_in_photo_path);
 

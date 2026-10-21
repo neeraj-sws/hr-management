@@ -122,7 +122,7 @@
                     </div>
                 </details>
                 <details class="menu">
-                    <summary class="profile-chip"><span class="avatar">{{ $initials }}</span><span class="profile-copy"><strong>{{ $user->name }}</strong><small>{{ $roleLabel }}</small></span></summary>
+                    <summary class="profile-chip"><x-avatar :employee="$user->employeeProfile" :name="$user->name" /><span class="profile-copy"><strong>{{ $user->name }}</strong><small>{{ $roleLabel }}</small></span></summary>
                     <div class="menu-panel">
                         <div class="menu-head"><strong>{{ $user->name }}</strong><div class="small muted">{{ $user->email }}</div><div class="small muted">{{ $roleLabel }}</div></div>
                         <a class="menu-item" href="{{ route('account.profile') }}"><x-icon name="user" class="icon-sm" />My profile</a>

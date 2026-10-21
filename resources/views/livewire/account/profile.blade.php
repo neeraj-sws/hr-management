@@ -1,7 +1,16 @@
 <div>
     <div class="page-head">
-        <div class="profile-chip"><span class="avatar avatar-lg">{{ collect(explode(' ', $user->name))->filter()->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->join('') }}</span>
-            <div><h1>{{ $user->name }}</h1><p>{{ $employee?->designation ?? 'SWS HR user' }} · {{ $user->getRoleNames()->implode(', ') ?: 'No role' }}</p></div></div>
+        <div class="profile-chip"><x-avatar :employee="$employee" :name="$user->name" size="lg" />
+            <div><h1>{{ $user->name }}</h1><p>{{ $employee?->designation ?? 'SWS HR user' }} · {{ $user->getRoleNames()->implode(', ') ?: 'No role' }}</p>
+                @if($employee)
+                    <div class="photo-edit">
+                        <label class="btn btn-sm" style="cursor:pointer"><x-icon name="user" class="icon-sm" />{{ $employee->photo_path ? 'Change photo' : 'Add photo' }}<input type="file" wire:model="photo" accept="image/jpeg,image/png,image/webp" hidden></label>
+                        @if($employee->photo_path)<button type="button" class="btn btn-sm btn-ghost" wire:click="removePhoto" wire:confirm="Remove your photo?">Remove</button>@endif
+                        <span wire:loading wire:target="photo" class="spinner"></span>
+                        @error('photo')<span class="error">{{ $message }}</span>@enderror
+                    </div>
+                @endif
+            </div></div>
     </div>
     <div class="grid grid-sidebar">
         <div class="stack">

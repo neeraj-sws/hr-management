@@ -86,6 +86,12 @@
                 @endforelse
             </div>
         </section>
+        @if($profile && $profile->directReports()->where('is_active', true)->exists())
+            <section class="card" style="grid-column:1/-1">
+                <div class="card-head"><div><h2>My team</h2><p>Everyone who reports to you, directly or through your managers</p></div><a class="btn btn-sm" href="{{ route('company.org-chart') }}">Org chart</a></div>
+                <div class="card-body"><x-team-chart :root="$profile" /></div>
+            </section>
+        @endif
         @if($probationDue->isNotEmpty())
             <section class="card">
                 <div class="card-head"><div><h2>Probation reviews due</h2><p>Ending in the next 30 days</p></div></div>

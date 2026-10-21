@@ -101,12 +101,12 @@ class ReportService
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
             'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
             'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance'],
-            'salary' => ['employee_code', 'employee_name', 'effective_from', 'monthly_salary', 'working_days_per_month', 'standard_daily_hours', 'per_day_rate', 'days_from'],
+            'salary' => ['employee_code', 'employee_name', 'month', 'salary_type', 'monthly_salary', 'salary_since', 'working_days', 'per_day_rate', 'payroll_payable', 'paid', 'payroll_status'],
             'performance' => ['employee_code', 'employee_name', 'completed_tasks', 'attendance_days', 'approved_leave_days', 'completed_late', 'overdue_tasks', 'logged_hours', 'not_counted_hours', 'active_hours', 'utilisation_pct', 'average_rating'],
             'productivity' => ['employee_code', 'employee_name', 'completed_tasks', 'completed_late', 'on_time_rate', 'open_tasks', 'overdue_tasks', 'estimated_hours', 'logged_hours', 'active_hours', 'utilization'],
             'compliance' => ['id', 'employee_code', 'employee_name', 'effective_on', 'amount', 'reason', 'rule', 'status', 'in_payroll'],
             'audit' => ['id', 'created_at', 'actor', 'action', 'record_type', 'record_id', 'ip_address', 'metadata'],
-            'employees' => ['employee_code', 'name', 'email', 'designation', 'department', 'manager', 'joined_at', 'status'],
+            'employees' => ['employee_code', 'name', 'email', 'designation', 'department', 'manager', 'joined_at', 'left_on', 'status'],
             'expenses' => ['id', 'employee_code', 'employee_name', 'spent_on', 'category', 'amount', 'description', 'status', 'receipt', 'paid_in_payroll'],
             'training' => ['employee_code', 'employee_name', 'course', 'mandatory', 'assigned_on', 'due_on', 'status', 'completed_at'],
             'payments' => ['paid_on', 'kind', 'employee_code', 'employee_name', 'for_period', 'amount', 'payment_status', 'remaining', 'method', 'reference', 'recorded_by'],
@@ -156,10 +156,7 @@ class ReportService
 
                     return ['run_id' => $r->payroll_run_id, 'period_start' => $r->run?->period_starts_on?->toDateString(), 'period_end' => $r->run?->period_ends_on?->toDateString(), 'run_status' => $r->run?->status, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'working_days' => (int) $r->working_days, 'present_days' => (float) $r->present_days, 'paid_leave_days' => (float) $r->paid_leave_days, 'unpaid_leave_days' => (float) $r->unpaid_leave_days, 'overtime_amount' => (float) $r->overtime_amount, 'gross' => (float) $r->gross_amount, 'statutory_earnings' => (float) $r->statutory_earnings, 'statutory_deductions' => (float) $r->statutory_deductions, 'penalties' => (float) $r->penalties_amount, 'advance_recovery' => (float) $r->recovery_amount, 'adjustments' => (float) $r->adjustments_amount, 'fixed_deductions' => (float) ($r->calculation_breakdown['fixed_deductions_total'] ?? 0), 'reimbursements' => (float) $r->reimbursements_amount, 'payable' => (float) $r->net_amount, 'paid' => round($paid, 2), 'balance' => round((float) $r->net_amount - $paid, 2)];
                 }),
-            'salary' => SalaryProfile::with('employee')->whereIn('employee_id', $ids)
-                ->whereDate('effective_from', '<=', $to)->orderBy('employee_id')->orderByDesc('effective_from')
-                ->when($limit, fn ($q) => $q->limit($limit))->get()
-                ->map(fn ($r) => ['employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'effective_from' => $r->effective_from?->toDateString(), 'monthly_salary' => (float) $r->monthly_salary, ...$this->payrollDivisorFor($r)]),
+            'salary' => $this->salaryByMonth($ids, $from, $to, $limit),
             'performance' => $this->performanceRows($ids, $from, $to),
             'productivity' => $this->work->productivity(AttendanceEmployee::whereIn('id', $ids)->orderBy('name')->get(), $from, $to)
                 ->map(fn ($m) => ['employee_code' => $m->employee->employee_code, 'employee_name' => $m->employee->name, 'completed_tasks' => $m->completed_tasks, 'completed_late' => $m->completed_late, 'on_time_rate' => $m->on_time_rate, 'open_tasks' => $m->open_tasks, 'overdue_tasks' => $m->overdue_tasks, 'estimated_hours' => $m->estimated_hours, 'logged_hours' => $m->logged_hours, 'active_hours' => $m->active_hours, 'utilization' => $m->utilization]),
@@ -171,9 +168,11 @@ class ReportService
                 ->when($filters['search'] ?? null, fn ($q, $term) => $q->where('action', 'like', "%{$term}%"))
                 ->orderByDesc('id')->when($limit, fn ($q) => $q->limit($limit))->get()
                 ->map(fn ($r) => ['id' => $r->id, 'created_at' => $r->created_at?->toDateTimeString(), 'actor' => $r->actor?->email ?? 'system', 'action' => $r->action, 'record_type' => $r->subject_type ? class_basename($r->subject_type) : null, 'record_id' => $r->subject_id, 'ip_address' => $r->ip_address, 'metadata' => json_encode($r->metadata)]),
-            'employees' => AttendanceEmployee::with(['department', 'manager'])->whereIn('id', $ids)->orderBy('name')
+            // Employee-number order (EMP-01, EMP-02 … EMP-10), as in Employees; people who left say "Ex-employee".
+            'employees' => AttendanceEmployee::with(['department', 'manager'])->whereIn('id', $ids)->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')
                 ->when($limit, fn ($q) => $q->limit($limit))->get()
-                ->map(fn ($e) => ['employee_code' => $e->employee_code, 'name' => $e->name, 'email' => $e->email, 'designation' => $e->designation, 'department' => $e->department?->name, 'manager' => $e->manager?->name, 'joined_at' => $e->joined_at?->toDateString(), 'status' => $e->is_active ? 'active' : 'inactive']),
+                ->map(fn ($e) => ['employee_code' => $e->employee_code, 'name' => $e->name, 'email' => $e->email, 'designation' => $e->designation, 'department' => $e->department?->name, 'manager' => $e->manager?->name, 'joined_at' => $e->joined_at?->toDateString(),
+                    'left_on' => $e->exit_date?->toDateString(), 'status' => $e->is_active ? 'active' : ($e->exit_date || $e->employment_type === EmployeeService::EX_EMPLOYEE ? 'ex-employee' : 'inactive')]),
             'expenses' => ExpenseClaim::with('employee')->whereIn('employee_id', $ids)
                 ->whereDate('spent_on', '>=', $from)->whereDate('spent_on', '<=', $to)->orderByDesc('spent_on')
                 ->when($limit, fn ($q) => $q->limit($limit))->get()
@@ -362,21 +361,40 @@ class ReportService
     }
 
     /**
-     * What payroll really divides the salary by for this profile: Settings > Payroll wins over the number saved on the
-     * salary profile, and "each month's working days from the calendar" uses that month's count (shown for the current month).
+     * Salary month by month: for each employee and each month in the range (from joining to leaving), the salary in
+     * effect that month, that month's working days and per-day rate, and — when that month's payroll was run — what
+     * was payable and paid. Newest month first.
      */
-    private function payrollDivisorFor(\App\Models\SalaryProfile $profile): array
+    private function salaryByMonth($ids, string $from, string $to, ?int $limit): \Illuminate\Support\Collection
     {
-        $employee = $profile->employee;
-        $today = today()->toDateString();
-        $policy = app(PolicyConfigurationService::class)->forEmployee($employee, 'payroll.calculation', $today, []);
-        $hours = (float) ($policy['standard_daily_hours'] ?? ($employee ? app(AttendanceService::class)->dailyHours($employee, $today) : $profile->standard_daily_hours));
-        $divisor = $employee ? app(HrWorkflowService::class)->salaryDaysFor($employee, $today, $profile) : ['days' => (int) $profile->working_days_per_month, 'auto' => false, 'month' => ''];
-        $days = $divisor['days'];
-        $from = $divisor['auto'] ? 'Auto from calendar — '.$divisor['month'].' has '.$days.' working days (changes every month)'
-            : (isset($policy['working_days_per_month']) ? 'Settings > Payroll (salary profile says '.$profile->working_days_per_month.')' : 'Salary profile');
+        $employees = AttendanceEmployee::with(['salaryProfiles' => fn ($q) => $q->orderBy('effective_from')->orderBy('id')])->whereIn('id', $ids)
+            ->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->get();
+        $items = \App\Models\PayrollItem::with(['run', 'payments'])->whereIn('employee_id', $ids)
+            ->whereHas('run', fn ($q) => $q->whereDate('period_starts_on', '<=', $to)->whereDate('period_ends_on', '>=', $from))->get()
+            ->groupBy(fn ($i) => $i->employee_id.'|'.$i->run->period_starts_on->format('Y-m'));
+        $rows = collect();
+        $first = \Illuminate\Support\Carbon::parse($from)->startOfMonth();
+        for ($month = \Illuminate\Support\Carbon::parse($to)->startOfMonth(); $month->gte($first); $month->subMonth()) {
+            foreach ($employees as $e) {
+                if ($e->joined_at && $e->joined_at->gt($month->copy()->endOfMonth())) continue;
+                if ($e->exit_date && $e->exit_date->lt($month)) continue;
+                $monthEnd = $month->copy()->endOfMonth()->toDateString();
+                $profile = $e->salaryProfiles->filter(fn ($p) => $p->effective_from->toDateString() <= $monthEnd)->last();
+                if (! $profile) continue;
+                $days = app(HrWorkflowService::class)->salaryDaysFor($e, $month->toDateString(), $profile)['days'];
+                $item = $items->get($e->id.'|'.$month->format('Y-m'))?->first();
+                $rows->push(['employee_code' => $e->employee_code, 'employee_name' => $e->name, 'month' => $month->format('M Y'),
+                    'salary_type' => $profile->isDaily() ? 'per day' : 'monthly',
+                    'monthly_salary' => $profile->isDaily() ? number_format((float) $profile->daily_rate, 2).' / day' : (float) $profile->monthly_salary,
+                    'salary_since' => $profile->effective_from->toDateString(), 'working_days' => $days,
+                    'per_day_rate' => $profile->isDaily() ? (float) $profile->daily_rate : round((float) $profile->monthly_salary / max(1, $days), 2),
+                    'payroll_payable' => $item ? (float) $item->net_amount : null, 'paid' => $item ? round((float) $item->payments->sum('amount'), 2) : null,
+                    'payroll_status' => $item ? $item->run->status : 'not run']);
+                if ($limit && $rows->count() >= $limit) return $rows;
+            }
+        }
 
-        return ['working_days_per_month' => $days, 'standard_daily_hours' => $hours, 'per_day_rate' => round((float) $profile->monthly_salary / max(1, $days), 2), 'days_from' => $from];
+        return $rows;
     }
 
 }

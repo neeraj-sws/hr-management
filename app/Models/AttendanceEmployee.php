@@ -20,6 +20,7 @@ class AttendanceEmployee extends Authenticatable
         'email',
         'designation',
         'phone',
+        'photo_path',
         'monthly_salary',
         'daily_work_hours',
         'work_start',
@@ -76,6 +77,18 @@ class AttendanceEmployee extends Authenticatable
     public function leaveBalances(): HasMany { return $this->hasMany(LeaveBalance::class, 'employee_id'); }
     public function assets(): HasMany { return $this->hasMany(EmployeeAsset::class, 'employee_id'); }
     public function documents(): HasMany { return $this->hasMany(EmployeeDocument::class, 'employee_id'); }
+
+    /** Link to the employee's photo (changes when the photo changes, so browsers refresh it), or null. */
+    public function photoUrl(): ?string
+    {
+        return $this->photo_path ? route('people.photo', ['employee' => $this->id, 'v' => substr(md5($this->photo_path), 0, 8)]) : null;
+    }
+
+    /** "RG" for Risha Gangrade. */
+    public function initials(): string
+    {
+        return collect(explode(' ', (string) $this->name))->filter()->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->join('') ?: 'SW';
+    }
     public function payslips(): HasMany { return $this->hasMany(Payslip::class, 'employee_id'); }
     public function reviews(): HasMany { return $this->hasMany(PerformanceReview::class, 'employee_id'); }
     public function shiftAssignments(): HasMany { return $this->hasMany(EmployeeShift::class, 'employee_id'); }

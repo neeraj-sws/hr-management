@@ -12,9 +12,28 @@ use Livewire\Component;
 
 class EmployeeProfile extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithFileUploads;
 
     public AttendanceEmployee $employee;
+
+    /** New photo being uploaded (saved as soon as it is chosen). */
+    public $photo = null;
+
+    public function updatedPhoto(\App\Services\EmployeePhotoService $photos): void
+    {
+        $this->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.mimes' => 'Choose a JPG, PNG or WebP picture.', 'photo.max' => 'The picture must be 3 MB or smaller.']);
+        $photos->save($this->employee, $this->photo, $this->user());
+        $this->reset('photo');
+        $this->employee->refresh();
+        $this->toast('Photo updated.');
+    }
+
+    public function removePhoto(\App\Services\EmployeePhotoService $photos): void
+    {
+        $photos->remove($this->employee, $this->user());
+        $this->employee->refresh();
+        $this->toast('Photo removed.');
+    }
 
     public function mount(AttendanceEmployee $employee): void
     {
@@ -76,9 +95,34 @@ class EmployeeProfile extends Component
             ->withCount(['tasks as my_tasks_count' => fn ($q) => $q->where('assignee_id', $employee->id), 'tasks as my_open_tasks_count' => fn ($q) => $q->where('assignee_id', $employee->id)->where('status', '!=', 'completed')])
             ->orderByRaw("case status when 'active' then 0 when 'planned' then 1 when 'on_hold' then 2 else 3 end")->orderBy('name')->limit(20)->get();
 
+        // Attendance discipline over the last 90 days: late arrivals, early check-outs, and worked days
+        // with no daily status (or one submitted after the day).
+        $from = today()->subDays(89);
+        $statuses = \App\Models\DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', '>=', $from)->get()->keyBy(fn ($s) => $s->work_date->toDateString());
+        $discipline = collect();
+        foreach ($attendance->days($employee, $from, today()) as $day) {
+            $session = $day['session'];
+            if (! $session) continue;
+            if ($attendance->isLate($session)) $discipline->push(['date' => $day['date'], 'type' => 'late', 'label' => 'Late arrival', 'detail' => 'In '.$session->check_in->format('h:i A').' · late by '.\App\Support\Duration::fromMinutes($attendance->lateMinutes($session))]);
+            if ($session->check_out && ($early = $attendance->earlyMinutes($session)) > 0) $discipline->push(['date' => $day['date'], 'type' => 'early', 'label' => 'Early check-out', 'detail' => 'Out '.$session->check_out->format('h:i A').' · early by '.\App\Support\Duration::fromMinutes($early)]);
+            if ($day['date'] < today()->toDateString()) {
+                $status = $statuses->get($day['date']);
+                if (! $status) $discipline->push(['date' => $day['date'], 'type' => 'no_status', 'label' => 'Daily status missing', 'detail' => 'Worked but no daily status was submitted']);
+                elseif ($status->submitted_at && $status->submitted_at->toDateString() > $day['date']) $discipline->push(['date' => $day['date'], 'type' => 'late_status', 'label' => 'Daily status late', 'detail' => 'Submitted '.$status->submitted_at->format('d M, h:i A')]);
+            }
+        }
+        $canSeeDocs = $isSelf || $user->canAny(['lifecycle.manage', 'hr.manage', 'employees.manage']) || \App\Support\Access::isAdmin($user);
+
         return $this->page('livewire.people.employee-profile', [
             'employee' => $employee,
+            'discipline' => $discipline->sortByDesc('date')->values(),
+            'disciplineCounts' => $discipline->countBy('type'),
+            'dailyStatuses' => \App\Models\DailyWorkStatus::where('employee_id', $employee->id)->latest('work_date')->limit(20)->get(),
+            'canChangePhoto' => \App\Services\EmployeePhotoService::canChange($user, $employee),
+            'isManager' =>$employee->directReports->where('is_active', true)->isNotEmpty(),
             'summary' => $summary,
+            // The working day attendance and payroll really use (per-person rule, else the employee's hours).
+            'dailyHours' => (float) $attendance->dailyHours($employee),
             'recentDays' => $days->reverse()->take(10),
             'balances' => $balances,
             'metrics' => $metrics,
@@ -86,7 +130,7 @@ class EmployeeProfile extends Component
             'projects' => $projects,
             'tasks' => $employee->tasks()->where('status', '!=', 'completed')->latest()->limit(8)->get(),
             'assets' => $employee->assets()->latest()->get(),
-            'documents' => ($isSelf || $user->can('lifecycle.manage')) ? $employee->documents()->latest()->get() : collect(),
+            'documents' => $canSeeDocs ? $employee->documents()->latest()->get() : collect(),
             'showSalary' => $showSalary,
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,

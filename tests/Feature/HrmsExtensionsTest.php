@@ -192,7 +192,7 @@ class HrmsExtensionsTest extends TestCase
         AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-05', 'check_in' => '2026-10-05 09:00:00', 'status' => 'completed']);
         Sanctum::actingAs($this->employeeUser, ['*']);
         $this->postJson('/api/expenses', ['category' => 'Travel', 'spent_on' => '2026-10-10', 'amount' => 500, 'description' => 'Future'])->assertUnprocessable();
-        $this->post('/api/expenses', ['category' => 'Travel', 'spent_on' => '2026-10-06', 'amount' => '750.50', 'description' => 'Cab to client', 'receipt' => UploadedFile::fake()->image('bill.jpg')], ['Accept' => 'application/json'])
+        $this->post('/api/expenses', ['category' => 'Travel', 'spent_on' => '2026-10-06', 'amount' => '750.50', 'description' => 'Cab to client', 'receipt' => $this->fakeImage('bill.jpg')], ['Accept' => 'application/json'])
             ->assertCreated()->assertJsonPath('data.has_receipt', true)->assertJsonPath('data.status', 'pending');
         $claim = ExpenseClaim::firstOrFail();
         Storage::disk('local')->assertExists($claim->receipt_path);

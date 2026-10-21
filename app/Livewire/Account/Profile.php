@@ -8,7 +8,24 @@ use Livewire\Component;
 
 class Profile extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithFileUploads;
+
+    /** New photo being uploaded (saved as soon as it is chosen). */
+    public $photo = null;
+
+    public function updatedPhoto(\App\Services\EmployeePhotoService $photos): void
+    {
+        $this->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.mimes' => 'Choose a JPG, PNG or WebP picture.', 'photo.max' => 'The picture must be 3 MB or smaller.']);
+        $photos->save($this->requireEmployee(), $this->photo, $this->user());
+        $this->reset('photo');
+        $this->toast('Photo updated.');
+    }
+
+    public function removePhoto(\App\Services\EmployeePhotoService $photos): void
+    {
+        $photos->remove($this->requireEmployee(), $this->user());
+        $this->toast('Photo removed.');
+    }
 
     public string $phone = '';
     public string $dateOfBirth = '';
