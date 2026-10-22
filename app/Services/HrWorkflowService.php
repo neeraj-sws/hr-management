@@ -219,7 +219,16 @@ class HrWorkflowService
             }
             $run->items()->delete();
             $employees = AttendanceEmployee::where('is_active', true)->get();
+            // A month that was already paid from the old salary sheet (Payroll > Legacy Salary) takes the sheet's
+            // figures: that is what was really calculated and paid. Advances, adjustments and penalties are not
+            // attached to it — the sheet already settled that month.
+            $sheetMonth = substr($start, 0, 7) === substr($end, 0, 7) ? substr($start, 0, 7) : null;
+            $sheets = $sheetMonth ? \App\Models\LegacySalaryRecord::where('payroll_month', $sheetMonth)->whereNotNull('employee_id')->get()->keyBy('employee_id') : collect();
             foreach ($employees as $employee) {
+                if ($sheet = $sheets->get($employee->id)) {
+                    $this->storeOldSheetItem($run, $employee, $sheet);
+                    continue;
+                }
                 // Everything is computed first (no writes), then stored as this run's item.
                 $figures = $this->employeePayFigures($employee, $start, $end, true);
                 if ($figures === null) continue;
@@ -248,6 +257,34 @@ class HrWorkflowService
             $this->audit->record('payroll.calculated', $run, ['items' => $run->items()->count()]);
             return $run->load('items.employee');
         });
+    }
+
+    /** A payroll item for a month taken as-is from the old salary sheet (its basic, deductions, net and what was paid). */
+    private function storeOldSheetItem(PayrollRun $run, AttendanceEmployee $employee, \App\Models\LegacySalaryRecord $sheet): PayrollItem
+    {
+        $n = fn ($v) => round((float) $v, 2);
+        $gross = $n((float) $sheet->salary_before_adjustment + (float) $sheet->increment_bonus);
+        $net = $n($sheet->total_salary_with_bonus ?? $sheet->salary_after_deduction);
+        $lines = array_filter([
+            'basic_salary' => $n($sheet->basic_salary), 'total_working_days' => (float) $sheet->total_working_days, 'salary_per_day' => $n($sheet->salary_per_day),
+            'per_hour_salary' => round((float) $sheet->per_hour_salary, 4), 'present_days' => (float) $sheet->present_days, 'leave_days' => (float) $sheet->leave_days,
+            'paid_leave' => (float) $sheet->paid_leave, 'total_salary_paid_days' => (float) $sheet->total_salary_paid_days, 'salary_before_adjustment' => $n($sheet->salary_before_adjustment),
+            'late_and_hourly_leave_minutes' => (float) $sheet->late_and_hourly_leave_minutes, 'late_coming_deduction' => $n($sheet->late_coming_deduction), 'late_coming_adjusted' => $n($sheet->late_coming_adjusted),
+            'without_application_deduction' => $n($sheet->without_application_deduction), 'short_leave_deduction' => $n($sheet->short_leave_deduction),
+            'total_payment_deduction' => $n($sheet->total_payment_deduction), 'increment_bonus' => $n($sheet->increment_bonus), 'tds' => $n($sheet->tds),
+            'salary_after_deduction' => $n($sheet->salary_after_deduction), 'total_salary_with_bonus' => $net,
+        ], fn ($v) => $v != 0);
+
+        return PayrollItem::create([
+            'payroll_run_id' => $run->id, 'employee_id' => $employee->id, 'gross_amount' => $gross, 'adjustments' => 0, 'net_amount' => $net,
+            'working_days' => (int) round((float) $sheet->total_working_days), 'present_days' => (float) $sheet->present_days, 'paid_leave_days' => (float) $sheet->paid_leave,
+            'unpaid_leave_days' => max(0, (float) $sheet->leave_days - (float) $sheet->paid_leave), 'overtime_hours' => 0, 'overtime_amount' => 0, 'penalties_amount' => 0,
+            'recovery_amount' => 0, 'adjustments_amount' => 0, 'statutory_earnings' => 0, 'statutory_deductions' => 0, 'reimbursements_amount' => 0,
+            'calculation_data' => ['source' => 'old_sheet', 'monthly_salary' => $n($sheet->basic_salary), 'working_days_per_month' => (int) round((float) $sheet->total_working_days), 'legacy_salary_record_id' => $sheet->id],
+            'calculation_breakdown' => ['working_days' => (int) round((float) $sheet->total_working_days), 'present_days' => (float) $sheet->present_days, 'gross_salary' => $gross, 'payable_salary' => $net,
+                'old_sheet' => ['lines' => $lines, 'paid' => $n($sheet->salary_paid), 'remains' => $n(max(0, (float) $sheet->salary_remains)), 'payment_date' => $sheet->payment_date?->toDateString(), 'status' => $sheet->payment_status,
+                    'file' => $sheet->source_file, 'sheet' => $sheet->source_sheet]],
+        ]);
     }
 
     /**

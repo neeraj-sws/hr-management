@@ -145,7 +145,7 @@ class ReportService
                 ->whereHas('run', fn ($q) => $q->whereDate('period_starts_on', '<=', $to)->whereDate('period_ends_on', '>=', $from))
                 ->orderByDesc('payroll_run_id')->when($limit, fn ($q) => $q->limit($limit))->get()
                 ->map(function (PayrollItem $r) {
-                    $paid = (float) $r->payments->sum('amount');
+                    $paid = (float) $r->payments->sum('amount') + (float) ($r->calculation_breakdown['old_sheet']['paid'] ?? 0); // a month from the old salary sheet: what it paid counts
 
                     return ['run_id' => $r->payroll_run_id, 'period_start' => $r->run?->period_starts_on?->toDateString(), 'period_end' => $r->run?->period_ends_on?->toDateString(), 'run_status' => $r->run?->status, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'working_days' => (int) $r->working_days, 'present_days' => (float) $r->present_days, 'paid_leave_days' => (float) $r->paid_leave_days, 'unpaid_leave_days' => (float) $r->unpaid_leave_days, 'overtime_amount' => (float) $r->overtime_amount, 'gross' => (float) $r->gross_amount, 'statutory_earnings' => (float) $r->statutory_earnings, 'statutory_deductions' => (float) $r->statutory_deductions, 'penalties' => (float) $r->penalties_amount, 'advance_recovery' => (float) $r->recovery_amount, 'adjustments' => (float) $r->adjustments_amount, 'fixed_deductions' => (float) ($r->calculation_breakdown['fixed_deductions_total'] ?? 0), 'reimbursements' => (float) $r->reimbursements_amount, 'payable' => (float) $r->net_amount, 'paid' => round($paid, 2), 'balance' => round((float) $r->net_amount - $paid, 2)];
                 }),

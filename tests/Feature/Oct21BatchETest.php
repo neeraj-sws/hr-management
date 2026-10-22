@@ -58,6 +58,29 @@ class Oct21BatchETest extends TestCase
         $this->assertSame('not run', $rows['Jun 2025']['payroll_status'], 'No sheet row: the salary record');
     }
 
+    public function test_payroll_for_a_month_in_the_old_sheet_uses_the_sheet(): void
+    {
+        $e = $this->employee('OS-1');
+        SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 10000, 'effective_from' => '2025-01-01', 'working_days_per_month' => 25, 'standard_daily_hours' => 8.5]);
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-09-07', 'check_in' => '2026-09-07 10:00:00', 'check_out' => '2026-09-07 17:00:00', 'active_seconds' => 25200, 'status' => 'completed']);
+        // Risha's real September 2026 row.
+        LegacySalaryRecord::create(['employee_id' => $e->id, 'employee_code' => 'OS-1', 'payroll_month' => '2026-09', 'name' => $e->name, 'name_key' => 'person os-1',
+            'basic_salary' => 10000, 'salary_per_day' => 400, 'per_hour_salary' => 44.444444, 'total_working_days' => 25, 'present_days' => 22, 'leave_days' => 3, 'paid_leave' => 0,
+            'late_and_hourly_leave_minutes' => 320, 'late_coming_deduction' => 237.037037, 'total_payment_deduction' => 237.037037, 'salary_before_adjustment' => 8800,
+            'salary_after_deduction' => 8562.962963, 'total_salary_with_bonus' => 8562.962963, 'salary_paid' => 8562.96, 'salary_remains' => 0.002963, 'payment_date' => '2026-10-12', 'payment_status' => 'Paid']);
+
+        $item = app(HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id)->items->firstWhere('employee_id', $e->id);
+        $this->assertSame([8800.0, 8562.96, 25, 22.0], [(float) $item->gross_amount, (float) $item->net_amount, (int) $item->working_days, (float) $item->present_days]);
+        $this->assertSame(8562.96, $item->calculation_breakdown['old_sheet']['paid']);
+        $this->assertSame(237.04, $item->calculation_breakdown['old_sheet']['lines']['late_coming_deduction']);
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $item->payroll_run_id)
+            ->assertSee('8,562.96')->assertSee('old sheet · 12 Oct 2026')
+            ->set('breakdownItemId', $item->id)->assertSee('Taken from the old salary sheet')->assertSee('Late coming deduction');
+        $row = app(ReportService::class)->rows($this->admin, 'payroll', ['from' => '2026-09-01', 'to' => '2026-09-30', 'employee_id' => $e->id])->first();
+        $this->assertSame([8562.96, 8562.96, 0.0], [$row['payable'], $row['paid'], $row['balance']]);
+    }
+
     public function test_hourly_rate_hours_setting_changes_the_short_hours_deduction(): void
     {
         $e = $this->employee('HR-9');

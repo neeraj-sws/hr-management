@@ -53,7 +53,9 @@
                     <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th>@if($runHasOt)<th class="num">OT</th>@endif<th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th></th></tr></thead>
                     <tbody>
                     @forelse($selected->items->sortBy(fn ($i) => sprintf('%04d%s', strlen((string) $i->employee?->employee_code), $i->employee?->employee_code)) as $item)
-                        @php($paid = (float) $item->payments->sum('amount'))
+                        {{-- A month from the old salary sheet: what the sheet says was paid counts as paid. --}}
+                        @php($sheetPaid = (float) ($item->calculation_breakdown['old_sheet']['paid'] ?? 0))
+                        @php($paid = (float) $item->payments->sum('amount') + $sheetPaid)
                         @php($deductions = round((float) $item->gross_amount - (float) $item->net_amount, 2))
                         <tr wire:key="pi-{{ $item->id }}">
                             <td><strong>{{ $item->employee?->name }}</strong><small>{{ $item->employee?->employee_code }}</small></td>
@@ -62,7 +64,7 @@
                             <td class="num">{{ number_format((float) $item->gross_amount, 2) }}</td>
                             <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
                             <td class="num"><strong>{{ number_format((float) $item->net_amount, 2) }}</strong></td>
-                            <td class="num">{{ number_format($paid, 2) }}@if($paid > 0 && $paid < (float) $item->net_amount)<small>partial</small>@endif</td>
+                            <td class="num">{{ number_format($paid, 2) }}@if($sheetPaid > 0)<small>old sheet{{ ! empty($item->calculation_breakdown['old_sheet']['payment_date']) ? ' · '.\Illuminate\Support\Carbon::parse($item->calculation_breakdown['old_sheet']['payment_date'])->format('d M Y') : '' }}</small>@elseif($paid > 0 && $paid < (float) $item->net_amount)<small>partial</small>@endif</td>
                             <td><div class="row-actions">
                                 <button class="btn btn-sm" wire:click="$set('breakdownItemId', {{ $item->id }})">Breakdown</button>
                                 @if($selected->status === 'locked' && $paid < (float) $item->net_amount && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="openPayment({{ $item->id }})">Pay</button>@endif
@@ -91,6 +93,18 @@
             @php($cd = $breakdown->calculation_data ?? [])
             @php($monthly = (float) ($cd['monthly_salary'] ?? 0))
             @php($days = (int) ($breakdown->calculation_breakdown['working_days'] ?? $breakdown->working_days ?? 0))
+            @if(! empty($breakdown->calculation_breakdown['old_sheet']))
+                @php($os = $breakdown->calculation_breakdown['old_sheet'])
+                <div class="modal-body">
+                    <div class="alert alert-info" style="margin-top:0">Taken from the old salary sheet{{ ! empty($os['file']) ? ' ('.$os['file'].(! empty($os['sheet']) ? ', sheet “'.$os['sheet'].'”' : '').')' : '' }} — this month was calculated and paid there.</div>
+                    <table class="table"><tbody>
+                        @foreach($os['lines'] as $key => $value)<tr><td>{{ str($key)->replace('_', ' ')->ucfirst() }}</td><td class="num">{{ is_float($value) && fmod($value, 1) ? number_format($value, 2) : $value }}</td></tr>@endforeach
+                        <tr style="background:var(--canvas)"><td><strong>Payable</strong></td><td class="num"><strong>{{ number_format((float) $breakdown->net_amount, 2) }}</strong></td></tr>
+                        <tr><td>Paid{{ ! empty($os['payment_date']) ? ' on '.\Illuminate\Support\Carbon::parse($os['payment_date'])->format('d M Y') : '' }}{{ ! empty($os['status']) ? ' · '.$os['status'] : '' }}</td><td class="num">{{ number_format((float) $os['paid'], 2) }}</td></tr>
+                        <tr><td>Remaining</td><td class="num">{{ number_format((float) $os['remains'], 2) }}</td></tr>
+                    </tbody></table>
+                </div>
+            @else
             <div class="modal-body"><table class="table"><tbody>
                 {{-- The person's own monthly (basic) salary first, then how this month's pay is worked out from it. --}}
                 @if(($cd['pay_basis'] ?? 'monthly') === 'daily')
@@ -108,6 +122,7 @@
                     @if($label === 'statutory_components' && is_array($value))@foreach($value as $c)<tr><td>{{ $c['name'] ?? $c['key'] }} ({{ $c['type'] ?? '' }})</td><td class="num">{{ number_format((float) ($c['amount'] ?? 0), 2) }}</td></tr>@endforeach @endif
                 @endforeach
             </tbody></table></div>
+            @endif
             <div class="modal-foot"><button class="btn" wire:click="closeModal">Close</button></div>
         </x-modal>
     @endif
