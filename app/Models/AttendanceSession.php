@@ -31,6 +31,7 @@ class AttendanceSession extends Model
         'check_out_distance_meters',
         'screen_active_seconds',
         'screen_idle_seconds',
+        'screen_meeting_seconds',
         'screen_reported_at',
         'closed_automatically',
         'forced_checkout_by',

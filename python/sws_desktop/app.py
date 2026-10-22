@@ -56,6 +56,8 @@ class DesktopApp:
         self.away_prompt_open = False
         self.screen_active = 0.0  # not yet sent to the server
         self.screen_idle = 0.0
+        self.screen_meeting = 0.0  # time in Teams / Zoom / Meet calls: working time, not idle
+        self.meeting_reason: str | None = None  # why the last poll counted as a meeting
         self.app_usage: dict[str, float] = {}  # app name -> seconds not yet sent
         self.app_usage_on = False
         self.window_titles: dict[tuple[str, str], float] = {}  # (app, title) -> seconds not yet sent
@@ -326,9 +328,16 @@ class DesktopApp:
             working = (self.session or {}).get("status") == "working"
             now = datetime.now().astimezone()
             idle_for, locked = (presence.seconds_since_input(), presence.is_locked()) if working else (0.0, False)
+            # In a Teams / Zoom / Meet call (mic or camera in use, or a meeting window in front): working time,
+            # kept apart as meeting time — never idle, and no "were you away?" question.
+            self.meeting_reason = presence.meeting_reason() if working and not locked else None
+            if self.meeting_reason:
+                idle_for = 0.0
             if working and self.last_presence_poll:
                 elapsed = min(max((now - self.last_presence_poll).total_seconds(), 0), 10)  # a long gap is sleep: not counted
-                if locked or idle_for >= SCREEN_IDLE_AFTER_SECONDS:
+                if self.meeting_reason:
+                    self.screen_meeting += elapsed
+                elif locked or idle_for >= SCREEN_IDLE_AFTER_SECONDS:
                     self.screen_idle += elapsed
                 else:
                     self.screen_active += elapsed
@@ -733,7 +742,11 @@ class DesktopApp:
         if session:
             active = int(session.get("screen_active_seconds") or 0) + int(self.screen_active)
             idle = int(session.get("screen_idle_seconds") or 0) + int(self.screen_idle)
-            self.screen_label.config(text=f"Screen time today: {hms(active)} in use · {hms(idle)} idle" if active + idle else "Screen time starts counting while you are checked in.")
+            meeting = int(session.get("screen_meeting_seconds") or 0) + int(self.screen_meeting)
+            text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + f" · {hms(idle)} idle"
+            if self.meeting_reason:
+                text += f"\n● In a meeting now ({self.meeting_reason}) — counted as working time, not idle"
+            self.screen_label.config(text=text if active + idle + meeting else "Screen time starts counting while you are checked in.")
         else:
             self.screen_label.config(text="")
         self.root.after(1000, self._tick)
@@ -928,7 +941,7 @@ class DesktopApp:
         if self.offline.counts()["queued"]:
             self.sync_now()
         elif self.session and self.session.get("id") and not self.session.get("check_out"):
-            active, idle = int(self.screen_active), int(self.screen_idle)
+            active, idle, meeting = int(self.screen_active), int(self.screen_idle), int(self.screen_meeting)
             apps = {name: int(sec) for name, sec in self.app_usage.items() if int(sec) > 0}
             titles = [{"app": a, "title": t, "seconds": int(sec)} for (a, t), sec in self.window_titles.items() if int(sec) > 0] if self.window_titles_on else []
 
@@ -936,6 +949,7 @@ class DesktopApp:
                 self.online = True
                 self.screen_active -= active
                 self.screen_idle -= idle
+                self.screen_meeting -= meeting
                 for name, sec in apps.items():
                     self.app_usage[name] = max(0.0, self.app_usage.get(name, 0.0) - sec)
                 for row in titles:
@@ -946,7 +960,7 @@ class DesktopApp:
                 if session:
                     self._sync_session(session)
 
-            self._run(lambda: self.client.heartbeat(active, idle), sent, lambda _e: None)
+            self._run(lambda: self.client.heartbeat(active, idle, meeting), sent, lambda _e: None)
         self.root.after(SYNC_INTERVAL_MS, self._auto_sync)
 
 

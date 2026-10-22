@@ -345,21 +345,23 @@ class AttendanceService
      * screen time since its last heartbeat: seconds the computer was in use
      * vs. untouched. Reports can never add up to more than the time elapsed.
      */
-    public function heartbeat(AttendanceEmployee $employee, int $screenActive = 0, int $screenIdle = 0): ?AttendanceSession
+    /** $screenMeeting: time in an online meeting (mic/camera in use or a meeting window in front) — working time, not idle. */
+    public function heartbeat(AttendanceEmployee $employee, int $screenActive = 0, int $screenIdle = 0, int $screenMeeting = 0): ?AttendanceSession
     {
         $session = $this->today($employee);
         if ($session && ! $session->check_out) {
             $session = $this->recordDesktopGap($employee, $session) ?? $session;
             $changes = ['last_sync_at' => now()];
-            if ($screenActive > 0 || $screenIdle > 0) {
+            if ($screenActive > 0 || $screenIdle > 0 || $screenMeeting > 0) {
                 $since = $session->screen_reported_at ?? $session->check_in;
                 $allowed = max(0, (int) $since->diffInSeconds(now()) + 15);
-                $total = $screenActive + $screenIdle;
+                $total = $screenActive + $screenIdle + $screenMeeting;
                 if ($total > $allowed) {
                     $screenActive = (int) floor($screenActive * $allowed / $total);
                     $screenIdle = (int) floor($screenIdle * $allowed / $total);
+                    $screenMeeting = (int) floor($screenMeeting * $allowed / $total);
                 }
-                $changes += ['screen_active_seconds' => (int) $session->screen_active_seconds + $screenActive, 'screen_idle_seconds' => (int) $session->screen_idle_seconds + $screenIdle, 'screen_reported_at' => now()];
+                $changes += ['screen_active_seconds' => (int) $session->screen_active_seconds + $screenActive, 'screen_idle_seconds' => (int) $session->screen_idle_seconds + $screenIdle, 'screen_meeting_seconds' => (int) $session->screen_meeting_seconds + $screenMeeting, 'screen_reported_at' => now()];
             }
             $session->update($changes);
         }

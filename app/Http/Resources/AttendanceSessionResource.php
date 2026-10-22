@@ -21,6 +21,7 @@ class AttendanceSessionResource extends JsonResource
             'break_seconds'=>(int)$this->break_seconds,
             'screen_active_seconds'=>(int)$this->screen_active_seconds,
             'screen_idle_seconds'=>(int)$this->screen_idle_seconds,
+            'screen_meeting_seconds'=>(int)$this->screen_meeting_seconds,
             'status'=>$this->status,
             'server_version'=>(int)$this->server_version,
             'events'=>$this->whenLoaded('events'),

@@ -121,6 +121,98 @@ def foreground_window_title() -> str | None:
         return None
 
 
+# --- Online meetings ---------------------------------------------------------------------------
+# Time in a Teams / Zoom / Google Meet call is working time, even with no typing or clicking.
+# Two signals, checked every few seconds; nothing is recorded but the time itself:
+#  1. the microphone or camera is in use right now — Windows notes, per app, when it last started
+#     and stopped using them (privacy settings store); an app that started and has not stopped is
+#     using it now. Only *whether* a device is in use is read, never any audio or video;
+#  2. a meeting window is in front (Zoom meeting, Teams meeting/call, Google Meet / Zoom in a browser).
+
+_CONSENT_STORE = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore"
+_BROWSERS = {"Google Chrome", "Microsoft Edge", "Firefox", "Brave", "Opera"}
+
+
+def _device_in_use(start: int | None, stop: int | None) -> bool:
+    """An app that started using the device and has not stopped (stop time 0) is using it now."""
+    return bool(start) and not stop
+
+
+def devices_in_use() -> list[str]:
+    """'microphone' / 'camera' when any app on this computer is using it right now (Windows only)."""
+    if sys.platform != "win32":
+        return []
+    import winreg
+
+    found: list[str] = []
+    for capability, label in (("microphone", "microphone"), ("webcam", "camera")):
+        try:
+            root = winreg.OpenKey(winreg.HKEY_CURRENT_USER, rf"{_CONSENT_STORE}\{capability}")
+        except OSError:
+            continue
+        with root:
+            if _any_app_using(winreg, root):
+                found.append(label)
+    return found
+
+
+def _any_app_using(winreg, key, depth: int = 0) -> bool:
+    """Walks the app entries (packaged apps directly, desktop apps under "NonPackaged")."""
+    index = 0
+    while True:
+        try:
+            name = winreg.EnumKey(key, index)
+        except OSError:
+            return False
+        index += 1
+        try:
+            with winreg.OpenKey(key, name) as app:
+                if name == "NonPackaged" and depth == 0:
+                    if _any_app_using(winreg, app, 1):
+                        return True
+                    continue
+                try:
+                    start = winreg.QueryValueEx(app, "LastUsedTimeStart")[0]
+                    stop = winreg.QueryValueEx(app, "LastUsedTimeStop")[0]
+                except OSError:
+                    continue
+                if _device_in_use(start, stop):
+                    return True
+        except OSError:
+            continue
+
+
+def is_meeting_window(app: str | None, title: str | None) -> bool:
+    """True when the window in front is an online meeting (not just the chat or calendar of the app)."""
+    title = (title or "").strip()
+    low = title.lower()
+    if app == "Zoom":
+        return "meeting" in low  # "Zoom Meeting"; the home window ("Zoom Workplace") is not a meeting
+    if app == "Microsoft Teams":
+        return any(word in low for word in ("meeting", "call with", "| call", "meet now"))
+    if app in ("Webex", "Cisco Webex Meetings", "Ciscocollabhost"):
+        return True
+    if app in _BROWSERS:
+        return low.startswith("meet - ") or low.startswith("meet – ") or "google meet" in low or "zoom meeting" in low or ("microsoft teams" in low and "meeting" in low)
+    return False
+
+
+def meeting_reason() -> str | None:
+    """Why this moment counts as a meeting ('microphone in use', 'camera in use', 'meeting window'), or None."""
+    try:
+        devices = devices_in_use()
+    except Exception:
+        devices = []
+    if devices:
+        return f"{devices[0]} in use"
+    try:
+        if is_meeting_window(foreground_app(), foreground_window_title()):
+            return "meeting window"
+    except Exception:
+        pass
+    return None
+
+
 def is_locked() -> bool:
     """True while the lock screen (or another secure desktop) is shown."""
     if sys.platform != "win32":

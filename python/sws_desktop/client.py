@@ -124,9 +124,9 @@ class HrClient:
         body = response.json() if response.content and response.headers.get("content-type", "").startswith("application/json") else {}
         raise ApiError(body.get("message") or f"Upload failed ({response.status_code})", response.status_code, body.get("errors"))
 
-    def heartbeat(self, screen_active: int = 0, screen_idle: int = 0) -> dict | None:
-        """Keeps the session alive and reports screen time (seconds in use / untouched) since the last call."""
-        return self.request("POST", "/attendance/heartbeat", {"screen_active_seconds": screen_active, "screen_idle_seconds": screen_idle})["data"]
+    def heartbeat(self, screen_active: int = 0, screen_idle: int = 0, screen_meeting: int = 0) -> dict | None:
+        """Keeps the session alive and reports screen time (seconds in use / untouched / in online meetings) since the last call."""
+        return self.request("POST", "/attendance/heartbeat", {"screen_active_seconds": screen_active, "screen_idle_seconds": screen_idle, "screen_meeting_seconds": screen_meeting})["data"]
 
     def report_app_usage(self, apps: dict[str, int], titles: list[dict] | None = None) -> dict:
         """Reports application-usage totals (app name -> seconds) and, when enabled, active-window titles."""

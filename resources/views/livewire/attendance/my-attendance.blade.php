@@ -16,6 +16,7 @@
                         @if($session->check_out)<span class="pill"><b>Out</b>{{ $session->check_out->format('h:i A') }}</span>@endif
                         <span class="pill"><b>Break</b>@hms((int) $session->break_seconds)</span>
                         @if($session->idleSeconds())<span class="pill"><b>Idle</b>@hms($session->idleSeconds())</span>@endif
+                        @if((int) $session->screen_meeting_seconds)<span class="pill" title="Online meetings (Teams, Zoom, Google Meet) — counted as working time, not idle"><b>Meeting</b>@hms((int) $session->screen_meeting_seconds)</span>@endif
                         <x-badge :status="$session->status" />
                         @if($late)<x-badge status="late" />@endif
                     @else

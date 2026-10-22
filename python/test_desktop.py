@@ -163,6 +163,57 @@ class ClientTests(unittest.TestCase):
         start = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
         self.assertIn("Total time 02:00:0", app._total_text({"status": "working", "check_in": start, "break_seconds": 0}))
 
+    def test_meeting_detection_rules(self):
+        from sws_desktop import presence
+
+        # Microphone / camera: started and not stopped = in use now.
+        self.assertTrue(presence._device_in_use(133450000000000000, 0))
+        self.assertFalse(presence._device_in_use(133450000000000000, 133450000100000000))
+        self.assertFalse(presence._device_in_use(0, 0))
+        # Meeting windows, not the app's chat/home window.
+        self.assertTrue(presence.is_meeting_window("Zoom", "Zoom Meeting"))
+        self.assertFalse(presence.is_meeting_window("Zoom", "Zoom Workplace"))
+        self.assertTrue(presence.is_meeting_window("Microsoft Teams", "Daily stand-up | Meeting | Microsoft Teams"))
+        self.assertFalse(presence.is_meeting_window("Microsoft Teams", "Chat | Risha Gangrade | Microsoft Teams"))
+        self.assertTrue(presence.is_meeting_window("Google Chrome", "Meet - abc-defg-hij - Google Chrome"))
+        self.assertTrue(presence.is_meeting_window("Microsoft Edge", "Google Meet and 2 more pages - Work - Microsoft Edge"))
+        self.assertFalse(presence.is_meeting_window("Google Chrome", "Inbox (3) - Gmail - Google Chrome"))
+        self.assertFalse(presence.is_meeting_window(None, None))
+
+    def test_meeting_time_is_counted_apart_from_idle_and_never_asks_about_away(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+        from sws_desktop import presence
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.clock_label = Mock(winfo_exists=Mock(return_value=True))
+        app.root = Mock()
+        app.session = {"status": "working"}
+        app.screen_active = app.screen_idle = app.screen_meeting = 0.0
+        app.app_usage_on = False
+        app.window_titles_on = False
+        app.capture_policy = None
+        app.last_capture = None
+        app.away_prompt_open = False
+        app.away_tracker = presence.AwayTracker(1)
+        app._ask_about_away = Mock()
+        app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+        # 20 minutes without mouse/keyboard, but in a Teams call.
+        with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
+                patch.object(presence, "meeting_reason", return_value="microphone in use"):
+            app._watch_presence()
+        self.assertGreater(app.screen_meeting, 4)
+        self.assertEqual(app.screen_idle, 0.0)
+        self.assertEqual(app.meeting_reason, "microphone in use")
+        app._ask_about_away.assert_not_called()
+        # Same, without a meeting: idle.
+        app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+        with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
+                patch.object(presence, "meeting_reason", return_value=None):
+            app._watch_presence()
+        self.assertGreater(app.screen_idle, 4)
+
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})
         session = Mock(request=Mock(return_value=response))
