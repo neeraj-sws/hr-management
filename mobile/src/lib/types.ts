@@ -30,7 +30,7 @@ export type Me = {
   today: AttendanceSession | null;
   unread_notifications: number;
   schedule: { shift: string | null; starts_at: string | null; grace_minutes: number } | null;
-  policies: { location_required: boolean; selfie_required?: boolean; away_prompt_minutes: number; attendance_sources?: string[]; overtime?: boolean };
+  policies: { location_required: boolean; selfie_required?: boolean; away_prompt_minutes: number; attendance_sources?: string[] };
 };
 
 export type Task = {
@@ -54,8 +54,14 @@ export type Task = {
 export type LeaveType = { id: number; name: string; paid: boolean; allow_advance: boolean };
 export type LeaveBalance = { leave_type: { id: number; name: string; paid: boolean }; entitled: number; accrued: number; adjusted: number; carried: number; used: number; booked: number; remaining: number };
 export type LeaveRequest = { id: number; leave_type: string; duration?: 'full' | 'half' | 'short'; starts_on: string; ends_on: string; days: number; reason: string; status: string; decision_note: string | null };
-export type Overtime = { id: number; work_date: string; requested_minutes: number; approved_minutes: number | null; reason: string; status: string; decision_note: string | null };
 export type Payslip = { id: number; reference: string; issued_at: string; period_start: string; period_end: string; gross: number; net: number; paid: number; balance: number; breakdown?: Record<string, unknown>; payments?: { paid_on: string; amount: number; reference: string | null }[] };
+/** One month of the employee's salary (GET /my/salary): earnings and deductions as [label, amount, note]. */
+export type SalaryMonth = {
+  month: string; label: string; source: 'estimate' | 'payroll' | 'old_sheet'; status: string; up_to?: string; paid_on?: string | null;
+  days: { working: number; present: number; paid_leave: number; unpaid_leave: number };
+  monthly_salary: number; earnings: [string, number, string | null][]; deductions: [string, number, string | null][];
+  gross: number; deductions_total: number; net: number; paid: number; remaining: number; payslip_id: number | null;
+};
 export type Notification = { id: string; kind: string | null; message: string; read_at: string | null; created_at: string };
 export type Approval = { id: number; type: string; label: string; summary: string; created_at: string };
 export type Paginated<T> = { data: T[]; total: number; current_page: number; last_page: number };

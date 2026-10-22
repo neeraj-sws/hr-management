@@ -13,7 +13,11 @@ class CorrectionController extends ApiController
     {
         $employee = $this->apiEmployee($request);
 
-        return response()->json(AttendanceCorrection::where('employee_id', $employee->id)->latest('id')->paginate(30)->through(fn ($c) => $this->present($c)));
+        $month = $this->monthRange($request);
+
+        return response()->json(AttendanceCorrection::where('employee_id', $employee->id)
+            ->when($month, fn ($q) => $q->whereDate('work_date', '>=', $month[0])->whereDate('work_date', '<=', $month[1]))
+            ->latest('id')->paginate($month ? 100 : 30)->through(fn ($c) => $this->present($c)));
     }
 
     public function store(Request $request, AttendanceCorrectionService $corrections): JsonResponse

@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
 import { DateField, todayYmd } from '../../components/DateField';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, Field, formatDate, formatDuration, Muted, Notice, Screen } from '../../components/ui';
 import { ApiError, get, post } from '../../lib/api';
@@ -20,6 +21,8 @@ function RunningClock({ since, base }: { since: string; base: number }) {
 
 export default function Tasks() {
   const [filter, setFilter] = useState<'open' | 'completed'>('open');
+  // Completed tasks are history: one month at a time (open tasks are always all shown).
+  const [month, setMonth] = useMonth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(null);
@@ -49,13 +52,13 @@ export default function Tasks() {
 
   const load = useCallback(async () => {
     try {
-      const response = await get<Paginated<Task>>(`/tasks?status=${filter}`);
+      const response = await get<Paginated<Task>>(`/tasks?status=${filter}${filter === 'completed' ? `&month=${month}` : ''}`);
       setTasks(response.data);
     } catch (e) {
       if (e instanceof ApiError && e.isNetwork) setMessage({ tone: 'info', text: 'Offline — task actions will be queued.' });
       else if (e instanceof ApiError) setMessage({ tone: 'error', text: e.firstMessage });
     }
-  }, [filter]);
+  }, [filter, month]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -87,6 +90,7 @@ export default function Tasks() {
   return (
     <Screen refreshing={refreshing} onRefresh={refresh}>
       <Chips value={filter} onChange={setFilter} options={[{ label: 'Open', value: 'open' }, { label: 'Completed', value: 'completed' }]} />
+      {filter === 'completed' ? <MonthSwitcher month={month} onChange={setMonth} /> : null}
       {adding ? (
         <Card>
           <Field label="What are you working on?" value={title} onChangeText={setTitle} placeholder="Task title" />
@@ -100,7 +104,7 @@ export default function Tasks() {
         </Card>
       ) : <Button title="+ Add my task" onPress={() => setAdding(true)} />}
       {message ? <Notice tone={message.tone} text={message.text} /> : null}
-      {tasks.length === 0 ? <Card><Empty text={filter === 'open' ? 'No open tasks' : 'No completed tasks'} /></Card> : null}
+      {tasks.length === 0 ? <Card><Empty text={filter === 'open' ? 'No open tasks' : 'No tasks completed this month'} /></Card> : null}
       {tasks.map((task) => (
         <Card key={task.id}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>

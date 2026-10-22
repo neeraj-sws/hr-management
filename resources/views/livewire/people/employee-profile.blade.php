@@ -129,6 +129,13 @@
     {{-- PAYROLL --}}
     <div x-show="tab === 'payroll'" x-cloak class="grid grid-2">
         @if($showSalary)
+            <section class="card" style="grid-column:1/-1"><div class="card-head"><div><h2>Salary month by month</h2><p>This month so far, then every month with what was earned, each deduction and what was paid · click a month</p></div></div>
+                <div style="padding-top:12px">
+                    @if($salarySoFar)<x-salary-month :month="$salarySoFar" open />@endif
+                    @foreach($salaryHistory as $m)<x-salary-month :month="$m" />@endforeach
+                    @if(! $salarySoFar && ! $salaryHistory)<div class="card-body"><x-empty title="No salary set up yet" icon="wallet" /></div>@endif
+                </div>
+            </section>
             <section class="card"><div class="card-head"><h2>Salary history</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'salary', 'employee' => $employee->id]) }}">Full report →</a></div>
                 <div class="table-wrap"><table class="table"><thead><tr><th>Effective from</th><th class="num">Monthly</th><th class="num">Days/month</th><th class="num">Hours/day</th></tr></thead><tbody>
                     @forelse($employee->salaryProfiles as $p)<tr><td>{{ $p->effective_from->format('d M Y') }}</td><td class="num">{{ number_format((float) $p->monthly_salary, 2) }}</td><td class="num">{{ $p->working_days_per_month }}</td><td class="num">{{ $loop->first ? $dailyHours : (float) $p->standard_daily_hours }}</td></tr>

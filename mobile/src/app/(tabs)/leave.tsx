@@ -1,6 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
+import { MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
 import { DateField, todayYmd } from '../../components/DateField';
 import { Badge, Button, Card, Chips, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen } from '../../components/ui';
 import { ApiError, get, post } from '../../lib/api';
@@ -24,13 +25,15 @@ export default function Leave() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // My requests: one month at a time.
+  const [month, setMonth] = useMonth();
 
   const load = useCallback(async () => {
     try {
       const [t, b, r] = await Promise.all([
         get<{ data: LeaveType[] }>('/leave/types'),
         get<{ data: LeaveBalance[] }>('/leave/balances'),
-        get<Paginated<LeaveRequest>>('/leave/requests'),
+        get<Paginated<LeaveRequest>>(`/leave/requests?month=${month}`),
       ]);
       setTypes(t.data);
       store.setJson(TYPES_CACHE, t.data);
@@ -42,7 +45,7 @@ export default function Leave() {
       if (e.isNetwork) setTypes(await store.getJson<LeaveType[]>(TYPES_CACHE, []));
       setMessage({ tone: e.isNetwork ? 'info' : 'error', text: e.isNetwork ? 'Offline — you can still request leave; it is sent for approval when you are back online.' : e.firstMessage });
     }
-  }, []);
+  }, [month]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -123,6 +126,7 @@ export default function Leave() {
       </Card>
       <Card>
         <H2>My requests</H2>
+        <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>
         {requests.length ? requests.map((r) => (
           <Row key={r.id} title={`${r.leave_type} · ${r.days} day(s)${r.duration && r.duration !== 'full' ? ` · ${r.duration === 'half' ? 'Half day' : 'Short leave'}` : ''}`} subtitle={`${r.duration && r.duration !== 'full' ? formatDate(r.starts_on) : `${formatDate(r.starts_on)} – ${formatDate(r.ends_on)}`}${r.decision_note ? ` · ${r.decision_note}` : ''}`}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={r.status} />{r.status === 'pending' ? <Button small tone="danger" title="Cancel" onPress={() => cancel(r.id)} /> : null}</View>} />

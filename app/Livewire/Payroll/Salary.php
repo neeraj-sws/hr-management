@@ -206,6 +206,8 @@ class Salary extends Component
             'employees' => $employees,
             'own' => $own,
             'myProfiles' => $own ? $own->salaryProfiles()->orderByDesc('effective_from')->get() : collect(),
+            'mySoFar' => $own ? app(\App\Services\SalarySummaryService::class)->soFar($own) : null,
+            'myHistory' => $own ? app(\App\Services\SalarySummaryService::class)->history($own) : [],
             'adjustments' => $adjustments,
             'decidable' => $inbox->pending($user, SalaryAdjustment::class)->pluck('approvable_id')->all(),
             'canManage' => $this->canManage(),

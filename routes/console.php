@@ -17,6 +17,8 @@ Schedule::command('compliance:assess')->dailyAt('03:00')->withoutOverlapping();
 Schedule::command('work:notify-overdue-tasks')->dailyAt('09:45')->withoutOverlapping();
 Schedule::command('sanctum:prune-expired --hours=24')->dailyAt('04:00');
 Schedule::command('work:remind-daily-status')->weekdays()->dailyAt('18:15')->withoutOverlapping();
+// Before-shift and forgot-to-check-out reminders (each sent once per person per day).
+Schedule::command('attendance:reminders')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('attendance:absence-alerts')->everyFifteenMinutes()->between('09:00', '20:00')->withoutOverlapping();
 Schedule::command('work:reconcile-task-hours --fix')->dailyAt('01:30')->withoutOverlapping();
 Schedule::command('sheets:sync')->everyThirtyMinutes()->withoutOverlapping();

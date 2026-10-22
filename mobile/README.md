@@ -1,6 +1,6 @@
 # SWS HR — Mobile app (Expo / React Native)
 
-Employee app for the SWS HR API: login, dashboard, attendance (check-in, break, resume, check-out, 30-day history), tasks with a live timer, leave (balance, request, cancel), overtime, payslips, notifications, approvals (for managers/HR) and an offline queue.
+Employee app for the SWS HR API: login, dashboard, attendance (check-in, break, resume, check-out, 30-day history), tasks with a live timer, leave (balance, request, cancel), payslips, notifications, approvals (for managers/HR) and an offline queue.
 
 ## Run
 

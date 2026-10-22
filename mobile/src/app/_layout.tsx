@@ -32,7 +32,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerStyle: { backgroundColor: colors.navy }, headerTintColor: colors.white, headerTitleStyle: { fontWeight: '700' } }}>
       <Stack.Protected guard={!!me}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="overtime" options={{ title: 'Overtime' }} />
+        <Stack.Screen name="salary" options={{ title: 'My salary' }} />
         <Stack.Screen name="payslips" options={{ title: 'Payslips' }} />
         <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
         <Stack.Screen name="approvals" options={{ title: 'Approvals' }} />

@@ -37,6 +37,9 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'ManagerChange' => 'approvals.pending',
         'AttendanceSession' => 'attendance.my',
         'AttendanceLate' => 'attendance.my',
+        'ShiftReminder' => 'attendance.my',
+        'CheckoutReminder' => 'attendance.my',
+        'Payslip' => 'payroll.payslips',
         'WeeklyOff' => 'company.holidays',
         'PasswordChanged' => 'account.profile',
         'DailyStatusRequested' => 'work.daily-status',
@@ -73,7 +76,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     private const KIND_GROUP = [
         'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
         'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance',
-        'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders',
+        'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders', 'ShiftReminder' => 'reminders', 'CheckoutReminder' => 'reminders',
         'Announcement' => 'company', 'Celebration' => 'company', 'WeeklyOff' => 'attendance', 'Shift' => 'attendance',
     ];
 
@@ -123,10 +126,11 @@ class ApprovalRequested extends Notification implements ShouldQueue
         return $channels;
     }
 
-    /** The in-app bell is written straight away so it never waits on a queue worker; e-mail and push stay queued. */
+    /** The in-app bell and the phone push are sent straight away (never waiting on a queue worker); only e-mail is queued. */
     public function viaConnections(): array
     {
-        return ['database' => 'sync'];
+        // Phone pushes go out at once too: a shift reminder that waits for a queue worker is useless.
+        return ['database' => 'sync', \App\Notifications\Channels\ExpoPushChannel::class => 'sync'];
     }
 
     public function toMail(object $notifiable): MailMessage

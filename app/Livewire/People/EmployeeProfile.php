@@ -149,6 +149,8 @@ class EmployeeProfile extends Component
             'assets' => $employee->assets()->latest()->get(),
             'documents' => $canSeeDocs ? $employee->documents()->latest()->get() : collect(),
             'showSalary' => $showSalary,
+            'salarySoFar' => $showSalary ? app(\App\Services\SalarySummaryService::class)->soFar($employee) : null,
+            'salaryHistory' => $showSalary ? app(\App\Services\SalarySummaryService::class)->history($employee) : [],
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
             'attendanceSources' => app(\App\Services\AttendanceService::class)->allowedSources($employee),

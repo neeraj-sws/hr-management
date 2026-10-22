@@ -85,4 +85,12 @@ class SelfServiceController extends ApiController
             'people' => $people,
         ]);
     }
+
+    /** The employee's own salary: this month so far (as payroll would pay it today) and month-by-month history with every deduction. */
+    public function salary(Request $request, \App\Services\SalarySummaryService $salary): JsonResponse
+    {
+        $employee = $this->apiEmployee($request);
+
+        return response()->json(['current' => $salary->soFar($employee), 'history' => $salary->history($employee)]);
+    }
 }

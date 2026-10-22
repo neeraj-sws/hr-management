@@ -1,6 +1,7 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
+import { MonthSwitcher, useMonth } from '../components/MonthSwitcher';
 import { DateField, TimeField, todayYmd } from '../components/DateField';
 import { Badge, Button, Card, confirmAction, Empty, Field, formatDate, formatTime, H2, Muted, Notice, Row, Screen } from '../components/ui';
 import { ApiError, get, post } from '../lib/api';
@@ -18,14 +19,16 @@ export default function CorrectionsScreen() {
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // My requests: one month at a time.
+  const [month, setMonth] = useMonth();
   const load = useCallback(async () => {
     try {
-      setItems((await get<Paginated<Correction>>('/attendance/corrections')).data);
+      setItems((await get<Paginated<Correction>>(`/attendance/corrections?month=${month}`)).data);
       setLoaded(true);
     } catch (e) {
       if (e instanceof ApiError) setMessage({ tone: 'error', text: e.firstMessage });
     }
-  }, []);
+  }, [month]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const submit = async () => {
@@ -76,6 +79,7 @@ export default function CorrectionsScreen() {
       </Card>
       <Card>
         <H2>My requests</H2>
+        <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>
         {items.length ? items.map((c) => (
           <Row key={c.id} title={formatDate(c.work_date)}
             subtitle={`${c.check_in ? `in ${formatTime(c.check_in)}` : ''}${c.check_in && c.check_out ? ' · ' : ''}${c.check_out ? `out ${formatTime(c.check_out)}` : ''} — ${c.reason}${c.decision_note ? ` · ${c.decision_note}` : ''}`}

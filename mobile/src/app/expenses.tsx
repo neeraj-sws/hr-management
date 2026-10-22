@@ -2,6 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Platform, View } from 'react-native';
+import { MonthSwitcher, useMonth } from '../components/MonthSwitcher';
 import { DateField, todayYmd } from '../components/DateField';
 import { Badge, Button, Card, Chips, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen, money } from '../components/ui';
 import { ApiError, get, post, upload } from '../lib/api';
@@ -23,16 +24,18 @@ export default function ExpensesScreen() {
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // My claims: one month at a time (by the date of the expense).
+  const [month, setMonth] = useMonth();
   const load = useCallback(async () => {
     try {
-      const response = await get<Paginated<ExpenseClaim> & { categories: string[] }>('/expenses');
+      const response = await get<Paginated<ExpenseClaim> & { categories: string[] }>(`/expenses?month=${month}`);
       setItems(response.data);
       setCategories(response.categories);
       setLoaded(true);
     } catch (e) {
       if (e instanceof ApiError) setMessage({ tone: e.isNetwork ? 'info' : 'error', text: e.isNetwork ? 'Offline — you can still add a claim; it is sent when you are back online.' : e.firstMessage });
     }
-  }, []);
+  }, [month]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   // Claims saved on the phone but not yet sent: shown in My claims as "waiting to sync"; once sent, the list reloads.
   const [waiting, setWaiting] = useState<QueuedAction[]>([]);
@@ -144,6 +147,7 @@ export default function ExpensesScreen() {
       </Card>
       <Card>
         <H2>My claims</H2>
+        <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>
         {waiting.map((w) => (
           <Row key={w.action_id} title={`${String(w.payload.category)} · ${money(Number(w.payload.amount))}`}
             subtitle={`${formatDate(String(w.payload.spent_on))} · ${String(w.payload.description)}${w.payload.receipt ? ' · 🧾' : ''}${w.last_error ? ` · ${w.last_error}` : ''}`}
@@ -153,7 +157,7 @@ export default function ExpensesScreen() {
         {items.length ? items.map((c) => (
           <Row key={c.id} title={`${c.category} · ${money(c.amount)}`} subtitle={`${formatDate(c.spent_on)} · ${c.description}${c.has_receipt ? ' · 🧾' : ''}${c.decision_note ? ` · ${c.decision_note}` : ''}`}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={c.status} />{c.status === 'pending' ? <Button small tone="danger" title="Cancel" onPress={() => cancel(c.id)} /> : null}</View>} />
-        )) : waiting.length ? null : <Empty text={loaded ? 'No expense claims yet' : 'Loading…'} />}
+        )) : waiting.length ? null : <Empty text={loaded ? 'No expense claims this month' : 'Loading…'} />}
       </Card>
     </Screen>
   );

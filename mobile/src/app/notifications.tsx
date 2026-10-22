@@ -1,6 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
+import { MonthSwitcher, useMonth } from '../components/MonthSwitcher';
 import { Badge, Button, Card, Empty, Notice, Row, Screen } from '../components/ui';
 import { ApiError, get, post } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -12,16 +13,18 @@ export default function Notifications() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
+  // One month at a time.
+  const [month, setMonth] = useMonth();
   const load = useCallback(async () => {
     try {
-      setItems((await get<Paginated<Notification>>('/notifications')).data);
+      setItems((await get<Paginated<Notification>>(`/notifications?month=${month}`)).data);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.firstMessage : 'Could not load notifications.');
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [month]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const markRead = async (id: string) => {
@@ -35,13 +38,14 @@ export default function Notifications() {
 
   return (
     <Screen>
+      <MonthSwitcher month={month} onChange={setMonth} />
       {error ? <Notice tone="error" text={error} /> : null}
       {items.some((n) => !n.read_at) ? <Button title="Mark all as read" onPress={markAll} /> : null}
       <Card>
         {items.length ? items.map((n) => (
           <Row key={n.id} title={n.message} subtitle={new Date(n.created_at).toLocaleString()} onPress={n.read_at ? undefined : () => markRead(n.id)}
             right={n.read_at ? undefined : <View><Badge label="new" tone="blue" /></View>} />
-        )) : <Empty text={loaded ? 'No notifications' : 'Loading…'} />}
+        )) : <Empty text={loaded ? 'No notifications this month' : 'Loading…'} />}
       </Card>
     </Screen>
   );

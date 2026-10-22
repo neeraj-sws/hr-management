@@ -524,6 +524,27 @@ class HrWorkflowService
     }
 
     /**
+     * What payroll would pay for a period as things stand (nothing is written): the same figures and
+     * the same breakdown keys a payroll item stores, for "salary so far this month".
+     */
+    public function payEstimate(AttendanceEmployee $employee, string $start, string $end): ?array
+    {
+        $f = $this->employeePayFigures($employee, $start, $end, false);
+        if ($f === null) return null;
+
+        return [
+            'gross' => (float) $f['gross'], 'net' => (float) $f['net'], 'working_days' => (int) $f['scheduledTotal'], 'present_days' => (float) $f['presentDays'],
+            'paid_leave_days' => (float) $f['paidLeaveDays'], 'unpaid_leave_days' => (float) $f['unpaidLeaveDays'],
+            'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
+            'breakdown' => [
+                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
+                'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],
+                'penalties' => (float) $f['penalties'], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
+            ],
+        ];
+    }
+
+    /**
      * The attendance-driven part of an employee's pay for a period as it stands
      * now: days paid (base), overtime, extra working, and the short-hours deduction.
      */
@@ -630,9 +651,15 @@ class HrWorkflowService
             $paid = (float) $item->payments()->sum('amount');
             if ((float) $data['amount'] <= 0 || $paid + (float) $data['amount'] > (float) $item->net_amount) throw ValidationException::withMessages(['amount' => 'Payment exceeds the remaining payroll balance.']);
             $payment = $item->payments()->create([...$data, 'recorded_by' => $userId]);
-            Payslip::firstOrCreate(['payroll_item_id' => $item->id], ['employee_id' => $item->employee_id, 'issued_at' => now(), 'reference' => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT)]);
+            $payslip = Payslip::firstOrCreate(['payroll_item_id' => $item->id], ['employee_id' => $item->employee_id, 'issued_at' => now(), 'reference' => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT)]);
             $this->audit->record('payroll.payment_recorded', $payment, ['payroll_item_id' => $item->id]);
-            $item->employee?->user?->notify(new \App\Notifications\ApprovalRequested('SalaryPayment', $payment->id, 'A salary payment of '.$payment->amount.' has been recorded.'));
+            $amount = number_format((float) $payment->amount, 2);
+            // The first payment issues the payslip: say so plainly (it is what the employee is waiting for).
+            if ($payslip->wasRecentlyCreated) {
+                Notifier::send($item->employee?->user, 'Payslip', $payslip->id, 'Your payslip for '.$run->period_starts_on->format('F Y').' is ready. Salary payment of '.$amount.' recorded.', route('hr.payslips.show', $payslip, false));
+            } else {
+                Notifier::send($item->employee?->user, 'SalaryPayment', $payment->id, 'A further salary payment of '.$amount.' for '.$run->period_starts_on->format('F Y').' has been recorded.');
+            }
             return $payment;
         });
     }

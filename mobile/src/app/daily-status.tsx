@@ -1,6 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
+import { MonthSwitcher, useMonth } from '../components/MonthSwitcher';
 import { Button, Card, colors, Empty, Field, formatDate, H2, Muted, Notice, Screen } from '../components/ui';
 import { ApiError, get, post } from '../lib/api';
 import { enqueue } from '../lib/queue';
@@ -20,9 +21,11 @@ export default function DailyStatusScreen() {
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // History: one month at a time.
+  const [month, setMonth] = useMonth();
   const load = useCallback(async () => {
     try {
-      const response = await get<{ data: Status[]; today: Status | null }>('/daily-status');
+      const response = await get<{ data: Status[]; today: Status | null }>(`/daily-status?month=${month}`);
       setHistory(response.data);
       if (response.today) {
         setYesterday(response.today.yesterday ?? '');
@@ -36,7 +39,7 @@ export default function DailyStatusScreen() {
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [month]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const save = async () => {
@@ -79,6 +82,7 @@ export default function DailyStatusScreen() {
       </Card>
       <Card>
         <H2>History</H2>
+        <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>
         {history.length ? history.map((s) => (
           <View key={s.id} style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eef1f6' }}>
             <Text style={{ fontWeight: '700', color: colors.ink2 }}>{formatDate(s.work_date)}</Text>

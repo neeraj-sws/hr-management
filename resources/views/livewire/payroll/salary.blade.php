@@ -4,6 +4,15 @@
     <x-errors />
 
     @if($own)
+        {{-- What this month's salary comes to so far, and every past month with each deduction. --}}
+        <section class="card mb">
+            <div class="card-head"><div><h2>This month so far</h2><p>As payroll would pay it if the month ended today</p></div></div>
+            @if($mySoFar)<div style="padding-top:12px"><x-salary-month :month="$mySoFar" open /></div>@else<div class="card-body"><x-empty title="No salary set up yet" icon="wallet" /></div>@endif
+        </section>
+        <section class="card mb">
+            <div class="card-head"><div><h2>Salary history</h2><p>Every month with what was earned, each deduction, and what was paid · click a month for details</p></div></div>
+            <div style="padding-top:12px">@forelse($myHistory as $m)<x-salary-month :month="$m" />@empty<div class="card-body"><x-empty title="No salary months yet" icon="wallet" /></div>@endforelse</div>
+        </section>
         <section class="card mb">
             <div class="card-head"><div><h2>My salary</h2><p>Current and historical salary profiles</p></div><a class="btn btn-sm" href="{{ route('payroll.payslips') }}">My payslips</a></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Effective from</th><th class="num">Monthly salary</th><th class="num">Working days / month</th><th class="num">Hours / day</th></tr></thead><tbody>

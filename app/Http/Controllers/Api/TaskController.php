@@ -29,6 +29,9 @@ class TaskController extends ApiController
         $query->when($status === 'open', fn ($q) => $q->where('status', '!=', 'completed'))
             ->when($status && $status !== 'open', fn ($q) => $q->where('status', $status))
             ->when($request->boolean('overdue'), fn ($q) => $q->where('status', '!=', 'completed')->whereDate('due_on', '<', today()));
+        // Completed tasks are history: with ?month=YYYY-MM only those finished in that month.
+        $month = $this->monthRange($request);
+        if ($month && $status === 'completed') $query->whereBetween('completed_at', [$month[0].' 00:00:00', $month[1].' 23:59:59']);
 
         return response()->json($query->orderByRaw('due_on IS NULL')->orderBy('due_on')->paginate(50)->through(fn ($task) => $this->present($task)));
     }

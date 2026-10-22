@@ -35,7 +35,11 @@ class LeaveController extends ApiController
     {
         $employee = $this->apiEmployee($request);
 
-        return response()->json(LeaveRequest::with('leaveType')->where('employee_id', $employee->id)->latest('starts_on')->paginate(30)->through(fn ($l) => $this->present($l)));
+        $month = $this->monthRange($request);
+
+        return response()->json(LeaveRequest::with('leaveType')->where('employee_id', $employee->id)
+            ->when($month, fn ($q) => $q->whereDate('starts_on', '<=', $month[1])->whereDate('ends_on', '>=', $month[0]))
+            ->latest('starts_on')->paginate($month ? 100 : 30)->through(fn ($l) => $this->present($l)));
     }
 
     public function store(Request $request, HrWorkflowService $workflow): JsonResponse

@@ -2,7 +2,8 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { AttendanceCard } from '../../components/AttendanceCard';
-import { Badge, Button, Card, Empty, formatDate, formatDuration, formatTime, H2, Muted, Notice, Row, Screen } from '../../components/ui';
+import { monthBounds, MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
+import { Badge, Button, Card, Empty, formatDate, formatDuration, formatTime, Muted, Notice, Row, Screen } from '../../components/ui';
 import { ApiError, get } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import type { AttendanceSession } from '../../lib/types';
@@ -17,19 +18,19 @@ export default function Attendance() {
   const [days, setDays] = useState<Day[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // One month at a time (this month first) instead of a long rolling list.
+  const [month, setMonth] = useMonth();
 
   const load = useCallback(async () => {
-    const to = new Date();
-    const from = new Date(to.getTime() - 29 * 86400000);
-    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const { from, to } = monthBounds(month);
     try {
-      const response = await get<{ data: Day[] }>(`/attendance/history?from=${fmt(from)}&to=${fmt(to)}`);
+      const response = await get<{ data: Day[] }>(`/attendance/history?from=${from}&to=${to}`);
       setDays(response.data.reverse());
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.firstMessage : 'Could not load history.');
     }
-  }, []);
+  }, [month]);
 
   useEffect(() => { load(); }, [load, attendance.session?.status]);
 
@@ -45,14 +46,14 @@ export default function Attendance() {
       <AttendanceCard attendance={attendance} />
       {me?.schedule?.starts_at ? <Muted>{me.schedule.shift ? `${me.schedule.shift} shift` : 'Your start time'}: {me.schedule.starts_at}{me.schedule.grace_minutes ? ` (+${me.schedule.grace_minutes} min grace)` : ''}{me.policies?.location_required ? ' · check-in needs your location at an office' : ''}</Muted> : null}
       <Card>
-        <H2>Last 30 days</H2>
+        <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={(m) => { setDays([]); setMonth(m); }} /></View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
           {['present', 'late', 'half_day', 'on_leave', 'absent'].map((s) => <Badge key={s} label={`${s} ${counts[s] ?? 0}`} tone={({ present: 'green', late: 'amber', half_day: 'amber', on_leave: 'violet', absent: 'red' } as const)[s as 'present']} />)}
         </View>
         {error ? <Notice tone="error" text={error} /> : null}
         {days.length ? days.filter((d) => d.status !== 'upcoming').map((d) => (
           <Row key={d.date} title={formatDate(d.date)} subtitle={d.session ? `${formatTime(d.session.check_in)} – ${formatTime(d.session.check_out)} · ${formatDuration(d.session.active_seconds)} worked` : undefined} right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={d.status} />{['absent', 'late', 'half_day'].includes(d.status) || (d.session && !d.session.check_out && d.date !== attendance.session?.work_date) ? <Button small title="Correct" onPress={() => router.push({ pathname: '/corrections', params: { date: d.date } })} /> : null}</View>} />
-        )) : <Empty text="No attendance history" />}
+        )) : <Empty text="No attendance this month" />}
       </Card>
     </Screen>
   );

@@ -61,6 +61,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/my/documents', [SelfServiceController::class, 'documents'])->name('api.my.documents');
     Route::get('/my/assets', [SelfServiceController::class, 'assets'])->name('api.my.assets');
     Route::get('/my/performance', [SelfServiceController::class, 'performance'])->name('api.my.performance');
+    Route::get('/my/salary', [SelfServiceController::class, 'salary'])->name('api.my.salary');
     Route::get('/team/today', [SelfServiceController::class, 'team'])->name('api.team.today');
 
     Route::get('/daily-status', [DailyStatusController::class, 'index'])->name('api.daily-status.index');
