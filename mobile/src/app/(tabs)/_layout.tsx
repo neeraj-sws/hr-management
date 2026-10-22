@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { NotificationBell } from '../../components/NotificationBell';
 import { colors } from '../../components/ui';
 
 /** Filled glyph when the tab is active, outline when not — the standard mobile look. */
@@ -19,6 +20,8 @@ export default function TabsLayout() {
         headerStyle: { backgroundColor: colors.navy },
         headerTintColor: colors.white,
         headerTitleStyle: { fontWeight: '700' },
+        // Always-visible bell with the unread count, on every main screen.
+        headerRight: () => <NotificationBell />,
         tabBarActiveTintColor: colors.blue,
         tabBarInactiveTintColor: colors.faint,
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600', marginBottom: 4 },

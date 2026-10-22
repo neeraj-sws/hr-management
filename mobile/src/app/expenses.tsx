@@ -2,6 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Platform, View } from 'react-native';
+import { AddButton, FormSheet, useCloseOnSuccess } from '../components/FormSheet';
 import { MonthSwitcher, useMonth } from '../components/MonthSwitcher';
 import { DateField, todayYmd } from '../components/DateField';
 import { Badge, Button, Card, Chips, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen, money } from '../components/ui';
@@ -23,6 +24,10 @@ export default function ExpensesScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // The form opens in a popup from the button at the top; it closes itself after a successful submit.
+  const [formOpen, setFormOpen] = useState(false);
+  const closeForm = useCallback(() => setFormOpen(false), []);
+  useCloseOnSuccess(busy, message, closeForm);
 
   // My claims: one month at a time (by the date of the expense).
   const [month, setMonth] = useMonth();
@@ -121,9 +126,10 @@ export default function ExpensesScreen() {
 
   return (
     <Screen>
-      <Card>
-        <H2>New expense claim</H2>
-        {message ? <View style={{ marginBottom: 10 }}><Notice tone={message.tone} text={message.text} /></View> : null}
+      <AddButton title="New expense claim" onPress={() => setFormOpen(true)} />
+      {message && (!formOpen || message.tone !== 'error') ? <Notice tone={message.tone} text={message.text} /> : null}
+      <FormSheet visible={formOpen} title="New expense claim" onClose={closeForm}>
+        {message?.tone === 'error' ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={message.text} /></View> : null}
         <Muted style={{ marginBottom: 6 }}>Category</Muted>
         <Chips value={category} onChange={setCategory} options={(categories.length ? categories : ['Travel', 'Food', 'Other']).map((c) => ({ label: c, value: c }))} />
         <DateField label="Date of expense" value={spentOn} onChange={setSpentOn} maximumDate={todayYmd()} error={errors.spent_on} />
@@ -144,7 +150,7 @@ export default function ExpensesScreen() {
         )}
         {errors.receipt ? <Muted style={{ color: '#bd3446', marginTop: -6, marginBottom: 8 }}>{errors.receipt}</Muted> : null}
         <Button title="Submit claim" tone="primary" onPress={submit} loading={busy} />
-      </Card>
+      </FormSheet>
       <Card>
         <H2>My claims</H2>
         <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>

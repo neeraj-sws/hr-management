@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { AttendanceCard } from '../../components/AttendanceCard';
 import { monthBounds, MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
-import { Badge, Button, Card, Empty, formatDate, formatDuration, formatTime, Muted, Notice, Row, Screen } from '../../components/ui';
+import { Badge, Button, Card, Chips, Empty, formatDate, formatDuration, formatTime, Muted, Notice, Row, Screen } from '../../components/ui';
 import { ApiError, get } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import type { AttendanceSession } from '../../lib/types';
@@ -20,6 +20,8 @@ export default function Attendance() {
   const [refreshing, setRefreshing] = useState(false);
   // One month at a time (this month first) instead of a long rolling list.
   const [month, setMonth] = useMonth();
+  // Narrow the month down to one kind of day.
+  const [dayFilter, setDayFilter] = useState<'all' | 'present' | 'late' | 'leave' | 'absent' | 'off'>('all');
 
   const load = useCallback(async () => {
     const { from, to } = monthBounds(month);
@@ -34,6 +36,8 @@ export default function Attendance() {
 
   useEffect(() => { load(); }, [load, attendance.session?.status]);
 
+  const kinds: Record<typeof dayFilter, string[]> = { all: [], present: ['present', 'extra_work'], late: ['late', 'half_day'], leave: ['on_leave', 'leave_conflict'], absent: ['absent'], off: ['weekend', 'holiday'] };
+  const shownDays = days.filter((d) => d.status !== 'upcoming' && (dayFilter === 'all' || kinds[dayFilter].includes(d.status)));
   const counts = days.reduce<Record<string, number>>((acc, d) => ({ ...acc, [d.status]: (acc[d.status] ?? 0) + 1 }), {});
   const refresh = async () => {
     setRefreshing(true);
@@ -51,9 +55,10 @@ export default function Attendance() {
           {['present', 'late', 'half_day', 'on_leave', 'absent'].map((s) => <Badge key={s} label={`${s} ${counts[s] ?? 0}`} tone={({ present: 'green', late: 'amber', half_day: 'amber', on_leave: 'violet', absent: 'red' } as const)[s as 'present']} />)}
         </View>
         {error ? <Notice tone="error" text={error} /> : null}
-        {days.length ? days.filter((d) => d.status !== 'upcoming').map((d) => (
+        <Chips value={dayFilter} onChange={setDayFilter} options={[{ label: 'All', value: 'all' }, { label: 'Present', value: 'present' }, { label: 'Late', value: 'late' }, { label: 'Leave', value: 'leave' }, { label: 'Absent', value: 'absent' }, { label: 'Off days', value: 'off' }]} />
+        {shownDays.length ? shownDays.map((d) => (
           <Row key={d.date} title={formatDate(d.date)} subtitle={d.session ? `${formatTime(d.session.check_in)} – ${formatTime(d.session.check_out)} · ${formatDuration(d.session.active_seconds)} worked` : undefined} right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={d.status} />{['absent', 'late', 'half_day'].includes(d.status) || (d.session && !d.session.check_out && d.date !== attendance.session?.work_date) ? <Button small title="Correct" onPress={() => router.push({ pathname: '/corrections', params: { date: d.date } })} /> : null}</View>} />
-        )) : <Empty text="No attendance this month" />}
+        )) : <Empty text={dayFilter === 'all' ? 'No attendance this month' : 'No days match this filter'} />}
       </Card>
     </Screen>
   );

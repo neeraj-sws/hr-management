@@ -1,6 +1,7 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
+import { AddButton, FormSheet, useCloseOnSuccess } from '../components/FormSheet';
 import { MonthSwitcher, useMonth } from '../components/MonthSwitcher';
 import { DateField, TimeField, todayYmd } from '../components/DateField';
 import { Badge, Button, Card, confirmAction, Empty, Field, formatDate, formatTime, H2, Muted, Notice, Row, Screen } from '../components/ui';
@@ -18,6 +19,10 @@ export default function CorrectionsScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // The form opens in a popup from the button at the top; it closes itself after a successful submit.
+  const [formOpen, setFormOpen] = useState(!!params.date);
+  const closeForm = useCallback(() => setFormOpen(false), []);
+  useCloseOnSuccess(busy, message, closeForm);
 
   // My requests: one month at a time.
   const [month, setMonth] = useMonth();
@@ -67,16 +72,17 @@ export default function CorrectionsScreen() {
 
   return (
     <Screen>
-      <Card>
-        <H2>Request a correction</H2>
+      <AddButton title="Request a correction" onPress={() => setFormOpen(true)} />
+      {message && (!formOpen || message.tone !== 'error') ? <Notice tone={message.tone} text={message.text} /> : null}
+      <FormSheet visible={formOpen} title="Request a correction" onClose={closeForm}>
         <Muted style={{ marginBottom: 10 }}>Forgot to check out, or checked in at the wrong time? Set the correct times — your manager approves, then your attendance is updated.</Muted>
-        {message ? <View style={{ marginBottom: 10 }}><Notice tone={message.tone} text={message.text} /></View> : null}
+        {message?.tone === 'error' ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={message.text} /></View> : null}
         <DateField label="Day" value={workDate} onChange={setWorkDate} maximumDate={todayYmd()} error={errors.work_date} />
         <TimeField label="Correct check-in" value={checkIn} onChange={setCheckIn} error={errors.check_in} />
         <TimeField label="Correct check-out" value={checkOut} onChange={setCheckOut} error={errors.check_out} />
         <Field label="Reason" value={reason} onChangeText={setReason} placeholder="e.g. Forgot to check out at 6:30 PM" error={errors.reason} multiline />
         <Button title="Send for approval" tone="primary" onPress={submit} loading={busy} />
-      </Card>
+      </FormSheet>
       <Card>
         <H2>My requests</H2>
         <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>
