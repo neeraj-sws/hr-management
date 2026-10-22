@@ -78,7 +78,7 @@ class DesktopApp:
         self.tasks: list[dict] = []
         self.online = True
 
-        root.title("SWS HR")
+        root.title(f"SWS HR {VERSION}")  # version in the title bar, so it is easy to tell which app a PC runs
         root.geometry("760x640")
         root.minsize(640, 560)
         root.configure(bg=CANVAS)

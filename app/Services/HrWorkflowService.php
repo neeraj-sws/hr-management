@@ -706,7 +706,7 @@ class HrWorkflowService
 
     /**
      * What one day of salary is for this employee in the month of $date — the same number payroll divides by:
-     * "auto" = that month's working days from the calendar (Sundays, the off Saturdays and unpaid holidays left out),
+     * "auto" = that month's working days from the calendar (Sundays, the off Saturdays and holidays left out),
      * otherwise the fixed number from Settings > Payroll or the salary profile.
      *
      * @return array{days: int, auto: bool, month: string}
@@ -725,15 +725,16 @@ class HrWorkflowService
         return ['days' => max(1, (int) ($policy['working_days_per_month'] ?? $profile?->working_days_per_month ?? 22)), 'auto' => false, 'month' => $month->format('M Y')];
     }
 
-    /** Working days of the whole month from the calendar, a paid holiday on a working weekday counting as a working day. */
+    /**
+     * Working days of the whole month from the calendar: Sundays, the off Saturdays and every holiday left out
+     * (October 2026: 31 - 4 Sundays - 3rd Saturday - Dussehra = 25). A paid holiday is still paid: a month
+     * worked in full pays the full salary.
+     */
     private function calendarDaysInMonth(\Illuminate\Support\Carbon $monthStart, array $calendar): int
     {
         $days = 0;
-        $paidHolidays = \App\Support\WorkCalendar::offHolidays($calendar);
         for ($day = $monthStart->copy()->startOfMonth(); $day->lte($monthStart->copy()->endOfMonth()); $day->addDay()) {
-            $date = $day->toDateString();
-            if ($this->isConfiguredWorkday($date, $calendar)) { $days++; continue; }
-            if (in_array($date, $paidHolidays, true) && $this->isConfiguredWorkday($date, [...$calendar, 'holidays' => []]) && \App\Support\WorkCalendar::holidayTypeOf($calendar, $date)['paid']) $days++;
+            if ($this->isConfiguredWorkday($day->toDateString(), $calendar)) $days++;
         }
 
         return max(1, $days);
