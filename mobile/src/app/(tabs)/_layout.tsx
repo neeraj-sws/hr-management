@@ -24,6 +24,8 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600', marginBottom: 4 },
         tabBarIconStyle: { marginTop: 4 },
         tabBarStyle: { height: 64 + bottom, paddingTop: 6, paddingBottom: 10 + bottom },
+        // While typing, the tabs step aside so they never sit on top of the keyboard.
+        tabBarHideOnKeyboard: true,
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home') }} />

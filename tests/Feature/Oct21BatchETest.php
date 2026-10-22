@@ -81,6 +81,26 @@ class Oct21BatchETest extends TestCase
         $this->assertSame([8562.96, 8562.96, 0.0], [$row['payable'], $row['paid'], $row['balance']]);
     }
 
+    public function test_leave_cannot_be_requested_for_a_past_day(): void
+    {
+        $e = $this->employee('LP-1');
+        $type = \App\Models\LeaveType::where('is_active', true)->firstOrFail();
+        \Laravel\Sanctum\Sanctum::actingAs($e->user, ['*']);
+        $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => '2026-10-15', 'ends_on' => '2026-10-16', 'reason' => 'Trip'])
+            ->assertStatus(422)->assertJsonValidationErrors('starts_on');
+        $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => '2026-10-22', 'ends_on' => '2026-10-23', 'reason' => 'Trip'])
+            ->assertCreated();
+    }
+
+    public function test_an_expense_claim_without_a_photo_can_be_sent_as_plain_json(): void
+    {
+        $e = $this->employee('EXP-1');
+        \Laravel\Sanctum\Sanctum::actingAs($e->user, ['*']);
+        $this->postJson('/api/expenses', ['category' => 'Travel', 'spent_on' => '2026-10-19', 'amount' => '250', 'description' => 'Cab to client'], ['X-Action-Id' => 'exp-json-1'])
+            ->assertCreated()->assertJsonPath('data.description', 'Cab to client');
+        $this->assertSame(1, \App\Models\ExpenseClaim::where('employee_id', $e->id)->count());
+    }
+
     public function test_hourly_rate_hours_setting_changes_the_short_hours_deduction(): void
     {
         $e = $this->employee('HR-9');

@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
-import { DateField } from '../../components/DateField';
+import { DateField, todayYmd } from '../../components/DateField';
 import { Badge, Button, Card, Chips, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen } from '../../components/ui';
 import { ApiError, get, post } from '../../lib/api';
 import { enqueue } from '../../lib/queue';
@@ -116,8 +116,8 @@ export default function Leave() {
         {errors.leave_type_id ? <Muted style={{ color: '#bd3446', marginTop: -6, marginBottom: 8 }}>{errors.leave_type_id}</Muted> : null}
         <Muted style={{ marginBottom: 6 }}>Duration</Muted>
         <Chips<'full' | 'half' | 'short'> value={duration} onChange={setDuration} options={[{ label: 'Full day', value: 'full' }, { label: 'Half day', value: 'half' }, { label: 'Short leave', value: 'short' }]} />
-        <DateField label={duration === 'full' ? 'From' : 'Day'} value={startsOn} onChange={pickStart} error={errors.starts_on} />
-        {duration === 'full' ? <DateField label="To" value={endsOn} onChange={setEndsOn} minimumDate={startsOn || undefined} error={errors.ends_on} /> : null}
+        <DateField label={duration === 'full' ? 'From' : 'Day'} value={startsOn} onChange={pickStart} minimumDate={todayYmd()} error={errors.starts_on} />
+        {duration === 'full' ? <DateField label="To" value={endsOn} onChange={setEndsOn} minimumDate={startsOn || todayYmd()} error={errors.ends_on} /> : null}
         <Field label="Reason" value={reason} onChangeText={setReason} error={errors.reason} multiline />
         <Button title="Submit request" tone="primary" onPress={submit} loading={busy} />
       </Card>

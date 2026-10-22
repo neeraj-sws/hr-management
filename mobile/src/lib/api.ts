@@ -73,8 +73,9 @@ export async function api<T = any>(method: Method, path: string, body?: unknown,
       body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
       signal: controller.signal,
     });
-  } catch {
-    throw new ApiError('Cannot reach the SWS HR server. Check your connection.', 0);
+  } catch (err) {
+    // Keep the phone's own reason (e.g. "Network request failed", a timeout) for screens that show details.
+    throw new ApiError('Cannot reach the SWS HR server. Check your connection.', 0, {}, err instanceof Error ? err.message : String(err));
   } finally {
     clearTimeout(timer);
   }

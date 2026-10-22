@@ -41,7 +41,7 @@ class LeaveController extends ApiController
     public function store(Request $request, HrWorkflowService $workflow): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'duration' => ['nullable', 'in:full,half,short'], 'starts_on' => ['required', 'date'], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000']]);
+        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'duration' => ['nullable', 'in:full,half,short'], 'starts_on' => ['required', 'date', 'after_or_equal:today'], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000']], ['starts_on.after_or_equal' => 'Leave can be requested for today or a later date, not for a past day.']);
         return $this->once($request, function () use ($workflow, $employee, $data) {
             $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'duration' => $data['duration'] ?? 'full', 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
 

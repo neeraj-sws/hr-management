@@ -86,6 +86,11 @@ async function sendDirect(item: QueuedAction & { type: DirectType }) {
     return;
   }
   const { receipt, ...fields } = item.payload as Record<string, unknown> & { receipt?: { uri: string; name: string; type: string } };
+  // No bill photo: a plain request (the file-upload format failed on some phones and kept claims stuck here).
+  if (!receipt) {
+    await post(DIRECT[item.type], fields, headers);
+    return;
+  }
   const form = new FormData();
   Object.entries(fields).forEach(([key, value]) => { if (value !== null && value !== undefined) form.append(key, String(value)); });
   if (receipt) form.append('receipt', receipt as unknown as Blob);
