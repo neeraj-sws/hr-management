@@ -149,5 +149,6 @@
 
     @livewireScripts
     <script src="{{ asset('js/offline-action-queue.js') }}" defer></script>
+    <script src="{{ asset('js/table-sort.js') }}?v={{ filemtime(public_path('js/table-sort.js')) }}" defer></script>
 </body>
 </html>

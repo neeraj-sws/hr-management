@@ -369,3 +369,18 @@ button.pill:hover{border-color:var(--line)}
 .salary-month[open]>summary{border-bottom:1px solid var(--line-2);background:var(--canvas)}
 .salary-month-figures{display:flex;flex-wrap:wrap;gap:16px;text-align:right}.salary-month-figures span{font-variant-numeric:tabular-nums}
 .salary-month-figures .neg{color:var(--red)}.salary-month-figures .due{color:var(--amber);font-weight:700}
+
+/* Onboarding document checklist (Documents page) */
+.doc-checklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.doc-check{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff8f0}
+.doc-check.done{background:#f3faf5}
+.doc-check small{display:block;color:var(--muted);font-size:12px}
+.doc-check-mark{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:#f59e0b;color:#fff;flex:none}
+.doc-check.done .doc-check-mark{background:#16a34a}
+
+/* Click a column heading to sort the list (public/js/table-sort.js) */
+.table th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.table th.sortable:hover{color:var(--ink)}
+.table th.sortable::after{content:"⇅";margin-left:5px;font-size:10px;opacity:.35}
+.table th.sorted-asc::after{content:"▲";opacity:.9}
+.table th.sorted-desc::after{content:"▼";opacity:.9}

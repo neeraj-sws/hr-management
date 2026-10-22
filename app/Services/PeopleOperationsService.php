@@ -313,9 +313,24 @@ class PeopleOperationsService
                 for($day=Carbon::parse($start)->startOfDay();$day->lte(Carbon::parse($end)->startOfDay());$day->addDay()){
                     $date=$day->toDateString();$calendar=$this->policy($employee,'calendar.working_days',['days'=>[1,2,3,4,5],'holidays'=>[]],$date);if(!$this->isConfiguredWorkday($date,$calendar)||$day->gte(today())||($employee->joined_at&&$day->lt(Carbon::parse($employee->joined_at))))continue;
                     if(\App\Models\AttendanceSession::where('employee_id',$employee->id)->whereDate('work_date',$date)->whereNotNull('check_in')->exists())continue;
-                    if(LeaveRequest::where('employee_id',$employee->id)->where('status','approved')->whereDate('starts_on','<=',$date)->whereDate('ends_on','>=',$date)->exists())continue;
-                    $penalty=EmployeePenalty::firstOrCreate(['source_key'=>"absence:{$employee->id}:{$date}".($absenceRule?":{$absenceRule->id}":'')],['employee_id'=>$employee->id,'policy_rule_id'=>$absenceRule?->id,'effective_on'=>$date,'amount'=>$amount,'reason'=>'No attendance or approved leave recorded for scheduled workday','requested_by'=>$actor,'status'=>'pending']);
-                    if($penalty->wasRecentlyCreated){$this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.unauthorized_absence_assessed',$penalty);$created++;}
+                    // A leave request sent for the day (approved or still waiting) means the leave mail came.
+                    if(LeaveRequest::where('employee_id',$employee->id)->whereIn('status',['approved','pending'])->whereDate('starts_on','<=',$date)->whereDate('ends_on','>=',$date)->exists())continue;
+                    $penalty=EmployeePenalty::firstOrCreate(['source_key'=>"absence:{$employee->id}:{$date}".($absenceRule?":{$absenceRule->id}":'')],['employee_id'=>$employee->id,'policy_rule_id'=>$absenceRule?->id,'effective_on'=>$date,'amount'=>$amount,'reason'=>'Absent on '.$day->format('d M').' with no leave request (no leave mail)','requested_by'=>$actor,'status'=>'pending']);
+                    if($penalty->wasRecentlyCreated){
+                        $this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.unauthorized_absence_assessed',$penalty);$created++;
+                        // "Deduct automatically" (the default): approved at once, so payroll deducts it; HR can still waive it.
+                        if(($config['auto_deduct']??1)){
+                            try{$this->decideFinancialRequest(EmployeePenalty::class,$penalty->id,$actor,true,'Deducted automatically: absent with no leave request.');}
+                            catch(ValidationException){
+                                // The payroll for that day is locked: it waits for an admin (Master Admin) to approve.
+                                $admin=User::role('Master Admin')->where('is_active',true)->orderBy('id')->first();
+                                if($admin){
+                                    ApprovalRequest::where('approvable_type',EmployeePenalty::class)->where('approvable_id',$penalty->id)->where('status','pending')->update(['approver_id'=>$admin->id]);
+                                    Notifier::send(User::role('Master Admin')->get(),'EmployeePenalty',$penalty->id,"Penalty of ".number_format((float)$penalty->amount,2)." for {$employee->name} ({$penalty->reason}) needs admin approval: that payroll is already locked.");
+                                }
+                            }
+                        }
+                    }
                 }
         }
         $created += $this->assessWorkCompliance($start, $end, $actor);

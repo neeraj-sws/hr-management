@@ -29,6 +29,9 @@ use Illuminate\Validation\ValidationException;
 
 class HrWorkflowService
 {
+    /** Old salary sheet working days per month, looked up once per request. */
+    private array $sheetDaysCache = [];
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     public function createEmployee(array $data, ?int $userId = null): AttendanceEmployee
@@ -395,7 +398,8 @@ class HrWorkflowService
             // Pay is per day at salary ÷ working days per month. A paid holiday tops a short month up to
             // that divisor (it is paid like a day worked); in a month that already has enough working days
             // it changes nothing. An unpaid holiday takes one day off what the month can pay.
-            $monthDivisor = $calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth;
+            $sheetDays = $this->sheetWorkingDays($monthKey);
+            $monthDivisor = $sheetDays ?: ($calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth);
             $monthDivisors[$monthKey] = $monthDivisor;
             $topUp = min($monthPaidHolidays, max(0, $monthDivisor - $scheduledMonth));
             foreach ($segments as &$seg) {
@@ -418,7 +422,7 @@ class HrWorkflowService
                     continue;
                 }
                 $segDays = ($attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled']) * $scale;
-                $segDivisor = $calendarDivisor ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
+                $segDivisor = ($calendarDivisor || $sheetDays) ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
                 $basePay += ((float) $seg['profile']->monthly_salary / max(1, $segDivisor)) * $segDays;
                 foreach ($structure->components($seg['profile'], $employee, $end) as $component) {
                     if ($component['type'] !== 'earning') continue;
@@ -482,7 +486,8 @@ class HrWorkflowService
             $missing = 0;
             foreach (array_keys($presentSet) as $date) {
                 $daySession = $daySessions->get($date);
-                if (! $daySession) continue;
+                // Only finished days: a day still in progress (not checked out yet) is not short.
+                if (! $daySession || ! $daySession->check_out) continue;
                 $required = (int) round($standardDailyHours * 3600 * (1 - (float) ($partLeave[$date] ?? 0)));
                 $worked = $attendanceService->workedSeconds($daySession);
                 $short['required_seconds'] += $required;
@@ -715,6 +720,7 @@ class HrWorkflowService
     {
         $policy = $this->policyConfiguration($employee, 'payroll.calculation', $date, []);
         $month = \Illuminate\Support\Carbon::parse($date)->startOfMonth();
+        if ($sheet = $this->sheetWorkingDays($month->format('Y-m'))) return ['days' => $sheet, 'auto' => false, 'month' => $month->format('M Y')];
         if (($policy['divisor'] ?? 'fixed') === 'calendar') {
             $calendar = $this->policyConfiguration($employee, 'calendar.working_days', $month->copy()->endOfMonth()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
 
@@ -723,6 +729,17 @@ class HrWorkflowService
         $profile ??= $employee->salaryProfiles()->whereDate('effective_from', '<=', $date)->orderByDesc('effective_from')->orderByDesc('id')->first();
 
         return ['days' => max(1, (int) ($policy['working_days_per_month'] ?? $profile?->working_days_per_month ?? 22)), 'auto' => false, 'month' => $month->format('M Y')];
+    }
+
+    /**
+     * Working days the old salary sheet used for a month (the most common value), or 0 when the month is not in it.
+     * A month in the sheet uses these days for everyone: the sheet knew that month's holidays (August 2026 = 24),
+     * so employees with and without a sheet row get the same per-day rate.
+     */
+    public function sheetWorkingDays(string $monthKey): int
+    {
+        return $this->sheetDaysCache[$monthKey] ??= (int) (\App\Models\LegacySalaryRecord::where('payroll_month', $monthKey)->where('total_working_days', '>', 0)
+            ->selectRaw('total_working_days, COUNT(*) as n')->groupBy('total_working_days')->orderByDesc('n')->first()?->total_working_days ?? 0);
     }
 
     /**
