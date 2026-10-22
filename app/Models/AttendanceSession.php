@@ -101,6 +101,24 @@ class AttendanceSession extends Model
     }
 
     /**
+     * Working time the desktop app did not see but an approved attendance correction confirmed — e.g. the
+     * app stopped for 2 hours by a glitch, the employee asked for a correction and it was approved. It is
+     * the corrected in–out time less break, minus everything the app measured (active, meetings, idle),
+     * and is shown in the screen time as "added by approved correction". 0 without an approved correction.
+     */
+    public function correctedScreenSeconds(): int
+    {
+        if (! $this->check_in) return 0;
+        $measured = (int) $this->screen_active_seconds + (int) $this->screen_meeting_seconds + (int) $this->screen_idle_seconds;
+        if ($measured <= 0) return 0; // no desktop app that day: nothing to fill in
+        $corrected = $this->relationLoaded('events') ? $this->events->contains('event_type', 'correction') : $this->events()->where('event_type', 'correction')->exists();
+        if (! $corrected) return 0;
+        $span = (int) $this->check_in->diffInSeconds($this->check_out ?? now()) - (int) $this->break_seconds;
+
+        return max(0, $span - $measured);
+    }
+
+    /**
      * Idle time for the day, taken off the working time. The desktop app reports
      * untouched-screen time with every heartbeat (screen_idle_seconds); older
      * device agents report idle_seconds at sync. Whichever source is tracking

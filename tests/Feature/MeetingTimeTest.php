@@ -43,4 +43,30 @@ class MeetingTimeTest extends TestCase
         Carbon::setTestNow('2026-10-22 11:01:00');
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 60, 'screen_idle_seconds' => 0])->assertOk()->assertJsonPath('data.screen_meeting_seconds', 2100);
     }
+
+    public function test_time_the_desktop_app_missed_counts_once_a_correction_is_approved(): void
+    {
+        $this->seed();
+        Carbon::setTestNow('2026-10-22 19:00:00');
+        $admin = User::where('email', 'admin@example.com')->first();
+        $user = User::factory()->create(['email' => 'mt-2@example.com']);
+        $user->assignRole('Employee');
+        $e = AttendanceEmployee::create(['employee_code' => 'MT-2', 'name' => 'Person MT-2', 'email' => $user->email, 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01', 'work_start' => '10:00:00', 'work_end' => '19:00:00', 'daily_work_hours' => 8.5]);
+        // 10:00–18:30 worked, but the desktop app stopped for 2.5 hours: it measured only 6 hours, and the gap was booked as a break.
+        $s = AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-22', 'check_in' => '2026-10-22 10:00:00', 'check_out' => '2026-10-22 18:30:00', 'status' => 'completed',
+            'break_seconds' => 9000, 'screen_active_seconds' => 5 * 3600 + 50 * 60, 'screen_idle_seconds' => 600, 'last_sync_at' => now()]);
+        $this->assertSame(0, $s->correctedScreenSeconds(), 'No correction yet: nothing is added');
+
+        // The employee asks for "no break that day"; the admin approves.
+        $svc = app(\App\Services\AttendanceCorrectionService::class);
+        $svc->decide($svc->request($e, '2026-10-22', null, null, 'Desktop app stopped; I was working', 0), $admin->id, true);
+        $s->refresh();
+        $this->assertSame(9000, $s->correctedScreenSeconds(), '8:30 in–out − 6:00 the app measured = 2:30 added');
+
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('02:30:00 added by approved correction')->assertSee('98% working');
+        $row = app(ReportService::class)->rows($admin, 'attendance', ['from' => '2026-10-22', 'to' => '2026-10-22', 'employee_id' => $e->id])->first();
+        $this->assertSame('02:30:00', $row['screen_corrected_time']);
+        Sanctum::actingAs($user, ['*']);
+        $this->getJson('/api/attendance/today')->assertOk()->assertJsonPath('data.screen_corrected_seconds', 9000);
+    }
 }

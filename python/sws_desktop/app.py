@@ -743,10 +743,11 @@ class DesktopApp:
             active = int(session.get("screen_active_seconds") or 0) + int(self.screen_active)
             idle = int(session.get("screen_idle_seconds") or 0) + int(self.screen_idle)
             meeting = int(session.get("screen_meeting_seconds") or 0) + int(self.screen_meeting)
-            text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + f" · {hms(idle)} idle"
+            corrected = int(session.get("screen_corrected_seconds") or 0)  # time the app missed, confirmed by an approved correction
+            text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
             if self.meeting_reason:
                 text += f"\n● In a meeting now ({self.meeting_reason}) — counted as working time, not idle"
-            self.screen_label.config(text=text if active + idle + meeting else "Screen time starts counting while you are checked in.")
+            self.screen_label.config(text=text if active + idle + meeting + corrected else "Screen time starts counting while you are checked in.")
         else:
             self.screen_label.config(text="")
         self.root.after(1000, self._tick)

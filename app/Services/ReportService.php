@@ -77,7 +77,7 @@ class ReportService
      * as the attendance and task screens. The column is renamed to *_time so
      * a spreadsheet never mixes decimal hours with clock times.
      */
-    public const DURATION_COLUMNS = ['active_hours' => 3600, 'idle_hours' => 3600, 'break_hours' => 3600, 'screen_active_hours' => 3600, 'screen_idle_hours' => 3600, 'screen_meeting_hours' => 3600, 'late_minutes' => 60, 'early_minutes' => 60, 'estimated_hours' => 3600, 'logged_hours' => 3600, 'not_counted_hours' => 3600, 'requested_minutes' => 60, 'approved_minutes' => 60, 'hours' => 3600, 'minutes' => 60];
+    public const DURATION_COLUMNS = ['active_hours' => 3600, 'idle_hours' => 3600, 'break_hours' => 3600, 'screen_active_hours' => 3600, 'screen_idle_hours' => 3600, 'screen_meeting_hours' => 3600, 'screen_corrected_hours' => 3600, 'late_minutes' => 60, 'early_minutes' => 60, 'estimated_hours' => 3600, 'logged_hours' => 3600, 'not_counted_hours' => 3600, 'requested_minutes' => 60, 'approved_minutes' => 60, 'hours' => 3600, 'minutes' => 60];
 
     public static function durationColumn(string $column): string
     {
@@ -95,7 +95,7 @@ class ReportService
     private function rawColumns(string $type): array
     {
         return match ($type) {
-            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'day', 'day_status', 'note', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_meeting_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'session_status', 'check_in_ip', 'check_out_ip'],
+            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'day', 'day_status', 'note', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_meeting_hours', 'screen_corrected_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'session_status', 'check_in_ip', 'check_out_ip'],
             'leave' => ['id', 'employee_code', 'employee_name', 'leave_type', 'paid', 'starts_on', 'ends_on', 'days', 'status', 'decided_at'],
             'projects' => ['id', 'project', 'client', 'manager', 'status', 'starts_on', 'ends_on', 'members', 'tasks', 'completed_tasks', 'open_tasks', 'overdue_tasks', 'progress_pct', 'estimated_hours', 'logged_hours'],
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
@@ -397,7 +397,7 @@ class ReportService
                     'note' => $day['extra'] ? 'Extra working · '.$day['extra_reason'] : ($day['label'] ?: null),
                     'check_in' => $s?->check_in?->format('h:i:s A'), 'check_out' => $s?->check_out?->format('h:i:s A'),
                     'active_hours' => $s ? $this->hours($this->attendance->workedSeconds($s)) : null, 'idle_hours' => $s ? $this->hours($s->idleSeconds()) : null, 'break_hours' => $s ? $this->hours($s->break_seconds) : null,
-                    'screen_active_hours' => $s ? $this->hours($s->screen_active_seconds) : null, 'screen_meeting_hours' => $s ? $this->hours($s->screen_meeting_seconds) : null, 'screen_idle_hours' => $s ? $this->hours($s->screen_idle_seconds) : null,
+                    'screen_active_hours' => $s ? $this->hours($s->screen_active_seconds) : null, 'screen_meeting_hours' => $s ? $this->hours($s->screen_meeting_seconds) : null, 'screen_corrected_hours' => $s ? $this->hours($s->correctedScreenSeconds()) : null, 'screen_idle_hours' => $s ? $this->hours($s->screen_idle_seconds) : null,
                     'late_minutes' => $s ? $this->attendance->lateMinutes($s) : null, 'early_minutes' => $s ? $this->attendance->earlyMinutes($s) : null,
                     'session_status' => $s?->status, 'check_in_ip' => $s?->check_in_ip, 'check_out_ip' => $s?->check_out_ip]);
                 if ($limit && $rows->count() >= $limit) return $rows;

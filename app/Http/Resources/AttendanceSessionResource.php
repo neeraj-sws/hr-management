@@ -22,6 +22,8 @@ class AttendanceSessionResource extends JsonResource
             'screen_active_seconds'=>(int)$this->screen_active_seconds,
             'screen_idle_seconds'=>(int)$this->screen_idle_seconds,
             'screen_meeting_seconds'=>(int)$this->screen_meeting_seconds,
+            // Time the desktop app missed but an approved correction confirmed as working.
+            'screen_corrected_seconds'=>$this->resource->correctedScreenSeconds(),
             'status'=>$this->status,
             'server_version'=>(int)$this->server_version,
             'events'=>$this->whenLoaded('events'),
