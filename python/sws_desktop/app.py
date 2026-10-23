@@ -813,25 +813,49 @@ class DesktopApp:
         if hasattr(self, "att_off_label") and self.att_off_label.winfo_exists():
             self.att_off_label.config(text="" if self.desktop_attendance_allowed else "Attendance from the desktop app is turned off for you. Use the website or mobile app.")
 
+    def _live(self, session: dict) -> dict:
+        """The server's figures counted on to this second by the same rule as the website and the phone
+        (AttendanceService::liveFigures): while working, the state last reported keeps counting for a while
+        (in use / meeting -> worked and that bucket; idle -> idle, worked stands still); on a break, break counts."""
+        live = session.get("live") or {}
+        v = {
+            "worked": int(session.get("worked_seconds") or session.get("active_seconds") or 0),
+            "idle": int(session.get("idle_counted_seconds", session.get("idle_seconds")) or 0),
+            "active": int(session.get("screen_active_seconds") or 0),
+            "meeting": int(session.get("screen_meeting_seconds") or 0),
+            "screen_idle": int(session.get("screen_idle_seconds") or 0),
+        }
+        running = live.get("running", session.get("status") in ("working", "on_break") and not session.get("check_out"))
+        s = max(0, int((datetime.now(timezone.utc) - self.session_fetched_at).total_seconds())) if running and session.get("id") else 0
+        if not s or session.get("status") != "working":
+            return v
+        k = min(s, int(live.get("tick_for") or 0))
+        state = live.get("state")
+        if state == "idle":
+            v["idle"] += k
+            v["screen_idle"] += k
+            v["worked"] += s - k
+        else:
+            v["worked"] += s
+            if state in ("active", "meeting"):
+                v[state] += k
+        return v
+
     def _tick(self):
         if not self.clock_label.winfo_exists():
             return
         session = self.session
+        live = self._live(session) if session else None
         if session:
-            worked = int(session.get("worked_seconds") or session.get("active_seconds") or 0)
-            if session.get("status") == "working" and session.get("id"):
-                worked += int((datetime.now(timezone.utc) - self.session_fetched_at).total_seconds())
+            worked = live["worked"]
             self.clock_label.config(text=f"{worked // 3600:02d}:{worked % 3600 // 60:02d}:{worked % 60:02d}")
         else:
             self.clock_label.config(text="--:--:--")
         self.break_label.config(text=self._break_text(session))
         self.total_label.config(text=self._total_text(session))
         if session:
-            # Exactly the server's figures (the same as the website, admin list and phone), updated with
-            # every report to the server (30 s); the worked clock above counts every second everywhere.
-            active = int(session.get("screen_active_seconds") or 0)
-            idle = int(session.get("screen_idle_seconds") or 0)
-            meeting = int(session.get("screen_meeting_seconds") or 0)
+            # The server's figures (the same as the website, admin list and phone), counted on each second.
+            active, idle, meeting = live["active"], live["screen_idle"], live["meeting"]
             corrected = int(session.get("screen_corrected_seconds") or 0)  # time the app missed, confirmed by an approved correction
             text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
             untracked = int(session.get("screen_untracked_seconds") or 0)  # app closed / updating: counted as worked
@@ -865,7 +889,7 @@ class DesktopApp:
         breaks = int(session.get("break_seconds") or 0)
         if session.get("status") == "on_break":
             breaks += max(0, int((datetime.now(timezone.utc) - self._break_started_at(session)).total_seconds()))
-        idle = int(session.get("idle_counted_seconds", session.get("idle_seconds")) or 0)
+        idle = self._live(session)["idle"]
         parts = [f"break {hms(breaks)}"] + ([f"idle {hms(idle)}"] if idle else [])
         return f"Total time {hms(total)} since check-in  (includes {' · '.join(parts)})"
 
@@ -1112,7 +1136,8 @@ class DesktopApp:
                 if session:
                     self._sync_session(session)
 
-            self._run(lambda: self.client.heartbeat(active, idle, meeting), sent, lambda _e: None)
+            state = self.presence_bucket if self.presence_bucket in ("active", "idle", "meeting") else None
+            self._run(lambda: self.client.heartbeat(active, idle, meeting, state), sent, lambda _e: None)
         self.root.after(SYNC_INTERVAL_MS, self._auto_sync)
 
 

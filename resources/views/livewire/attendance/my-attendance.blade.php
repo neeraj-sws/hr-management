@@ -5,21 +5,24 @@
         <div class="alert alert-info">{{ $session->forcedBy?->name ?? 'An administrator' }} checked you out at {{ $session->check_out->format('h:i A') }}. Reason: {{ $session->forcedReasonLabel() }}. You cannot check out again today — <a href="{{ route('attendance.corrections', ['date' => $session->work_date->toDateString()]) }}">ask for a correction</a> if this is wrong.</div>
     @endif
 
-    <section class="card card-body mb">
+    <section class="card card-body mb" wire:key="today-{{ now()->timestamp }}" @if($live) x-data="swsLive(@js($live))" @endif>
         <div class="clock-card">
             <div>
                 <p class="eyebrow">Worked today</p>
-                <div class="timer-display"><x-live-duration :seconds="$worked" :running="$session && ! $session->check_out && $session->status === 'working'" /></div>
+                <div class="timer-display"><span x-text="hms(v.worked)">@hms($live['worked'] ?? 0)</span></div>
                 <div class="pill-row mt">
                     @if($session)
                         <span class="pill"><b>In</b>{{ $session->check_in->format('h:i A') }}@if($session->check_in_photo_path) <a href="{{ route('attendance.photo', [$session, 'in']) }}" target="_blank" title="Check-in selfie">📸</a>@endif @if($session->check_in_latitude) <span title="Location recorded">📍</span>@endif</span>
                         @if($session->check_out)<span class="pill"><b>Out</b>{{ $session->check_out->format('h:i A') }}</span>@endif
-                        <span class="pill"><b>Break</b>@hms((int) $session->break_seconds)</span>
-                        @if($session->idleSeconds())<span class="pill"><b>Idle</b>@hms($session->idleSeconds())</span>@endif
-                        @if($session->screenTime()['meeting'])<span class="pill" title="Online meetings (Teams, Zoom, Google Meet) and away time you confirmed as working — counted as working time, not idle"><b>Meeting</b>@hms($session->screenTime()['meeting'])</span>@endif
-                        @if($session->screenTime()['untracked'] >= 60)<span class="pill" title="Working time the desktop app did not see (closed, being updated, or opened after check-in) — counted as worked"><b>Not tracked</b>@hms($session->screenTime()['untracked'])</span>@endif
+                        <span class="pill" title="Check-in to now (or check-out)"><b>In–out</b><span x-text="hms(v.inOut)">@hms($live['in_out'])</span></span>
+                        <span class="pill"><b>Break</b><span x-text="hms(v.brk)">@hms($live['break'])</span></span>
+                        <span class="pill"><b>Idle</b><span x-text="hms(v.idle)">@hms($live['idle'])</span></span>
+                        @if($live['screen']['meeting'] || $live['state'] === 'meeting')<span class="pill" title="Online meetings (Teams, Zoom, Google Meet) and away time you confirmed as working — counted as working time, not idle"><b>Meeting</b><span x-text="hms(v.meeting)">@hms($live['screen']['meeting'])</span></span>@endif
                         <x-badge :status="$session->status" />
                         @if($late)<x-badge status="late" />@endif
+                    </div>
+                    <div class="small mt" title="From the SWS HR desktop app">
+                        <b>Screen time</b> @include('livewire.attendance.partials.screen-time', ['s' => $session, 'f' => $live])
                     @else
                         <span class="pill">Not checked in yet</span>
                     @endif
@@ -81,21 +84,24 @@
             <x-attendance-calendar :days="$days" :month="$monthStart" />
         @else
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th><th>Shift</th><th>Check in</th><th>Check out</th><th class="num" title="Check-out minus check-in">In–out</th><th class="num">Break</th><th class="num">Idle</th><th class="num" title="In–out minus break minus idle">Worked</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>Shift</th><th>Check in</th><th>Check out</th><th class="num" title="Check-out minus check-in">In–out</th><th class="num">Break</th><th class="num">Idle</th><th class="num" title="In–out minus break minus idle">Worked</th><th title="From the SWS HR desktop app">Screen time</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @foreach($days->reverse() as $day)
                 @php($dayShift = app(\App\Services\ShiftService::class)->shiftFor($employee, $day['date']))
                 @php($required = (int) round(app(\App\Services\AttendanceService::class)->dailyHours($employee, $day['date']) * 3600))
-                <tr><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}</td>
+                {{-- The same figures as the admin list, reports and the apps; today's open day counts on each second. --}}
+                @php($f = $day['session'] ? app(\App\Services\AttendanceService::class)->liveFigures($day['session']) : null)
+                <tr wire:key="day-{{ $day['date'] }}-{{ now()->timestamp }}" @if($f && $f['running']) x-data="swsLive(@js($f))" @endif><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}</td>
                     <td class="nowrap">@if($dayShift){{ $dayShift->name }}<small>{{ $dayShift->hours() }}</small>@else<span class="muted small">default</span>@endif</td>
                     <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td>
-                    @php($worked = $day['session'] ? app(\App\Services\AttendanceService::class)->workedSeconds($day['session']) : null)
-                    @php($idle = $day['session'] ? $day['session']->idleSeconds() : null)
-                    @php($span = $day['session']?->check_in ? ($day['session']->check_out ? (int) $day['session']->check_in->diffInSeconds($day['session']->check_out) : $worked + (int) $day['session']->break_seconds + $idle) : null)
-                    <td class="num">@if($span !== null)<x-live-duration :seconds="$span" :running="! $day['session']->check_out && $day['session']->status === 'working' && $day['date'] === today()->toDateString()" />@else — @endif</td>
-                    <td class="num">{{ $day['session'] ? '− '.\App\Support\Duration::hms((int) $day['session']->break_seconds) : '—' }}</td>
-                    <td class="num">{{ $day['session'] ? '− '.\App\Support\Duration::hms($idle) : '—' }}</td>
-                    <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}"><x-live-duration :seconds="$worked" :running="! $day['session']->check_out && $day['session']->status === 'working' && $day['date'] === today()->toDateString()" /></strong><small>of @hms($required)@if($day['session']->check_out && $worked < $required) · @hms($required - $worked) short @elseif($day['session']->check_out && $worked > $required) · +@hms($worked - $required) @endif</small>@else — @endif</td>
+                    @php($worked = $f['worked'] ?? null)
+                    @php($idle = $f['idle'] ?? null)
+                    @php($span = $day['session']?->check_in ? $f['in_out'] : null)
+                    <td class="num">@if($span !== null)<span x-text="hms(v.inOut)">@hms($span)</span>@else — @endif</td>
+                    <td class="num">@if($day['session'])<span x-text="'− ' + hms(v.brk)">− @hms($f['break'])</span>@else — @endif</td>
+                    <td class="num">@if($day['session'])<span x-text="'− ' + hms(v.idle)">− @hms($idle)</span>@else — @endif</td>
+                    <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}"><span x-text="hms(v.worked)">@hms($worked)</span></strong><small>of @hms($required)@if($day['session']->check_out && $worked < $required) · @hms($required - $worked) short @elseif($day['session']->check_out && $worked > $required) · +@hms($worked - $required) @endif</small>@else — @endif</td>
+                    <td class="nowrap small">@if($day['session'])@include('livewire.attendance.partials.screen-time', ['s' => $day['session'], 'f' => $f])@else — @endif</td>
                     <td>@if(! empty($day['extra']))<x-badge tone="green">Extra working</x-badge><small>{{ $day['extra_reason'] }} · paid on top</small>@elseif($day['status'] === 'weekend' && ($offReason = $day['label'] ?? null))<x-badge tone="violet">Weekly off</x-badge><small>{{ $offReason }}</small>@elseif($day['status'] === 'weekend')<x-badge status="weekend">Weekly off</x-badge>@else<x-badge :status="$day['status']" />@if(! empty($day['label']))<small>{{ $day['label'] }}</small>@endif @endif</td>
                     <td>@if($overtimeOn && empty($day['extra']) && $worked !== null && $day['session']->check_out && $worked > $required + 1800)<a class="btn btn-sm" href="{{ route('leave.overtime', ['date' => $day['date'], 'minutes' => intdiv($worked - $required, 60)]) }}" title="Extra time on a working day is paid only after your overtime request is approved">Request overtime</a>@endif @if(in_array($day['status'], ['present', 'late', 'half_day', 'absent'], true) && (! $day['session'] || ! $day['session']->check_out || $day['status'] !== 'present'))<a class="btn btn-sm" href="{{ route('attendance.corrections', ['date' => $day['date']]) }}" title="Ask your manager to correct this day">Correct</a>@endif</td></tr>
             @endforeach

@@ -194,7 +194,7 @@ class Salary extends Component
         $own = $this->ownEmployee();
         $employees = null;
         if ($this->canManage() || $user->can('payroll.approve')) {
-            $employees = AttendanceEmployee::with(['salaryProfile', 'department'])->where('is_active', true)
+            $employees = AttendanceEmployee::with(['salaryProfile', 'department'])->where('is_active', true)->onPayroll()
                 ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%')->orWhere('employee_code', 'like', '%'.trim($this->search).'%')))
                 ->inCodeOrder()->paginate(15);
         }
@@ -211,7 +211,7 @@ class Salary extends Component
             'adjustments' => $adjustments,
             'decidable' => $inbox->pending($user, SalaryAdjustment::class)->pluck('approvable_id')->all(),
             'canManage' => $this->canManage(),
-            'allEmployees' => $user->can('salary.adjust') ? AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
+            'allEmployees' => $user->can('salary.adjust') ? AttendanceEmployee::where('is_active', true)->onPayroll()->orderBy('name')->get(['id', 'name']) : collect(),
             'editing' => $this->profileEmployeeId ? AttendanceEmployee::find($this->profileEmployeeId) : null,
             // Days one month's salary is divided by — auto from the calendar every month, or the fixed number.
             'salaryDays' => $employees ? $employees->getCollection()->filter->salaryProfile->mapWithKeys(fn ($e) => [$e->id => app(\App\Services\HrWorkflowService::class)->salaryDaysFor($e, today()->toDateString(), $e->salaryProfile)])->all() : [],

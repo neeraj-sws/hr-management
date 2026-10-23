@@ -346,7 +346,7 @@ class AttendanceService
      * vs. untouched. Reports can never add up to more than the time elapsed.
      */
     /** $screenMeeting: time in an online meeting (mic/camera in use or a meeting window in front) — working time, not idle. */
-    public function heartbeat(AttendanceEmployee $employee, int $screenActive = 0, int $screenIdle = 0, int $screenMeeting = 0): ?AttendanceSession
+    public function heartbeat(AttendanceEmployee $employee, int $screenActive = 0, int $screenIdle = 0, int $screenMeeting = 0, ?string $screenState = null): ?AttendanceSession
     {
         $session = $this->today($employee);
         if ($session && ! $session->check_out) {
@@ -364,9 +364,69 @@ class AttendanceService
                 $changes += ['screen_active_seconds' => (int) $session->screen_active_seconds + $screenActive, 'screen_idle_seconds' => (int) $session->screen_idle_seconds + $screenIdle, 'screen_meeting_seconds' => (int) $session->screen_meeting_seconds + $screenMeeting, 'screen_reported_at' => now()];
             }
             $session->update($changes);
+            // What the computer is doing right now, so every page and app counts the same bucket on live.
+            if (in_array($screenState, self::SCREEN_STATES, true)) \Illuminate\Support\Facades\Cache::put(self::screenStateKey($session), $screenState, now()->addMinutes(5));
         }
 
         return $session;
+    }
+
+    public const SCREEN_STATES = ['active', 'idle', 'meeting'];
+
+    /** Seconds after the desktop's last report that its state keeps counting on screens (reports come every 30 s). */
+    public const LIVE_SECONDS = 60;
+
+    public static function screenStateKey(AttendanceSession $session): string
+    {
+        return 'sws.screen_state.'.$session->id;
+    }
+
+    /**
+     * Everything a page or app shows for a day, as of this moment, plus how it moves on each second:
+     * worked, in-out, idle, break and screen time (in use, meetings, idle, corrected, not tracked).
+     * While working, the state the desktop app last reported keeps counting for up to LIVE_SECONDS:
+     *   active / meeting -> worked and that screen bucket count up;
+     *   idle             -> idle (and screen idle) count up, worked stands still;
+     *   unknown          -> worked counts up (no desktop app, or no recent report).
+     * On a break: break and in-out count up. The website, the desktop and the phone apply the same
+     * rule to these figures, so they all show the same time to the second.
+     *
+     * @return array{status: string|null, running: bool, worked: int, in_out: int, idle: int, break: int, screen: array, state: string|null, tick_for: int}
+     */
+    public function liveFigures(AttendanceSession $session): array
+    {
+        $screen = $session->screenTime();
+        $worked = $this->workedSeconds($session);
+        $idle = $session->idleSeconds();
+        $break = (int) $session->break_seconds;
+        $running = $session->check_in && ! $session->check_out && in_array($session->status, ['working', 'on_break'], true);
+        if ($running && $session->status === 'on_break') {
+            $start = $session->events()->where('event_type', 'break_start')->latest('event_time')->value('event_time');
+            if ($start) $break += max(0, (int) Carbon::parse($start)->diffInSeconds(now()));
+        }
+        $inOut = $session->check_in ? ($session->check_out ? (int) $session->check_in->diffInSeconds($session->check_out) : $worked + $break + $idle) : 0;
+
+        $state = null;
+        $tickFor = 0;
+        if ($running && $session->status === 'working' && $session->screen_reported_at) {
+            $since = max(0, (int) $session->screen_reported_at->diffInSeconds(now()));
+            $reported = \Illuminate\Support\Facades\Cache::get(self::screenStateKey($session));
+            if (in_array($reported, self::SCREEN_STATES, true) && $since < self::LIVE_SECONDS) {
+                $state = $reported;
+                $tickFor = self::LIVE_SECONDS - $since;
+                // The seconds since the last report go to the state the computer was in.
+                if ($state === 'idle') {
+                    $idle += $since;
+                    $screen['idle'] += $since;
+                    $worked = max(0, $worked - $since);
+                } else {
+                    $screen[$state] += $since;
+                }
+            }
+        }
+
+        return ['status' => $session->status, 'running' => (bool) $running, 'worked' => $worked, 'in_out' => $inOut, 'idle' => $idle, 'break' => $break,
+            'screen' => $screen, 'state' => $state, 'tick_for' => $tickFor];
     }
 
     /**

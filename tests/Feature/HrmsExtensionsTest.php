@@ -181,7 +181,7 @@ class HrmsExtensionsTest extends TestCase
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 900, 'screen_idle_seconds' => 0])->assertOk()->assertJsonPath('data.screen_active_seconds', 25 + 45);
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => -5])->assertUnprocessable();
 
-        $this->actingAs($this->admin)->get(route('attendance.dashboard'))->assertOk()->assertSee('00:01:10 in use', false); // 70 s, shown as HH:MM:SS
+        $this->actingAs($this->admin)->get(route('attendance.dashboard'))->assertOk()->assertSeeText('00:01:10 in use'); // 70 s, shown as HH:MM:SS
         $this->actingAs($this->admin)->get(route('reports.show', 'attendance').'?from=2026-10-07&to=2026-10-07')->assertOk()->assertSee('Screen: in use', false);
     }
 

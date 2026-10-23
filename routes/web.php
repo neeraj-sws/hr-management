@@ -115,6 +115,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Training
     Route::get('/training/my', Livewire\Training\MyTraining::class)->middleware('access:profile')->name('training.my');
     Route::get('/training/courses', Livewire\Training\Courses::class)->middleware('access:training.manage,training.assign')->name('training.courses');
+    Route::get('/training/fees', Livewire\Training\Fees::class)->middleware('access:training.manage')->name('training.fees');
 
     // Approvals
     Route::middleware('access:approver')->group(function () {

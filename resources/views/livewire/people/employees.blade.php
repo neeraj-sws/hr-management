@@ -82,7 +82,7 @@
                             @if($payBasis === 'daily')
                                 <x-field label="Salary per day" name="dailyRate" hint="paid for each working day attended, e.g. 130"><input type="number" step="0.01" min="0" wire:model="dailyRate" placeholder="130"></x-field>
                             @else
-                                <x-field label="Monthly salary" name="monthlySalary" hint="effective from joining date{{ $employmentType === \App\Services\EmployeeService::EX_EMPLOYEE ? ' · optional' : '' }}"><input type="number" step="0.01" min="0" wire:model="monthlySalary"></x-field>
+                                <x-field label="Monthly salary" name="monthlySalary" hint="effective from joining date{{ in_array($employmentType, [\App\Services\EmployeeService::EX_EMPLOYEE, \App\Services\EmployeeService::TRAINEE], true) ? ' · optional (trainees are not paid)' : '' }}"><input type="number" step="0.01" min="0" wire:model="monthlySalary"></x-field>
                             @endif
                         @endunless
                         <div class="field full"><span class="label">Teams</span>

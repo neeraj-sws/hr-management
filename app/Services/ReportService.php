@@ -434,7 +434,7 @@ class ReportService
      */
     private function salaryByMonth($ids, string $from, string $to, ?int $limit): \Illuminate\Support\Collection
     {
-        $employees = AttendanceEmployee::with(['salaryProfiles' => fn ($q) => $q->orderBy('effective_from')->orderBy('id')])->whereIn('id', $ids)
+        $employees = AttendanceEmployee::with(['salaryProfiles' => fn ($q) => $q->orderBy('effective_from')->orderBy('id')])->whereIn('id', $ids)->onPayroll()
             ->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->get();
         $items = \App\Models\PayrollItem::with(['run', 'payments'])->whereIn('employee_id', $ids)
             ->whereHas('run', fn ($q) => $q->whereDate('period_starts_on', '<=', $to)->whereDate('period_ends_on', '>=', $from))->get()

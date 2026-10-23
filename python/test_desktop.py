@@ -298,6 +298,24 @@ class ClientTests(unittest.TestCase):
         poll(600.0); poll(605.0)
         app._ask_if_idle.assert_called_once()
 
+    def test_live_figures_count_on_by_the_same_rule_as_the_website(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        base = {"id": 1, "status": "working", "worked_seconds": 1000, "idle_counted_seconds": 100, "screen_active_seconds": 800,
+                "screen_meeting_seconds": 0, "screen_idle_seconds": 100}
+        app.session_fetched_at = datetime.now(timezone.utc) - timedelta(seconds=40)
+        # In use: worked and "in use" count; "in use" only for the 30 s the report still covers.
+        v = app._live({**base, "live": {"running": True, "state": "active", "tick_for": 30}})
+        self.assertEqual((v["worked"], v["active"], v["idle"]), (1040, 830, 100))
+        # Idle: idle counts, worked stands still while the report covers it, then counts again.
+        v = app._live({**base, "live": {"running": True, "state": "idle", "tick_for": 30}})
+        self.assertEqual((v["worked"], v["idle"], v["screen_idle"]), (1010, 130, 130))
+        # On a break nothing of the work figures moves.
+        v = app._live({**base, "status": "on_break", "live": {"running": True, "state": None, "tick_for": 0}})
+        self.assertEqual(v["worked"], 1000)
+
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})
         session = Mock(request=Mock(return_value=response))

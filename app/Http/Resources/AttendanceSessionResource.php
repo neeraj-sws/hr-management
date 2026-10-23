@@ -19,19 +19,20 @@ class AttendanceSessionResource extends JsonResource
             'active_seconds'=>(int)$this->active_seconds,
             'idle_seconds'=>(int)$this->idle_seconds,
             'break_seconds'=>(int)$this->break_seconds,
-            // Same figures as the website: away time answered as working is meeting time, as a break is not idle.
-            ...(fn (array $t) => [
-                'screen_active_seconds' => $t['active'],
-                'screen_idle_seconds' => $t['idle'],
-                'screen_meeting_seconds' => $t['meeting'],
+            // Same figures as the website, as of this moment (AttendanceService::liveFigures): away time answered
+            // as working is meeting time, as a break is not idle; 'live' says what keeps counting each second.
+            ...(fn (array $f) => [
+                'screen_active_seconds' => $f['screen']['active'],
+                'screen_idle_seconds' => $f['screen']['idle'],
+                'screen_meeting_seconds' => $f['screen']['meeting'],
                 // Time the desktop app missed but an approved correction confirmed as working.
-                'screen_corrected_seconds' => $t['corrected'],
+                'screen_corrected_seconds' => $f['screen']['corrected'],
                 // Working time the desktop app did not see (closed, updating, opened after check-in).
-                'screen_untracked_seconds' => $t['untracked'],
-            ])($this->resource->screenTime()),
-            // Worked time (in-out less break less idle, up to now while working) and idle, exactly as the website shows them.
-            'worked_seconds' => app(\App\Services\AttendanceService::class)->workedSeconds($this->resource),
-            'idle_counted_seconds' => $this->resource->idleSeconds(),
+                'screen_untracked_seconds' => $f['screen']['untracked'],
+                'worked_seconds' => $f['worked'],
+                'idle_counted_seconds' => $f['idle'],
+                'live' => ['running' => $f['running'], 'state' => $f['state'], 'tick_for' => $f['tick_for'], 'in_out_seconds' => $f['in_out'], 'break_seconds' => $f['break']],
+            ])(app(\App\Services\AttendanceService::class)->liveFigures($this->resource)),
             'status'=>$this->status,
             'server_version'=>(int)$this->server_version,
             'events'=>$this->whenLoaded('events'),

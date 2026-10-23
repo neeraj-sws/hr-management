@@ -82,6 +82,8 @@ class MyAttendance extends Component
             'overtimeOn' => app(\App\Services\PeopleOperationsService::class)->overtimeEnabled($employee),
             'session' => $session,
             'worked' => $session ? $attendance->workedSeconds($session) : 0,
+            // Today's figures as of now, counted on each second on the page (the same as the admin list and the apps).
+            'live' => $session ? $attendance->liveFigures($session) : null,
             'rules' => $attendance->rules($employee, today()->toDateString()),
             'late' => $session ? $attendance->isLate($session) : false,
             'selfieRequired' => $attendance->selfieRequired($employee, 'web'),

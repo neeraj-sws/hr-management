@@ -63,7 +63,7 @@ class MeetingTimeTest extends TestCase
         $s->refresh();
         $this->assertSame(9000, $s->correctedScreenSeconds(), '8:30 in–out − 6:00 the app measured = 2:30 added');
 
-        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('02:30:00 added by approved correction')->assertSee('98% working');
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('02:30:00 added by approved correction')->assertSeeText('98% working');
         $row = app(ReportService::class)->rows($admin, 'attendance', ['from' => '2026-10-22', 'to' => '2026-10-22', 'employee_id' => $e->id])->first();
         $this->assertSame('02:30:00', $row['screen_corrected_time']);
         Sanctum::actingAs($user, ['*']);
@@ -94,7 +94,7 @@ class MeetingTimeTest extends TestCase
         $this->getJson('/api/attendance/today')->assertJsonPath('data.screen_idle_seconds', 300)->assertJsonPath('data.idle_counted_seconds', 300);
 
         // Admin list and employee page show the same figures.
-        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('00:25:00 in meetings')->assertSee('00:05:00 idle')->assertDontSee('00:30:00 idle');
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSeeText('00:25:00 in meetings')->assertSeeText('00:05:00 idle')->assertDontSee('00:30:00 idle');
         Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('00:25:00');
         $row = app(ReportService::class)->rows($admin, 'attendance', ['from' => '2026-10-23', 'to' => '2026-10-23', 'employee_id' => $e->id])->first();
         $this->assertSame(['00:25:00', '00:05:00'], [$row['screen_meeting_time'], $row['screen_idle_time']]);
@@ -103,8 +103,8 @@ class MeetingTimeTest extends TestCase
         // so active + meetings + idle + not tracked = in-out less break, on every page.
         Carbon::setTestNow('2026-10-23 10:49:00');
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 180])->assertOk()->assertJsonPath('data.screen_untracked_seconds', 360);
-        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('00:06:00 not tracked');
-        Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('Not tracked');
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSeeText('00:06:00 not tracked');
+        Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSeeText('not tracked');
 
         // One moment, one set of figures: phone/desktop API, history, admin list and employee page.
         // In-out 49:00 - break 0 - idle 05:00 = worked 44:00.
@@ -114,7 +114,7 @@ class MeetingTimeTest extends TestCase
         $this->getJson('/api/attendance/history?from=2026-10-23&to=2026-10-23')->assertOk()
             ->assertJsonPath('data.0.session.worked_seconds', 2640)->assertJsonPath('data.0.session.idle_counted_seconds', 300);
         Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)
-            ->assertSee('00:44:00')->assertSee('00:13:00 in use')->assertSee('00:25:00 in meetings')->assertSee('00:05:00 idle')->assertSee('x-data', false);
+            ->assertSee('00:44:00')->assertSeeText('00:13:00 in use')->assertSeeText('00:25:00 in meetings')->assertSeeText('00:05:00 idle')->assertSee('swsLive', false);
         Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)
             ->assertSee('00:44:00')->assertSee('00:05:00')->assertSee('00:25:00');
     }
@@ -138,5 +138,32 @@ class MeetingTimeTest extends TestCase
         // The computer was really off for 30 minutes: the app reports nothing for that time -> a break.
         Carbon::setTestNow('2026-10-23 11:24:00');
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 20])->assertOk()->assertJsonPath('data.break_seconds', 1800);
+    }
+    public function test_live_figures_count_the_reported_state_the_same_everywhere(): void
+    {
+        $this->seed();
+        Carbon::setTestNow('2026-10-23 10:00:00');
+        $admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $user = User::factory()->create(['email' => 'mt-5@example.com']);
+        $user->assignRole('Employee');
+        $e = AttendanceEmployee::create(['employee_code' => 'MT-5', 'name' => 'Person MT-5', 'email' => $user->email, 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01']);
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-23', 'check_in' => '2026-10-23 10:00:00', 'status' => 'working', 'last_sync_at' => now()]);
+        Sanctum::actingAs($user, ['*']);
+
+        // 10:30 report: 25 min in use, 5 min idle, and the computer is idle now.
+        Carbon::setTestNow('2026-10-23 10:30:00');
+        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 1500, 'screen_idle_seconds' => 300, 'screen_state' => 'idle'])->assertOk();
+
+        // 20 s later the idle state keeps counting: idle 05:20, and worked stands still at 25:00 (30:20 - 05:20).
+        Carbon::setTestNow('2026-10-23 10:30:20');
+        $this->getJson('/api/attendance/today')->assertOk()
+            ->assertJsonPath('data.idle_counted_seconds', 320)->assertJsonPath('data.worked_seconds', 1500)->assertJsonPath('data.screen_idle_seconds', 320)
+            ->assertJsonPath('data.live.state', 'idle')->assertJsonPath('data.live.tick_for', 40)->assertJsonPath('data.live.in_out_seconds', 1820);
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('swsLive', false)->assertSee('00:25:00')->assertSee('00:05:20');
+        Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('00:25:00')->assertSee('00:05:20')->assertSee('Screen time')->assertSeeText('00:25:00 in use');
+
+        // More than a minute without a report: the state is no longer assumed, worked counts on.
+        Carbon::setTestNow('2026-10-23 10:32:00');
+        $this->getJson('/api/attendance/today')->assertJsonPath('data.live.state', null)->assertJsonPath('data.idle_counted_seconds', 300);
     }
 }

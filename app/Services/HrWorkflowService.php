@@ -221,7 +221,7 @@ class HrWorkflowService
                 }
             }
             $run->items()->delete();
-            $employees = AttendanceEmployee::where('is_active', true)->get();
+            $employees = AttendanceEmployee::where('is_active', true)->onPayroll()->get(); // trainees pay a fee, they are not paid
             // A month that was already paid from the old salary sheet (Payroll > Legacy Salary) takes the sheet's
             // figures: that is what was really calculated and paid. Advances, adjustments and penalties are not
             // attached to it — the sheet already settled that month.

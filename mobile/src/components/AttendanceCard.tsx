@@ -18,13 +18,32 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
   }, [session]);
 
   useEffect(() => {
-    if (session?.status !== 'working') return;
+    if (session?.status !== 'working' && session?.status !== 'on_break') return;
     const timer = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [session?.status]);
 
-  const live = session?.status === 'working' ? Math.floor((tick - fetchedAt.current) / 1000) : 0;
-  const worked = Math.max(0, (session?.worked_seconds ?? session?.active_seconds ?? 0) + Math.max(0, live));
+  // The server's figures counted on to this second by the same rule as the website and the desktop app:
+  // while working, the state last reported keeps counting for a while (in use / meeting -> worked and that
+  // bucket; idle -> idle, worked stands still); on a break, break counts.
+  const running = session?.live?.running ?? (!!session && !session.check_out && ['working', 'on_break'].includes(session.status));
+  const s = running ? Math.max(0, Math.floor((tick - fetchedAt.current) / 1000)) : 0;
+  const v = {
+    worked: session?.worked_seconds ?? session?.active_seconds ?? 0,
+    idle: session?.idle_counted_seconds ?? session?.idle_seconds ?? 0,
+    brk: session?.live?.break_seconds ?? session?.break_seconds ?? 0,
+    active: session?.screen_active_seconds ?? 0,
+    meeting: session?.screen_meeting_seconds ?? 0,
+    sIdle: session?.screen_idle_seconds ?? 0,
+  };
+  if (s && session?.status === 'on_break') v.brk += s;
+  else if (s && session?.status === 'working') {
+    const k = Math.min(s, session.live?.tick_for ?? 0);
+    const state = session.live?.state ?? null;
+    if (state === 'idle') { v.idle += k; v.sIdle += k; v.worked += s - k; }
+    else { v.worked += s; if (state === 'active') v.active += k; else if (state === 'meeting') v.meeting += k; }
+  }
+  const worked = Math.max(0, v.worked);
   const clock = `${String(Math.floor(worked / 3600)).padStart(2, '0')}:${String(Math.floor((worked % 3600) / 60)).padStart(2, '0')}:${String(worked % 60).padStart(2, '0')}`;
 
   // Hooks above always run (React rule); decide what to show afterwards.
@@ -48,10 +67,10 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
       {session ? (
         // The same figures as the website and the desktop app (from the server).
         <Muted style={{ marginBottom: 8 }}>
-          {`Break ${formatDuration(session.break_seconds)} · Idle ${formatDuration(session.idle_counted_seconds ?? session.idle_seconds)}`
-            + (session.screen_meeting_seconds ? ` · Meeting ${formatDuration(session.screen_meeting_seconds)}` : '')
-            + ((session.screen_active_seconds ?? 0) + (session.screen_idle_seconds ?? 0) + (session.screen_meeting_seconds ?? 0) > 0
-              ? `\nScreen time: ${formatDuration(session.screen_active_seconds ?? 0)} in use`
+          {`Break ${formatDuration(v.brk)} · Idle ${formatDuration(v.idle)}`
+            + (v.meeting ? ` · Meeting ${formatDuration(v.meeting)}` : '')
+            + (v.active + v.sIdle + v.meeting > 0
+              ? `\nScreen time: ${formatDuration(v.active)} in use`
                 + ((session.screen_corrected_seconds ?? 0) >= 60 ? ` · ${formatDuration(session.screen_corrected_seconds ?? 0)} added by correction` : '')
                 + ((session.screen_untracked_seconds ?? 0) >= 60 ? ` · ${formatDuration(session.screen_untracked_seconds ?? 0)} not tracked` : '')
               : '')}

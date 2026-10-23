@@ -66,6 +66,7 @@ return [
     ['heading' => 'Training', 'items' => [
         ['label' => 'My Training', 'route' => 'training.my', 'icon' => 'star'],
         ['label' => 'Courses', 'route' => 'training.courses', 'icon' => 'list'],
+        ['label' => 'Course fees', 'route' => 'training.fees', 'icon' => 'wallet'],
     ]],
     ['heading' => 'Recruitment', 'items' => [
         ['label' => 'Job Openings', 'route' => 'recruitment.jobs', 'icon' => 'briefcase'],

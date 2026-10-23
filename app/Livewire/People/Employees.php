@@ -127,7 +127,8 @@ class Employees extends Component
             $rules['password'] = $left ? ['nullable', 'string', Password::min(12)->letters()->numbers()] : ['required', 'string', Password::min(12)->letters()->numbers()];
             $rules['payBasis'] = ['required', Rule::in(['monthly', 'daily'])];
             if ($this->payBasis === 'daily') $rules['dailyRate'] = ['required', 'numeric', 'gt:0', 'max:1000000'];
-            else $rules['monthlySalary'] = [$left ? 'nullable' : 'required', 'numeric', 'min:0'];
+            // Ex-employees and trainees (they pay a course fee) have no salary to enter.
+            else $rules['monthlySalary'] = [$left || $this->employmentType === EmployeeService::TRAINEE ? 'nullable' : 'required', 'numeric', 'min:0'];
         }
         $this->validate($rules, [], ['employeeCode' => 'employee code', 'managerId' => 'manager', 'departmentId' => 'department', 'monthlySalary' => 'monthly salary', 'dailyHours' => 'daily hours', 'dailyRate' => 'per-day salary', 'exitDate' => 'last working day', 'exitType' => 'exit type']);
 

@@ -84,6 +84,17 @@ class AttendanceEmployee extends Authenticatable
         return $this->photo_path ? route('people.photo', ['employee' => $this->id, 'v' => substr(md5($this->photo_path), 0, 8)]) : null;
     }
 
+    /** People who are paid a salary: everyone except trainees (they pay a course fee instead). */
+    public function scopeOnPayroll($query)
+    {
+        return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhere('employment_type', '!=', \App\Services\EmployeeService::TRAINEE));
+    }
+
+    public function isTrainee(): bool
+    {
+        return $this->employment_type === \App\Services\EmployeeService::TRAINEE;
+    }
+
     /** Employee-number order: EMP-01, EMP-02 … EMP-10 (not EMP-1, EMP-10, EMP-2). */
     public function scopeInCodeOrder($query)
     {
