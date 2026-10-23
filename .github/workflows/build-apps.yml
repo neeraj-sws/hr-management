@@ -1,0 +1,79 @@
+# Builds the apps on GitHub's machines, so no Windows PC or Android SDK is needed:
+#   desktop -> SWS-HR-Setup-<version>.exe (Windows installer) + its SHA-256 for the server's .env
+#   android -> SWS-HR-<version>.apk (install directly on phones)
+# Run it from GitHub > Actions > "Build apps" > Run workflow, or by pushing app changes.
+# The files are under the run's "Artifacts" (kept 30 days).
+name: Build apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/performance-goals-and-otp]
+    paths: ['python/**', 'mobile/**', '.github/workflows/build-apps.yml']
+
+jobs:
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build SWS HR.exe
+        working-directory: python
+        shell: cmd
+        run: |
+          python -m pip install -q -r requirements.txt "pyinstaller>=6,<7"
+          pyinstaller --noconfirm --clean --windowed --name "SWS HR" --paths . --hidden-import pystray._win32 --icon "sws_desktop\assets\icon.ico" --add-data "sws_desktop\assets;sws_desktop\assets" sws_desktop_entry.py
+      - name: Build the installer
+        working-directory: python
+        shell: pwsh
+        run: |
+          $version = python -c "from sws_desktop.version import VERSION; print(VERSION)"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /DAppVersion=$version installer\sws-hr.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hash = (Get-FileHash "dist\SWS-HR-Setup-$version.exe" -Algorithm SHA256).Hash.ToLower()
+          "DESKTOP_LATEST_VERSION=$version`nDESKTOP_SHA256=$hash" | Out-File -Encoding ascii "dist\server-env-$version.txt"
+          Get-Content "dist\server-env-$version.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-installer
+          path: |
+            python/dist/SWS-HR-Setup-*.exe
+            python/dist/server-env-*.txt
+          retention-days: 30
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install
+        working-directory: mobile
+        run: npm ci
+      - name: Generate the Android project
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
+        env:
+          CI: '1'
+      - name: Build the APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Name the APK
+        working-directory: mobile
+        run: |
+          version=$(node -p "require('./app.json').expo.version")
+          mkdir -p out && cp android/app/build/outputs/apk/release/app-release.apk "out/SWS-HR-$version.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: mobile/out/*.apk
+          retention-days: 30
