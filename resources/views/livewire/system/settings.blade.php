@@ -127,7 +127,8 @@
                 <x-field label="Default hours per day" name="dailyHours" hint="pre-filled for new employees"><input type="number" step="0.25" wire:model="dailyHours"></x-field>
                 <x-field label="Late grace (minutes)" name="graceMinutes"><input type="number" min="0" wire:model="graceMinutes"></x-field>
                 <x-field label="Half-day if worked less than (hours)" name="halfDayHours"><input type="number" step="0.25" wire:model="halfDayHours"></x-field>
-                <x-field label="Desktop app: ask about breaks after (minutes away)" name="idleMinutes" hint="no mouse/keyboard use, screen locked or asleep · 0 = never ask"><input type="number" min="0" max="240" wire:model="idleMinutes"></x-field>
+                <x-field label="Desktop app: count as idle after (minutes)" name="idleAfterMinutes" hint="no mouse/keyboard use this long is idle time · shorter pauses count as working"><select wire:model="idleAfterMinutes">@foreach([1, 3, 5, 10, 15] as $m)<option value="{{ $m }}">{{ $m }} minutes</option>@endforeach</select></x-field>
+                <x-field label="Desktop app: ask &quot;Are you sitting idle?&quot; after (minutes)" name="idleMinutes" hint="also asks about breaks when the screen was locked or the computer asleep · 0 = never ask"><input type="number" min="0" max="240" wire:model="idleMinutes"></x-field>
                 <div class="full"><span class="label">Selfie at check-in / check-out</span>
                     <label class="check"><input type="checkbox" wire:model="selfieWeb"> Required on the website</label>
                     <label class="check"><input type="checkbox" wire:model="selfieMobile"> Required in the mobile app</label>

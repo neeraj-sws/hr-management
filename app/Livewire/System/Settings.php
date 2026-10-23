@@ -39,6 +39,7 @@ class Settings extends Component
     public bool $newHolidayPaid = true;
     public string $leaveYearStart = '4';
     public string $idleMinutes = '10';
+    public string $idleAfterMinutes = '5';
 
     // Weekly offs: nth-weekday offs (e.g. 3rd Saturday), temporary shifts, and per-employee patterns.
     /** @var array<string, array<int, string>> weekday => occurrences that are off */
@@ -158,6 +159,7 @@ class Settings extends Component
             'holidayTypes' => collect((array) ($calendar['holiday_types'] ?? []))->map(fn ($t) => \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => ['d' => $t]], 'd'))->all(),
             'leaveYearStart' => (string) \App\Support\LeaveYear::startMonth(),
             'idleMinutes' => (string) ($idle['away_prompt_minutes'] ?? 10),
+            'idleAfterMinutes' => (string) ($idle['idle_after_minutes'] ?? 5),
             'requireLocation' => (bool) ($location['required_for_mobile'] ?? false),
             'requireLocationWeb' => (bool) ($location['required_for_web'] ?? false),
             'selfieWeb' => (bool) ($selfie['required_web'] ?? false), 'selfieMobile' => (bool) ($selfie['required_mobile'] ?? false),
@@ -424,7 +426,7 @@ class Settings extends Component
     public function saveHours(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        $this->validate(['startTime' => ['nullable', 'date_format:H:i'], 'endTime' => ['nullable', 'date_format:H:i'], 'dailyHours' => ['required', 'numeric', 'gt:0', 'max:24'], 'graceMinutes' => ['required', 'integer', 'min:0', 'max:240'], 'halfDayHours' => ['required', 'numeric', 'gt:0', 'max:24'], 'idleMinutes' => ['required', 'integer', 'min:0', 'max:240']], [], ['idleMinutes' => 'away minutes']);
+        $this->validate(['startTime' => ['nullable', 'date_format:H:i'], 'endTime' => ['nullable', 'date_format:H:i'], 'dailyHours' => ['required', 'numeric', 'gt:0', 'max:24'], 'graceMinutes' => ['required', 'integer', 'min:0', 'max:240'], 'halfDayHours' => ['required', 'numeric', 'gt:0', 'max:24'], 'idleMinutes' => ['required', 'integer', 'min:0', 'max:240'], 'idleAfterMinutes' => ['required', 'integer', 'min:1', 'max:60']], [], ['idleMinutes' => 'away minutes', 'idleAfterMinutes' => 'idle minutes']);
         $people->setPolicy('work.hours', 'attendance', 'Work hours', array_filter(['start_time' => $this->startTime ?: null, 'end_time' => $this->endTime ?: null, 'standard_daily_hours' => (float) $this->dailyHours], fn ($v) => $v !== null), null, auth()->id(), today()->toDateString());
         // The company value is the default for new employees. Applying it to everyone updates each
         // active employee's own hours and current salary record, so Payroll and Attendance agree.
@@ -439,7 +441,7 @@ class Settings extends Component
             $this->applyHoursToAll = false;
         }
         $people->setPolicy('attendance.rules', 'attendance', 'Attendance rules', ['grace_minutes' => (int) $this->graceMinutes, 'half_day_hours' => (float) $this->halfDayHours], null, auth()->id(), today()->toDateString());
-        $people->setPolicy('attendance.idle', 'attendance', 'Away-time prompt (desktop)', ['away_prompt_minutes' => (int) $this->idleMinutes], null, auth()->id(), today()->toDateString());
+        $people->setPolicy('attendance.idle', 'attendance', 'Away-time prompt (desktop)', ['away_prompt_minutes' => (int) $this->idleMinutes, 'idle_after_minutes' => (int) $this->idleAfterMinutes], null, auth()->id(), today()->toDateString());
         $this->validate(['absentAfter' => ['required', 'date_format:H:i']], [], ['absentAfter' => 'absent alert time']);
         $people->setPolicy('attendance.selfie', 'attendance', 'Selfie at check-in/out', ['required_web' => $this->selfieWeb, 'required_mobile' => $this->selfieMobile], null, auth()->id(), today()->toDateString());
         $people->setPolicy('attendance.alerts', 'attendance', 'Late and absence alerts', ['enabled' => $this->alertsEnabled, 'absent_after' => $this->absentAfter], null, auth()->id(), today()->toDateString());

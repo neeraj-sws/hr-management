@@ -41,6 +41,8 @@ class MeController extends ApiController
                     return [...$policy, 'acknowledged' => $captures->isAcknowledged($user, $policy), 'notice' => $captures->describe($policy), 'policy_url' => route('monitoring.policy')];
                 })(app(\App\Services\ScreenCaptureService::class)) : null,
                 'away_prompt_minutes' => (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['away_prompt_minutes' => 10])['away_prompt_minutes'] ?? 10),
+                // No keyboard/mouse this long counts as idle on the desktop app (shorter pauses are working time).
+                'idle_after_minutes' => max(1, (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['idle_after_minutes' => 5])['idle_after_minutes'] ?? 5)),
             ],
         ]]);
     }

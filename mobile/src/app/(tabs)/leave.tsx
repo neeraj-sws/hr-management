@@ -2,7 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 import { AddButton, FormSheet } from '../../components/FormSheet';
-import { MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
+import { DayFilter, MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
 import { DateField, todayYmd } from '../../components/DateField';
 import { Badge, Button, Card, Chips, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen } from '../../components/ui';
 import { ApiError, get, post } from '../../lib/api';
@@ -32,13 +32,16 @@ export default function Leave() {
   const [formOpen, setFormOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  // One day (requests covering it). Pending shows every pending request, in any month.
+  const [day, setDay] = useState('');
+  const requestsUrl = day ? `/leave/requests?date=${day}` : statusFilter === 'pending' ? '/leave/requests?status=pending' : `/leave/requests?month=${month}`;
 
   const load = useCallback(async () => {
     try {
       const [t, b, r] = await Promise.all([
         get<{ data: LeaveType[] }>('/leave/types'),
         get<{ data: LeaveBalance[] }>('/leave/balances'),
-        get<Paginated<LeaveRequest>>(`/leave/requests?month=${month}`),
+        get<Paginated<LeaveRequest>>(requestsUrl),
       ]);
       setTypes(t.data);
       store.setJson(TYPES_CACHE, t.data);
@@ -50,7 +53,7 @@ export default function Leave() {
       if (e.isNetwork) setTypes(await store.getJson<LeaveType[]>(TYPES_CACHE, []));
       setMessage({ tone: e.isNetwork ? 'info' : 'error', text: e.isNetwork ? 'Offline — you can still request leave; it is sent for approval when you are back online.' : e.firstMessage });
     }
-  }, [month]);
+  }, [requestsUrl]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -71,7 +74,9 @@ export default function Leave() {
       const created = await post<{ data: LeaveRequest }>('/leave/requests', { leave_type_id: typeId, duration, starts_on: startsOn, ends_on: endDate, reason });
       // Show the new request immediately; balances refresh in the background.
       setRequests((current) => [created.data, ...current.filter((r) => r.id !== created.data.id)]);
-      setMessage({ tone: 'success', text: 'Leave request submitted for approval.' });
+      setMessage({ tone: 'success', text: `Leave request for ${formatDate(startsOn)} submitted for approval.` });
+      // Open the month the leave is in (e.g. November), so the new request stays in the list.
+      if (!day && statusFilter !== 'pending') setMonth(startsOn.slice(0, 7));
       setStartsOn(''); setEndsOn(''); setReason(''); setDuration('full');
       setFormOpen(false);
       load();
@@ -91,6 +96,7 @@ export default function Leave() {
   };
 
   const shownRequests = statusFilter === 'all' ? requests : requests.filter((r) => r.status === statusFilter);
+  const emptyText = !loaded ? 'Loading…' : day ? `No leave on ${formatDate(day)}` : statusFilter === 'pending' ? 'No pending requests' : statusFilter === 'all' ? 'No leave requests this month' : `No ${statusFilter} requests this month`;
 
   const pickStart = (value: string) => {
     setStartsOn(value);
@@ -137,12 +143,13 @@ export default function Leave() {
       </FormSheet>
       <Card>
         <H2>My requests</H2>
-        <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>
+        {day || statusFilter === 'pending' ? null : <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} futureMonths={12} /></View>}
+        <DayFilter value={day} onChange={setDay} />
         <Chips value={statusFilter} onChange={setStatusFilter} options={[{ label: 'All', value: 'all' }, { label: 'Pending', value: 'pending' }, { label: 'Approved', value: 'approved' }, { label: 'Rejected', value: 'rejected' }]} />
         {shownRequests.length ? shownRequests.map((r) => (
           <Row key={r.id} title={`${r.leave_type} · ${r.days} day(s)${r.duration && r.duration !== 'full' ? ` · ${r.duration === 'half' ? 'Half day' : 'Short leave'}` : ''}`} subtitle={`${r.duration && r.duration !== 'full' ? formatDate(r.starts_on) : `${formatDate(r.starts_on)} – ${formatDate(r.ends_on)}`}${r.decision_note ? ` · ${r.decision_note}` : ''}`}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={r.status} />{r.status === 'pending' ? <Button small tone="danger" title="Cancel" onPress={() => cancel(r.id)} /> : null}</View>} />
-        )) : <Empty text={loaded ? (statusFilter === 'all' ? 'No leave requests this month' : `No ${statusFilter} requests this month`) : 'Loading…'} />}
+        )) : <Empty text={emptyText} />}
       </Card>
     </Screen>
   );

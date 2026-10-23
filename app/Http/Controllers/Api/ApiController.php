@@ -33,6 +33,14 @@ abstract class ApiController extends Controller
      * ?month=YYYY-MM → [first day, last day] as Y-m-d, so a history list shows one month at a time.
      * Null when no month is sent (older app versions still get the whole list).
      */
+    /** ?date=YYYY-MM-DD (one day picked in the app's filter), or null. */
+    protected function dayFilter(Request $request): ?string
+    {
+        $date = (string) $request->query('date', '');
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && strtotime($date) ? $date : null;
+    }
+
     protected function monthRange(Request $request): ?array
     {
         $month = (string) $request->query('month', '');

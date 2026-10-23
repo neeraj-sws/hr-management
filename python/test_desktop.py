@@ -198,6 +198,10 @@ class ClientTests(unittest.TestCase):
         app.away_prompt_open = False
         app.away_tracker = presence.AwayTracker(1)
         app._ask_about_away = Mock()
+        app._ask_if_idle = Mock()
+        app.screen_quiet = 0.0
+        app.idle_after_seconds = 300
+        app.idle_prompt_for = None
         app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
         # 20 minutes without mouse/keyboard, but in a Teams call.
         with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
@@ -232,6 +236,10 @@ class ClientTests(unittest.TestCase):
         app.away_prompt_open = False
         app.away_tracker = presence.AwayTracker(1)
         app._ask_about_away = Mock()
+        app._ask_if_idle = Mock()
+        app.screen_quiet = 0.0
+        app.idle_after_seconds = 300
+        app.idle_prompt_for = None
         app.last_presence_poll = None
         app.app_started_at = datetime.now().astimezone() - timedelta(minutes=5)
         app.last_not_working_at = None
@@ -248,6 +256,47 @@ class ClientTests(unittest.TestCase):
         with patch.object(presence, "seconds_since_input", return_value=1.0), patch.object(presence, "is_locked", return_value=False),                 patch.object(presence, "meeting_reason", return_value=None):
             app._watch_presence()
         self.assertTrue(2.9 <= app.screen_active <= 15)
+
+    def test_short_pauses_are_work_long_ones_idle_and_idle_at_the_limit_asks(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+        from sws_desktop import presence
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.clock_label = Mock(winfo_exists=Mock(return_value=True))
+        app.root = Mock()
+        app.session = {"status": "working"}
+        app.screen_active = app.screen_idle = app.screen_meeting = app.screen_quiet = 0.0
+        app.app_usage_on = app.window_titles_on = False
+        app.capture_policy = app.last_capture = None
+        app.away_prompt_open = False
+        app.away_tracker = presence.AwayTracker(10)
+        app._ask_about_away = Mock()
+        app._ask_if_idle = Mock()
+        app.idle_after_seconds = 300  # 5 minutes
+        app.idle_prompt_for = None
+
+        def poll(idle_for):
+            app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+            with patch.object(presence, "seconds_since_input", return_value=idle_for), patch.object(presence, "is_locked", return_value=False),                     patch.object(presence, "meeting_reason", return_value=None):
+                app._watch_presence()
+
+        # 3 minutes reading without touching the mouse, then typing again: all working time.
+        poll(170.0); poll(175.0)
+        self.assertEqual(app.screen_idle, 0.0)
+        poll(1.0)
+        self.assertGreater(app.screen_active, 14)
+        self.assertEqual(app.screen_quiet, 0.0)
+        # Quiet until the 5-minute limit: the quiet time so far becomes idle as well.
+        app.screen_active = 0.0
+        poll(295.0); poll(300.0)
+        self.assertGreater(app.screen_idle, 9)
+        self.assertEqual(app.screen_active, 0.0)
+        app._ask_if_idle.assert_not_called()
+        # Still idle at 10 minutes: "Are you sitting idle?" once for this stretch.
+        poll(600.0); poll(605.0)
+        app._ask_if_idle.assert_called_once()
 
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})

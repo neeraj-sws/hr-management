@@ -49,6 +49,9 @@ export type Task = {
   timer_running_since: string | null;
   completed_at: string | null;
   server_version: number;
+  work_date?: string | null;
+  /** Only with ?date=: time logged on that day. */
+  day_seconds?: number;
 };
 
 export type LeaveType = { id: number; name: string; paid: boolean; allow_advance: boolean };

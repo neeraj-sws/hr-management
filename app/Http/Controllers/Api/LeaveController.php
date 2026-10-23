@@ -36,10 +36,15 @@ class LeaveController extends ApiController
         $employee = $this->apiEmployee($request);
 
         $month = $this->monthRange($request);
+        // ?date= one day (requests covering it); ?status= e.g. all pending requests, whatever their month.
+        $day = $this->dayFilter($request);
+        $status = in_array($request->query('status'), ['pending', 'approved', 'rejected', 'cancelled'], true) ? $request->query('status') : null;
+        if ($day) $month = [$day, $day];
 
         return response()->json(LeaveRequest::with('leaveType')->where('employee_id', $employee->id)
             ->when($month, fn ($q) => $q->whereDate('starts_on', '<=', $month[1])->whereDate('ends_on', '>=', $month[0]))
-            ->latest('starts_on')->paginate($month ? 100 : 30)->through(fn ($l) => $this->present($l)));
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->latest('starts_on')->paginate($month || $status ? 100 : 30)->through(fn ($l) => $this->present($l)));
     }
 
     public function store(Request $request, HrWorkflowService $workflow): JsonResponse

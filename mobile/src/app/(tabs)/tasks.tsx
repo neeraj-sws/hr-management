@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { AddButton, FormSheet } from '../../components/FormSheet';
-import { MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
+import { DayFilter, MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
 import { DateField, todayYmd } from '../../components/DateField';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, Field, formatDate, formatDuration, Muted, Notice, Screen } from '../../components/ui';
 import { ApiError, get, post } from '../../lib/api';
@@ -38,6 +38,8 @@ export default function Tasks() {
   const [formError, setFormError] = useState<string | null>(null);
   // Open tasks: narrow the list down.
   const [show, setShow] = useState<'all' | 'overdue' | 'today' | 'high'>('all');
+  // "What did I do on 10 Feb 2026?": every task worked on, planned or completed that day.
+  const [day, setDay] = useState('');
 
   const addTask = async () => {
     if (!title.trim()) { setFormError('Give the task a title.'); return; }
@@ -57,13 +59,13 @@ export default function Tasks() {
 
   const load = useCallback(async () => {
     try {
-      const response = await get<Paginated<Task>>(`/tasks?status=${filter}${filter === 'completed' ? `&month=${month}` : ''}`);
+      const response = await get<Paginated<Task>>(day ? `/tasks?date=${day}` : `/tasks?status=${filter}${filter === 'completed' ? `&month=${month}` : ''}`);
       setTasks(response.data);
     } catch (e) {
       if (e instanceof ApiError && e.isNetwork) setMessage({ tone: 'info', text: 'Offline — task actions will be queued.' });
       else if (e instanceof ApiError) setMessage({ tone: 'error', text: e.firstMessage });
     }
-  }, [filter, month]);
+  }, [filter, month, day]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -87,7 +89,7 @@ export default function Tasks() {
   };
 
   const today = todayYmd();
-  const shown = filter === 'completed' ? tasks : tasks.filter((t) => show === 'all'
+  const shown = day || filter === 'completed' ? tasks : tasks.filter((t) => show === 'all'
     || (show === 'overdue' && !!t.overdue)
     || (show === 'today' && (t.due_on ?? '').slice(0, 10) === today)
     || (show === 'high' && ['high', 'urgent'].includes(t.priority)));
@@ -100,9 +102,14 @@ export default function Tasks() {
 
   return (
     <Screen refreshing={refreshing} onRefresh={refresh}>
-      <Chips value={filter} onChange={setFilter} options={[{ label: 'Open', value: 'open' }, { label: 'Completed', value: 'completed' }]} />
-      {filter === 'completed' ? <MonthSwitcher month={month} onChange={setMonth} /> : (
-        <Chips value={show} onChange={setShow} options={[{ label: 'All', value: 'all' }, { label: 'Overdue', value: 'overdue' }, { label: 'Due today', value: 'today' }, { label: 'High priority', value: 'high' }]} />
+      <DayFilter value={day} onChange={(value) => { setTasks([]); setDay(value); }} max={todayYmd()} />
+      {day ? <Muted style={{ marginBottom: 10 }}>{`Tasks on ${formatDate(day)}${tasks.length ? ` · ${formatDuration(tasks.reduce((sum, t) => sum + (t.day_seconds ?? 0), 0))} logged that day` : ''}`}</Muted> : (
+        <>
+          <Chips value={filter} onChange={setFilter} options={[{ label: 'Open', value: 'open' }, { label: 'Completed', value: 'completed' }]} />
+          {filter === 'completed' ? <MonthSwitcher month={month} onChange={setMonth} /> : (
+            <Chips value={show} onChange={setShow} options={[{ label: 'All', value: 'all' }, { label: 'Overdue', value: 'overdue' }, { label: 'Due today', value: 'today' }, { label: 'High priority', value: 'high' }]} />
+          )}
+        </>
       )}
       <AddButton title="Add my task" onPress={() => { setFormError(null); setAdding(true); }} />
       <FormSheet visible={adding} title="Add my task" onClose={() => setAdding(false)}>
@@ -118,7 +125,7 @@ export default function Tasks() {
         </View>
       </FormSheet>
       {message ? <Notice tone={message.tone} text={message.text} /> : null}
-      {shown.length === 0 ? <Card><Empty text={filter === 'completed' ? 'No tasks completed this month' : show === 'all' ? 'No open tasks' : 'No tasks match this filter'} /></Card> : null}
+      {shown.length === 0 ? <Card><Empty text={day ? `No tasks on ${formatDate(day)}` : filter === 'completed' ? 'No tasks completed this month' : show === 'all' ? 'No open tasks' : 'No tasks match this filter'} /></Card> : null}
       {shown.map((task) => (
         <Card key={task.id}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
@@ -127,7 +134,7 @@ export default function Tasks() {
           </View>
           <Muted style={{ marginTop: 4 }}>{task.project?.name ?? 'No project'} · {task.priority} · {task.due_on ? `due ${formatDate(task.due_on)}` : 'no due date'}</Muted>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-            <Muted>Est {task.estimated_hours ?? '—'}h · Logged {formatDuration(task.logged_seconds)}</Muted>
+            <Muted>{day ? `${formatDuration(task.day_seconds ?? 0)} that day · ` : ''}Est {task.estimated_hours ?? '—'}h · Logged {formatDuration(task.logged_seconds)}</Muted>
             {task.timer_running_since ? <RunningClock since={task.timer_running_since} base={0} /> : null}
           </View>
           {task.status !== 'completed' && (
