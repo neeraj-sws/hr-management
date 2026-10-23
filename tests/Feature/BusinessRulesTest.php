@@ -90,11 +90,12 @@ class BusinessRulesTest extends TestCase
 
         $csv = $this->actingAs($admin)->get('/reports/attendance/export?from=2026-10-01&to=2026-10-31')->assertOk()->streamedContent();
         $lines = array_values(array_filter(explode("\n", trim(substr($csv, 3)))));
-        $this->assertSame(implode(',', app(ReportService::class)->columns('attendance')), $lines[0]);
+        $reports = app(ReportService::class);
+        $this->assertSame(implode(',', array_map(fn ($c) => str_contains($h = $reports->heading('attendance', $c), ' ') ? '"'.$h.'"' : $h, $reports->columns('attendance'))), $lines[0]);
         // Every day is listed (leave, weekly offs and absences too); each check-in appears once with its times.
         // Times and durations match the attendance screens (HH:MM:SS); a session never checked out counts only to its last activity.
         $this->assertSame(AttendanceSession::whereBetween('work_date', ['2026-10-01', '2026-10-31'])->count(), count(array_filter($lines, fn ($l) => str_contains($l, '"09:') && str_contains($l, ' AM"'))));
-        $this->assertStringContainsString('REP-1,"Team Member",,2026-10-02,Fri,late,,"09:20:00 AM","06:00:00 PM",08:00:00,00:00:00,00:00:00,00:00:00,00:00:00,00:00:00,00:00:00,00:20:00,00:00:00,completed', $csv);
+        $this->assertStringContainsString('REP-1,"Team Member",,2026-10-02,Fri,late,,"09:20:00 AM","06:00:00 PM",08:40:00,00:00:00,00:00:00,08:00:00,00:00:00,00:00:00,00:00:00,00:00:00,00:20:00,00:00:00,completed', $csv);
         $this->assertStringContainsString('REP-1,"Team Member",,2026-10-03,Sat,weekend', $csv);
         $this->assertStringNotContainsString('290:', $csv);
 

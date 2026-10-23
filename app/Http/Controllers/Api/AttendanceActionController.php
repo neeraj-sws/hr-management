@@ -59,7 +59,7 @@ class AttendanceActionController extends ApiController
     public function heartbeat(Request $request): JsonResponse
     {
         $this->trackDesktop($request, true);
-        $data = $request->validate(['screen_active_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'], 'screen_idle_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'], 'screen_meeting_seconds' => ['nullable', 'integer', 'min:0', 'max:3600']]);
+        $data = $request->validate(['screen_active_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'], 'screen_idle_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'], 'screen_meeting_seconds' => ['nullable', 'integer', 'min:0', 'max:86400']]);
 
         return $this->respond($this->attendance->heartbeat($this->apiEmployee($request), (int) ($data['screen_active_seconds'] ?? 0), (int) ($data['screen_idle_seconds'] ?? 0), (int) ($data['screen_meeting_seconds'] ?? 0)));
     }

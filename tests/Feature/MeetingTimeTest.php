@@ -114,8 +114,29 @@ class MeetingTimeTest extends TestCase
         $this->getJson('/api/attendance/history?from=2026-10-23&to=2026-10-23')->assertOk()
             ->assertJsonPath('data.0.session.worked_seconds', 2640)->assertJsonPath('data.0.session.idle_counted_seconds', 300);
         Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)
-            ->assertSee('00:44:00')->assertSee('00:13:00 active')->assertSee('00:25:00 in meetings')->assertSee('00:05:00 idle')->assertSee('x-data', false);
+            ->assertSee('00:44:00')->assertSee('00:13:00 in use')->assertSee('00:25:00 in meetings')->assertSee('00:05:00 idle')->assertSee('x-data', false);
         Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)
             ->assertSee('00:44:00')->assertSee('00:05:00')->assertSee('00:25:00');
+    }
+    public function test_app_that_ran_offline_is_not_a_break_but_an_app_that_was_off_is(): void
+    {
+        $this->seed();
+        Carbon::setTestNow('2026-10-23 10:00:00');
+        $user = User::factory()->create(['email' => 'mt-4@example.com']);
+        $user->assignRole('Employee');
+        $e = AttendanceEmployee::create(['employee_code' => 'MT-4', 'name' => 'Person MT-4', 'email' => $user->email, 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01']);
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-23', 'check_in' => '2026-10-23 10:00:00', 'status' => 'working', 'last_sync_at' => now()]);
+        Sanctum::actingAs($user, ['*']);
+        Carbon::setTestNow('2026-10-23 10:05:00');
+        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 300])->assertOk();
+
+        // The app kept running but could not reach the server for 49 minutes, then sends what it measured.
+        Carbon::setTestNow('2026-10-23 10:54:00');
+        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 2700, 'screen_idle_seconds' => 240])->assertOk()
+            ->assertJsonPath('data.break_seconds', 0)->assertJsonPath('data.screen_active_seconds', 3000);
+
+        // The computer was really off for 30 minutes: the app reports nothing for that time -> a break.
+        Carbon::setTestNow('2026-10-23 11:24:00');
+        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 20])->assertOk()->assertJsonPath('data.break_seconds', 1800);
     }
 }

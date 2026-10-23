@@ -350,7 +350,7 @@ class AttendanceService
     {
         $session = $this->today($employee);
         if ($session && ! $session->check_out) {
-            $session = $this->recordDesktopGap($employee, $session) ?? $session;
+            $session = $this->recordDesktopGap($employee, $session, $screenActive + $screenIdle + $screenMeeting) ?? $session;
             $changes = ['last_sync_at' => now()];
             if ($screenActive > 0 || $screenIdle > 0 || $screenMeeting > 0) {
                 $since = $session->screen_reported_at ?? $session->check_in;
@@ -375,12 +375,15 @@ class AttendanceService
      * app closed) while the employee was working, that gap is recorded as a
      * break so it is never paid as work; the employee can ask for a correction.
      */
-    private function recordDesktopGap(AttendanceEmployee $employee, AttendanceSession $session): ?AttendanceSession
+    private function recordDesktopGap(AttendanceEmployee $employee, AttendanceSession $session, int $reportedSeconds = 0): ?AttendanceSession
     {
         if ($session->status !== 'working' || ! $session->screen_reported_at) return null;
         $minutes = (int) ($this->policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['away_prompt_minutes' => 10])['away_prompt_minutes'] ?? 10);
         $gapStart = $session->screen_reported_at->copy();
         if ($minutes <= 0 || $gapStart->diffInMinutes(now()) < max(5, $minutes)) return null;
+        // The app was running the whole time and only could not reach the server (internet down, server
+        // busy): this report brings the screen time it measured meanwhile. Not a break.
+        if ($reportedSeconds >= 0.5 * $gapStart->diffInSeconds(now())) return null;
         if (($last = $session->events()->max('event_time')) && Carbon::parse($last)->gt($gapStart)) return null;
 
         try {

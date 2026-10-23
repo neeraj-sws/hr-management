@@ -64,7 +64,8 @@ class Report extends Component
 
         return $this->page('livewire.reports.report', [
             'label' => $reports->label($this->type),
-            'columns' => $reports->columns($this->type),
+            'columns' => $columns = $reports->columns($this->type),
+            'headings' => collect($columns)->mapWithKeys(fn ($column) => [$column => $reports->heading($this->type, $column)])->all(),
             'rows' => $this->paginateCollection($rows->take(self::PREVIEW_LIMIT)->values(), self::PER_PAGE),
             'truncated' => $rows->count() > self::PREVIEW_LIMIT,
             'exportUrl' => route('hr.reports.export', ['type' => $this->type, ...$filters]),

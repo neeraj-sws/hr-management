@@ -111,7 +111,7 @@ class ProductionReadinessTest extends TestCase
         $response = $this->actingAs($admin)->get('/reports/performance/export?from=2026-10-01&to=2026-10-31');
         $response->assertOk()->assertHeader('content-type', 'text/csv; charset=UTF-8')->assertHeader('content-disposition');
         $content = $response->streamedContent();
-        $this->assertStringContainsString('employee_code,employee_name,completed_tasks,attendance_days,approved_leave_days', $content);
+        $this->assertStringContainsString('"Employee code","Employee name","Completed tasks","Attendance days","Approved leave days"', $content);
         $this->assertStringContainsString('CSV-1,"CSV Employee"', $content);
         $this->assertStringNotContainsString('CSV-2,"=HYPERLINK', $content);
         $this->assertStringContainsString("'=HYPERLINK", $content);

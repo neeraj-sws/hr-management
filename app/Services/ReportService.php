@@ -77,7 +77,7 @@ class ReportService
      * as the attendance and task screens. The column is renamed to *_time so
      * a spreadsheet never mixes decimal hours with clock times.
      */
-    public const DURATION_COLUMNS = ['active_hours' => 3600, 'idle_hours' => 3600, 'break_hours' => 3600, 'screen_active_hours' => 3600, 'screen_idle_hours' => 3600, 'screen_meeting_hours' => 3600, 'screen_corrected_hours' => 3600, 'late_minutes' => 60, 'early_minutes' => 60, 'estimated_hours' => 3600, 'logged_hours' => 3600, 'not_counted_hours' => 3600, 'requested_minutes' => 60, 'approved_minutes' => 60, 'hours' => 3600, 'minutes' => 60];
+    public const DURATION_COLUMNS = ['in_out_hours' => 3600, 'screen_untracked_hours' => 3600, 'active_hours' => 3600, 'idle_hours' => 3600, 'break_hours' => 3600, 'screen_active_hours' => 3600, 'screen_idle_hours' => 3600, 'screen_meeting_hours' => 3600, 'screen_corrected_hours' => 3600, 'late_minutes' => 60, 'early_minutes' => 60, 'estimated_hours' => 3600, 'logged_hours' => 3600, 'not_counted_hours' => 3600, 'requested_minutes' => 60, 'approved_minutes' => 60, 'hours' => 3600, 'minutes' => 60];
 
     public static function durationColumn(string $column): string
     {
@@ -85,6 +85,24 @@ class ReportService
         if (in_array($column, ['hours', 'minutes'], true)) return 'time';
 
         return preg_replace('/_(hours|minutes)$/', '', $column).'_time';
+    }
+
+    /**
+     * Column headings people read (report table, Excel and CSV). The same names as the attendance
+     * pages and the apps: Worked = In-out time - Break - Idle; screen time = In use + In meetings +
+     * Idle + Not tracked.
+     */
+    public function heading(string $type, string $column): string
+    {
+        $names = [
+            'attendance' => [
+                'in_out_time' => 'In–out time', 'active_time' => 'Worked time', 'idle_time' => 'Idle time', 'break_time' => 'Break time',
+                'screen_active_time' => 'Screen: in use', 'screen_meeting_time' => 'Screen: in meetings', 'screen_corrected_time' => 'Screen: added by correction',
+                'screen_untracked_time' => 'Screen: not tracked', 'late_time' => 'Late by', 'early_time' => 'Left early by', 'check_in_ip' => 'Check-in IP', 'check_out_ip' => 'Check-out IP',
+            ],
+        ];
+
+        return $names[$type][$column] ?? str($column)->replace('_', ' ')->ucfirst()->toString();
     }
 
     public function columns(string $type): array
@@ -95,7 +113,7 @@ class ReportService
     private function rawColumns(string $type): array
     {
         return match ($type) {
-            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'day', 'day_status', 'note', 'check_in', 'check_out', 'active_hours', 'idle_hours', 'break_hours', 'screen_active_hours', 'screen_meeting_hours', 'screen_corrected_hours', 'screen_idle_hours', 'late_minutes', 'early_minutes', 'session_status', 'check_in_ip', 'check_out_ip'],
+            'attendance' => ['employee_code', 'employee_name', 'department', 'work_date', 'day', 'day_status', 'note', 'check_in', 'check_out', 'in_out_hours', 'break_hours', 'idle_hours', 'active_hours', 'screen_active_hours', 'screen_meeting_hours', 'screen_corrected_hours', 'screen_untracked_hours', 'late_minutes', 'early_minutes', 'session_status', 'check_in_ip', 'check_out_ip'],
             'leave' => ['id', 'employee_code', 'employee_name', 'leave_type', 'paid', 'starts_on', 'ends_on', 'days', 'status', 'decided_at'],
             'projects' => ['id', 'project', 'client', 'manager', 'status', 'starts_on', 'ends_on', 'members', 'tasks', 'completed_tasks', 'open_tasks', 'overdue_tasks', 'progress_pct', 'estimated_hours', 'logged_hours'],
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
@@ -396,8 +414,10 @@ class ReportService
                     'day' => \Illuminate\Support\Carbon::parse($day['date'])->format('D'), 'day_status' => $day['status'],
                     'note' => $day['extra'] ? 'Extra working · '.$day['extra_reason'] : ($day['label'] ?: null),
                     'check_in' => $s?->check_in?->format('h:i:s A'), 'check_out' => $s?->check_out?->format('h:i:s A'),
+                    // In-out time as on the employee's page: check-in to check-out; still working, up to now (worked + break + idle).
+                    'in_out_hours' => $s?->check_in ? $this->hours($s->check_out ? (int) $s->check_in->diffInSeconds($s->check_out) : $this->attendance->workedSeconds($s) + (int) $s->break_seconds + $s->idleSeconds()) : null,
                     'active_hours' => $s ? $this->hours($this->attendance->workedSeconds($s)) : null, 'idle_hours' => $s ? $this->hours($s->idleSeconds()) : null, 'break_hours' => $s ? $this->hours($s->break_seconds) : null,
-                    ...(($t = $s?->screenTime()) ? ['screen_active_hours' => $this->hours($t['active']), 'screen_meeting_hours' => $this->hours($t['meeting']), 'screen_corrected_hours' => $this->hours($t['corrected']), 'screen_idle_hours' => $this->hours($t['idle'])] : ['screen_active_hours' => null, 'screen_meeting_hours' => null, 'screen_corrected_hours' => null, 'screen_idle_hours' => null]),
+                    ...(($t = $s?->screenTime()) ? ['screen_active_hours' => $this->hours($t['active']), 'screen_meeting_hours' => $this->hours($t['meeting']), 'screen_corrected_hours' => $this->hours($t['corrected']), 'screen_idle_hours' => $this->hours($t['idle']), 'screen_untracked_hours' => $this->hours($t['untracked'])] : ['screen_active_hours' => null, 'screen_meeting_hours' => null, 'screen_corrected_hours' => null, 'screen_idle_hours' => null, 'screen_untracked_hours' => null]),
                     'late_minutes' => $s ? $this->attendance->lateMinutes($s) : null, 'early_minutes' => $s ? $this->attendance->earlyMinutes($s) : null,
                     'session_status' => $s?->status, 'check_in_ip' => $s?->check_in_ip, 'check_out_ip' => $s?->check_out_ip]);
                 if ($limit && $rows->count() >= $limit) return $rows;

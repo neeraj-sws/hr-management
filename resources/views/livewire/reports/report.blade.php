@@ -24,7 +24,7 @@
             <span wire:loading class="spinner" style="margin-bottom:10px"></span>
         </div>
         <div class="table-wrap"><table class="table">
-            <thead><tr>@foreach($columns as $column)<th>{{ str($column)->replace('_', ' ') }}</th>@endforeach</tr></thead>
+            <thead><tr>@foreach($columns as $column)<th>{{ $headings[$column] ?? str($column)->replace('_', ' ') }}</th>@endforeach</tr></thead>
             <tbody>
             @forelse($rows as $row)
                 <tr>@foreach($columns as $column)@php($value = $row[$column] ?? null)<td @class(['num' => is_int($value) || is_float($value)]) style="{{ $column === 'metadata' ? 'min-width:340px;max-width:460px;white-space:normal;overflow-wrap:anywhere;text-align:left' : '' }}">@if(in_array($column, ['status', 'day_status', 'session_status', 'run_status', 'payroll_status', 'timeliness'], true) && $value)<x-badge :status="$value" />@elseif($column === 'metadata' && is_array($details = is_string($value) ? json_decode($value, true) : $value))@forelse($details as $k => $v)<div><span class="muted">{{ str($k)->replace('_', ' ')->ucfirst() }}:</span> {{ is_array($v) ? json_encode($v) : (is_bool($v) ? ($v ? 'yes' : 'no') : ($v ?? '—')) }}</div>@empty — @endforelse @else{{ is_float($value) ? rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.') : ($value ?? '—') }}@endif</td>@endforeach</tr>

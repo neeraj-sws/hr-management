@@ -34,17 +34,17 @@ class ReportExportController extends Controller
 
         if ($format === 'xlsx') {
             $cells = $rows->map(fn ($row) => array_map(fn ($column) => $this->safeCell($row[$column] ?? null), $columns));
-            $path = \App\Support\XlsxWriter::toTempFile($columns, $cells, $reports->label($type));
+            $path = \App\Support\XlsxWriter::toTempFile(array_map(fn ($column) => $reports->heading($type, $column), $columns), $cells, $reports->label($type));
 
             return response()->download($path, "{$filename}.xlsx", [
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             ])->deleteFileAfterSend(true);
         }
 
-        return response()->streamDownload(function () use ($columns, $rows) {
+        return response()->streamDownload(function () use ($columns, $rows, $reports, $type) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, $columns);
+            fputcsv($out, array_map(fn ($column) => $reports->heading($type, $column), $columns));
             foreach ($rows as $row) fputcsv($out, array_map(fn ($column) => $this->safeCell($row[$column] ?? null), $columns));
             fclose($out);
         }, "{$filename}.csv", ['Content-Type' => 'text/csv; charset=UTF-8']);
