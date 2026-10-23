@@ -424,7 +424,8 @@ class DesktopApp:
         win.resizable(False, False)
         minutes = max(1, int((datetime.now().astimezone() - started).total_seconds() // 60))
         tk.Label(win, text="Are you sitting idle?", bg="white", fg=INK, font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x")
-        tk.Label(win, text=f"No keyboard or mouse use since {started.strftime('%I:%M %p')} ({minutes} min).", bg="white", fg=MUTED, anchor="w", justify="left", wraplength=420).pack(fill="x", pady=(4, 12))
+        tk.Label(win, text=f"No keyboard or mouse use since {started.strftime('%I:%M %p')} ({minutes} min).\n"
+                 "In a meeting or on a call away from the computer? Choose \"I am working\": it counts as meeting time, not idle.", bg="white", fg=MUTED, anchor="w", justify="left", wraplength=420).pack(fill="x", pady=(4, 12))
         buttons = tk.Frame(win, bg="white")
         buttons.pack(fill="x")
 
@@ -449,7 +450,7 @@ class DesktopApp:
                 self._run(lambda: self.client.away(started.isoformat(), end.isoformat(), "idle", as_work=True),
                           lambda session: (self._set_session(session), self._flash("Kept as working time.")), lambda _e: self._flash("Kept as working time."))
 
-        tk.Button(buttons, text="No, I am working", command=lambda: answer(False), bg=BLUE, fg="white", relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
+        tk.Button(buttons, text="No, I am working (meeting / call)", command=lambda: answer(False), bg=BLUE, fg="white", relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
         tk.Button(buttons, text="Yes, count it as a break", command=lambda: answer(True), bg="white", fg=INK, relief="solid", bd=1, padx=14, pady=6, cursor="hand2").pack(side="left", padx=(8, 0))
         win.protocol("WM_DELETE_WINDOW", lambda: answer(False))
         win.update_idletasks()

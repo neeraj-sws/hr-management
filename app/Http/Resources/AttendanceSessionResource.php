@@ -19,11 +19,14 @@ class AttendanceSessionResource extends JsonResource
             'active_seconds'=>(int)$this->active_seconds,
             'idle_seconds'=>(int)$this->idle_seconds,
             'break_seconds'=>(int)$this->break_seconds,
-            'screen_active_seconds'=>(int)$this->screen_active_seconds,
-            'screen_idle_seconds'=>(int)$this->screen_idle_seconds,
-            'screen_meeting_seconds'=>(int)$this->screen_meeting_seconds,
-            // Time the desktop app missed but an approved correction confirmed as working.
-            'screen_corrected_seconds'=>$this->resource->correctedScreenSeconds(),
+            // Same figures as the website: away time answered as working is meeting time, as a break is not idle.
+            ...(fn (array $t) => [
+                'screen_active_seconds' => $t['active'],
+                'screen_idle_seconds' => $t['idle'],
+                'screen_meeting_seconds' => $t['meeting'],
+                // Time the desktop app missed but an approved correction confirmed as working.
+                'screen_corrected_seconds' => $t['corrected'],
+            ])($this->resource->screenTime()),
             'status'=>$this->status,
             'server_version'=>(int)$this->server_version,
             'events'=>$this->whenLoaded('events'),

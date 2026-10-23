@@ -69,4 +69,34 @@ class MeetingTimeTest extends TestCase
         Sanctum::actingAs($user, ['*']);
         $this->getJson('/api/attendance/today')->assertOk()->assertJsonPath('data.screen_corrected_seconds', 9000);
     }
+
+    public function test_away_time_answered_as_working_is_meeting_time_with_the_same_figures_everywhere(): void
+    {
+        $this->seed();
+        Carbon::setTestNow('2026-10-23 10:00:00');
+        $admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $user = User::factory()->create(['email' => 'mt-3@example.com']);
+        $user->assignRole('Employee');
+        $e = AttendanceEmployee::create(['employee_code' => 'MT-3', 'name' => 'Person MT-3', 'email' => $user->email, 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01', 'work_start' => '10:00:00', 'work_end' => '19:00:00', 'daily_work_hours' => 8.5]);
+        AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-23', 'check_in' => '2026-10-23 10:00:00', 'status' => 'working', 'last_sync_at' => now()]);
+        Sanctum::actingAs($user, ['*']);
+
+        // 10 min typing, then a 30-minute meeting away from the computer: the app saw it as idle.
+        Carbon::setTestNow('2026-10-23 10:40:00');
+        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 600, 'screen_idle_seconds' => 1800])->assertOk();
+        // "Are you sitting idle?" -> "No, I am working" for 25 of those minutes.
+        $this->postJson('/api/attendance/away', ['from' => '2026-10-23 10:10:00', 'to' => '2026-10-23 10:35:00', 'reason' => 'idle', 'as' => 'work'])->assertOk()
+            ->assertJsonPath('data.screen_meeting_seconds', 1500)->assertJsonPath('data.screen_idle_seconds', 300);
+
+        $session = AttendanceSession::where('employee_id', $e->id)->firstOrFail();
+        $this->assertSame(['active' => 600, 'meeting' => 1500, 'idle' => 300, 'corrected' => 0], $session->screenTime());
+        $this->assertSame(300, $session->idleSeconds(), 'The Idle column matches the screen time');
+        $this->getJson('/api/attendance/today')->assertJsonPath('data.screen_idle_seconds', 300)->assertJsonPath('data.idle_counted_seconds', 300);
+
+        // Admin list and employee page show the same figures.
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('00:25:00 in meetings')->assertSee('00:05:00 idle')->assertDontSee('00:30:00 idle');
+        Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('00:25:00');
+        $row = app(ReportService::class)->rows($admin, 'attendance', ['from' => '2026-10-23', 'to' => '2026-10-23', 'employee_id' => $e->id])->first();
+        $this->assertSame(['00:25:00', '00:05:00'], [$row['screen_meeting_time'], $row['screen_idle_time']]);
+    }
 }
