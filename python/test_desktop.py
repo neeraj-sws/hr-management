@@ -214,6 +214,41 @@ class ClientTests(unittest.TestCase):
             app._watch_presence()
         self.assertGreater(app.screen_idle, 4)
 
+    def test_screen_time_counts_from_check_in_not_from_the_first_check(self):
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import patch
+        from sws_desktop import presence
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.clock_label = Mock(winfo_exists=Mock(return_value=True))
+        app.root = Mock()
+        now = datetime.now(timezone.utc)
+        # Checked in 4 seconds ago with the app already open: the first check counts those 4 seconds too.
+        app.session = {"status": "working", "check_in": (now - timedelta(seconds=4)).isoformat()}
+        app.screen_active = app.screen_idle = app.screen_meeting = 0.0
+        app.app_usage_on = app.window_titles_on = False
+        app.capture_policy = app.last_capture = None
+        app.away_prompt_open = False
+        app.away_tracker = presence.AwayTracker(1)
+        app._ask_about_away = Mock()
+        app.last_presence_poll = None
+        app.app_started_at = datetime.now().astimezone() - timedelta(minutes=5)
+        app.last_not_working_at = None
+        app.presence_bucket = None
+        with patch.object(presence, "seconds_since_input", return_value=1.0), patch.object(presence, "is_locked", return_value=False),                 patch.object(presence, "meeting_reason", return_value=None):
+            app._watch_presence()
+        self.assertGreaterEqual(app.screen_active, 3.9)
+        self.assertEqual(app.presence_bucket, "active")
+        # The app opened long after check-in: the time before it opened is not counted (it did not see it).
+        app.last_presence_poll = None
+        app.screen_active = 0.0
+        app.session = {"status": "working", "check_in": (now - timedelta(hours=2)).isoformat()}
+        app.app_started_at = datetime.now().astimezone() - timedelta(seconds=3)
+        with patch.object(presence, "seconds_since_input", return_value=1.0), patch.object(presence, "is_locked", return_value=False),                 patch.object(presence, "meeting_reason", return_value=None):
+            app._watch_presence()
+        self.assertTrue(2.9 <= app.screen_active <= 15)
+
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})
         session = Mock(request=Mock(return_value=response))
@@ -249,6 +284,18 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(sent[1]["base_version"], 3)
         remaining = self.queue.items()
         self.assertEqual([(i["action_id"], i["status"]) for i in remaining], [("stale", "conflict")])
+
+    def test_refused_actions_can_be_retried_or_discarded(self):
+        self.queue.enqueue("task.complete", "Complete · Report", entity_id=7, base_version=3, action_id="refused")
+        self.queue.enqueue("task.pause", "Pause · Other", entity_id=8, base_version=1, action_id="gone")
+        client = Mock()
+        client.sync.return_value = [{"action_id": "refused", "status": 409, "conflict": True, "message": "Task changed"}, {"action_id": "gone", "status": 422, "message": "Task deleted"}]
+        self.queue.flush(client)
+        self.assertEqual([(i["action_id"], i["last_error"]) for i in self.queue.attention()], [("refused", "Task changed"), ("gone", "Task deleted")])
+        self.queue.retry("refused")
+        self.assertEqual(self.queue.counts()["queued"], 1)
+        self.queue.discard("gone")
+        self.assertEqual(self.queue.attention(), [])
 
     def test_flush_keeps_everything_while_offline(self):
         self.queue.enqueue_attendance("check_in", "Check in")

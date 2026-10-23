@@ -107,6 +107,8 @@ class ApprovalInbox
         return ApprovalRequest::with(['approvable', 'approver'])
             ->whereIn('status', ['approved', 'rejected'])
             ->where(fn ($query) => $query->where('approver_id', $user->id)->orWhereIn('approvable_type', $types ?: ['-']))
+            // The chosen type always applies — also to decisions the person made themself.
+            ->when($type, fn ($query) => $query->where('approvable_type', $type))
             ->latest('decided_at')->limit($limit)->get()
             ->filter(fn (ApprovalRequest $approval) => $approval->approvable && ($approval->approver_id === $user->id || $this->canSeeDecision($user, $approval)))
             ->values();

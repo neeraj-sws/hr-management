@@ -170,9 +170,10 @@ class Cases extends Component
 
     public function render(LeaveAccrualService $leave)
     {
-        $cases = EmployeeLifecycleCase::with(['employee', 'clearances', 'settlement'])->where('kind', $this->kind)
+        // whereHas('employee'): a case whose employee no longer exists is skipped, not a crash.
+        $cases = EmployeeLifecycleCase::with(['employee', 'clearances', 'settlement'])->where('kind', $this->kind)->whereHas('employee')
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))->latest()->paginate(20);
-        $selected = $this->case ? EmployeeLifecycleCase::with(['employee.department', 'employee.manager', 'clearances', 'settlement.payments', 'canceller'])->where('kind', $this->kind)->find($this->case) : null;
+        $selected = $this->case ? EmployeeLifecycleCase::with(['employee.department', 'employee.manager', 'clearances', 'settlement.payments', 'canceller'])->where('kind', $this->kind)->whereHas('employee')->find($this->case) : null;
         $people = app(PeopleOperationsService::class);
         $details = [];
         if ($selected) {

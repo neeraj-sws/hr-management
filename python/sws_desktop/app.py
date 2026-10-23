@@ -64,6 +64,11 @@ class DesktopApp:
         self.window_titles_on = False
         self.desktop_attendance_allowed = True  # admin can turn desktop attendance off for an employee
         self.last_presence_poll: datetime | None = None
+        # Screen time counts from the moment work starts (check-in, break end or this app starting),
+        # not from the first 5-second check, and the screen line moves every second like the clock.
+        self.app_started_at = datetime.now().astimezone()
+        self.last_not_working_at: datetime | None = None
+        self.presence_bucket: str | None = None  # 'active' / 'idle' / 'meeting' at the last check
         self.capture_policy: dict | None = None
         self.capture_notice_shown: dict | None = None  # the notice (terms) shown in this app run
         self.last_capture: datetime | None = None
@@ -240,6 +245,8 @@ class DesktopApp:
         self.flash_label.pack(side="left")
         self.sync_label = tk.Label(footer, text="", bg="#e9edf4", fg=MUTED)
         self.sync_label.pack(side="right")
+        # "2 need attention" opens the list of refused actions, to retry or discard each one.
+        self.sync_label.bind("<Button-1>", lambda _e: self.show_attention())
         ttk.Button(footer, text="Sync now", command=self.sync_now).pack(side="right", padx=8)
 
         body = tk.Frame(self.container, bg=CANVAS, padx=18, pady=16)
@@ -333,14 +340,23 @@ class DesktopApp:
             self.meeting_reason = presence.meeting_reason() if working and not locked else None
             if self.meeting_reason:
                 idle_for = 0.0
-            if working and self.last_presence_poll:
-                elapsed = min(max((now - self.last_presence_poll).total_seconds(), 0), 10)  # a long gap is sleep: not counted
+            previous = self.last_presence_poll
+            if working and previous is None:
+                # First check of a working stretch: count from when it began (check-in, break end, app start).
+                began = max(t for t in (parse_time((self.session or {}).get("check_in")), self.app_started_at, self.last_not_working_at) if t)
+                if 0 <= (now - began).total_seconds() <= 15:
+                    previous = began
+            if working and previous:
+                elapsed = min(max((now - previous).total_seconds(), 0), 10 if previous is self.last_presence_poll else 15)  # a long gap is sleep: not counted
                 if self.meeting_reason:
                     self.screen_meeting += elapsed
+                    self.presence_bucket = "meeting"
                 elif locked or idle_for >= SCREEN_IDLE_AFTER_SECONDS:
                     self.screen_idle += elapsed
+                    self.presence_bucket = "idle"
                 else:
                     self.screen_active += elapsed
+                    self.presence_bucket = "active"
                     if self.app_usage_on:
                         app_name = presence.foreground_app()
                         if app_name:
@@ -351,6 +367,9 @@ class DesktopApp:
                                     key = (app_name, title)
                                     self.window_titles[key] = self.window_titles.get(key, 0.0) + elapsed
             self.last_presence_poll = now if working else None
+            if not working:
+                self.last_not_working_at = now
+                self.presence_bucket = None
             if not working:
                 self.last_capture = None
             elif self.last_capture is None:
@@ -740,9 +759,14 @@ class DesktopApp:
         self.break_label.config(text=self._break_text(session))
         self.total_label.config(text=self._total_text(session))
         if session:
-            active = int(session.get("screen_active_seconds") or 0) + int(self.screen_active)
-            idle = int(session.get("screen_idle_seconds") or 0) + int(self.screen_idle)
-            meeting = int(session.get("screen_meeting_seconds") or 0) + int(self.screen_meeting)
+            # The seconds since the last 5-second check go to what the computer was doing then, so the
+            # screen line moves every second, like the clock above.
+            live = {"active": 0.0, "idle": 0.0, "meeting": 0.0}
+            if self.presence_bucket and self.last_presence_poll and session.get("status") == "working":
+                live[self.presence_bucket] = min(max((datetime.now().astimezone() - self.last_presence_poll).total_seconds(), 0), 10)
+            active = int(int(session.get("screen_active_seconds") or 0) + self.screen_active + live["active"])
+            idle = int(int(session.get("screen_idle_seconds") or 0) + self.screen_idle + live["idle"])
+            meeting = int(int(session.get("screen_meeting_seconds") or 0) + self.screen_meeting + live["meeting"])
             corrected = int(session.get("screen_corrected_seconds") or 0)  # time the app missed, confirmed by an approved correction
             text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
             if self.meeting_reason:
@@ -832,9 +856,68 @@ class DesktopApp:
         parts = ["online" if self.online else "OFFLINE"]
         if counts["queued"]:
             parts.append(f"{counts['queued']} queued")
-        if counts["conflict"] or counts["failed"]:
-            parts.append(f"{counts['conflict'] + counts['failed']} need attention")
-        self.sync_label.config(text=" · ".join(parts), fg=MUTED if self.online and not counts["queued"] else AMBER)
+        attention = counts["conflict"] + counts["failed"]
+        if attention:
+            parts.append(f"{attention} need attention — click to see")
+        self.sync_label.config(text=" · ".join(parts), fg=RED if attention else MUTED if self.online and not counts["queued"] else AMBER,
+                               cursor="hand2" if attention else "", font=("Segoe UI", 9, "underline") if attention else ("Segoe UI", 9))
+
+    def show_attention(self):
+        """Lists the actions the server refused, with why, so each can be sent again or dropped."""
+        items = self.offline.attention()
+        if not items:
+            return
+        win = tk.Toplevel(self.root)
+        win.title("Actions that need attention")
+        win.configure(bg="white", padx=16, pady=14)
+        win.transient(self.root)
+        tk.Label(win, text="These actions could not be saved on the server.", bg="white", fg=INK, font=("Segoe UI", 11, "bold"), anchor="w").pack(fill="x")
+        tk.Label(win, text="Retry sends one again; Discard drops it (ask HR for a correction if the time still needs fixing).", bg="white", fg=MUTED, anchor="w", justify="left", wraplength=520).pack(fill="x", pady=(2, 10))
+        listing = tk.Frame(win, bg="white")
+        listing.pack(fill="both", expand=True)
+
+        def draw():
+            for child in listing.winfo_children():
+                child.destroy()
+            current = self.offline.attention()
+            if not current:
+                win.destroy()
+                self._render_sync()
+                return
+            for item in current:
+                row = tk.Frame(listing, bg="white", highlightbackground=LINE, highlightthickness=1, padx=10, pady=8)
+                row.pack(fill="x", pady=3)
+                when = parse_time(item["queued_at"])
+                head = f"{item['label']}  ·  {when.astimezone().strftime('%d %b %I:%M %p') if when else ''}"
+                tk.Label(row, text=head, bg="white", fg=INK, anchor="w", font=("Segoe UI", 10, "bold")).pack(fill="x")
+                tk.Label(row, text=f"Why: {item['last_error'] or 'refused by the server'}", bg="white", fg=RED, anchor="w", justify="left", wraplength=500).pack(fill="x")
+                buttons = tk.Frame(row, bg="white")
+                buttons.pack(fill="x", pady=(6, 0))
+                ttk.Button(buttons, text="Retry", command=lambda a=item["action_id"]: retry(a)).pack(side="left")
+                ttk.Button(buttons, text="Discard", command=lambda a=item["action_id"], l=item["label"]: discard(a, l)).pack(side="left", padx=6)
+            self._render_sync()
+
+        def retry(action_id):
+            self.offline.retry(action_id)
+            self._render_sync()
+
+            def done(accepted):
+                self._render_sync()
+                self._flash("Sent." if accepted else "Still not accepted — see why in the list.", GREEN if accepted else AMBER)
+                if accepted:
+                    self.refresh()
+                if win.winfo_exists():
+                    draw()
+
+            self._run(lambda: self.offline.flush(self.client), done)
+
+        def discard(action_id, label):
+            if messagebox.askyesno("Discard action", f"Drop \"{label}\"? It will not be sent.", parent=win):
+                self.offline.discard(action_id)
+                draw()
+
+        draw()
+        ttk.Button(win, text="Close", command=win.destroy).pack(anchor="e", pady=(10, 0))
 
     # Actions ---------------------------------------------------------------
     def attendance(self, action: str):

@@ -225,6 +225,7 @@ class EmployeeService
             'task time entries' => \App\Models\TaskTimeEntry::where('employee_id', $employee->id)->count(),
             'expense claims' => \App\Models\ExpenseClaim::where('employee_id', $employee->id)->count(),
             'people reporting to them' => AttendanceEmployee::where('manager_id', $employee->id)->count(),
+            'final settlements' => \App\Models\EmployeeFinalSettlement::whereIn('lifecycle_case_id', \App\Models\EmployeeLifecycleCase::where('employee_id', $employee->id)->select('id'))->count(),
         ];
 
         return array_filter($counts);
@@ -249,6 +250,11 @@ class EmployeeService
             // Remove their attendance computers too, so no device is left pointing at a missing employee.
             \Laravel\Sanctum\PersonalAccessToken::whereIn('id', $employee->devices()->whereNotNull('personal_access_token_id')->pluck('personal_access_token_id'))->delete();
             $employee->devices()->delete();
+            // Their onboarding/offboarding cases go too. Done here, not left to the database:
+            // a server without foreign keys would keep a case pointing at nobody (the Cases page then crashed).
+            $cases = \App\Models\EmployeeLifecycleCase::where('employee_id', $employee->id)->pluck('id');
+            \App\Models\EmployeeClearanceItem::whereIn('lifecycle_case_id', $cases)->delete();
+            \App\Models\EmployeeLifecycleCase::whereIn('id', $cases)->delete();
             $employee->delete();
             if ($user) { $user->tokens()->delete(); $user->delete(); }
             $this->audit->record('employee.removed', null, [...$snapshot, 'removed_by' => $actor->name]);
