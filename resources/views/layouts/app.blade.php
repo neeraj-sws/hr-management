@@ -31,7 +31,8 @@
                     if (!c.running) return v;
                     v.inOut += s;
                     if (c.status === 'on_break') { v.brk += s; return v; }
-                    if (c.state === 'idle') { v.idle += k; v.sIdle += k; v.worked += r; }
+                    if (c.state === 'idle' && c.idle_deducted !== false) { v.idle += k; v.sIdle += k; v.worked += r; }
+                    else if (c.state === 'idle') { v.sIdle += k; v.worked += s; } // field / mobile work: idle is not taken off
                     else { v.worked += s; if (c.state === 'active') v.active += k; else if (c.state === 'meeting') v.meeting += k; }
                     return v;
                 },

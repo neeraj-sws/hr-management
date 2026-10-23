@@ -67,7 +67,7 @@
         @if($session && $session->events->isNotEmpty())
             <div class="divider"></div>
             <p class="eyebrow">Today's timeline</p>
-            <div class="pill-row">@foreach($session->events->sortBy('event_time') as $event)<span class="pill"><b>{{ $event->event_time->format('h:i A') }}</b>{{ str($event->event_type)->replace('_', ' ')->title() }}@if($event->duration_seconds) (@hms($event->duration_seconds))@endif</span>@endforeach</div>
+            <div class="pill-row">@foreach($session->events->sortBy('event_time') as $event)<span class="pill"><b>{{ $event->event_time->format('h:i A') }}</b>{{ str($event->event_type)->replace('_', ' ')->title() }}@if($event->duration_seconds) (@hms($event->duration_seconds))@endif@if($event->metadata['note'] ?? null) · {{ $event->metadata['note'] }}@endif</span>@endforeach</div>
         @endif
     </section>
 

@@ -40,7 +40,8 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
   else if (s && session?.status === 'working') {
     const k = Math.min(s, session.live?.tick_for ?? 0);
     const state = session.live?.state ?? null;
-    if (state === 'idle') { v.idle += k; v.sIdle += k; v.worked += s - k; }
+    if (state === 'idle' && session.live?.idle_deducted !== false) { v.idle += k; v.sIdle += k; v.worked += s - k; }
+    else if (state === 'idle') { v.sIdle += k; v.worked += s; } // field / mobile work: idle is not taken off
     else { v.worked += s; if (state === 'active') v.active += k; else if (state === 'meeting') v.meeting += k; }
   }
   const worked = Math.max(0, v.worked);

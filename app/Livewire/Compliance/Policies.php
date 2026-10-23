@@ -35,6 +35,9 @@ class Policies extends Component
     public const OVERRIDABLE = self::RULES + [
         'overtime.multiplier' => ['Overtime', ['multiplier' => 'Multiplier', 'holiday_multiplier' => 'Holiday / weekly-off multiplier', 'max_minutes_per_day' => 'Max minutes per day', 'max_minutes_per_month' => 'Max minutes per month']],
         'leave.advance_limit' => ['Advance paid leave', ['max_days' => 'Maximum advance days']],
+        // Field / mobile staff (calls, visits, work on the phone): the computer standing untouched is not
+        // taken off their working time; idle is still shown as information. See AttendanceSession::isFieldWork().
+        \App\Models\AttendanceSession::WORK_TYPE_POLICY => ['Work type (desk / field-mobile)', ['field' => 'Work type']],
     ];
 
     /** Form values keyed by slot() (rule keys contain dots, which Livewire would read as nesting). */
@@ -82,7 +85,7 @@ class Policies extends Component
         abort_unless($this->user()->can('policies.manage'), 403);
         abort_unless(isset(self::OVERRIDABLE[$this->overrideKey]), 404);
         $rules = $this->overrideScope === 'team' ? ['overrideTeamId' => ['required', 'exists:teams,id'], 'overrideFrom' => ['required', 'date']] : ['overrideEmployeeId' => ['required', 'exists:attendance_employees,id'], 'overrideFrom' => ['required', 'date']];
-        foreach (self::OVERRIDABLE[$this->overrideKey][1] as $field => $label) $rules["overrideValues.{$field}"] = ['required', 'numeric', 'min:0', 'max:1000000'];
+        foreach (self::OVERRIDABLE[$this->overrideKey][1] as $field => $label) $rules["overrideValues.{$field}"] = $field === 'field' ? ['required', 'in:0,1'] : ['required', 'numeric', 'min:0', 'max:1000000'];
         $this->validate($rules, [], ['overrideEmployeeId' => 'employee', 'overrideTeamId' => 'team']);
         $config = array_map('floatval', array_intersect_key($this->overrideValues, self::OVERRIDABLE[$this->overrideKey][1]));
         if ($this->overrideScope === 'team') {

@@ -11,7 +11,7 @@ from __future__ import annotations
 import ctypes
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 SLEEP_GAP_SECONDS = 90  # polls are 5 s apart; a much larger gap means the computer was asleep
 
@@ -133,9 +133,33 @@ _CONSENT_STORE = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessMan
 _BROWSERS = {"Google Chrome", "Microsoft Edge", "Firefox", "Brave", "Opera"}
 
 
-def _device_in_use(start: int | None, stop: int | None) -> bool:
-    """An app that started using the device and has not stopped (stop time 0) is using it now."""
-    return bool(start) and not stop
+# Only these apps make mic/camera use a meeting. Other apps keep the microphone open all day (Phone Link,
+# voice assistants, audio drivers) or leave a stale "in use" entry after a crash; counting those made the
+# app see a meeting all day, so idle was never counted and "Are you sitting idle?" never came.
+_MEETING_APPS = ("teams", "ms-teams", "zoom", "webex", "ciscocollab", "skype", "slack", "discord", "whatsapp",
+                 "chrome", "msedge", "firefox", "brave", "opera", "googlemeet", "gotomeeting")
+_MAX_CALL_HOURS = 8  # a start older than this with no stop is a stale entry, not a call
+
+
+def _device_in_use(start: int | None, stop: int | None, now_filetime: int | None = None) -> bool:
+    """An app that started using the device and has not stopped (stop time 0) is using it now,
+    unless it 'started' more than a working day ago (a stale entry left by a crash)."""
+    if not start or stop:
+        return False
+    if now_filetime is not None and now_filetime - int(start) > _MAX_CALL_HOURS * 3600 * 10_000_000:
+        return False
+    return True
+
+
+def _is_meeting_app(entry: str) -> bool:
+    """entry: a packaged app id (MicrosoftTeams_8wekyb3d8bbwe) or a desktop app path with '#' for '\\'."""
+    name = entry.replace("#", "\\").rsplit("\\", 1)[-1].lower()
+    return any(app in name for app in _MEETING_APPS)
+
+
+def _filetime_now() -> int:
+    """Now as a Windows FILETIME (100 ns since 1601), the unit of LastUsedTimeStart."""
+    return int((datetime.now(timezone.utc) - datetime(1601, 1, 1, tzinfo=timezone.utc)).total_seconds() * 10_000_000)
 
 
 def devices_in_use() -> list[str]:
@@ -157,7 +181,8 @@ def devices_in_use() -> list[str]:
 
 
 def _any_app_using(winreg, key, depth: int = 0) -> bool:
-    """Walks the app entries (packaged apps directly, desktop apps under "NonPackaged")."""
+    """Walks the app entries (packaged apps directly, desktop apps under "NonPackaged"); only meeting apps count."""
+    now = _filetime_now()
     index = 0
     while True:
         try:
@@ -176,7 +201,7 @@ def _any_app_using(winreg, key, depth: int = 0) -> bool:
                     stop = winreg.QueryValueEx(app, "LastUsedTimeStop")[0]
                 except OSError:
                     continue
-                if _device_in_use(start, stop):
+                if _is_meeting_app(name) and _device_in_use(start, stop, now):
                     return True
         except OSError:
             continue

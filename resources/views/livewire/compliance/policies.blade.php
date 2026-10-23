@@ -47,7 +47,13 @@
                     @if($overrideScope === 'team')<x-field label="Team" name="overrideTeamId"><select wire:model="overrideTeamId"><option value="">Select</option>@foreach($teams as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach</select></x-field>
                     @else<x-field label="Employee" name="overrideEmployeeId"><select wire:model="overrideEmployeeId"><option value="">Select</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></x-field>@endif
                     <x-field label="Rule" name="overrideKey"><select wire:model.live="overrideKey">@foreach($overridable as $key => [$label])<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
-                    @foreach($overridable[$overrideKey][1] as $field => $fieldLabel)<x-field :label="$fieldLabel" :name="'overrideValues.'.$field"><input type="number" step="0.01" min="0" wire:model="overrideValues.{{ $field }}"></x-field>@endforeach
+                    @foreach($overridable[$overrideKey][1] as $field => $fieldLabel)
+                        @if($field === 'field')
+                            <x-field :label="$fieldLabel" :name="'overrideValues.'.$field" hint="Field / mobile: idle time on the computer is shown but not taken off the working time, and the desktop app does not ask 'Are you sitting idle?'"><select wire:model="overrideValues.{{ $field }}"><option value="">Select</option><option value="0">Desk (idle is taken off)</option><option value="1">Field / mobile (idle not taken off)</option></select></x-field>
+                        @else
+                            <x-field :label="$fieldLabel" :name="'overrideValues.'.$field"><input type="number" step="0.01" min="0" wire:model="overrideValues.{{ $field }}"></x-field>
+                        @endif
+                    @endforeach
                     <x-field label="Effective from" name="overrideFrom"><input type="date" wire:model="overrideFrom"></x-field>
                 </div><div class="form-actions"><button class="btn btn-primary">Save override</button></div></form>
             </section>
@@ -55,8 +61,8 @@
         <section class="card">
             <div class="card-head"><h2>Active overrides & rule history</h2></div>
             <div class="list">
-                @foreach($teamOverrides as $t)<div class="list-row"><div><strong>Team {{ $t->team?->name }} · {{ $overridable[$t->rule_key][0] ?? $t->rule_key }}</strong><small>from {{ $t->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($t->configuration)->map(fn ($v, $k) => str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="blue">team</x-badge></div>@endforeach
-                @foreach($overrides as $o)<div class="list-row"><div><strong>{{ $o->employee?->name }} · {{ $overridable[$o->rule_key][0] ?? $o->rule_key }}</strong><small>from {{ $o->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($o->configuration)->map(fn ($v, $k) => str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="violet">override</x-badge></div>@endforeach
+                @foreach($teamOverrides as $t)<div class="list-row"><div><strong>Team {{ $t->team?->name }} · {{ $overridable[$t->rule_key][0] ?? $t->rule_key }}</strong><small>from {{ $t->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($t->configuration)->map(fn ($v, $k) => $k === 'field' ? ($v ? 'Field / mobile' : 'Desk') : str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="blue">team</x-badge></div>@endforeach
+                @foreach($overrides as $o)<div class="list-row"><div><strong>{{ $o->employee?->name }} · {{ $overridable[$o->rule_key][0] ?? $o->rule_key }}</strong><small>from {{ $o->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($o->configuration)->map(fn ($v, $k) => $k === 'field' ? ($v ? 'Field / mobile' : 'Desk') : str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="violet">override</x-badge></div>@endforeach
                 {{ $overrides->links() }}
                 @foreach($history as $r)<div class="list-row"><div><strong>{{ $rules[$r->rule_key][0] ?? $r->rule_key }}</strong><small>from {{ $r->effective_from?->format('d M Y') ?? 'always' }} · {{ collect($r->configuration)->map(fn ($v, $k) => str($k)->replace('_', ' ').': '.$v)->join(', ') }}</small></div><x-badge tone="blue">global</x-badge></div>@endforeach
                 @if($overrides->isEmpty() && $teamOverrides->isEmpty() && $history->isEmpty())<x-empty title="No compliance rules configured yet" icon="shield" />@endif

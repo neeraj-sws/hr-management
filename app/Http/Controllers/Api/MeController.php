@@ -42,6 +42,8 @@ class MeController extends ApiController
                 })(app(\App\Services\ScreenCaptureService::class)) : null,
                 'away_prompt_minutes' => (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['away_prompt_minutes' => 10])['away_prompt_minutes'] ?? 10),
                 // No keyboard/mouse this long counts as idle on the desktop app (shorter pauses are working time).
+                // Field / mobile work: idle is not taken off, so the desktop app does not ask "Are you sitting idle?".
+                'work_type' => $employee && ($policies->forEmployee($employee, \App\Models\AttendanceSession::WORK_TYPE_POLICY, today()->toDateString(), [])['field'] ?? false) ? 'field' : 'desk',
                 'idle_after_minutes' => max(1, (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['idle_after_minutes' => 5])['idle_after_minutes'] ?? 5)),
             ],
         ]]);

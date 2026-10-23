@@ -170,6 +170,16 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(presence._device_in_use(133450000000000000, 0))
         self.assertFalse(presence._device_in_use(133450000000000000, 133450000100000000))
         self.assertFalse(presence._device_in_use(0, 0))
+        # A "start" with no stop from more than a working day ago is a stale entry (crash), not a call.
+        now = presence._filetime_now()
+        self.assertTrue(presence._device_in_use(now - 3600 * 10_000_000, 0, now))
+        self.assertFalse(presence._device_in_use(now - 9 * 3600 * 10_000_000, 0, now))
+        # Only meeting apps count: Phone Link or an audio driver holding the mic is not a meeting.
+        self.assertTrue(presence._is_meeting_app("MSTeams_8wekyb3d8bbwe"))
+        self.assertTrue(presence._is_meeting_app("C:#Users#vaibhav#AppData#Roaming#Zoom#bin#Zoom.exe"))
+        self.assertTrue(presence._is_meeting_app("C:#Program Files#Google#Chrome#Application#chrome.exe"))
+        self.assertFalse(presence._is_meeting_app("Microsoft.YourPhone_8wekyb3d8bbwe"))
+        self.assertFalse(presence._is_meeting_app("C:#Program Files#Realtek#Audio#RtkAudUService64.exe"))
         # Meeting windows, not the app's chat/home window.
         self.assertTrue(presence.is_meeting_window("Zoom", "Zoom Meeting"))
         self.assertFalse(presence.is_meeting_window("Zoom", "Zoom Workplace"))
@@ -202,6 +212,8 @@ class ClientTests(unittest.TestCase):
         app.screen_quiet = 0.0
         app.idle_after_seconds = 300
         app.idle_prompt_for = None
+        app.idle_answered_until = None
+        app.work_type = "desk"
         app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
         # 20 minutes without mouse/keyboard, but in a Teams call.
         with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
@@ -240,6 +252,8 @@ class ClientTests(unittest.TestCase):
         app.screen_quiet = 0.0
         app.idle_after_seconds = 300
         app.idle_prompt_for = None
+        app.idle_answered_until = None
+        app.work_type = "desk"
         app.last_presence_poll = None
         app.app_started_at = datetime.now().astimezone() - timedelta(minutes=5)
         app.last_not_working_at = None
@@ -276,6 +290,8 @@ class ClientTests(unittest.TestCase):
         app._ask_if_idle = Mock()
         app.idle_after_seconds = 300  # 5 minutes
         app.idle_prompt_for = None
+        app.idle_answered_until = None
+        app.work_type = "desk"
 
         def poll(idle_for):
             app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
@@ -297,6 +313,61 @@ class ClientTests(unittest.TestCase):
         # Still idle at 10 minutes: "Are you sitting idle?" once for this stretch.
         poll(600.0); poll(605.0)
         app._ask_if_idle.assert_called_once()
+
+    def test_admin_settings_reach_a_running_app_and_field_work_is_not_asked(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+        from sws_desktop import presence
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.clock_label = Mock(winfo_exists=Mock(return_value=True))
+        app.root = Mock()
+        app.session = {"status": "working"}
+        app.screen_active = app.screen_idle = app.screen_meeting = app.screen_quiet = 0.0
+        app.app_usage_on = app.window_titles_on = False
+        app.capture_policy = app.last_capture = None
+        app.away_prompt_open = False
+        app.away_tracker = presence.AwayTracker(10)
+        app._ask_about_away = Mock()
+        app._ask_if_idle = Mock()
+        app.idle_after_seconds = 300
+        app.idle_prompt_for = None
+        app.idle_answered_until = None
+        app.work_type = "desk"
+
+        def poll(idle_for):
+            app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+            with patch.object(presence, "seconds_since_input", return_value=idle_for), patch.object(presence, "is_locked", return_value=False), \
+                    patch.object(presence, "meeting_reason", return_value=None):
+                app._watch_presence()
+
+        # The admin sets "ask after 1 minute" while the app is open: the 2-minute policy check applies it.
+        app._apply_attendance_policies({"away_prompt_minutes": 1, "idle_after_minutes": 1, "work_type": "desk"})
+        self.assertEqual(app.away_tracker.threshold, timedelta(minutes=1))
+        self.assertEqual(app.idle_after_seconds, 60)
+        poll(55.0)
+        app._ask_if_idle.assert_not_called()
+        poll(61.0)
+        app._ask_if_idle.assert_called_once()
+
+        # After "Are you sitting idle?" was answered at 10:01, coming back at 10:05 asks only about 10:01-10:05.
+        start = datetime.now().astimezone().replace(microsecond=0) - timedelta(minutes=5)
+        app.idle_answered_until = start + timedelta(minutes=1)
+        app.away_tracker.idle_since = start
+        app.away_tracker.last_poll = datetime.now().astimezone() - timedelta(seconds=5)
+        poll(1.0)
+        period = app._ask_about_away.call_args[0][0]
+        self.assertEqual(period.start, start + timedelta(minutes=1))
+        self.assertIsNone(app.idle_answered_until)
+
+        # Field / mobile work: never asked.
+        app._ask_if_idle.reset_mock(); app._ask_about_away.reset_mock()
+        app.idle_prompt_for = None
+        app._apply_attendance_policies({"away_prompt_minutes": 1, "work_type": "field"})
+        poll(120.0); poll(125.0); poll(1.0)
+        app._ask_if_idle.assert_not_called()
+        app._ask_about_away.assert_not_called()
 
     def test_live_figures_count_on_by_the_same_rule_as_the_website(self):
         from datetime import datetime, timedelta, timezone

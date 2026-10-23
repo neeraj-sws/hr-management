@@ -146,7 +146,7 @@ class AttendanceCorrectionService
                 }
             }
             $changes += ['check_out' => $checkOut, 'status' => 'completed', 'break_seconds' => $breakSeconds,
-                'active_seconds' => (int) max($checkIn->diffInSeconds($checkOut) - $breakSeconds - $session->idleSeconds(), 0)];
+                'active_seconds' => (int) max($checkIn->diffInSeconds($checkOut) - $breakSeconds - $session->deductedIdleSeconds(), 0)];
         }
         $session->update($changes);
         $session->increment('server_version');

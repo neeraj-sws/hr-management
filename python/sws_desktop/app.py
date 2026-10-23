@@ -62,6 +62,8 @@ class DesktopApp:
         self.screen_quiet = 0.0
         self.idle_after_seconds = IDLE_AFTER_MINUTES * 60
         self.idle_prompt_for: datetime | None = None  # start of the idle stretch already asked about
+        self.idle_answered_until: datetime | None = None  # the asked-about stretch is decided up to here
+        self.work_type = "desk"  # "field": field / mobile work, idle is not taken off and nobody is asked
         self.meeting_reason: str | None = None  # why the last poll counted as a meeting
         self.app_usage: dict[str, float] = {}  # app name -> seconds not yet sent
         self.app_usage_on = False
@@ -392,7 +394,8 @@ class DesktopApp:
                 self.last_capture = now
                 self._capture(now)
             prompt_after = self.away_tracker.threshold.total_seconds()
-            if working and not self.away_prompt_open and not locked and prompt_after > 0 and idle_for >= prompt_after:
+            asks = self.work_type != "field"  # field / mobile work: idle is not taken off, so nothing to ask
+            if asks and working and not self.away_prompt_open and not locked and prompt_after > 0 and idle_for >= prompt_after:
                 # Still idle at the limit (10 min by default): ask now, not only when the person comes back.
                 started = (now - timedelta(seconds=idle_for)).replace(microsecond=0)
                 if not self.idle_prompt_for or abs((started - self.idle_prompt_for).total_seconds()) > 30:
@@ -404,8 +407,15 @@ class DesktopApp:
                     # The server records gaps in the app's reports as a break by itself (see AttendanceService).
                     self._flash(f"Computer was off/asleep {period.start.strftime('%I:%M %p')}-{period.end.strftime('%I:%M %p')}: recorded as a break. Ask for a correction if you were working.", AMBER)
                     self.root.after(35_000, self.refresh)
-                elif period:
-                    self._ask_about_away(period)
+                elif period and asks:
+                    if self.idle_answered_until and period.start < self.idle_answered_until:
+                        # The start of this stretch was already answered in "Are you sitting idle?": ask only about the rest.
+                        period = presence.AwayPeriod(self.idle_answered_until, period.end, period.reason)
+                        if period.end - period.start < self.away_tracker.threshold:
+                            period = None
+                    self.idle_answered_until = None
+                    if period:
+                        self._ask_about_away(period)
             elif (self.session or {}).get("status") != "working":
                 self.away_tracker.reset()
         finally:
@@ -414,75 +424,81 @@ class DesktopApp:
     def _ask_if_idle(self, started: datetime):
         """'Are you sitting idle?' once the computer has had no input for the away limit. Stays on top
         until answered; the answer decides the time from `started` to the answer, like 'Welcome back'."""
+        minutes = max(1, int((datetime.now().astimezone() - started).total_seconds() // 60))
+        self._away_dialog("Are you sitting idle?", f"No keyboard or mouse use since {started.strftime('%I:%M %p')} ({minutes} min).",
+                          started, None, "idle")
+
+    def _ask_about_away(self, period: "presence.AwayPeriod"):
+        """'Welcome back': the employee decides whether the away time was a break; nothing is recorded without an answer."""
+        span = f"{period.start.strftime('%I:%M %p')} to {period.end.strftime('%I:%M %p')}"
+        self._away_dialog("Welcome back", f"You were away from {span} ({period.minutes} min, {AWAY_REASON[period.reason]}).",
+                          period.start, period.end, period.reason)
+
+    def _away_dialog(self, title: str, detail: str, started: datetime, ended: datetime | None, reason: str):
+        """One question for idle and away time. "Yes, a break" records a break. "No, I was working" needs a
+        short note of the work (phone call, client visit, meeting): it is kept as working time and the
+        manager sees the note. ended=None: the time runs until the answer (asked while still idle)."""
         self.away_prompt_open = True
         self.root.deiconify()
+        self.root.lift()
         self.root.bell()
         win = tk.Toplevel(self.root)
-        win.title("Are you sitting idle?")
+        win.title(title)
         win.configure(bg="white", padx=20, pady=16)
         win.attributes("-topmost", True)
         win.resizable(False, False)
-        minutes = max(1, int((datetime.now().astimezone() - started).total_seconds() // 60))
-        tk.Label(win, text="Are you sitting idle?", bg="white", fg=INK, font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x")
-        tk.Label(win, text=f"No keyboard or mouse use since {started.strftime('%I:%M %p')} ({minutes} min).\n"
-                 "In a meeting or on a call away from the computer? Choose \"I am working\": it counts as meeting time, not idle.", bg="white", fg=MUTED, anchor="w", justify="left", wraplength=420).pack(fill="x", pady=(4, 12))
+        tk.Label(win, text=title, bg="white", fg=INK, font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x")
+        tk.Label(win, text=detail + "\n\nWere you on a break, or working away from the computer (phone call, meeting, client visit)?",
+                 bg="white", fg=MUTED, anchor="w", justify="left", wraplength=440).pack(fill="x", pady=(4, 10))
+        tk.Label(win, text="If you were working: what did you do? *", bg="white", fg=INK, font=("Segoe UI", 9, "bold"), anchor="w").pack(fill="x")
+        note_entry = tk.Entry(win, font=("Segoe UI", 10), relief="solid", bd=1)
+        note_entry.pack(fill="x", pady=(2, 2))
+        error = tk.Label(win, text="e.g. Client call on phone · Meeting with team · Site visit", bg="white", fg=MUTED, anchor="w", font=("Segoe UI", 8))
+        error.pack(fill="x", pady=(0, 10))
         buttons = tk.Frame(win, bg="white")
         buttons.pack(fill="x")
 
-        def answer(as_break: bool):
-            end = datetime.now().astimezone().replace(microsecond=0)
+        def close():
             win.destroy()
             self.away_prompt_open = False
-            self.away_tracker.reset()  # this stretch is decided here: no second "Welcome back" for it
+            self.away_tracker.reset()  # this stretch is decided here: no second question for it
+
+        def answer(as_break: bool):
+            note = note_entry.get().strip()
+            if not as_break and len(note) < 3:
+                error.config(text="Write in a few words what you were working on, or choose \"Yes, it was a break\".", fg=RED)
+                note_entry.focus_set()
+                return
+            end = (ended or datetime.now().astimezone()).replace(microsecond=0)
+            if ended is None:
+                self.idle_answered_until = end
+            close()
             if (end - started).total_seconds() < 60:
                 return
+            minutes = int((end - started).total_seconds() // 60)
             if as_break:
                 def done(session):
                     self._set_session(session)
-                    self._flash(f"Recorded {int((end - started).total_seconds() // 60)} min as a break.", GREEN)
+                    self._flash(f"Recorded {minutes} min as a break.", GREEN)
                     self.refresh()
 
-                def failed(error):
-                    self._flash("You are offline, so the break was not recorded. Ask for an attendance correction if needed." if isinstance(error, ApiError) and error.is_network else (error.first_message if isinstance(error, ApiError) else str(error)), RED)
+                def failed(err):
+                    self._flash("You are offline, so the break was not recorded. Ask for an attendance correction if needed." if isinstance(err, ApiError) and err.is_network else (err.first_message if isinstance(err, ApiError) else str(err)), RED)
 
-                self._run(lambda: self.client.away(started.isoformat(), end.isoformat(), "idle"), done, failed)
+                self._run(lambda: self.client.away(started.isoformat(), end.isoformat(), reason), done, failed)
             else:
-                self._run(lambda: self.client.away(started.isoformat(), end.isoformat(), "idle", as_work=True),
-                          lambda session: (self._set_session(session), self._flash("Kept as working time.")), lambda _e: self._flash("Kept as working time."))
+                self._run(lambda: self.client.away(started.isoformat(), end.isoformat(), reason, as_work=True, note=note),
+                          lambda session: (self._set_session(session), self._flash(f"{minutes} min kept as working time: {note}", GREEN)),
+                          lambda err: self._flash("You are offline, so the answer was not saved. Ask for an attendance correction if needed." if isinstance(err, ApiError) and err.is_network else (err.first_message if isinstance(err, ApiError) else str(err)), RED))
 
-        tk.Button(buttons, text="No, I am working (meeting / call)", command=lambda: answer(False), bg=BLUE, fg="white", relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
-        tk.Button(buttons, text="Yes, count it as a break", command=lambda: answer(True), bg="white", fg=INK, relief="solid", bd=1, padx=14, pady=6, cursor="hand2").pack(side="left", padx=(8, 0))
-        win.protocol("WM_DELETE_WINDOW", lambda: answer(False))
+        tk.Button(buttons, text="No, I was working", command=lambda: answer(False), bg=BLUE, fg="white", relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
+        tk.Button(buttons, text="Yes, it was a break", command=lambda: answer(True), bg="white", fg=INK, relief="solid", bd=1, padx=14, pady=6, cursor="hand2").pack(side="left", padx=(8, 0))
+        win.protocol("WM_DELETE_WINDOW", lambda: None)  # must be answered: closing would leave the time undecided
+        note_entry.bind("<Return>", lambda _e: answer(False))
         win.update_idletasks()
         win.geometry(f"+{(win.winfo_screenwidth() - win.winfo_width()) // 2}+{(win.winfo_screenheight() - win.winfo_height()) // 3}")
         win.focus_force()
-
-    def _ask_about_away(self, period: "presence.AwayPeriod"):
-        """The employee decides whether the away time was a break; nothing is recorded without a yes."""
-        self.away_prompt_open = True
-        try:
-            self.root.deiconify()
-            self.root.lift()
-            span = f"{period.start.strftime('%I:%M %p')} to {period.end.strftime('%I:%M %p')}"
-            answer = messagebox.askyesno("Welcome back", f"You were away from {span} ({period.minutes} min, {AWAY_REASON[period.reason]}).\n\nCount this time as a break?\n\nChoose No if you were working (for example in a meeting).", parent=self.root)
-        finally:
-            self.away_prompt_open = False
-        if not answer:
-            # Tell the server, so this time is not counted as idle (older servers ignore it).
-            self._run(lambda: self.client.away(period.start.isoformat(), period.end.isoformat(), period.reason, as_work=True),
-                      lambda session: (self._set_session(session), self._flash("Kept as working time.")), lambda _e: self._flash("Kept as working time."))
-            return
-
-        def done(session):
-            self._set_session(session)
-            self._flash(f"Recorded {period.minutes} min as a break.", GREEN)
-            self.refresh()
-
-        def failed(error):
-            text = "You are offline, so the break was not recorded. Ask for an attendance correction if needed." if isinstance(error, ApiError) and error.is_network else (error.first_message if isinstance(error, ApiError) else str(error))
-            self._flash(text, RED)
-
-        self._run(lambda: self.client.away(period.start.isoformat(), period.end.isoformat(), period.reason), done, failed)
+        note_entry.focus_set()
 
     # Add task ---------------------------------------------------------------
     def _open_add_task(self):
@@ -721,7 +737,6 @@ class DesktopApp:
         def done(result):
             self.online = True
             self.me, session, self.tasks = result
-            minutes = int((self.me.get("policies") or {}).get("away_prompt_minutes", 10))
             self._apply_capture_policy((self.me.get("policies") or {}).get("screen_capture"))
             self.app_usage_on = bool((self.me.get("policies") or {}).get("app_usage"))
             self.window_titles_on = bool((self.me.get("policies") or {}).get("window_titles"))
@@ -734,9 +749,7 @@ class DesktopApp:
                     self.app_usage_label.config(text="Application usage is recorded while you work: app name and time only, no titles or content.")
                 else:
                     self.app_usage_label.config(text="")
-            self.idle_after_seconds = max(1, int((self.me.get("policies") or {}).get("idle_after_minutes", IDLE_AFTER_MINUTES))) * 60
-            if self.away_tracker.threshold.total_seconds() != minutes * 60:
-                self.away_tracker = presence.AwayTracker(minutes)
+            self._apply_attendance_policies(self.me.get("policies") or {})
             self._set_session(session)
             name = self.me.get("name", "SWS HR")
             self.title_label.config(text=name)
@@ -831,7 +844,10 @@ class DesktopApp:
             return v
         k = min(s, int(live.get("tick_for") or 0))
         state = live.get("state")
-        if state == "idle":
+        if state == "idle" and live.get("idle_deducted") is False:  # field / mobile work: idle is shown, not taken off
+            v["screen_idle"] += k
+            v["worked"] += s
+        elif state == "idle":
             v["idle"] += k
             v["screen_idle"] += k
             v["worked"] += s - k
@@ -863,6 +879,8 @@ class DesktopApp:
                 text += f" · {hms(untracked)} not tracked"
             if self.meeting_reason:
                 text += f"\n● In a meeting now ({self.meeting_reason}) — counted as working time, not idle"
+            elif self.work_type == "field":
+                text += "\nField / mobile work: idle time is shown only, not taken off your working time"
             self.screen_label.config(text=text if active + idle + meeting + corrected else "Screen time starts counting while you are checked in.")
         else:
             self.screen_label.config(text="")
@@ -1100,6 +1118,21 @@ class DesktopApp:
             if not self.window_titles_on:
                 self.window_titles.clear()
 
+    def _apply_attendance_policies(self, policies: dict):
+        """Idle limit, "Are you sitting idle?" minutes and work type from Settings: read at sign-in and every
+        couple of minutes, so a change an admin makes reaches a running app without restarting it."""
+        try:
+            minutes = max(0, int(policies.get("away_prompt_minutes", 10)))
+        except (TypeError, ValueError):
+            minutes = 10
+        try:
+            self.idle_after_seconds = max(1, int(policies.get("idle_after_minutes", IDLE_AFTER_MINUTES))) * 60
+        except (TypeError, ValueError):
+            self.idle_after_seconds = IDLE_AFTER_MINUTES * 60
+        self.work_type = "field" if policies.get("work_type") == "field" else "desk"
+        if self.away_tracker.threshold.total_seconds() != minutes * 60:
+            self.away_tracker = presence.AwayTracker(minutes)
+
     def _poll_policies(self):
         """Every few minutes: pick up monitoring settings an admin changed (app usage, window titles)."""
         if self.client.token:
@@ -1108,6 +1141,7 @@ class DesktopApp:
                     self.me = me
                     policies = me.get("policies") or {}
                     self._apply_usage_flags({"enabled": policies.get("app_usage"), "titles_enabled": policies.get("window_titles")})
+                    self._apply_attendance_policies(policies)
             self._run(self.client.me, done, lambda _e: None)
         self.root.after(POLICY_INTERVAL_MS, self._poll_policies)
 

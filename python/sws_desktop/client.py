@@ -100,9 +100,13 @@ class HrClient:
     def attendance(self, action: str) -> dict:
         return self.request("POST", self.ATTENDANCE[action], {"source": "desktop"})["data"]
 
-    def away(self, start: str, end: str, reason: str, as_work: bool = False) -> dict:
-        """Records an answered away period (ISO-8601 times): as a break, or as_work when the employee was working (not idle)."""
-        return self.request("POST", "/attendance/away", {"from": start, "to": end, "reason": reason, "as": "work" if as_work else "break"})["data"]
+    def away(self, start: str, end: str, reason: str, as_work: bool = False, note: str | None = None) -> dict:
+        """Records an answered away period (ISO-8601 times): as a break, or as_work when the employee was working (not idle);
+        note says what the work was (shown to the manager)."""
+        body = {"from": start, "to": end, "reason": reason, "as": "work" if as_work else "break"}
+        if note:
+            body["note"] = note[:200]
+        return self.request("POST", "/attendance/away", body)["data"]
 
     def daily_status(self) -> dict:
         return self.request("GET", "/daily-status")

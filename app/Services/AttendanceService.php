@@ -237,7 +237,7 @@ class AttendanceService
             $running = TaskTimeEntry::where('employee_id', $employee->id)->where('status', 'running')->first();
             if ($running) app(HrWorkflowService::class)->stopTaskTimer($employee, $running);
             $session->refresh();
-            $activeSeconds = max($session->check_in->diffInSeconds($checkOut) - (int) $session->break_seconds - $session->idleSeconds(), 0);
+            $activeSeconds = max($session->check_in->diffInSeconds($checkOut) - (int) $session->break_seconds - $session->deductedIdleSeconds(), 0);
             $session->update(['check_out' => $checkOut, 'active_seconds' => (int) $activeSeconds, 'status' => 'completed', 'last_sync_at' => $checkOut,
                 'check_out_latitude' => $place['latitude'], 'check_out_longitude' => $place['longitude'], 'check_out_office_id' => $place['office_id'], 'check_out_distance_meters' => $place['distance'], 'check_out_photo_path' => $photoPath, 'check_out_ip' => $this->clientIp($source)]);
             $session->increment('server_version');
@@ -296,15 +296,16 @@ class AttendanceService
      * The employee answered "I was working" for a desktop away period (e.g. a
      * meeting): nothing becomes a break, and that time is no longer idle.
      */
-    public function recordAwayAsWork(AttendanceEmployee $employee, CarbonInterface $from, CarbonInterface $to, string $reason): AttendanceSession
+    public function recordAwayAsWork(AttendanceEmployee $employee, CarbonInterface $from, CarbonInterface $to, string $reason, ?string $note = null): AttendanceSession
     {
         $from = $this->local($from);
         $to = $this->local($to);
         if ($to->lte($from)) throw ValidationException::withMessages(['away' => 'The away period must end after it starts.']);
         $session = $this->openSession($employee, $from) ?? throw ValidationException::withMessages(['away' => 'You are not checked in.']);
         if ($from->lt($session->check_in)) $from = $session->check_in->copy();
-        $this->event($session, 'away_worked', $to, (int) $from->diffInSeconds($to), ['source' => 'desktop', 'reason' => $reason, 'from' => $from->toDateTimeString()]);
-        $this->audit->record('attendance.away_worked', $session, ['reason' => $reason, 'minutes' => intdiv((int) $from->diffInSeconds($to), 60)]);
+        $note = trim((string) $note) ?: null;  // what the work was ("client call on phone"), shown to the manager
+        $this->event($session, 'away_worked', $to, (int) $from->diffInSeconds($to), array_filter(['source' => 'desktop', 'reason' => $reason, 'from' => $from->toDateTimeString(), 'note' => $note]));
+        $this->audit->record('attendance.away_worked', $session, array_filter(['reason' => $reason, 'minutes' => intdiv((int) $from->diffInSeconds($to), 60), 'note' => $note]));
 
         return $session->fresh();
     }
@@ -397,7 +398,8 @@ class AttendanceService
     {
         $screen = $session->screenTime();
         $worked = $this->workedSeconds($session);
-        $idle = $session->idleSeconds();
+        $idle = $session->deductedIdleSeconds();  // field / mobile work: idle is shown in screen time, not taken off
+        $field = $session->isFieldWork();
         $break = (int) $session->break_seconds;
         $running = $session->check_in && ! $session->check_out && in_array($session->status, ['working', 'on_break'], true);
         if ($running && $session->status === 'on_break') {
@@ -416,9 +418,11 @@ class AttendanceService
                 $tickFor = self::LIVE_SECONDS - $since;
                 // The seconds since the last report go to the state the computer was in.
                 if ($state === 'idle') {
-                    $idle += $since;
                     $screen['idle'] += $since;
-                    $worked = max(0, $worked - $since);
+                    if (! $field) {
+                        $idle += $since;
+                        $worked = max(0, $worked - $since);
+                    }
                 } else {
                     $screen[$state] += $since;
                 }
@@ -426,7 +430,7 @@ class AttendanceService
         }
 
         return ['status' => $session->status, 'running' => (bool) $running, 'worked' => $worked, 'in_out' => $inOut, 'idle' => $idle, 'break' => $break,
-            'screen' => $screen, 'state' => $state, 'tick_for' => $tickFor];
+            'screen' => $screen, 'state' => $state, 'tick_for' => $tickFor, 'idle_deducted' => ! $field];
     }
 
     /**
@@ -482,7 +486,7 @@ class AttendanceService
                     }
                 }
                 $session->refresh();
-                $active = (int) max($session->check_in->diffInSeconds($end) - (int) $session->break_seconds - $session->idleSeconds(), 0);
+                $active = (int) max($session->check_in->diffInSeconds($end) - (int) $session->break_seconds - $session->deductedIdleSeconds(), 0);
                 $session->update(['check_out' => $end, 'active_seconds' => $active, 'status' => 'completed', 'closed_automatically' => true]);
                 $session->increment('server_version');
                 $this->event($session, 'auto_check_out', $end->copy()->addSeconds(2), 0, ['source' => 'system', 'reason' => 'no check-out']);
@@ -505,7 +509,8 @@ class AttendanceService
     public function workedSeconds(AttendanceSession $session): int
     {
         if (! $session->check_in) return (int) $session->active_seconds;
-        if ($session->check_out) return min((int) $session->active_seconds, (int) $session->actualSeconds());
+        // Field / mobile work counts in-out less break, also for days closed before the work type was set.
+        if ($session->check_out) return $session->isFieldWork() ? (int) $session->actualSeconds() : min((int) $session->active_seconds, (int) $session->actualSeconds());
         $end = now();
         // A session nobody checked out of (older than the allowed length) counts only up to its last
         // sign of activity — the same end the scheduled auto-close uses — never "until now", so the
@@ -521,7 +526,7 @@ class AttendanceService
             if ($start && Carbon::parse($start)->lt($end)) $breakSeconds += Carbon::parse($start)->diffInSeconds($end);
         }
 
-        return (int) max($session->check_in->diffInSeconds($end) - $breakSeconds - $session->idleSeconds(), 0);
+        return (int) max($session->check_in->diffInSeconds($end) - $breakSeconds - $session->deductedIdleSeconds(), 0);
     }
 
     /**

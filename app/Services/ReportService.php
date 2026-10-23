@@ -415,8 +415,8 @@ class ReportService
                     'note' => $day['extra'] ? 'Extra working · '.$day['extra_reason'] : ($day['label'] ?: null),
                     'check_in' => $s?->check_in?->format('h:i:s A'), 'check_out' => $s?->check_out?->format('h:i:s A'),
                     // In-out time as on the employee's page: check-in to check-out; still working, up to now (worked + break + idle).
-                    'in_out_hours' => $s?->check_in ? $this->hours($s->check_out ? (int) $s->check_in->diffInSeconds($s->check_out) : $this->attendance->workedSeconds($s) + (int) $s->break_seconds + $s->idleSeconds()) : null,
-                    'active_hours' => $s ? $this->hours($this->attendance->workedSeconds($s)) : null, 'idle_hours' => $s ? $this->hours($s->idleSeconds()) : null, 'break_hours' => $s ? $this->hours($s->break_seconds) : null,
+                    'in_out_hours' => $s?->check_in ? $this->hours($s->check_out ? (int) $s->check_in->diffInSeconds($s->check_out) : $this->attendance->workedSeconds($s) + (int) $s->break_seconds + $s->deductedIdleSeconds()) : null,
+                    'active_hours' => $s ? $this->hours($this->attendance->workedSeconds($s)) : null, 'idle_hours' => $s ? $this->hours($s->deductedIdleSeconds()) : null, 'break_hours' => $s ? $this->hours($s->break_seconds) : null,
                     ...(($t = $s?->screenTime()) ? ['screen_active_hours' => $this->hours($t['active']), 'screen_meeting_hours' => $this->hours($t['meeting']), 'screen_corrected_hours' => $this->hours($t['corrected']), 'screen_idle_hours' => $this->hours($t['idle']), 'screen_untracked_hours' => $this->hours($t['untracked'])] : ['screen_active_hours' => null, 'screen_meeting_hours' => null, 'screen_corrected_hours' => null, 'screen_idle_hours' => null, 'screen_untracked_hours' => null]),
                     'late_minutes' => $s ? $this->attendance->lateMinutes($s) : null, 'early_minutes' => $s ? $this->attendance->earlyMinutes($s) : null,
                     'session_status' => $s?->status, 'check_in_ip' => $s?->check_in_ip, 'check_out_ip' => $s?->check_out_ip]);

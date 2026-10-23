@@ -40,7 +40,7 @@
                     <div class="alert alert-info">
                         <strong>Recorded on {{ \Illuminate\Support\Carbon::parse($workDate)->format('D d M Y') }}</strong>
                         @if($recorded['session'])
-                            <small>In {{ $recorded['session']->check_in?->format('h:i A') ?? '—' }} · Out {{ $recorded['session']->check_out?->format('h:i A') ?? 'no check-out' }} · Break @hms((int) $recorded['session']->break_seconds) · Idle @hms($recorded['session']->idleSeconds())</small>
+                            <small>In {{ $recorded['session']->check_in?->format('h:i A') ?? '—' }} · Out {{ $recorded['session']->check_out?->format('h:i A') ?? 'no check-out' }} · Break @hms((int) $recorded['session']->break_seconds) · Idle @hms($recorded['session']->deductedIdleSeconds())</small>
                             <small>Worked <b>@hms($recorded['worked'])</b> of @hms($recorded['required']) required @if($recorded['session']->check_out && $recorded['worked'] < $recorded['required'])· @hms($recorded['required'] - $recorded['worked']) short @endif</small>
                         @else
                             <small>No attendance recorded — give the check-in and check-out times.</small>

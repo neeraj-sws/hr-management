@@ -134,6 +134,30 @@ class AttendanceSession extends Model
     }
 
     /**
+     * Idle time taken off the working time: none for field / mobile work (calls, visits, work on the
+     * phone), where the computer standing untouched says nothing; it is still shown, as information.
+     */
+    public function deductedIdleSeconds(): int
+    {
+        return $this->isFieldWork() ? 0 : $this->idleSeconds();
+    }
+
+    private ?bool $fieldWork = null;
+
+    /** Work type set in Compliance > Policies (company, team or employee): 1 = field / mobile, 0 = desk. */
+    public function isFieldWork(): bool
+    {
+        if ($this->fieldWork !== null) return $this->fieldWork;
+        $employee = $this->employee;
+        if (! $employee) return $this->fieldWork = false;
+        $date = ($this->work_date ?? $this->check_in ?? now())->toDateString();
+
+        return $this->fieldWork = (bool) (app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, self::WORK_TYPE_POLICY, $date, [])['field'] ?? false);
+    }
+
+    public const WORK_TYPE_POLICY = 'attendance.work_type';
+
+    /**
      * The day's screen time as shown everywhere (admin list, employee page, reports, desktop and
      * mobile app), so every place shows the same figures. The desktop app reports untouched time
      * as idle; when the employee then answers the away question:
@@ -186,6 +210,6 @@ class AttendanceSession extends Model
     {
         if (! $this->check_in || ! $this->check_out) return null;
 
-        return (int) max($this->check_in->diffInSeconds($this->check_out) - (int) $this->break_seconds - $this->idleSeconds(), 0);
+        return (int) max($this->check_in->diffInSeconds($this->check_out) - (int) $this->break_seconds - $this->deductedIdleSeconds(), 0);
     }
 }

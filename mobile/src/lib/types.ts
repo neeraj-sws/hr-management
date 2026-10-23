@@ -18,7 +18,7 @@ export type AttendanceSession = {
   screen_corrected_seconds?: number;
   screen_untracked_seconds?: number;
   /** What keeps counting each second (the same rule as the website and the desktop app). */
-  live?: { running: boolean; state: 'active' | 'idle' | 'meeting' | null; tick_for: number; in_out_seconds: number; break_seconds: number };
+  live?: { running: boolean; state: 'active' | 'idle' | 'meeting' | null; tick_for: number; in_out_seconds: number; break_seconds: number; idle_deducted?: boolean };
   events?: { event_type: string; event_time: string; duration_seconds: number }[];
 };
 

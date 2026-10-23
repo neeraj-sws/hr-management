@@ -72,8 +72,8 @@ class MyAttendance extends Component
             $time['days']++;
             $time['worked'] += $worked;
             $time['break'] += (int) $s->break_seconds;
-            $time['idle'] += $s->idleSeconds();
-            $time['span'] += $s->check_out ? (int) $s->check_in->diffInSeconds($s->check_out) : $worked + (int) $s->break_seconds + $s->idleSeconds();
+            $time['idle'] += $s->deductedIdleSeconds();
+            $time['span'] += $s->check_out ? (int) $s->check_in->diffInSeconds($s->check_out) : $worked + (int) $s->break_seconds + $s->deductedIdleSeconds();
             $time['required'] += (int) round($attendance->dailyHours($employee, $day['date']) * 3600);
         }
 

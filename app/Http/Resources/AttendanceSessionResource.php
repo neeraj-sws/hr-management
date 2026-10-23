@@ -31,7 +31,7 @@ class AttendanceSessionResource extends JsonResource
                 'screen_untracked_seconds' => $f['screen']['untracked'],
                 'worked_seconds' => $f['worked'],
                 'idle_counted_seconds' => $f['idle'],
-                'live' => ['running' => $f['running'], 'state' => $f['state'], 'tick_for' => $f['tick_for'], 'in_out_seconds' => $f['in_out'], 'break_seconds' => $f['break']],
+                'live' => ['running' => $f['running'], 'state' => $f['state'], 'tick_for' => $f['tick_for'], 'in_out_seconds' => $f['in_out'], 'break_seconds' => $f['break'], 'idle_deducted' => $f['idle_deducted']],
             ])(app(\App\Services\AttendanceService::class)->liveFigures($this->resource)),
             'status'=>$this->status,
             'server_version'=>(int)$this->server_version,
