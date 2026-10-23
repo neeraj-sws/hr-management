@@ -48,6 +48,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/attendance/break/start', [AttendanceActionController::class, 'startBreak'])->name('api.attendance.break-start');
     Route::post('/attendance/break/end', [AttendanceActionController::class, 'endBreak'])->name('api.attendance.break-end');
     Route::post('/attendance/check-out', [AttendanceActionController::class, 'checkOut'])->name('api.attendance.check-out');
+    Route::post('/attendance/auto-check-out', [AttendanceActionController::class, 'autoCheckOut'])->name('api.attendance.auto-check-out');
     Route::post('/attendance/heartbeat', [AttendanceActionController::class, 'heartbeat'])->name('api.attendance.heartbeat');
     Route::post('/attendance/away', [AttendanceActionController::class, 'away'])->name('api.attendance.away');
     Route::get('/attendance/corrections', [CorrectionController::class, 'index'])->name('api.corrections.index');

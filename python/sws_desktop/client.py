@@ -116,6 +116,10 @@ class HrClient:
     def attendance(self, action: str) -> dict:
         return self.request("POST", self.ATTENDANCE[action], {"source": "desktop"})["data"]
 
+    def auto_check_out(self, last_activity_at: str) -> dict:
+        """Nobody used the computer after the shift: check out at the last use (ISO-8601)."""
+        return self.request("POST", "/attendance/auto-check-out", {"last_activity_at": last_activity_at})["data"]
+
     def away(self, start: str, end: str, reason: str, as_work: bool = False, note: str | None = None) -> dict:
         """Records an answered away period (ISO-8601 times): as a break, or as_work when the employee was working (not idle);
         note says what the work was (shown to the manager)."""

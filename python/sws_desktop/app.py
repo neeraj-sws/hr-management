@@ -65,6 +65,14 @@ class DesktopApp:
         self.idle_prompt_for: datetime | None = None  # start of the idle stretch already asked about
         self.idle_answered_until: datetime | None = None  # the asked-about stretch is decided up to here
         self.work_type = "desk"  # "field": field / mobile work, idle is not taken off and nobody is asked
+        # Forgot to check out: today's shift end, "your shift ended" asked once a day, and automatic check-out
+        # after the shift when the computer is not used for auto_checkout["idle_minutes"].
+        self.shift_end: datetime | None = None
+        self.auto_checkout = {"enabled": True, "idle_minutes": 30}
+        self.shift_end_asked_for: str | None = None
+        self.shift_end_window = None
+        self.auto_checkout_open = False
+        self.auto_checkout_skip: datetime | None = None  # the idle stretch the employee said "still working" for
         self.meeting_reason: str | None = None  # why the last poll counted as a meeting
         self.app_usage: dict[str, float] = {}  # app name -> seconds not yet sent
         self.app_usage_on = False
@@ -424,6 +432,10 @@ class DesktopApp:
                 self._capture(now)
             prompt_after = self.away_tracker.threshold.total_seconds()
             asks = self.work_type != "field"  # field / mobile work: idle is not taken off, so nothing to ask
+            after_shift = self._after_shift(now)
+            if after_shift and working:
+                self._forgot_check_out(now, idle_for)
+                asks = False  # after the shift, leaving the computer is going home: automatic check-out, not "idle?"
             if asks and working and not self.away_prompt_open and not locked and prompt_after > 0 and idle_for >= prompt_after:
                 # Still idle at the limit (10 min by default): ask now, not only when the person comes back.
                 started = (now - timedelta(seconds=idle_for)).replace(microsecond=0)
@@ -449,6 +461,115 @@ class DesktopApp:
                 self.away_tracker.reset()
         finally:
             self.root.after(PRESENCE_INTERVAL_MS, self._watch_presence)
+
+    def _after_shift(self, now: datetime) -> bool:
+        """The shift has ended and the forgot-to-check-out help is on (not for field / mobile work)."""
+        shift_end = getattr(self, "shift_end", None)
+        auto = getattr(self, "auto_checkout", None) or {}
+        return bool(shift_end and auto.get("enabled") and getattr(self, "work_type", "desk") != "field" and now >= shift_end)
+
+    def _forgot_check_out(self, now: datetime, idle_for: float):
+        """After the shift: ask once "Check out?", and when nobody has used the computer for a while, count
+        down 5 minutes and check out at the last use."""
+        today = now.date().isoformat()
+        if self.shift_end_asked_for != today and not self.away_prompt_open and idle_for < 60:
+            self.shift_end_asked_for = today
+            self._ask_shift_ended()
+        last_use = (now - timedelta(seconds=idle_for)).replace(microsecond=0)
+        countdown_at = max(60, (int(self.auto_checkout["idle_minutes"]) - 5) * 60)
+        if self.auto_checkout_open or idle_for < countdown_at:
+            return
+        if self.auto_checkout_skip and abs((last_use - self.auto_checkout_skip).total_seconds()) < 60:
+            return  # said "still working" for this stretch
+        self._auto_check_out_countdown(last_use)
+
+    def _ask_shift_ended(self):
+        """'Your shift ended at 7:00 PM': check out now, or keep working."""
+        win = tk.Toplevel(self.root)
+        self.shift_end_window = win
+        win.title("Your shift has ended")
+        win.configure(bg="white", padx=20, pady=16)
+        win.attributes("-topmost", True)
+        win.resizable(False, False)
+        self.root.bell()
+        ended = self.shift_end.astimezone().strftime("%I:%M %p") if self.shift_end else ""
+        tk.Label(win, text=f"Your shift ended at {ended}.", bg="white", fg=INK, font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x")
+        tk.Label(win, text="Check out if you have finished for the day.", bg="white", fg=MUTED, anchor="w").pack(fill="x", pady=(4, 12))
+        buttons = tk.Frame(win, bg="white")
+        buttons.pack(fill="x")
+
+        def close():
+            if win.winfo_exists():
+                win.destroy()
+            self.shift_end_window = None
+
+        tk.Button(buttons, text="Check out", command=lambda: (close(), self.attendance("check_out", confirm=False)), bg=RED, fg="white", relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
+        tk.Button(buttons, text="I am still working", command=close, bg="white", fg=INK, relief="solid", bd=1, padx=14, pady=6, cursor="hand2").pack(side="left", padx=(8, 0))
+        win.protocol("WM_DELETE_WINDOW", close)
+        win.update_idletasks()
+        win.geometry(f"+{(win.winfo_screenwidth() - win.winfo_width()) // 2}+{(win.winfo_screenheight() - win.winfo_height()) // 3}")
+
+    def _auto_check_out_countdown(self, last_use: datetime, seconds: int = 300):
+        """'Checking you out in 5:00': any keyboard/mouse use or 'I am still working' stops it; at 0 the
+        employee is checked out at the last use of the computer (not now)."""
+        self.auto_checkout_open = True
+        win = tk.Toplevel(self.root)
+        win.title("Checking you out")
+        win.configure(bg="white", padx=20, pady=16)
+        win.attributes("-topmost", True)
+        win.resizable(False, False)
+        self.root.bell()
+        tk.Label(win, text="Have you left for the day?", bg="white", fg=INK, font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x")
+        note = tk.Label(win, bg="white", fg=MUTED, anchor="w", justify="left", wraplength=420)
+        note.pack(fill="x", pady=(4, 12))
+        buttons = tk.Frame(win, bg="white")
+        buttons.pack(fill="x")
+        state = {"left": seconds}
+
+        def finish(check_out: bool):
+            if not self.auto_checkout_open:
+                return
+            self.auto_checkout_open = False
+            if win.winfo_exists():
+                win.destroy()
+            if not check_out:
+                self.auto_checkout_skip = last_use
+                return
+            if self.shift_end_window is not None and self.shift_end_window.winfo_exists():
+                self.shift_end_window.destroy()
+            # The time after the last use is the evening, not work: nothing of it is sent.
+            self.screen_idle = self.screen_quiet = 0.0
+
+            def done(session):
+                self._set_session(session)
+                self._flash(f"Checked out automatically at {last_use.strftime('%I:%M %p')}, when the computer was last used. Ask for a correction if you were still working.", AMBER)
+                self.refresh()
+
+            def failed(error):
+                self._flash(error.first_message if isinstance(error, ApiError) else str(error), RED)
+
+            self._run(lambda: self.client.auto_check_out(last_use.isoformat()), done, failed)
+
+        def tick():
+            if not self.auto_checkout_open or not win.winfo_exists():
+                return
+            if presence.seconds_since_input() < 30:
+                finish(False)  # someone is using the computer again
+                return
+            if state["left"] <= 0:
+                finish(True)
+                return
+            note.config(text=f"Nobody has used this computer since {last_use.strftime('%I:%M %p')}, after your shift.\n"
+                             f"You will be checked out at {last_use.strftime('%I:%M %p')} in {state['left'] // 60}:{state['left'] % 60:02d}.")
+            state["left"] -= 1
+            win.after(1000, tick)
+
+        tk.Button(buttons, text="I am still working", command=lambda: finish(False), bg=BLUE, fg="white", relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
+        tk.Button(buttons, text="Check out now", command=lambda: finish(True), bg="white", fg=INK, relief="solid", bd=1, padx=14, pady=6, cursor="hand2").pack(side="left", padx=(8, 0))
+        win.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+        win.update_idletasks()
+        win.geometry(f"+{(win.winfo_screenwidth() - win.winfo_width()) // 2}+{(win.winfo_screenheight() - win.winfo_height()) // 3}")
+        tick()
 
     def _ask_if_idle(self, started: datetime):
         """'Are you sitting idle?' once the computer has had no input for the away limit. Stays on top
@@ -1059,9 +1180,9 @@ class DesktopApp:
         ttk.Button(win, text="Close", command=win.destroy).pack(anchor="e", pady=(10, 0))
 
     # Actions ---------------------------------------------------------------
-    def attendance(self, action: str):
+    def attendance(self, action: str, confirm: bool = True):
         label = ATTENDANCE_LABEL[action]
-        if action == "check_out" and not messagebox.askyesno("Check out", "This ends your work day. You cannot check in again today.\n\nCheck out now?"):
+        if action == "check_out" and confirm and not messagebox.askyesno("Check out", "This ends your work day. You cannot check in again today.\n\nCheck out now?"):
             return
 
         def done(session):
@@ -1159,6 +1280,12 @@ class DesktopApp:
         except (TypeError, ValueError):
             self.idle_after_seconds = IDLE_AFTER_MINUTES * 60
         self.work_type = "field" if policies.get("work_type") == "field" else "desk"
+        self.shift_end = parse_time(policies.get("shift_end"))
+        auto = policies.get("auto_checkout") if isinstance(policies.get("auto_checkout"), dict) else {}
+        try:
+            self.auto_checkout = {"enabled": bool(auto.get("enabled", True)), "idle_minutes": max(10, int(auto.get("idle_minutes", 30)))}
+        except (TypeError, ValueError):
+            self.auto_checkout = {"enabled": True, "idle_minutes": 30}
         if self.away_tracker.threshold.total_seconds() != minutes * 60:
             self.away_tracker = presence.AwayTracker(minutes)
 

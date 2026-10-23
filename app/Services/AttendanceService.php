@@ -248,6 +248,52 @@ class AttendanceService
         });
     }
 
+    /** Settings > Attendance: the desktop app checks people out who left the computer after their shift. */
+    public function autoCheckoutPolicy(?AttendanceEmployee $employee): array
+    {
+        $p = $this->policies->forEmployee($employee, 'attendance.auto_checkout', today()->toDateString(), ['enabled' => true, 'idle_minutes' => 30]);
+
+        return ['enabled' => (bool) ($p['enabled'] ?? true), 'idle_minutes' => max(10, min(240, (int) ($p['idle_minutes'] ?? 30)))];
+    }
+
+    /**
+     * The desktop app saw no keyboard or mouse for a long time after the shift ended: the employee went
+     * home without checking out. They are checked out at the moment the computer was last used (not now),
+     * the screen idle reported after that moment is taken back (it is after the day ended), the record says
+     * "auto check-out (left the computer)" and the employee is told, so they can ask for a correction.
+     */
+    public function autoCheckOut(AttendanceEmployee $employee, CarbonInterface $lastActivity): AttendanceSession
+    {
+        $this->guardSource($employee, 'desktop');
+        if (! $this->autoCheckoutPolicy($employee)['enabled']) throw ValidationException::withMessages(['attendance' => 'Automatic check-out is turned off.']);
+        $at = $this->local($lastActivity);
+        if ($at->gt(now())) $at = now();
+        if ($at->lt(now()->subHours(12))) throw ValidationException::withMessages(['attendance' => 'That is too long ago; ask for an attendance correction.']);
+
+        $session = DB::transaction(function () use ($employee, $at) {
+            $session = $this->lockedOpenSession($employee, $at);
+            if ($session->status !== 'working') throw ValidationException::withMessages(['attendance' => 'Only a working day can be checked out automatically.']);
+            if ($at->lt($session->check_in)) $at = $session->check_in->copy();
+            // Screen idle the app reported after the last use belongs to the evening, not to the day.
+            if ($session->screen_reported_at && $session->screen_reported_at->gt($at)) {
+                $after = (int) $at->diffInSeconds($session->screen_reported_at);
+                $session->update(['screen_idle_seconds' => max(0, (int) $session->screen_idle_seconds - $after), 'screen_reported_at' => $at]);
+            }
+            \Illuminate\Support\Facades\Cache::forget(self::screenStateKey($session));
+            $session = $this->completeCheckOut($employee, 'desktop', $at, ['latitude' => null, 'longitude' => null, 'office_id' => null, 'distance' => null], null);
+            $event = $session->events()->where('event_type', 'check_out')->latest('id')->first();
+            $event?->update(['metadata' => [...(array) $event->metadata, 'auto' => 'left_computer', 'last_activity' => $at->toDateTimeString()]]);
+            $this->audit->record('attendance.auto_checked_out', $session, ['check_out' => $at->toDateTimeString(), 'reason' => 'no keyboard or mouse after the shift']);
+
+            return $session->fresh();
+        });
+        \App\Services\Notifier::send($employee->user, 'AutoCheckout', $session->id,
+            'You were checked out automatically at '.$session->check_out->format('h:i A').': the computer was not used after your shift. Ask for a correction if you were still working.',
+            route('attendance.corrections', ['date' => $session->work_date->toDateString()], false));
+
+        return $session;
+    }
+
     /**
      * An administrator checks an employee out (they forgot, a system issue,
      * they were unwell, or another stated reason). The reason is mandatory, the

@@ -43,6 +43,15 @@ class AttendanceActionController extends ApiController
         return $this->respond($this->attendance->checkOut($this->apiEmployee($request), $this->source($request), null, $this->location($request), $request->file('photo')));
     }
 
+    /** Desktop: nobody used the computer after the shift; check out at the last use. */
+    public function autoCheckOut(Request $request): JsonResponse
+    {
+        $this->trackDesktop($request, true);
+        $data = $request->validate(['last_activity_at' => ['required', 'date']]);
+
+        return $this->respond($this->attendance->autoCheckOut($this->apiEmployee($request), Carbon::parse($data['last_activity_at'])));
+    }
+
     /** Desktop: the employee confirmed that time away from the computer was a break. */
     public function away(Request $request): JsonResponse
     {

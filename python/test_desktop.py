@@ -387,6 +387,43 @@ class ClientTests(unittest.TestCase):
         v = app._live({**base, "status": "on_break", "live": {"running": True, "state": None, "tick_for": 0}})
         self.assertEqual(v["worked"], 1000)
 
+    def test_after_the_shift_ask_once_and_count_down_when_nobody_uses_the_computer(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import Mock
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        now = datetime.now().astimezone()
+        app.shift_end = now - timedelta(minutes=40)
+        app.auto_checkout = {"enabled": True, "idle_minutes": 30}
+        app.work_type = "desk"
+        app.shift_end_asked_for = None
+        app.away_prompt_open = False
+        app.auto_checkout_open = False
+        app.auto_checkout_skip = None
+        app._ask_shift_ended = Mock()
+        app._auto_check_out_countdown = Mock()
+        self.assertTrue(app._after_shift(now))
+        # At the computer after the shift: "Your shift has ended" once a day.
+        app._forgot_check_out(now, 5)
+        app._forgot_check_out(now, 5)
+        app._ask_shift_ended.assert_called_once()
+        app._auto_check_out_countdown.assert_not_called()
+        # 25 minutes untouched (30 - 5 min countdown): count down to a check-out at the last use.
+        app._forgot_check_out(now, 25 * 60)
+        app._auto_check_out_countdown.assert_called_once()
+        self.assertEqual(app._auto_check_out_countdown.call_args[0][0], (now - timedelta(seconds=1500)).replace(microsecond=0))
+        # "I am still working" for this stretch: not asked again for it.
+        app._auto_check_out_countdown.reset_mock()
+        app.auto_checkout_skip = (now - timedelta(seconds=1500)).replace(microsecond=0)
+        app._forgot_check_out(now, 25 * 60)
+        app._auto_check_out_countdown.assert_not_called()
+        # Field / mobile staff and the setting turned off: nothing happens.
+        app.work_type = "field"
+        self.assertFalse(app._after_shift(now))
+        app.work_type, app.auto_checkout = "desk", {"enabled": False, "idle_minutes": 30}
+        self.assertFalse(app._after_shift(now))
+
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})
         session = Mock(request=Mock(return_value=response))

@@ -128,6 +128,11 @@
                 <x-field label="Late grace (minutes)" name="graceMinutes"><input type="number" min="0" wire:model="graceMinutes"></x-field>
                 <x-field label="Half-day if worked less than (hours)" name="halfDayHours"><input type="number" step="0.25" wire:model="halfDayHours"></x-field>
                 <x-field label="Desktop app: count as idle after (minutes)" name="idleAfterMinutes" hint="no mouse/keyboard use this long is idle time · shorter pauses count as working"><select wire:model="idleAfterMinutes">@foreach([1, 3, 5, 10, 15] as $m)<option value="{{ $m }}">{{ $m }} minutes</option>@endforeach</select></x-field>
+                <div class="full"><span class="label">Forgot to check out (desktop app)</span>
+                    <label class="check"><input type="checkbox" wire:model="autoCheckout"> At shift end ask "Check out?", and check out people who left the computer</label>
+                    <small class="muted">After the shift, no keyboard/mouse for the minutes below: a 5-minute countdown, then check-out at the time the computer was last used. Not for field / mobile staff.</small>
+                </div>
+                <x-field label="Automatic check-out after (minutes without keyboard/mouse after the shift)" name="autoCheckoutMinutes"><input type="number" min="10" max="240" wire:model="autoCheckoutMinutes"></x-field>
                 <x-field label="Desktop app: ask 'Are you sitting idle?' after (minutes)" name="idleMinutes" hint="the popup shows while the computer is untouched this long (checked in, not on a break) · also asks about breaks after a locked screen or sleep · 0 = never ask · field / mobile staff (Compliance → Policies → Work type) are not asked"><input type="number" min="0" max="240" wire:model="idleMinutes"></x-field>
                 <div class="full"><span class="label">Selfie at check-in / check-out</span>
                     <label class="check"><input type="checkbox" wire:model="selfieWeb"> Required on the website</label>

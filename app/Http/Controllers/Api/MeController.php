@@ -45,6 +45,9 @@ class MeController extends ApiController
                 // Field / mobile work: idle is not taken off, so the desktop app does not ask "Are you sitting idle?".
                 'work_type' => $employee && ($policies->forEmployee($employee, \App\Models\AttendanceSession::WORK_TYPE_POLICY, today()->toDateString(), [])['field'] ?? false) ? 'field' : 'desk',
                 'idle_after_minutes' => max(1, (int) ($policies->forEmployee($employee, 'attendance.idle', today()->toDateString(), ['idle_after_minutes' => 5])['idle_after_minutes'] ?? 5)),
+                // When today's shift ends (desktop: "your shift ended" popup) and automatic check-out after it.
+                'shift_end' => $employee ? $attendance->expectedEnd($employee, today()->toDateString())?->toIso8601String() : null,
+                'auto_checkout' => $attendance->autoCheckoutPolicy($employee),
             ],
         ]]);
     }

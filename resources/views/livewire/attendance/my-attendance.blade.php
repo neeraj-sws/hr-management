@@ -93,7 +93,7 @@
                 @php($f = $day['session'] ? app(\App\Services\AttendanceService::class)->liveFigures($day['session']) : null)
                 <tr wire:key="day-{{ $day['date'] }}-{{ now()->timestamp }}" @if($f) x-data="swsLive(@js($f))" @endif><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}</td>
                     <td class="nowrap">@if($dayShift){{ $dayShift->name }}<small>{{ $dayShift->hours() }}</small>@else<span class="muted small">default</span>@endif</td>
-                    <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td>
+                    <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}@if($day['session']?->autoCheckedOut())<small>auto check-out (left the computer)</small>@endif</td>
                     @php($worked = $f['worked'] ?? null)
                     @php($idle = $f['idle'] ?? null)
                     @php($span = $day['session']?->check_in ? $f['in_out'] : null)

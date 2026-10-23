@@ -86,6 +86,15 @@ class AttendanceSession extends Model
         return $this->belongsTo(User::class, 'forced_checkout_by');
     }
 
+    /** Checked out by the desktop app because the computer was not used after the shift (they went home). */
+    public function autoCheckedOut(): bool
+    {
+        if (! $this->check_out) return false;
+        $events = $this->relationLoaded('events') ? $this->events : $this->events()->where('event_type', 'check_out')->get();
+
+        return $events->contains(fn ($e) => $e->event_type === 'check_out' && (($e->metadata['auto'] ?? null) === 'left_computer'));
+    }
+
     public function wasForcedOut(): bool
     {
         return $this->forced_checkout_at !== null;
