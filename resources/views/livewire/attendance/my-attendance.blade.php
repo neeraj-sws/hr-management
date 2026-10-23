@@ -91,7 +91,7 @@
                 @php($required = (int) round(app(\App\Services\AttendanceService::class)->dailyHours($employee, $day['date']) * 3600))
                 {{-- The same figures as the admin list, reports and the apps; today's open day counts on each second. --}}
                 @php($f = $day['session'] ? app(\App\Services\AttendanceService::class)->liveFigures($day['session']) : null)
-                <tr wire:key="day-{{ $day['date'] }}-{{ now()->timestamp }}" @if($f && $f['running']) x-data="swsLive(@js($f))" @endif><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}</td>
+                <tr wire:key="day-{{ $day['date'] }}-{{ now()->timestamp }}" @if($f) x-data="swsLive(@js($f))" @endif><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}</td>
                     <td class="nowrap">@if($dayShift){{ $dayShift->name }}<small>{{ $dayShift->hours() }}</small>@else<span class="muted small">default</span>@endif</td>
                     <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}</td>
                     @php($worked = $f['worked'] ?? null)
