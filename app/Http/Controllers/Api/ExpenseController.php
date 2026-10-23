@@ -13,7 +13,10 @@ class ExpenseController extends ApiController
     public function index(Request $request): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $claims = ExpenseClaim::where('employee_id', $employee->id)->latest('spent_on')->latest('id')->paginate(30)->through(fn ($c) => $this->present($c));
+        $month = $this->monthRange($request);
+        $claims = ExpenseClaim::where('employee_id', $employee->id)
+            ->when($month, fn ($q) => $q->whereDate('spent_on', '>=', $month[0])->whereDate('spent_on', '<=', $month[1]))
+            ->latest('spent_on')->latest('id')->paginate($month ? 100 : 30)->through(fn ($c) => $this->present($c));
 
         return response()->json([...$claims->toArray(), 'categories' => ExpenseClaim::CATEGORIES]);
     }

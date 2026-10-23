@@ -41,7 +41,9 @@ class AttendanceCorrectionService
             throw ValidationException::withMessages(['workDate' => 'You already have a pending correction for this day.']);
         }
 
-        if ($breakMinutes !== null && ! $session) throw ValidationException::withMessages(['breakMinutes' => 'There is no attendance on this day to correct the break of.']);
+        // With no attendance that day the approval creates it from the given check-in, so a break can come with it.
+        if ($breakMinutes !== null && ! $session && ! $checkIn) throw ValidationException::withMessages(['breakMinutes' => 'There is no attendance on this day to correct the break of.']);
+        if ($breakMinutes !== null && $in && $out && $breakMinutes * 60 >= $in->diffInSeconds($out)) throw ValidationException::withMessages(['breakMinutes' => 'The break must be shorter than the time between check-in and check-out.']);
 
         $correction = DB::transaction(function () use ($employee, $date, $checkIn, $in, $out, $reason, $session, $breakMinutes) {
             $correction = AttendanceCorrection::create([
@@ -61,8 +63,8 @@ class AttendanceCorrectionService
         // never sinks the employee's request.
         $what = collect([$correction->requested_check_in ? 'in '.$correction->requested_check_in->format('h:i A') : null, $correction->requested_check_out ? 'out '.$correction->requested_check_out->format('h:i A') : null, $correction->requested_break_minutes !== null ? 'break '.\App\Support\Duration::fromMinutes($correction->requested_break_minutes) : null])->filter()->join(', ');
         $approverId = ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->value('approver_id');
-        $approvers = Notifier::withPermission('attendance.correct')->push($approverId ? \App\Models\User::find($approverId) : null);
-        Notifier::send($approvers, 'AttendanceCorrection', $correction->id, "An attendance correction from {$employee->name} for {$correction->work_date->format('d M Y')} ({$what}) needs review. Reason: ".\Illuminate\Support\Str::limit($reason, 120), route('attendance.corrections', ['tab' => 'approvals'], false), $employee->user_id);
+        $approvers = $this->reviewers()->push($approverId ? User::find($approverId) : null);
+        Notifier::send($approvers,'AttendanceCorrection', $correction->id, "An attendance correction from {$employee->name} for {$correction->work_date->format('d M Y')} ({$what}) needs review. Reason: ".\Illuminate\Support\Str::limit($reason, 120), route('attendance.corrections', ['tab' => 'approvals'], false), $employee->user_id);
         Notifier::send($employee->user, 'AttendanceCorrection', $correction->id, "Your attendance correction for {$correction->work_date->format('d M Y')} was sent for approval.", route('attendance.corrections', [], false));
 
         return $correction;
@@ -97,9 +99,20 @@ class AttendanceCorrectionService
         $correction->update(['status' => 'cancelled', 'decided_at' => now()]);
         ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->where('status', 'pending')->update(['status' => 'cancelled', 'decided_at' => now()]);
         $this->audit->record('attendance.correction_cancelled', $correction);
-        Notifier::send(Notifier::withPermission('attendance.correct')->push($employee->manager?->user), 'AttendanceCorrection', $correction->id, "{$employee->name} cancelled their attendance correction for {$correction->work_date->format('d M Y')}.", route('attendance.corrections', ['tab' => 'all'], false), $employee->user_id);
+        Notifier::send($this->reviewers()->push($employee->manager?->user),'AttendanceCorrection', $correction->id, "{$employee->name} cancelled their attendance correction for {$correction->work_date->format('d M Y')}.", route('attendance.corrections', ['tab' => 'all'], false), $employee->user_id);
 
         return $correction;
+    }
+
+    /**
+     * Administrators who see every correction in Pending Approvals: holders of attendance.correct
+     * or approvals.manage, and the Master Admins. The employee's own manager is added by the caller.
+     */
+    private function reviewers(): \Illuminate\Support\Collection
+    {
+        $admins = rescue(fn () => User::role('Master Admin')->where('is_active', true)->get(), collect(), false);
+
+        return Notifier::withPermission('attendance.correct', 'approvals.manage')->merge($admins)->unique('id')->values();
     }
 
     /** Writes the approved times onto the day's session (creating it when the employee never checked in). */

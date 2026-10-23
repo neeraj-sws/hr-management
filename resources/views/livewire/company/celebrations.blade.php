@@ -8,7 +8,7 @@
             @forelse($events as $event)
                 <div class="list-row">
                     <div style="display:flex;gap:12px;align-items:center">
-                        <span class="avatar">{{ mb_strtoupper(mb_substr($event['employee']->name, 0, 1)) }}</span>
+                        <x-avatar :employee="$event['employee']" />
                         <div><strong>{{ $event['employee']->name }}</strong>
                             <small>{{ $event['type'] === 'birthday' ? 'Birthday' : $event['years'].' '.str('year')->plural($event['years']).' at the company' }} · {{ $event['date']->format('D, d M') }}</small></div>
                     </div>

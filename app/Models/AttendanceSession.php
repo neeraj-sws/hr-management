@@ -31,6 +31,7 @@ class AttendanceSession extends Model
         'check_out_distance_meters',
         'screen_active_seconds',
         'screen_idle_seconds',
+        'screen_meeting_seconds',
         'screen_reported_at',
         'closed_automatically',
         'forced_checkout_by',
@@ -100,6 +101,26 @@ class AttendanceSession extends Model
     }
 
     /**
+     * Working time the desktop app did not see but an approved attendance correction confirmed — e.g. the
+     * app stopped for 2 hours by a glitch, the employee asked for a correction and it was approved. It is
+     * the corrected in–out time less break, minus everything the app measured (active, meetings, idle),
+     * and is shown in the screen time as "added by approved correction". 0 without an approved correction.
+     */
+    public function correctedScreenSeconds(): int
+    {
+        if (! $this->check_in) return 0;
+        $raw = (int) $this->screen_active_seconds + (int) $this->screen_meeting_seconds + (int) $this->screen_idle_seconds;
+        if ($raw <= 0) return 0; // no desktop app that day: nothing to fill in
+        // Away time answered as a break is in break_seconds already, so it is not measured screen time.
+        $measured = $raw - min((int) $this->screen_idle_seconds, $this->answeredAwaySeconds()['break']);
+        $corrected = $this->relationLoaded('events') ? $this->events->contains('event_type', 'correction') : $this->events()->where('event_type', 'correction')->exists();
+        if (! $corrected) return 0;
+        $span = (int) $this->check_in->diffInSeconds($this->check_out ?? now()) - (int) $this->break_seconds;
+
+        return max(0, $span - $measured);
+    }
+
+    /**
      * Idle time for the day, taken off the working time. The desktop app reports
      * untouched-screen time with every heartbeat (screen_idle_seconds); older
      * device agents report idle_seconds at sync. Whichever source is tracking
@@ -109,14 +130,55 @@ class AttendanceSession extends Model
      */
     public function idleSeconds(): int
     {
-        $screenIdle = (int) $this->screen_idle_seconds;
-        if ($screenIdle > 0) {
-            $events = $this->relationLoaded('events') ? $this->events : $this->events()->whereIn('event_type', ['break_end', 'away_worked'])->get();
-            $answered = $events->filter(fn ($e) => $e->event_type === 'away_worked' || ($e->event_type === 'break_end' && in_array($e->metadata['reason'] ?? null, ['idle', 'locked'], true)))->sum('duration_seconds');
-            $screenIdle = max(0, $screenIdle - (int) $answered);
+        return max((int) $this->idle_seconds, $this->screenTime()['idle']);
+    }
+
+    /**
+     * The day's screen time as shown everywhere (admin list, employee page, reports, desktop and
+     * mobile app), so every place shows the same figures. The desktop app reports untouched time
+     * as idle; when the employee then answers the away question:
+     *  - "I was working" (a meeting, a call, away from the desk for work) moves it to meetings,
+     *  - "count it as a break" moves it out of screen time (it is in the break time).
+     * Only what is left is idle. 'untracked' is working time the desktop app did not see (it was
+     * closed, being updated, or opened after check-in): in-out less break, less everything above.
+     * So active + meeting + idle + corrected + untracked = in-out time less break.
+     *
+     * @return array{active: int, meeting: int, idle: int, corrected: int, untracked: int}
+     */
+    public function screenTime(): array
+    {
+        $idle = (int) $this->screen_idle_seconds;
+        $answered = $idle > 0 ? $this->answeredAwaySeconds() : ['work' => 0, 'break' => 0];
+        $asWork = min($idle, $answered['work']);
+        $asBreak = min($idle - $asWork, $answered['break']);
+
+        $time = [
+            'active' => (int) $this->screen_active_seconds,
+            'meeting' => (int) $this->screen_meeting_seconds + $asWork,
+            'idle' => $idle - $asWork - $asBreak,
+            'corrected' => $this->correctedScreenSeconds(),
+            'untracked' => 0,
+        ];
+        $measured = $time['active'] + $time['meeting'] + $time['idle'];
+        if ($this->check_in && $measured > 0) {
+            // Up to check-out, or (still working) to the app's last report, so it does not grow between reports.
+            $end = $this->check_out ?? $this->screen_reported_at ?? now();
+            $span = (int) $this->check_in->diffInSeconds($end) - (int) $this->break_seconds;
+            $time['untracked'] = max(0, $span - $measured - $time['corrected']);
         }
 
-        return max((int) $this->idle_seconds, $screenIdle);
+        return $time;
+    }
+
+    /** Away periods the employee answered for: as working time, and as a break (seconds). */
+    private function answeredAwaySeconds(): array
+    {
+        $events = $this->relationLoaded('events') ? $this->events : $this->events()->whereIn('event_type', ['break_end', 'away_worked'])->get();
+
+        return [
+            'work' => (int) $events->where('event_type', 'away_worked')->sum('duration_seconds'),
+            'break' => (int) $events->filter(fn ($e) => $e->event_type === 'break_end' && in_array($e->metadata['reason'] ?? null, ['idle', 'locked'], true))->sum('duration_seconds'),
+        ];
     }
 
     /** Actual working time of a finished day: in–out less break and idle. */

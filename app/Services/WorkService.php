@@ -100,7 +100,11 @@ class WorkService
             }
             $task->fill($data)->save();
             if (! $isNew) $task->increment('server_version');
-            $this->audit->record($isNew ? 'task.assigned' : 'task.updated', $task, ['assignee_id' => $assignee->id]);
+            // Name the assignee (and whether it was self-assigned), so the audit log says who got the task.
+            $this->audit->record($isNew ? 'task.assigned' : 'task.updated', $task, array_filter([
+                'task' => $task->title, 'assignee_id' => $assignee->id, 'assignee_name' => $assignee->name, 'self_assigned' => $assignee->user_id === $actor->id,
+                'previous_assignee' => ! $isNew && $previousAssignee !== $assignee->id ? \App\Models\AttendanceEmployee::find($previousAssignee)?->name : null,
+            ], fn ($v) => $v !== null));
             if ($isNew || $previousAssignee !== $assignee->id) {
                 $details = collect([$task->project?->name ? 'project '.$task->project->name : null, $task->due_on ? 'due '.$task->due_on->format('d M Y') : null, $task->priority !== 'normal' ? $task->priority.' priority' : null])->filter()->join(', ');
                 // Assigning work to yourself needs no notification.
@@ -285,9 +289,14 @@ class WorkService
         $open = Task::whereIn('assignee_id', $ids)->where('status', '!=', 'completed')->get()->groupBy('assignee_id');
         // Task time per employee per day. A timer left running overnight (or for days) only counts until the end of
         // the day it started, and a day never counts more than that day's attendance — so stale timers do not inflate it.
-        $dailyActive = DB::table('attendance_sessions')->whereIn('employee_id', $ids)->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->whereNotNull('check_in')
-            ->selectRaw('employee_id, DATE(work_date) as day, SUM(active_seconds) as active')->groupBy('employee_id', DB::raw('DATE(work_date)'))->get()
-            ->mapWithKeys(fn ($r) => [$r->employee_id.'|'.$r->day => (int) $r->active]);
+        // The limit per day is the actual working time the attendance pages show (in–out less break and idle),
+        // also for a day that is still open.
+        $attendanceService = app(AttendanceService::class);
+        $dailyActive = [];
+        foreach (\App\Models\AttendanceSession::with('employee')->whereIn('employee_id', $ids)->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->whereNotNull('check_in')->get() as $session) {
+            $key = $session->employee_id.'|'.$session->work_date->toDateString();
+            $dailyActive[$key] = ($dailyActive[$key] ?? 0) + $attendanceService->workedSeconds($session);
+        }
         $perDay = $rawPerDay = [];
         foreach (TaskTimeEntry::whereIn('employee_id', $ids)->whereDate('started_at', '>=', $from)->whereDate('started_at', '<=', $to)->get(['employee_id', 'started_at', 'ended_at', 'duration_seconds', 'status']) as $entry) {
             $dayEnd = $entry->started_at->copy()->endOfDay();
@@ -302,7 +311,7 @@ class WorkService
         foreach ($perDay as $key => $seconds) {
             [$employeeId] = explode('|', $key);
             $cap = $dailyActive[$key] ?? null;
-            $counted = $cap ? min($seconds, $cap) : $seconds;
+            $counted = $cap !== null ? min($seconds, $cap) : $seconds;
             $logged[$employeeId] = ($logged[$employeeId] ?? 0) + $counted;
             $trimmed[$employeeId] = ($trimmed[$employeeId] ?? 0) + ($rawPerDay[$key] - $counted);
         }

@@ -108,7 +108,7 @@ class Dashboard extends Component
                 default => $isPast || $this->date === today()->toDateString() ? 'absent' : 'upcoming',
             };
 
-            return (object) ['employee' => $employee, 'session' => $session, 'state' => $state, 'leave' => $onLeave->get($employee->id), 'worked' => $session ? $attendance->workedSeconds($session) : 0];
+            return (object) ['employee' => $employee, 'session' => $session, 'state' => $state, 'leave' => $onLeave->get($employee->id), 'worked' => $session ? $attendance->workedSeconds($session) : 0, 'live' => $session ? $attendance->liveFigures($session) : null];
         });
 
         $counts = ['present' => $rows->whereIn('state', ['present', 'late', 'half_day'])->count(), 'late' => $rows->where('state', 'late')->count(), 'half_day' => $rows->where('state', 'half_day')->count(), 'on_leave' => $rows->where('state', 'on_leave')->count(), 'absent' => $rows->where('state', 'absent')->count(), 'working' => $sessions->where('status', 'working')->count(), 'on_break' => $sessions->where('status', 'on_break')->count(), 'completed' => $sessions->where('status', 'completed')->count()];

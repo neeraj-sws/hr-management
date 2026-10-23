@@ -1,4 +1,4 @@
-<div @if($date === today()->toDateString()) wire:poll.60s @endif>
+<div @if($date === today()->toDateString()) wire:poll.30s @endif>
     <div class="page-head"><div><h1>Team Attendance</h1><p>{{ \Illuminate\Support\Carbon::parse($date)->format('l, d F Y') }} · {{ $total }} employees in scope</p></div></div>
     <div class="stats">
         <button type="button" class="stat" wire:click="$set('show','present')" style="cursor:pointer;text-align:left"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Present</span><span class="stat-value">{{ $counts['present'] }}</span><small>{{ $counts['working'] }} working · {{ $counts['on_break'] }} break · {{ $counts['completed'] }} done</small></div></button>
@@ -18,14 +18,14 @@
             <thead><tr><th>Employee</th><th>Check in</th><th>Check out</th><th class="num">Worked</th><th class="num">Idle</th><th class="num">Break</th><th>Screen time</th><th>Source</th><th>Day</th><th>Session</th></tr></thead>
             <tbody>
             @forelse($rows as $row)
-                <tr wire:key="row-{{ $row->employee->id }}">
+                <tr wire:key="row-{{ $row->employee->id }}-{{ now()->timestamp }}" @if($row->live) x-data="swsLive(@js($row->live))" @endif>
                     <td><strong>{{ $row->employee->name }}</strong><small>{{ $row->employee->employee_code }} · {{ $row->employee->department?->name ?? '—' }}</small></td>
                     <td>{{ $row->session?->check_in?->format('h:i A') ?? '—' }}@if($row->session?->check_in_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'in']) }}" target="_blank" title="Check-in selfie">📸</a>@endif @if($row->session?->check_in_latitude) <span title="{{ $row->session->check_in_latitude }}, {{ $row->session->check_in_longitude }}">📍</span>@endif</td>
                     <td>{{ $row->session?->check_out?->format('h:i A') ?? '—' }}@if($row->session?->check_out_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'out']) }}" target="_blank" title="Check-out selfie">📸</a>@endif</td>
-                    <td class="num">{{ $row->session ? \App\Support\Duration::hms($row->worked) : '—' }}</td>
-                    <td class="num">{{ $row->session ? \App\Support\Duration::hms($row->session->idleSeconds()) : '—' }}</td>
-                    <td class="num">{{ $row->session ? \App\Support\Duration::hms((int) $row->session->break_seconds) : '—' }}</td>
-                    <td class="nowrap">@include('livewire.attendance.partials.screen-time', ['s' => $row->session])</td>
+                    <td class="num">@if($row->live)<span x-text="hms(v.worked)">@hms($row->live['worked'])</span>@else — @endif</td>
+                    <td class="num">@if($row->live)<span x-text="hms(v.idle)">@hms($row->live['idle'])</span>@else — @endif</td>
+                    <td class="num">@if($row->live)<span x-text="hms(v.brk)">@hms($row->live['break'])</span>@else — @endif</td>
+                    <td class="nowrap">@include('livewire.attendance.partials.screen-time', ['s' => $row->session, 'f' => $row->live])</td>
                     <td class="small">{{ $row->session ? ($row->session->device?->computer_name ?? 'Web / mobile') : '—' }}</td>
                     <td><x-badge :status="$row->state" />@if($row->leave)<small>{{ $row->leave->leaveType?->name }}</small>@endif</td>
                     <td>@if($row->session)<x-badge :status="$row->session->status" />@if($row->session->closed_automatically)<small>auto-closed</small>@endif @if($row->session->wasForcedOut())<small title="{{ $row->session->forcedReasonLabel() }}">checked out by {{ $row->session->forcedBy?->name ?? 'admin' }} · {{ \Illuminate\Support\Str::limit($row->session->forcedReasonLabel(), 40) }}</small>@endif @if(! $row->session->check_out && auth()->user()->canAny(['attendance.correct', 'hr.manage']))<button class="btn btn-sm" wire:click="openClose({{ $row->session->id }})">Check out</button>@endif @else — @endif</td>

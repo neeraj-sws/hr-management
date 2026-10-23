@@ -1,7 +1,7 @@
 @php($reports = $children->get($person->id, collect()))
 <li wire:key="org-{{ $person->id }}">
     <div @class(['org-card', 'org-me' => $own && $own->id === $person->id, 'org-match' => $matches->contains($person->id)])>
-        <span class="avatar">{{ mb_strtoupper(mb_substr($person->name, 0, 1)) }}</span>
+        <x-avatar :employee="$person" />
         <div>
             <strong>{{ $person->name }}</strong>@if($own && $own->id === $person->id) <span class="small muted">(you)</span>@endif
             <small>{{ $person->designation ?: 'Employee' }}{{ $person->department ? ' · '.$person->department->name : '' }}</small>

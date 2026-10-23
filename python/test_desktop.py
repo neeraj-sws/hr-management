@@ -116,6 +116,206 @@ class ClientTests(unittest.TestCase):
     def test_app_module_imports(self):
         import sws_desktop.app  # noqa: F401 - catches syntax errors in the GUI module
 
+    def test_break_time_is_shown_live(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)  # no window needed for the text
+        app.session_fetched_at = datetime.now(timezone.utc)
+        self.assertEqual(app._break_text(None), "")
+        self.assertEqual(app._break_text({"status": "working", "break_seconds": 0}), "☕ No break taken yet today")
+        self.assertEqual(app._break_text({"status": "working", "break_seconds": 2712}), "☕ Break today 00:45:12")
+        started = (datetime.now(timezone.utc) - timedelta(minutes=12, seconds=30)).isoformat()
+        text = app._break_text({"status": "on_break", "break_seconds": 2712, "break_started_at": started})
+        self.assertIn("On break for 00:12:3", text)
+        self.assertIn("Break today 00:57:4", text)
+        # Older servers send no break_started_at: the last break-start event is used.
+        text = app._break_text({"status": "on_break", "break_seconds": 0, "events": [{"event_type": "break_start", "event_time": started}]})
+        self.assertIn("On break for 00:12:3", text)
+
+    def test_each_sync_takes_the_servers_worked_time(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.session = {"id": 5, "status": "working", "check_out": None, "worked_seconds": 26074, "screen_active_seconds": 10}
+        app.session_fetched_at = datetime.now(timezone.utc) - timedelta(seconds=60)
+        app._set_session = Mock()
+        # The server took idle time off: its worked time is lower than what the clock had counted on to.
+        app._sync_session({"id": 5, "status": "working", "check_out": None, "worked_seconds": 26052, "screen_active_seconds": 40})
+        self.assertEqual(app.session["worked_seconds"], 26052)
+        self.assertEqual(app.session["screen_active_seconds"], 40)
+        self.assertLess((datetime.now(timezone.utc) - app.session_fetched_at).total_seconds(), 2, "The clock counts on from now")
+        app._set_session.assert_not_called()
+        # Checked out elsewhere (website / admin): the screen is redrawn.
+        app._sync_session({"id": 5, "status": "completed", "check_out": "2026-10-21T13:30:00Z", "worked_seconds": 26100})
+        app._set_session.assert_called_once()
+
+    def test_total_time_since_check_in_is_shown(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.session_fetched_at = datetime.now(timezone.utc)
+        self.assertEqual(app._total_text(None), "")
+        done = {"status": "completed", "check_in": "2026-10-21T04:38:00Z", "check_out": "2026-10-21T13:25:45Z", "break_seconds": 5398, "idle_counted_seconds": 215}
+        self.assertEqual(app._total_text(done), "Total time 08:47:45 since check-in  (includes break 01:29:58 · idle 00:03:35)")
+        start = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        self.assertIn("Total time 02:00:0", app._total_text({"status": "working", "check_in": start, "break_seconds": 0}))
+
+    def test_meeting_detection_rules(self):
+        from sws_desktop import presence
+
+        # Microphone / camera: started and not stopped = in use now.
+        self.assertTrue(presence._device_in_use(133450000000000000, 0))
+        self.assertFalse(presence._device_in_use(133450000000000000, 133450000100000000))
+        self.assertFalse(presence._device_in_use(0, 0))
+        # Meeting windows, not the app's chat/home window.
+        self.assertTrue(presence.is_meeting_window("Zoom", "Zoom Meeting"))
+        self.assertFalse(presence.is_meeting_window("Zoom", "Zoom Workplace"))
+        self.assertTrue(presence.is_meeting_window("Microsoft Teams", "Daily stand-up | Meeting | Microsoft Teams"))
+        self.assertFalse(presence.is_meeting_window("Microsoft Teams", "Chat | Risha Gangrade | Microsoft Teams"))
+        self.assertTrue(presence.is_meeting_window("Google Chrome", "Meet - abc-defg-hij - Google Chrome"))
+        self.assertTrue(presence.is_meeting_window("Microsoft Edge", "Google Meet and 2 more pages - Work - Microsoft Edge"))
+        self.assertFalse(presence.is_meeting_window("Google Chrome", "Inbox (3) - Gmail - Google Chrome"))
+        self.assertFalse(presence.is_meeting_window(None, None))
+
+    def test_meeting_time_is_counted_apart_from_idle_and_never_asks_about_away(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+        from sws_desktop import presence
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.clock_label = Mock(winfo_exists=Mock(return_value=True))
+        app.root = Mock()
+        app.session = {"status": "working"}
+        app.screen_active = app.screen_idle = app.screen_meeting = 0.0
+        app.app_usage_on = False
+        app.window_titles_on = False
+        app.capture_policy = None
+        app.last_capture = None
+        app.away_prompt_open = False
+        app.away_tracker = presence.AwayTracker(1)
+        app._ask_about_away = Mock()
+        app._ask_if_idle = Mock()
+        app.screen_quiet = 0.0
+        app.idle_after_seconds = 300
+        app.idle_prompt_for = None
+        app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+        # 20 minutes without mouse/keyboard, but in a Teams call.
+        with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
+                patch.object(presence, "meeting_reason", return_value="microphone in use"):
+            app._watch_presence()
+        self.assertGreater(app.screen_meeting, 4)
+        self.assertEqual(app.screen_idle, 0.0)
+        self.assertEqual(app.meeting_reason, "microphone in use")
+        app._ask_about_away.assert_not_called()
+        # Same, without a meeting: idle.
+        app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+        with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
+                patch.object(presence, "meeting_reason", return_value=None):
+            app._watch_presence()
+        self.assertGreater(app.screen_idle, 4)
+
+    def test_screen_time_counts_from_check_in_not_from_the_first_check(self):
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import patch
+        from sws_desktop import presence
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.clock_label = Mock(winfo_exists=Mock(return_value=True))
+        app.root = Mock()
+        now = datetime.now(timezone.utc)
+        # Checked in 4 seconds ago with the app already open: the first check counts those 4 seconds too.
+        app.session = {"status": "working", "check_in": (now - timedelta(seconds=4)).isoformat()}
+        app.screen_active = app.screen_idle = app.screen_meeting = 0.0
+        app.app_usage_on = app.window_titles_on = False
+        app.capture_policy = app.last_capture = None
+        app.away_prompt_open = False
+        app.away_tracker = presence.AwayTracker(1)
+        app._ask_about_away = Mock()
+        app._ask_if_idle = Mock()
+        app.screen_quiet = 0.0
+        app.idle_after_seconds = 300
+        app.idle_prompt_for = None
+        app.last_presence_poll = None
+        app.app_started_at = datetime.now().astimezone() - timedelta(minutes=5)
+        app.last_not_working_at = None
+        app.presence_bucket = None
+        with patch.object(presence, "seconds_since_input", return_value=1.0), patch.object(presence, "is_locked", return_value=False),                 patch.object(presence, "meeting_reason", return_value=None):
+            app._watch_presence()
+        self.assertGreaterEqual(app.screen_active, 3.9)
+        self.assertEqual(app.presence_bucket, "active")
+        # The app opened long after check-in: the time before it opened is not counted (it did not see it).
+        app.last_presence_poll = None
+        app.screen_active = 0.0
+        app.session = {"status": "working", "check_in": (now - timedelta(hours=2)).isoformat()}
+        app.app_started_at = datetime.now().astimezone() - timedelta(seconds=3)
+        with patch.object(presence, "seconds_since_input", return_value=1.0), patch.object(presence, "is_locked", return_value=False),                 patch.object(presence, "meeting_reason", return_value=None):
+            app._watch_presence()
+        self.assertTrue(2.9 <= app.screen_active <= 15)
+
+    def test_short_pauses_are_work_long_ones_idle_and_idle_at_the_limit_asks(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import patch
+        from sws_desktop import presence
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.clock_label = Mock(winfo_exists=Mock(return_value=True))
+        app.root = Mock()
+        app.session = {"status": "working"}
+        app.screen_active = app.screen_idle = app.screen_meeting = app.screen_quiet = 0.0
+        app.app_usage_on = app.window_titles_on = False
+        app.capture_policy = app.last_capture = None
+        app.away_prompt_open = False
+        app.away_tracker = presence.AwayTracker(10)
+        app._ask_about_away = Mock()
+        app._ask_if_idle = Mock()
+        app.idle_after_seconds = 300  # 5 minutes
+        app.idle_prompt_for = None
+
+        def poll(idle_for):
+            app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+            with patch.object(presence, "seconds_since_input", return_value=idle_for), patch.object(presence, "is_locked", return_value=False),                     patch.object(presence, "meeting_reason", return_value=None):
+                app._watch_presence()
+
+        # 3 minutes reading without touching the mouse, then typing again: all working time.
+        poll(170.0); poll(175.0)
+        self.assertEqual(app.screen_idle, 0.0)
+        poll(1.0)
+        self.assertGreater(app.screen_active, 14)
+        self.assertEqual(app.screen_quiet, 0.0)
+        # Quiet until the 5-minute limit: the quiet time so far becomes idle as well.
+        app.screen_active = 0.0
+        poll(295.0); poll(300.0)
+        self.assertGreater(app.screen_idle, 9)
+        self.assertEqual(app.screen_active, 0.0)
+        app._ask_if_idle.assert_not_called()
+        # Still idle at 10 minutes: "Are you sitting idle?" once for this stretch.
+        poll(600.0); poll(605.0)
+        app._ask_if_idle.assert_called_once()
+
+    def test_live_figures_count_on_by_the_same_rule_as_the_website(self):
+        from datetime import datetime, timedelta, timezone
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        base = {"id": 1, "status": "working", "worked_seconds": 1000, "idle_counted_seconds": 100, "screen_active_seconds": 800,
+                "screen_meeting_seconds": 0, "screen_idle_seconds": 100}
+        app.session_fetched_at = datetime.now(timezone.utc) - timedelta(seconds=40)
+        # In use: worked and "in use" count; "in use" only for the 30 s the report still covers.
+        v = app._live({**base, "live": {"running": True, "state": "active", "tick_for": 30}})
+        self.assertEqual((v["worked"], v["active"], v["idle"]), (1040, 830, 100))
+        # Idle: idle counts, worked stands still while the report covers it, then counts again.
+        v = app._live({**base, "live": {"running": True, "state": "idle", "tick_for": 30}})
+        self.assertEqual((v["worked"], v["idle"], v["screen_idle"]), (1010, 130, 130))
+        # On a break nothing of the work figures moves.
+        v = app._live({**base, "status": "on_break", "live": {"running": True, "state": None, "tick_for": 0}})
+        self.assertEqual(v["worked"], 1000)
+
     def test_bearer_token_and_desktop_source_are_sent(self):
         response = Mock(status_code=201, content=b"{}", json=lambda: {"data": {"status": "working"}})
         session = Mock(request=Mock(return_value=response))
@@ -151,6 +351,18 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(sent[1]["base_version"], 3)
         remaining = self.queue.items()
         self.assertEqual([(i["action_id"], i["status"]) for i in remaining], [("stale", "conflict")])
+
+    def test_refused_actions_can_be_retried_or_discarded(self):
+        self.queue.enqueue("task.complete", "Complete · Report", entity_id=7, base_version=3, action_id="refused")
+        self.queue.enqueue("task.pause", "Pause · Other", entity_id=8, base_version=1, action_id="gone")
+        client = Mock()
+        client.sync.return_value = [{"action_id": "refused", "status": 409, "conflict": True, "message": "Task changed"}, {"action_id": "gone", "status": 422, "message": "Task deleted"}]
+        self.queue.flush(client)
+        self.assertEqual([(i["action_id"], i["last_error"]) for i in self.queue.attention()], [("refused", "Task changed"), ("gone", "Task deleted")])
+        self.queue.retry("refused")
+        self.assertEqual(self.queue.counts()["queued"], 1)
+        self.queue.discard("gone")
+        self.assertEqual(self.queue.attention(), [])
 
     def test_flush_keeps_everything_while_offline(self):
         self.queue.enqueue_attendance("check_in", "Check in")

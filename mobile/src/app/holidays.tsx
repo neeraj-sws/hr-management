@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
 import { todayYmd } from '../components/DateField';
-import { Badge, Button, Card, Empty, H2, Muted, Notice, Row, Screen } from '../components/ui';
+import { Badge, Card, Empty, H2, Muted, Notice, Row, Screen } from '../components/ui';
 import { ApiError, get } from '../lib/api';
 import type { Holiday } from '../lib/types';
 
 const longDate = (ymd: string) => new Date(`${ymd}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short' });
 
 export default function HolidaysScreen() {
-  const [year, setYear] = useState(new Date().getFullYear());
+  // Only this year: other years usually have no holidays set yet, which showed an empty page.
+  const year = new Date().getFullYear();
   const [items, setItems] = useState<Holiday[]>([]);
   const [weeklyOff, setWeeklyOff] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -32,10 +32,6 @@ export default function HolidaysScreen() {
   const today = todayYmd();
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1 }}><Button small title={`‹ ${year - 1}`} onPress={() => setYear(year - 1)} /></View>
-        <View style={{ flex: 1 }}><Button small title={`${year + 1} ›`} onPress={() => setYear(year + 1)} /></View>
-      </View>
       {error ? <Notice tone="error" text={error} /> : null}
       <Card>
         <H2>Holidays {year}</H2>

@@ -13,7 +13,7 @@ import socket
 import sys
 import threading
 import tkinter as tk
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from tkinter import messagebox, ttk
 
 import webbrowser
@@ -29,8 +29,9 @@ NAVY, BLUE, CANVAS, INK, MUTED, GREEN, RED, AMBER = "#14284b", "#3461d1", "#f4f6
 INK2, LINE, HEADER, BLUE_SOFT, GREEN_SOFT, AMBER_SOFT, RED_SOFT, STRIPE = "#334258", "#e4e9f0", "#1b355f", "#ecf2ff", "#e6f6ee", "#fff4dc", "#ffedf0", "#f8fafd"
 STATUS_TONE = {"working": (GREEN, GREEN_SOFT), "on_break": (AMBER, AMBER_SOFT), "completed": (INK2, "#eef1f6")}
 SYNC_INTERVAL_MS = 30_000
+POLICY_INTERVAL_MS = 2 * 60_000  # re-read monitoring settings so admin changes reach every running app within ~2 minutes
 PRESENCE_INTERVAL_MS = 5_000
-SCREEN_IDLE_AFTER_SECONDS = 60  # no keyboard/mouse for a minute (or screen locked) counts as idle
+IDLE_AFTER_MINUTES = 5  # default; admin sets it under Settings (no keyboard/mouse this long counts as idle)
 AWAY_REASON = {"idle": "no keyboard or mouse use", "locked": "screen locked", "asleep": "computer asleep"}
 STATUS_LABEL = {"working": "Working", "on_break": "On break", "completed": "Day completed"}
 ATTENDANCE_LABEL = {"check_in": "Check in", "break_start": "Start break", "break_end": "Resume work", "check_out": "Check out"}
@@ -55,12 +56,24 @@ class DesktopApp:
         self.away_prompt_open = False
         self.screen_active = 0.0  # not yet sent to the server
         self.screen_idle = 0.0
+        self.screen_meeting = 0.0  # time in Teams / Zoom / Meet calls: working time, not idle
+        # A quiet stretch (no keyboard/mouse) shorter than the idle limit is working time (reading,
+        # thinking); once it reaches the limit, the whole stretch is idle. Held here until decided.
+        self.screen_quiet = 0.0
+        self.idle_after_seconds = IDLE_AFTER_MINUTES * 60
+        self.idle_prompt_for: datetime | None = None  # start of the idle stretch already asked about
+        self.meeting_reason: str | None = None  # why the last poll counted as a meeting
         self.app_usage: dict[str, float] = {}  # app name -> seconds not yet sent
         self.app_usage_on = False
         self.window_titles: dict[tuple[str, str], float] = {}  # (app, title) -> seconds not yet sent
         self.window_titles_on = False
         self.desktop_attendance_allowed = True  # admin can turn desktop attendance off for an employee
         self.last_presence_poll: datetime | None = None
+        # Screen time counts from the moment work starts (check-in, break end or this app starting),
+        # not from the first 5-second check, and the screen line moves every second like the clock.
+        self.app_started_at = datetime.now().astimezone()
+        self.last_not_working_at: datetime | None = None
+        self.presence_bucket: str | None = None  # 'active' / 'idle' / 'meeting' at the last check
         self.capture_policy: dict | None = None
         self.capture_notice_shown: dict | None = None  # the notice (terms) shown in this app run
         self.last_capture: datetime | None = None
@@ -75,7 +88,7 @@ class DesktopApp:
         self.tasks: list[dict] = []
         self.online = True
 
-        root.title("SWS HR")
+        root.title(f"SWS HR {VERSION}")  # version in the title bar, so it is easy to tell which app a PC runs
         root.geometry("760x640")
         root.minsize(640, 560)
         root.configure(bg=CANVAS)
@@ -237,6 +250,8 @@ class DesktopApp:
         self.flash_label.pack(side="left")
         self.sync_label = tk.Label(footer, text="", bg="#e9edf4", fg=MUTED)
         self.sync_label.pack(side="right")
+        # "2 need attention" opens the list of refused actions, to retry or discard each one.
+        self.sync_label.bind("<Button-1>", lambda _e: self.show_attention())
         ttk.Button(footer, text="Sync now", command=self.sync_now).pack(side="right", padx=8)
 
         body = tk.Frame(self.container, bg=CANVAS, padx=18, pady=16)
@@ -248,14 +263,20 @@ class DesktopApp:
         att.pack(fill="x")
         left = tk.Frame(att, bg="white")
         left.grid(row=0, column=0, sticky="w")
-        tk.Label(left, text="TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        tk.Label(left, text="WORKED TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).pack(anchor="w")
         self.clock_label = tk.Label(left, text="--:--:--", font=("Segoe UI", 34, "bold"), fg=NAVY, bg="white")
         self.clock_label.pack(anchor="w")
+        # Second time: everything since check-in (break and idle included), same as "In–out" on the website.
+        self.total_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 11, "bold"))
+        self.total_label.pack(anchor="w")
         self.status_pill = tk.Label(left, text="Not checked in", fg=MUTED, bg="#eef1f6", font=("Segoe UI", 9, "bold"), padx=10, pady=3)
         self.status_pill.pack(anchor="w", pady=(2, 0))
         self.session_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 10))
         self.session_label.pack(anchor="w", pady=(6, 0))
-        self.screen_label = tk.Label(left, text="", fg=MUTED, bg="white", font=("Segoe UI", 9))
+        # Break time today, and how long the break now running has lasted (updated every second).
+        self.break_label = tk.Label(left, text="", fg=INK2, bg="white", font=("Segoe UI", 10))
+        self.break_label.pack(anchor="w")
+        self.screen_label =tk.Label(left, text="", fg=MUTED, bg="white", font=("Segoe UI", 9))
         self.screen_label.pack(anchor="w")
         self.capture_label = tk.Label(left, text="", fg=AMBER, bg="white", wraplength=460, justify="left", font=("Segoe UI", 9))
         self.capture_label.pack(anchor="w")
@@ -306,6 +327,9 @@ class DesktopApp:
         self._tick()
         self.root.after(SYNC_INTERVAL_MS, self._auto_sync)
         self.root.after(PRESENCE_INTERVAL_MS, self._watch_presence)
+        if not getattr(self, "_policy_poll_started", False):
+            self._policy_poll_started = True
+            self.root.after(POLICY_INTERVAL_MS, self._poll_policies)
         self._render_sync()
 
     # Away time ----------------------------------------------------------------
@@ -316,12 +340,35 @@ class DesktopApp:
             working = (self.session or {}).get("status") == "working"
             now = datetime.now().astimezone()
             idle_for, locked = (presence.seconds_since_input(), presence.is_locked()) if working else (0.0, False)
-            if working and self.last_presence_poll:
-                elapsed = min(max((now - self.last_presence_poll).total_seconds(), 0), 10)  # a long gap is sleep: not counted
-                if locked or idle_for >= SCREEN_IDLE_AFTER_SECONDS:
-                    self.screen_idle += elapsed
+            # In a Teams / Zoom / Meet call (mic or camera in use, or a meeting window in front): working time,
+            # kept apart as meeting time — never idle, and no "were you away?" question.
+            self.meeting_reason = presence.meeting_reason() if working and not locked else None
+            if self.meeting_reason:
+                idle_for = 0.0
+            previous = self.last_presence_poll
+            if working and previous is None:
+                # First check of a working stretch: count from when it began (check-in, break end, app start).
+                began = max(t for t in (parse_time((self.session or {}).get("check_in")), self.app_started_at, self.last_not_working_at) if t)
+                if 0 <= (now - began).total_seconds() <= 15:
+                    previous = began
+            if working and previous:
+                elapsed = min(max((now - previous).total_seconds(), 0), 10 if previous is self.last_presence_poll else 15)  # a long gap is sleep: not counted
+                if self.meeting_reason:
+                    self.screen_active += self.screen_quiet
+                    self.screen_quiet = 0.0
+                    self.screen_meeting += elapsed
+                    self.presence_bucket = "meeting"
+                elif locked or idle_for >= self.idle_after_seconds:
+                    self.screen_idle += self.screen_quiet + elapsed  # the quiet stretch so far was idle too
+                    self.screen_quiet = 0.0
+                    self.presence_bucket = "idle"
+                elif idle_for >= elapsed:
+                    self.screen_quiet += elapsed  # no input yet: decided when input comes back or the limit is reached
+                    self.presence_bucket = "active"
                 else:
-                    self.screen_active += elapsed
+                    self.screen_active += self.screen_quiet + elapsed
+                    self.screen_quiet = 0.0
+                    self.presence_bucket = "active"
                     if self.app_usage_on:
                         app_name = presence.foreground_app()
                         if app_name:
@@ -333,12 +380,24 @@ class DesktopApp:
                                     self.window_titles[key] = self.window_titles.get(key, 0.0) + elapsed
             self.last_presence_poll = now if working else None
             if not working:
+                self.last_not_working_at = now
+                self.presence_bucket = None
+                self.screen_active += self.screen_quiet
+                self.screen_quiet = 0.0
+            if not working:
                 self.last_capture = None
             elif self.last_capture is None:
                 self.last_capture = now  # count the interval from when work (or the app) starts
             elif presence.should_capture(now, self.last_capture, self.capture_policy, (self.session or {}).get("status"), idle_for, locked):
                 self.last_capture = now
                 self._capture(now)
+            prompt_after = self.away_tracker.threshold.total_seconds()
+            if working and not self.away_prompt_open and not locked and prompt_after > 0 and idle_for >= prompt_after:
+                # Still idle at the limit (10 min by default): ask now, not only when the person comes back.
+                started = (now - timedelta(seconds=idle_for)).replace(microsecond=0)
+                if not self.idle_prompt_for or abs((started - self.idle_prompt_for).total_seconds()) > 30:
+                    self.idle_prompt_for = started
+                    self._ask_if_idle(started)
             if working and not self.away_prompt_open:
                 period = self.away_tracker.feed(now, idle_for, locked)
                 if period and period.reason == "asleep":
@@ -351,6 +410,52 @@ class DesktopApp:
                 self.away_tracker.reset()
         finally:
             self.root.after(PRESENCE_INTERVAL_MS, self._watch_presence)
+
+    def _ask_if_idle(self, started: datetime):
+        """'Are you sitting idle?' once the computer has had no input for the away limit. Stays on top
+        until answered; the answer decides the time from `started` to the answer, like 'Welcome back'."""
+        self.away_prompt_open = True
+        self.root.deiconify()
+        self.root.bell()
+        win = tk.Toplevel(self.root)
+        win.title("Are you sitting idle?")
+        win.configure(bg="white", padx=20, pady=16)
+        win.attributes("-topmost", True)
+        win.resizable(False, False)
+        minutes = max(1, int((datetime.now().astimezone() - started).total_seconds() // 60))
+        tk.Label(win, text="Are you sitting idle?", bg="white", fg=INK, font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x")
+        tk.Label(win, text=f"No keyboard or mouse use since {started.strftime('%I:%M %p')} ({minutes} min).\n"
+                 "In a meeting or on a call away from the computer? Choose \"I am working\": it counts as meeting time, not idle.", bg="white", fg=MUTED, anchor="w", justify="left", wraplength=420).pack(fill="x", pady=(4, 12))
+        buttons = tk.Frame(win, bg="white")
+        buttons.pack(fill="x")
+
+        def answer(as_break: bool):
+            end = datetime.now().astimezone().replace(microsecond=0)
+            win.destroy()
+            self.away_prompt_open = False
+            self.away_tracker.reset()  # this stretch is decided here: no second "Welcome back" for it
+            if (end - started).total_seconds() < 60:
+                return
+            if as_break:
+                def done(session):
+                    self._set_session(session)
+                    self._flash(f"Recorded {int((end - started).total_seconds() // 60)} min as a break.", GREEN)
+                    self.refresh()
+
+                def failed(error):
+                    self._flash("You are offline, so the break was not recorded. Ask for an attendance correction if needed." if isinstance(error, ApiError) and error.is_network else (error.first_message if isinstance(error, ApiError) else str(error)), RED)
+
+                self._run(lambda: self.client.away(started.isoformat(), end.isoformat(), "idle"), done, failed)
+            else:
+                self._run(lambda: self.client.away(started.isoformat(), end.isoformat(), "idle", as_work=True),
+                          lambda session: (self._set_session(session), self._flash("Kept as working time.")), lambda _e: self._flash("Kept as working time."))
+
+        tk.Button(buttons, text="No, I am working (meeting / call)", command=lambda: answer(False), bg=BLUE, fg="white", relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
+        tk.Button(buttons, text="Yes, count it as a break", command=lambda: answer(True), bg="white", fg=INK, relief="solid", bd=1, padx=14, pady=6, cursor="hand2").pack(side="left", padx=(8, 0))
+        win.protocol("WM_DELETE_WINDOW", lambda: answer(False))
+        win.update_idletasks()
+        win.geometry(f"+{(win.winfo_screenwidth() - win.winfo_width()) // 2}+{(win.winfo_screenheight() - win.winfo_height()) // 3}")
+        win.focus_force()
 
     def _ask_about_away(self, period: "presence.AwayPeriod"):
         """The employee decides whether the away time was a break; nothing is recorded without a yes."""
@@ -629,6 +734,7 @@ class DesktopApp:
                     self.app_usage_label.config(text="Application usage is recorded while you work: app name and time only, no titles or content.")
                 else:
                     self.app_usage_label.config(text="")
+            self.idle_after_seconds = max(1, int((self.me.get("policies") or {}).get("idle_after_minutes", IDLE_AFTER_MINUTES))) * 60
             if self.away_tracker.threshold.total_seconds() != minutes * 60:
                 self.away_tracker = presence.AwayTracker(minutes)
             self._set_session(session)
@@ -707,24 +813,103 @@ class DesktopApp:
         if hasattr(self, "att_off_label") and self.att_off_label.winfo_exists():
             self.att_off_label.config(text="" if self.desktop_attendance_allowed else "Attendance from the desktop app is turned off for you. Use the website or mobile app.")
 
+    def _live(self, session: dict) -> dict:
+        """The server's figures counted on to this second by the same rule as the website and the phone
+        (AttendanceService::liveFigures): while working, the state last reported keeps counting for a while
+        (in use / meeting -> worked and that bucket; idle -> idle, worked stands still); on a break, break counts."""
+        live = session.get("live") or {}
+        v = {
+            "worked": int(session.get("worked_seconds") or session.get("active_seconds") or 0),
+            "idle": int(session.get("idle_counted_seconds", session.get("idle_seconds")) or 0),
+            "active": int(session.get("screen_active_seconds") or 0),
+            "meeting": int(session.get("screen_meeting_seconds") or 0),
+            "screen_idle": int(session.get("screen_idle_seconds") or 0),
+        }
+        running = live.get("running", session.get("status") in ("working", "on_break") and not session.get("check_out"))
+        s = max(0, int((datetime.now(timezone.utc) - self.session_fetched_at).total_seconds())) if running and session.get("id") else 0
+        if not s or session.get("status") != "working":
+            return v
+        k = min(s, int(live.get("tick_for") or 0))
+        state = live.get("state")
+        if state == "idle":
+            v["idle"] += k
+            v["screen_idle"] += k
+            v["worked"] += s - k
+        else:
+            v["worked"] += s
+            if state in ("active", "meeting"):
+                v[state] += k
+        return v
+
     def _tick(self):
         if not self.clock_label.winfo_exists():
             return
         session = self.session
+        live = self._live(session) if session else None
         if session:
-            worked = int(session.get("worked_seconds") or session.get("active_seconds") or 0)
-            if session.get("status") == "working" and session.get("id"):
-                worked += int((datetime.now(timezone.utc) - self.session_fetched_at).total_seconds())
+            worked = live["worked"]
             self.clock_label.config(text=f"{worked // 3600:02d}:{worked % 3600 // 60:02d}:{worked % 60:02d}")
         else:
             self.clock_label.config(text="--:--:--")
+        self.break_label.config(text=self._break_text(session))
+        self.total_label.config(text=self._total_text(session))
         if session:
-            active = int(session.get("screen_active_seconds") or 0) + int(self.screen_active)
-            idle = int(session.get("screen_idle_seconds") or 0) + int(self.screen_idle)
-            self.screen_label.config(text=f"Screen time today: {hms(active)} in use · {hms(idle)} idle" if active + idle else "Screen time starts counting while you are checked in.")
+            # The server's figures (the same as the website, admin list and phone), counted on each second.
+            active, idle, meeting = live["active"], live["screen_idle"], live["meeting"]
+            corrected = int(session.get("screen_corrected_seconds") or 0)  # time the app missed, confirmed by an approved correction
+            text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
+            untracked = int(session.get("screen_untracked_seconds") or 0)  # app closed / updating: counted as worked
+            if untracked >= 60:
+                text += f" · {hms(untracked)} not tracked"
+            if self.meeting_reason:
+                text += f"\n● In a meeting now ({self.meeting_reason}) — counted as working time, not idle"
+            self.screen_label.config(text=text if active + idle + meeting + corrected else "Screen time starts counting while you are checked in.")
         else:
             self.screen_label.config(text="")
         self.root.after(1000, self._tick)
+
+    def _sync_session(self, session: dict):
+        """Takes the server's figures from each sync (every 30 s): worked time (less idle), break, status.
+        The clock then counts on from the server's number, so it always matches the website."""
+        before = self.session or {}
+        changed = (before.get("status"), before.get("check_out")) != (session.get("status"), session.get("check_out"))
+        if changed:
+            self._set_session(session)  # e.g. checked out from the website, or by an admin
+        else:
+            self.session = {**before, **session}
+            self.session_fetched_at = datetime.now(timezone.utc)
+
+    def _total_text(self, session: dict | None) -> str:
+        """'Total time 08:47:45 since check-in (includes break 01:29:58 · idle 00:03:35)' — live until check-out."""
+        check_in = parse_time((session or {}).get("check_in"))
+        if not check_in:
+            return ""
+        end = parse_time(session.get("check_out")) or datetime.now(timezone.utc)
+        total = max(0, int((end - check_in).total_seconds()))
+        breaks = int(session.get("break_seconds") or 0)
+        if session.get("status") == "on_break":
+            breaks += max(0, int((datetime.now(timezone.utc) - self._break_started_at(session)).total_seconds()))
+        idle = self._live(session)["idle"]
+        parts = [f"break {hms(breaks)}"] + ([f"idle {hms(idle)}"] if idle else [])
+        return f"Total time {hms(total)} since check-in  (includes {' · '.join(parts)})"
+
+    def _break_started_at(self, session: dict) -> datetime | None:
+        """When the break now running began: from the server, else the last break-start event, else when we last heard."""
+        started = parse_time(session.get("break_started_at"))
+        if not started:
+            starts = [e for e in (session.get("events") or []) if e.get("event_type") == "break_start"]
+            started = parse_time(max(starts, key=lambda e: e.get("event_time") or "").get("event_time")) if starts else None
+        return started or self.session_fetched_at
+
+    def _break_text(self, session: dict | None) -> str:
+        """'Break today 00:45:12' — and while on a break: 'On break for 00:12:30 · break today 00:57:42'."""
+        if not session:
+            return ""
+        total = int(session.get("break_seconds") or 0)
+        if session.get("status") == "on_break":
+            running = max(0, int((datetime.now(timezone.utc) - self._break_started_at(session)).total_seconds()))
+            return f"☕ On break for {hms(running)}   ·   Break today {hms(total + running)}"
+        return f"☕ Break today {hms(total)}" if total else "☕ No break taken yet today"
 
     def _selected_task(self) -> dict | None:
         selected = self.tree.selection()
@@ -763,9 +948,68 @@ class DesktopApp:
         parts = ["online" if self.online else "OFFLINE"]
         if counts["queued"]:
             parts.append(f"{counts['queued']} queued")
-        if counts["conflict"] or counts["failed"]:
-            parts.append(f"{counts['conflict'] + counts['failed']} need attention")
-        self.sync_label.config(text=" · ".join(parts), fg=MUTED if self.online and not counts["queued"] else AMBER)
+        attention = counts["conflict"] + counts["failed"]
+        if attention:
+            parts.append(f"{attention} need attention — click to see")
+        self.sync_label.config(text=" · ".join(parts), fg=RED if attention else MUTED if self.online and not counts["queued"] else AMBER,
+                               cursor="hand2" if attention else "", font=("Segoe UI", 9, "underline") if attention else ("Segoe UI", 9))
+
+    def show_attention(self):
+        """Lists the actions the server refused, with why, so each can be sent again or dropped."""
+        items = self.offline.attention()
+        if not items:
+            return
+        win = tk.Toplevel(self.root)
+        win.title("Actions that need attention")
+        win.configure(bg="white", padx=16, pady=14)
+        win.transient(self.root)
+        tk.Label(win, text="These actions could not be saved on the server.", bg="white", fg=INK, font=("Segoe UI", 11, "bold"), anchor="w").pack(fill="x")
+        tk.Label(win, text="Retry sends one again; Discard drops it (ask HR for a correction if the time still needs fixing).", bg="white", fg=MUTED, anchor="w", justify="left", wraplength=520).pack(fill="x", pady=(2, 10))
+        listing = tk.Frame(win, bg="white")
+        listing.pack(fill="both", expand=True)
+
+        def draw():
+            for child in listing.winfo_children():
+                child.destroy()
+            current = self.offline.attention()
+            if not current:
+                win.destroy()
+                self._render_sync()
+                return
+            for item in current:
+                row = tk.Frame(listing, bg="white", highlightbackground=LINE, highlightthickness=1, padx=10, pady=8)
+                row.pack(fill="x", pady=3)
+                when = parse_time(item["queued_at"])
+                head = f"{item['label']}  ·  {when.astimezone().strftime('%d %b %I:%M %p') if when else ''}"
+                tk.Label(row, text=head, bg="white", fg=INK, anchor="w", font=("Segoe UI", 10, "bold")).pack(fill="x")
+                tk.Label(row, text=f"Why: {item['last_error'] or 'refused by the server'}", bg="white", fg=RED, anchor="w", justify="left", wraplength=500).pack(fill="x")
+                buttons = tk.Frame(row, bg="white")
+                buttons.pack(fill="x", pady=(6, 0))
+                ttk.Button(buttons, text="Retry", command=lambda a=item["action_id"]: retry(a)).pack(side="left")
+                ttk.Button(buttons, text="Discard", command=lambda a=item["action_id"], l=item["label"]: discard(a, l)).pack(side="left", padx=6)
+            self._render_sync()
+
+        def retry(action_id):
+            self.offline.retry(action_id)
+            self._render_sync()
+
+            def done(accepted):
+                self._render_sync()
+                self._flash("Sent." if accepted else "Still not accepted — see why in the list.", GREEN if accepted else AMBER)
+                if accepted:
+                    self.refresh()
+                if win.winfo_exists():
+                    draw()
+
+            self._run(lambda: self.offline.flush(self.client), done)
+
+        def discard(action_id, label):
+            if messagebox.askyesno("Discard action", f"Drop \"{label}\"? It will not be sent.", parent=win):
+                self.offline.discard(action_id)
+                draw()
+
+        draw()
+        ttk.Button(win, text="Close", command=win.destroy).pack(anchor="e", pady=(10, 0))
 
     # Actions ---------------------------------------------------------------
     def attendance(self, action: str):
@@ -796,6 +1040,13 @@ class DesktopApp:
     def _apply_offline(self, action: str):
         now = datetime.now(timezone.utc).isoformat()
         session = dict(self.session or {"id": 0, "check_in": now, "check_out": None, "active_seconds": 0, "status": "working"})
+        # Offline: keep the break clock right until the server answers.
+        if action == "break_start":
+            session["break_started_at"] = now
+        elif action in ("break_end", "check_out") and session.get("status") == "on_break":
+            started = self._break_started_at(session)
+            session["break_seconds"] = int(session.get("break_seconds") or 0) + max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
+            session["break_started_at"] = None
         session["status"] = {"check_in": "working", "break_start": "on_break", "break_end": "working", "check_out": "completed"}[action]
         if action == "check_out":
             session["check_out"] = now
@@ -837,13 +1088,36 @@ class DesktopApp:
 
         self._run(lambda: self.offline.flush(self.client), done)
 
+    def _apply_usage_flags(self, result):
+        """The server answers each usage report with the current settings, so an admin turning
+        window titles (or app usage) on or off takes effect at the next sync — no sign-in needed."""
+        if not isinstance(result, dict):
+            return
+        if result.get("enabled") is not None:
+            self.app_usage_on = bool(result["enabled"])
+        if result.get("titles_enabled") is not None:
+            self.window_titles_on = bool(result["titles_enabled"])
+            if not self.window_titles_on:
+                self.window_titles.clear()
+
+    def _poll_policies(self):
+        """Every few minutes: pick up monitoring settings an admin changed (app usage, window titles)."""
+        if self.client.token:
+            def done(me):
+                if isinstance(me, dict):
+                    self.me = me
+                    policies = me.get("policies") or {}
+                    self._apply_usage_flags({"enabled": policies.get("app_usage"), "titles_enabled": policies.get("window_titles")})
+            self._run(self.client.me, done, lambda _e: None)
+        self.root.after(POLICY_INTERVAL_MS, self._poll_policies)
+
     def _auto_sync(self):
         if not self.client.token or not hasattr(self, "sync_label") or not self.sync_label.winfo_exists():
             return
         if self.offline.counts()["queued"]:
             self.sync_now()
         elif self.session and self.session.get("id") and not self.session.get("check_out"):
-            active, idle = int(self.screen_active), int(self.screen_idle)
+            active, idle, meeting = int(self.screen_active), int(self.screen_idle), int(self.screen_meeting)
             apps = {name: int(sec) for name, sec in self.app_usage.items() if int(sec) > 0}
             titles = [{"app": a, "title": t, "seconds": int(sec)} for (a, t), sec in self.window_titles.items() if int(sec) > 0] if self.window_titles_on else []
 
@@ -851,17 +1125,19 @@ class DesktopApp:
                 self.online = True
                 self.screen_active -= active
                 self.screen_idle -= idle
+                self.screen_meeting -= meeting
                 for name, sec in apps.items():
                     self.app_usage[name] = max(0.0, self.app_usage.get(name, 0.0) - sec)
                 for row in titles:
                     key = (row["app"], row["title"])
                     self.window_titles[key] = max(0.0, self.window_titles.get(key, 0.0) - row["seconds"])
                 if apps and self.app_usage_on:
-                    self._run(lambda: self.client.report_app_usage(apps, titles), lambda _r: None, lambda _e: None)
+                    self._run(lambda: self.client.report_app_usage(apps, titles), self._apply_usage_flags, lambda _e: None)
                 if session:
-                    self.session = {**(self.session or {}), "screen_active_seconds": session.get("screen_active_seconds", 0), "screen_idle_seconds": session.get("screen_idle_seconds", 0)}
+                    self._sync_session(session)
 
-            self._run(lambda: self.client.heartbeat(active, idle), sent, lambda _e: None)
+            state = self.presence_bucket if self.presence_bucket in ("active", "idle", "meeting") else None
+            self._run(lambda: self.client.heartbeat(active, idle, meeting, state), sent, lambda _e: None)
         self.root.after(SYNC_INTERVAL_MS, self._auto_sync)
 
 

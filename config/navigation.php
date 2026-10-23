@@ -18,6 +18,8 @@ return [
         ['label' => 'Org Chart', 'route' => 'company.org-chart', 'icon' => 'team'],
     ]],
     ['heading' => 'People', 'items' => [
+        // Only people who manage someone see it (access:manager on the route).
+        ['label' => 'My team', 'route' => 'people.my-team', 'icon' => 'team'],
         ['label' => 'Employees', 'route' => 'people.employees', 'icon' => 'users'],
         ['label' => 'Departments', 'route' => 'people.departments', 'icon' => 'building'],
         ['label' => 'Teams', 'route' => 'people.teams', 'icon' => 'team'],
@@ -64,6 +66,7 @@ return [
     ['heading' => 'Training', 'items' => [
         ['label' => 'My Training', 'route' => 'training.my', 'icon' => 'star'],
         ['label' => 'Courses', 'route' => 'training.courses', 'icon' => 'list'],
+        ['label' => 'Course fees', 'route' => 'training.fees', 'icon' => 'wallet'],
     ]],
     ['heading' => 'Recruitment', 'items' => [
         ['label' => 'Job Openings', 'route' => 'recruitment.jobs', 'icon' => 'briefcase'],

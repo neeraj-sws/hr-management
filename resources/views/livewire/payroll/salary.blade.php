@@ -4,10 +4,19 @@
     <x-errors />
 
     @if($own)
+        {{-- What this month's salary comes to so far, and every past month with each deduction. --}}
+        <section class="card mb">
+            <div class="card-head"><div><h2>This month so far</h2><p>As payroll would pay it if the month ended today</p></div></div>
+            @if($mySoFar)<div style="padding-top:12px"><x-salary-month :month="$mySoFar" open /></div>@else<div class="card-body"><x-empty title="No salary set up yet" icon="wallet" /></div>@endif
+        </section>
+        <section class="card mb">
+            <div class="card-head"><div><h2>Salary history</h2><p>Every month with what was earned, each deduction, and what was paid · click a month for details</p></div></div>
+            <div style="padding-top:12px">@forelse($myHistory as $m)<x-salary-month :month="$m" />@empty<div class="card-body"><x-empty title="No salary months yet" icon="wallet" /></div>@endforelse</div>
+        </section>
         <section class="card mb">
             <div class="card-head"><div><h2>My salary</h2><p>Current and historical salary profiles</p></div><a class="btn btn-sm" href="{{ route('payroll.payslips') }}">My payslips</a></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Effective from</th><th class="num">Monthly salary</th><th class="num">Working days / month</th><th class="num">Hours / day</th></tr></thead><tbody>
-                @forelse($myProfiles as $p)<tr><td>{{ $p->effective_from->format('d M Y') }} @if($loop->first)<x-badge status="active">current</x-badge>@endif</td><td class="num"><strong>{{ number_format((float) $p->monthly_salary, 2) }}</strong></td><td class="num">{{ $p->working_days_per_month }}</td><td class="num">{{ (float) $p->standard_daily_hours }}</td></tr>
+                @forelse($myProfiles as $p)<tr><td>{{ $p->effective_from->format('d M Y') }} @if($loop->first)<x-badge status="active">current</x-badge>@endif</td><td class="num"><strong>{{ $p->isDaily() ? number_format((float) $p->daily_rate, 2) : number_format((float) $p->monthly_salary, 2) }}</strong>@if($p->isDaily())<small>per day</small>@endif</td><td class="num">{{ $p->working_days_per_month }}</td><td class="num">{{ (float) $p->standard_daily_hours }}</td></tr>
                 @empty<tr><td colspan="4"><x-empty title="No salary profile configured" icon="wallet" /></td></tr>@endforelse
             </tbody></table></div>
         </section>
@@ -27,8 +36,8 @@
             <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Department</th><th class="num">Monthly</th><th>Effective from</th><th class="num">Days/month</th><th class="num">Hours/day</th><th></th></tr></thead><tbody>
                 @forelse($employees as $e)
                     <tr wire:key="s-{{ $e->id }}"><td><strong>{{ $e->name }}</strong><small>{{ $e->employee_code }}</small></td><td>{{ $e->department?->name ?? '—' }}</td>
-                        <td class="num">{{ $e->salaryProfile ? number_format((float) $e->salaryProfile->monthly_salary, 2) : '—' }}</td><td>{{ $e->salaryProfile?->effective_from?->format('d M Y') ?? '—' }}</td>
-                        <td class="num">@if($e->salaryProfile)@php($sd = $salaryDays[$e->id] ?? null){{ $sd['days'] ?? $e->salaryProfile->working_days_per_month }}@if($sd['auto'] ?? false)<small title="Counted from the calendar: Sundays, the off Saturdays (e.g. 3rd Saturday) and unpaid holidays are left out. Changes every month.">auto · {{ $sd['month'] }}</small>@endif @else — @endif</td><td class="num">{{ $e->salaryProfile ? (float) $e->salaryProfile->standard_daily_hours : '—' }}</td>
+                        <td class="num">@if($e->salaryProfile?->isDaily()){{ number_format((float) $e->salaryProfile->daily_rate, 2) }}<small>per day</small>@else{{ $e->salaryProfile ? number_format((float) $e->salaryProfile->monthly_salary, 2) : '—' }}@endif</td><td>{{ $e->salaryProfile?->effective_from?->format('d M Y') ?? '—' }}</td>
+                        <td class="num">@if($e->salaryProfile)@php($sd = $salaryDays[$e->id] ?? null){{ $sd['days'] ?? $e->salaryProfile->working_days_per_month }}@if($sd['auto'] ?? false)<small title="Counted from the calendar: Sundays, the off Saturdays (e.g. 3rd Saturday) and holidays are left out; a paid holiday is still paid. Changes every month.">auto · {{ $sd['month'] }}</small>@endif @else — @endif</td><td class="num">{{ $e->salaryProfile ? (float) $e->daily_work_hours : '—' }}</td>
                         <td>@if($canManage)@if($e->salaryProfile)<button type="button" class="btn btn-sm" wire:click="correctProfile({{ $e->id }})">Edit</button> @endif<button type="button" class="btn btn-sm" wire:click="editProfile({{ $e->id }})">Revise</button>@endif</td></tr>
                 @empty<tr><td colspan="7"><x-empty title="No employees" icon="users" /></td></tr>@endforelse
             </tbody></table></div>
@@ -51,13 +60,18 @@
     @if($editing)
         <x-modal title="{{ $correcting ? 'Edit salary (correct) · ' : 'Revise salary · ' }}{{ $editing->name }}" size="lg">
             <form wire:submit="saveProfile"><div class="modal-body"><x-errors />@if($correcting)<p class="small muted" style="margin:-4px 0 10px">Fixing the current salary record in place. Keep the effective date to overwrite it, or change it to add a new revision.</p>@endif<div class="form-grid">
-                <x-field label="Monthly salary" name="monthly"><input type="number" step="0.01" min="0" wire:model="monthly"></x-field>
+                <x-field label="Salary type" name="payBasis"><select wire:model.live="payBasis">@foreach(\App\Models\SalaryProfile::PAY_BASES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
+                @if($payBasis === 'daily')
+                    <x-field label="Salary per day" name="dailyRate" hint="paid for each working day attended"><input type="number" step="0.01" min="0" wire:model="dailyRate" placeholder="130"></x-field>
+                @else
+                    <x-field label="Monthly salary" name="monthly"><input type="number" step="0.01" min="0" wire:model="monthly"></x-field>
+                @endif
                 <x-field label="Effective from" name="effectiveFrom"><input type="date" wire:model="effectiveFrom"></x-field>
-                @if($autoDays)<div class="field"><span class="label">Working days per month</span><p class="small muted" style="margin:6px 0 0">Auto from the calendar — {{ $autoDays['month'] }} has <strong>{{ $autoDays['days'] }}</strong> working days. Sundays, the off Saturdays (e.g. 3rd Saturday) and unpaid holidays are left out, so it changes every month.</p></div>
+                @if($autoDays)<div class="field"><span class="label">Working days per month</span><p class="small muted" style="margin:6px 0 0">Auto from the calendar — {{ $autoDays['month'] }} has <strong>{{ $autoDays['days'] }}</strong> working days. Sundays, the off Saturdays (e.g. 3rd Saturday) and holidays are left out (a paid holiday is still paid), so it changes every month.</p></div>
                 @else<x-field label="Working days per month" name="workingDays" hint="fixed — turn on auto in Settings > Payroll"><input type="number" min="1" max="31" wire:model="workingDays"></x-field>@endif
                 <x-field label="Standard hours per day" name="dailyHours"><input type="number" step="0.25" min="0.25" max="24" wire:model="dailyHours"></x-field>
             </div>
-            <div class="field mt"><span class="label">Salary structure <span class="muted small">— earnings must add up to the monthly salary; leave empty to use the company template</span></span>
+            @if($payBasis !== 'daily')<div class="field mt"><span class="label">Salary structure <span class="muted small">— earnings must add up to the monthly salary; leave empty to use the company template</span></span>
                 <div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Type</th><th class="num">Monthly amount</th><th></th></tr></thead><tbody>
                     @forelse($components as $i => $c)
                         <tr wire:key="comp-{{ $i }}"><td><input class="input" wire:model="components.{{ $i }}.name" placeholder="Basic / HRA / Special allowance" aria-label="Component name">@error('components.'.$i.'.name')<span class="error">{{ $message }}</span>@enderror</td>
@@ -71,7 +85,7 @@
                 @error('components')<span class="error">{{ $message }}</span>@enderror
                 <div class="toolbar mt"><button type="button" class="btn btn-sm" wire:click="addComponent('earning')">+ Earning</button><button type="button" class="btn btn-sm" wire:click="addComponent('deduction')">+ Fixed deduction</button><button type="button" class="btn btn-sm" wire:click="applyTemplate">Use company template</button>
                     <span class="small muted">Earnings total: {{ number_format(collect($components)->where('type', 'earning')->sum(fn ($c) => (float) $c['amount']), 2) }}</span></div>
-            </div></div>
+            </div>@endif</div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Save profile</button></div></form>
         </x-modal>
     @endif

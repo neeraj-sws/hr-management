@@ -31,13 +31,25 @@ class SafeMailChannel
 
     public function send(object $notifiable, Notification $notification): void
     {
-        if (empty($notifiable->email)) return;
+        if (empty($notifiable->email) || self::undeliverable((string) $notifiable->email)) return;
 
         try {
             $this->mail->send($notifiable, $notification);
         } catch (\Throwable $error) {
             self::recordFailure($error, (string) $notifiable->email, class_basename($notification));
         }
+    }
+
+    /**
+     * Addresses on domains reserved for examples (RFC 2606 / 6761) can never
+     * receive mail, e.g. the seeded admin@example.com. Skipped quietly; the
+     * in-app notification still arrives.
+     */
+    public static function undeliverable(string $email): bool
+    {
+        $domain = strtolower(trim(substr(strrchr($email, '@') ?: '', 1)));
+
+        return (bool) preg_match('/(^|\.)example\.(com|net|org)$|(^|\.)(test|example|invalid|localhost)$/', $domain);
     }
 
     public static function recordFailure(\Throwable $error, string $recipient, string $what): void

@@ -34,13 +34,13 @@ export default function More() {
     { title: 'Work', tiles: [
       ...(isManager ? [{ label: 'My team', icon: '👥', href: '/team' }] : []),
       { label: 'Daily status', icon: '📝', href: '/daily-status' },
-      { label: 'Overtime', icon: '⏱️', href: '/overtime' },
       { label: 'Correction', icon: '🕘', href: '/corrections' },
       { label: 'Training', icon: '🎓', href: '/training' },
       { label: 'Performance', icon: '📈', href: '/performance' },
       ...(approvals > 0 ? [{ label: 'Approvals', icon: '✅', href: '/approvals', badge: approvals, tone: 'amber' as const }] : []),
     ] },
     { title: 'Money & documents', tiles: [
+      { label: 'My salary', icon: '📊', href: '/salary' },
       { label: 'Payslips', icon: '💰', href: '/payslips' },
       { label: 'Expenses', icon: '🧾', href: '/expenses' },
       { label: 'Documents', icon: '📁', href: '/documents' },

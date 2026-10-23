@@ -21,7 +21,8 @@
 
     <section class="card">
         <div class="card-head">
-            <div><h2>Roster</h2><p>Week of {{ \Illuminate\Support\Carbon::parse($week)->format('d M Y') }} · click a day to change only that day's shift · under it: actual in–out and hours worked (<span style="color:var(--amber)">amber</span> = less than required)</p></div>
+            <div><h2>Roster</h2><p>Week of {{ \Illuminate\Support\Carbon::parse($week)->format('d M Y') }} · click a day to change only that day's shift · under it: actual in–out and hours worked (<span style="color:var(--amber)">amber</span> = less than required)</p>
+                <p class="roster-legend small"><span class="roster-key roster-off-holiday">Holiday</span><span class="roster-key roster-off-special">3rd Saturday / special off</span><span class="roster-key roster-off-weekly">Weekly off</span></p></div>
             <div class="toolbar">
                 <select wire:model.live="department" class="input" style="width:auto" aria-label="Department"><option value="">All departments</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select>
                 <button class="btn btn-sm" wire:click="moveWeek(-1)" aria-label="Previous week">‹ Prev</button><button class="btn btn-sm" wire:click="$set('week','{{ today()->startOfWeek()->toDateString() }}')">This week</button><button class="btn btn-sm" wire:click="moveWeek(1)" aria-label="Next week">Next ›</button>
@@ -35,7 +36,8 @@
                     @foreach($dates as $date)
                         @php($shift = $roster[$e->id][$date] ?? null)
                         @php($actual = $actuals[$e->id.'|'.$date] ?? null)
-                        <td class="roster-cell" wire:click="openAssign(null, {{ $e->id }}, '{{ $date }}')" title="Change {{ $e->name }}'s shift on {{ \Illuminate\Support\Carbon::parse($date)->format('D d M') }}"><div class="roster-shift">@if($shift)<strong>{{ $shift->name }}</strong><small>{{ $shift->hours() }}</small>@else<small class="muted">{{ $e->work_start ? 'own '.substr($e->work_start, 0, 5) : 'default hours' }}</small>@endif</div>@if($actual)<div class="roster-actual {{ $actual['out'] && $actual['worked'] < $actual['required'] ? 'short' : '' }}" title="Actually worked">{{ $actual['in']?->format('H:i') }}–{{ $actual['out']?->format('H:i') ?? ($date === today()->toDateString() ? 'now' : 'no check-out') }}<b>@hms($actual['worked'])</b></div>@elseif($date < today()->toDateString())<div class="roster-actual none">no attendance</div>@endif</td>
+                        @php($off = $offDays[$e->id.'|'.$date] ?? null)
+                        <td class="roster-cell {{ $off ? 'roster-off roster-off-'.$off['kind'] : '' }}" wire:click="openAssign(null, {{ $e->id }}, '{{ $date }}')" title="{{ $off ? $off['label'].' · ' : '' }}Change {{ $e->name }}'s shift on {{ \Illuminate\Support\Carbon::parse($date)->format('D d M') }}">@if($off)<span class="roster-off-tag">{{ $off['kind'] === 'holiday' ? '🎉 '.$off['label'] : ($off['kind'] === 'special' ? $off['label'] : 'Weekly off') }}</span>@endif<div class="roster-shift">@if($shift)<strong>{{ $shift->name }}</strong><small>{{ $shift->hours() }}</small>@else<small class="muted">{{ $e->work_start ? 'own '.substr($e->work_start, 0, 5) : 'default hours' }}</small>@endif</div>@if($actual)<div class="roster-actual {{ $actual['out'] && $actual['worked'] < $actual['required'] ? 'short' : '' }}" title="Actually worked">{{ $actual['in']?->format('H:i') }}–{{ $actual['out']?->format('H:i') ?? ($date === today()->toDateString() ? 'now' : 'no check-out') }}<b>@hms($actual['worked'])</b></div>@elseif($date < today()->toDateString() && ! $off)<div class="roster-actual none">no attendance</div>@endif</td>
                     @endforeach
                 </tr>
             @empty

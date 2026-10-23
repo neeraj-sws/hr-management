@@ -40,6 +40,8 @@ class AnnouncementEmailTest extends TestCase
         $publish('Canteen menu', false);
         Notification::assertSentToTimes($reader, AnnouncementEmail::class, 1);
         Notification::assertSentTo($reader, ApprovalRequested::class, fn (ApprovalRequested $n, array $channels) => $channels === ['database']);
-        Notification::assertSentTo($optedIn, ApprovalRequested::class, fn (ApprovalRequested $n, array $channels) => in_array(SafeMailChannel::class, $channels, true));
+        // Not ticked: nobody is e-mailed, not even people who turned on e-mail for company news.
+        Notification::assertNotSentTo($optedIn, ApprovalRequested::class, fn (ApprovalRequested $n, array $channels) => in_array(SafeMailChannel::class, $channels, true));
+        Notification::assertSentToTimes($optedIn, AnnouncementEmail::class, 1);
     }
 }

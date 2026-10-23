@@ -59,8 +59,11 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/expenses/{claim}/cancel', [ExpenseController::class, 'cancel'])->name('api.expenses.cancel');
 
     Route::get('/my/documents', [SelfServiceController::class, 'documents'])->name('api.my.documents');
+    Route::post('/my/documents', [SelfServiceController::class, 'uploadDocument'])->name('api.my.documents.upload');
+    Route::delete('/my/documents/{document}', [SelfServiceController::class, 'deleteDocument'])->name('api.my.documents.delete');
     Route::get('/my/assets', [SelfServiceController::class, 'assets'])->name('api.my.assets');
     Route::get('/my/performance', [SelfServiceController::class, 'performance'])->name('api.my.performance');
+    Route::get('/my/salary', [SelfServiceController::class, 'salary'])->name('api.my.salary');
     Route::get('/team/today', [SelfServiceController::class, 'team'])->name('api.team.today');
 
     Route::get('/daily-status', [DailyStatusController::class, 'index'])->name('api.daily-status.index');

@@ -66,6 +66,35 @@ class AdminListsTest extends TestCase
         Livewire::actingAs($hr)->test(Employees::class)->assertDontSee('>Remove<', false)->call('remove', $old->id)->assertForbidden();
     }
 
+    public function test_removing_an_employee_removes_their_case_and_an_orphaned_case_does_not_crash_the_page(): void
+    {
+        $new = $this->employee('EMP-20', '2026-10-01');
+        $case = \App\Models\EmployeeLifecycleCase::create(['employee_id' => $new->id, 'kind' => 'onboarding', 'status' => 'open', 'effective_on' => '2026-10-01']);
+        \App\Models\EmployeeClearanceItem::create(['lifecycle_case_id' => $case->id, 'item' => 'Laptop', 'status' => 'pending']);
+
+        Livewire::actingAs($this->admin)->test(Employees::class)->call('remove', $new->id)->assertHasNoErrors();
+        $this->assertNull($case->fresh(), 'The case goes with the employee');
+        $this->assertSame(0, \App\Models\EmployeeClearanceItem::where('lifecycle_case_id', $case->id)->count());
+
+        // A server without foreign keys (production) left a case pointing at a deleted employee.
+        $gone = $this->employee('EMP-21', '2026-10-01');
+        $orphan = \App\Models\EmployeeLifecycleCase::create(['employee_id' => $gone->id, 'kind' => 'onboarding', 'status' => 'open', 'effective_on' => '2026-10-01']);
+        \Illuminate\Support\Facades\Schema::withoutForeignKeyConstraints(fn () => \Illuminate\Support\Facades\DB::table('attendance_employees')->where('id', $gone->id)->delete());
+
+        $this->actingAs($this->admin)->get(route('lifecycle.onboarding', ['case' => $orphan->id]))->assertOk()->assertDontSee('Person EMP-21');
+        Livewire::actingAs($this->admin)->withQueryParams(['case' => $orphan->id])->test(\App\Livewire\Lifecycle\Cases::class)->assertOk()->assertDontSee('Person EMP-21');
+    }
+
+    public function test_mail_is_not_attempted_to_reserved_example_domains(): void
+    {
+        $this->mock(\Illuminate\Notifications\Channels\MailChannel::class, fn ($mock) => $mock->shouldNotReceive('send'));
+        $this->admin->notify(new \App\Notifications\ApprovalRequested('Leave', 1, 'Test', '/approvals'));
+        $this->assertFalse(AuditLog::where('action', 'notification.email_failed')->exists(), 'No failure logged for admin@example.com');
+
+        foreach (['a@example.com', 'a@mail.example.org', 'a@pc.test', 'a@x.invalid'] as $email) $this->assertTrue(\App\Notifications\Channels\SafeMailChannel::undeliverable($email), $email);
+        foreach (['a@sohamsolution.com', 'a@examples.com', 'a@gmail.com'] as $email) $this->assertFalse(\App\Notifications\Channels\SafeMailChannel::undeliverable($email), $email);
+    }
+
     public function test_departments_show_counts_and_only_empty_ones_can_be_removed(): void
     {
         $full = \App\Models\Department::create(['name' => 'Engineering', 'code' => 'ENG', 'is_active' => true]);

@@ -77,6 +77,8 @@ details.nav-group[open]{padding-bottom:6px}
 .profile-chip{display:flex;align-items:center;gap:10px}
 .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--blue-soft);color:var(--blue);font-weight:800;font-size:13px;flex:none}
 .avatar-lg{width:64px;height:64px;font-size:22px}
+.avatar-photo{overflow:hidden;background:var(--canvas)}.avatar-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-edit{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
 .profile-copy strong,.profile-copy small{display:block;line-height:1.25}
 .profile-copy small{color:var(--muted);font-size:11px}
 .burger{display:none;cursor:pointer;color:var(--navy)}
@@ -111,6 +113,9 @@ details.nav-group[open]{padding-bottom:6px}
 .stat-label{display:block;color:var(--muted);font-size:12px;font-weight:600}
 .stat-value{display:block;color:var(--navy);font-size:24px;font-weight:800;line-height:1.2;margin-top:2px}
 .stat small{display:block;color:var(--faint);font-size:11px}
+/* Dashboard cards that open a details list */
+.stat-click{cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%;transition:border-color .15s,box-shadow .15s}
+.stat-click:hover,.stat-click:focus-visible{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft);outline:none}
 .kv{display:grid;grid-template-columns:minmax(120px,40%) 1fr;gap:8px 14px;margin:0}
 .kv dt{color:var(--muted);font-size:12px}.kv dd{margin:0;font-weight:600;color:var(--ink-2)}
 .divider{height:1px;background:var(--line-2);margin:14px 0}
@@ -184,11 +189,11 @@ details.nav-group[open]{padding-bottom:6px}
 
 /* ---------- Badges ---------- */
 .badge{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:2px 9px;background:#eef1f5;color:#5d6a7c;font-size:11px;font-weight:700;text-transform:capitalize;white-space:nowrap}
-.badge-green,.badge-approved,.badge-completed,.badge-paid,.badge-working,.badge-active,.badge-locked,.badge-cleared,.badge-returned,.badge-recovered,.badge-written_off,.badge-present,.badge-closed,.badge-submitted,.badge-acknowledged,.badge-hired,.badge-offer,.badge-hire{background:var(--green-soft);color:var(--green)}
+.badge-green,.badge-extra_work,.badge-approved,.badge-completed,.badge-paid,.badge-working,.badge-active,.badge-locked,.badge-cleared,.badge-returned,.badge-recovered,.badge-written_off,.badge-present,.badge-closed,.badge-submitted,.badge-acknowledged,.badge-hired,.badge-offer,.badge-hire{background:var(--green-soft);color:var(--green)}
 .badge-amber,.badge-pending,.badge-on_break,.badge-in_progress,.badge-draft,.badge-partially_paid,.badge-open,.badge-late,.badge-half_day,.badge-assigned,.badge-high,.badge-interview,.badge-on_hold,.badge-hold{background:var(--amber-soft);color:var(--amber)}
 .badge-red,.badge-rejected,.badge-overdue,.badge-absent,.badge-inactive,.badge-urgent,.badge-failed,.badge-reject,.badge-leave_conflict,.badge-lost,.badge-recovery_requested{background:var(--red-soft);color:var(--red)}
 .badge-blue,.badge-todo,.badge-normal,.badge-disbursed,.badge-on_leave,.badge-scheduled,.badge-applied{background:var(--blue-soft);color:var(--blue)}
-.badge-violet,.badge-waived,.badge-screening,.badge-birthday,.badge-anniversary,.badge-holiday{background:var(--violet-soft);color:var(--violet)}
+.badge-violet,.badge-old_sheet,.badge-waived,.badge-screening,.badge-birthday,.badge-anniversary,.badge-holiday{background:var(--violet-soft);color:var(--violet)}
 .dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
 
 /* ---------- Modal ---------- */
@@ -297,7 +302,7 @@ button.pill:hover{border-color:var(--line)}
 .table .row-actions{justify-content:center}
 .table td .progress{margin-left:auto;margin-right:auto}
 .table td .pill-row{justify-content:center}
-.badge-gray,.badge-cancelled{background:#eef1f6;color:#5b6576}
+.badge-gray,.badge-cancelled,.badge-ex_employee,.badge-not_run{background:#eef1f6;color:#5b6576}
 
 /* Task view modal */
 .task-view-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line-2)}
@@ -329,4 +334,53 @@ button.pill:hover{border-color:var(--line)}
 .roster-shift strong{display:block;font-size:12px;color:var(--ink-2)}.roster-shift small{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap}
 .roster-actual{margin-top:4px;font-size:10.5px;color:var(--green);white-space:nowrap}.roster-actual b{display:block;font-size:11.5px}
 .roster-actual.short{color:var(--amber)}.roster-actual.none{color:var(--faint)}
+/* Off days on the roster: holiday (red), 3rd Saturday / moved off (amber), weekly off (violet). */
+.roster-off-holiday{background:var(--red-soft)}.roster-off-special{background:var(--amber-soft)}.roster-off-weekly{background:var(--violet-soft)}
+.roster-off-tag{display:block;margin-bottom:4px;font-size:10.5px;font-weight:700;line-height:1.25;white-space:normal}
+.roster-off-holiday .roster-off-tag{color:var(--red)}.roster-off-special .roster-off-tag{color:var(--amber)}.roster-off-weekly .roster-off-tag{color:var(--violet)}
+.roster-off .roster-shift{opacity:.6}
+.roster-legend{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 0}.roster-key{padding:2px 8px;border-radius:999px;font-weight:600}
+.roster-key.roster-off-holiday{color:var(--red)}.roster-key.roster-off-special{color:var(--amber)}.roster-key.roster-off-weekly{color:var(--violet)}
 .people-list{list-style:none;margin:0;padding:0;max-height:60vh;overflow:auto}.people-list li{display:flex;justify-content:space-between;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line-2)}.people-list li:last-child{border-bottom:0}.people-list small{color:var(--muted)}
+/* Attendance calendar (My Attendance, employee profile, Attendance records) */
+.att-cal{padding:12px 16px 16px}
+.att-cal-head,.att-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.att-cal-head span{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:center;padding:4px 0}
+.att-cal-day{min-height:88px;border:1px solid var(--line-2);border-radius:10px;padding:6px 7px;display:flex;flex-direction:column;gap:2px;background:#fff;overflow:hidden}
+.att-cal-out{background:transparent;border-style:dashed;opacity:.45}
+.att-cal-today{box-shadow:0 0 0 2px var(--blue)}
+.att-cal-num{font-weight:800;font-size:13px;color:var(--ink-2)}
+.att-cal-status{font-size:11px;font-weight:700}
+.att-cal-time{font-size:10.5px;color:var(--muted);line-height:1.25}
+.att-cal-worked{font-size:12px;font-weight:700;color:var(--ink-2)}
+.att-present,.att-extra_work{background:var(--green-soft)}.att-present .att-cal-status,.att-extra_work .att-cal-status{color:var(--green)}
+.att-late,.att-half_day{background:var(--amber-soft)}.att-late .att-cal-status,.att-half_day .att-cal-status{color:var(--amber)}
+.att-on_leave,.att-leave_conflict{background:var(--blue-soft)}.att-on_leave .att-cal-status,.att-leave_conflict .att-cal-status{color:var(--blue)}
+.att-weekend,.att-holiday{background:var(--violet-soft)}.att-weekend .att-cal-status,.att-holiday .att-cal-status{color:var(--violet)}
+.att-absent{background:var(--red-soft)}.att-absent .att-cal-status{color:var(--red)}
+.att-cal-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.att-key{padding:2px 9px;border-radius:999px;font-weight:600}
+@media (max-width:700px){.att-cal-head,.att-cal-grid{gap:3px}.att-cal-day{min-height:58px;padding:4px}.att-cal-time,.att-cal-worked{display:none}.att-cal-status{font-size:9.5px}}
+.seg{display:inline-flex;gap:0}.seg .btn{border-radius:0}.seg .btn:first-child{border-radius:8px 0 0 8px}.seg .btn:last-child{border-radius:0 8px 8px 0}
+/* Salary month card (My salary, employee profile) */
+.salary-month{border:1px solid var(--line);border-radius:12px;margin:0 16px 10px;background:#fff;overflow:hidden}
+.salary-month>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;padding:12px 14px}
+.salary-month>summary::-webkit-details-marker{display:none}
+.salary-month>summary small{display:block;color:var(--muted);font-size:11.5px}
+.salary-month[open]>summary{border-bottom:1px solid var(--line-2);background:var(--canvas)}
+.salary-month-figures{display:flex;flex-wrap:wrap;gap:16px;text-align:right}.salary-month-figures span{font-variant-numeric:tabular-nums}
+.salary-month-figures .neg{color:var(--red)}.salary-month-figures .due{color:var(--amber);font-weight:700}
+
+/* Onboarding document checklist (Documents page) */
+.doc-checklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.doc-check{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff8f0}
+.doc-check.done{background:#f3faf5}
+.doc-check small{display:block;color:var(--muted);font-size:12px}
+.doc-check-mark{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:#f59e0b;color:#fff;flex:none}
+.doc-check.done .doc-check-mark{background:#16a34a}
+
+/* Click a column heading to sort the list (public/js/table-sort.js) */
+.table th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.table th.sortable:hover{color:var(--ink)}
+.table th.sortable::after{content:"⇅";margin-left:5px;font-size:10px;opacity:.35}
+.table th.sorted-asc::after{content:"▲";opacity:.9}
+.table th.sorted-desc::after{content:"▼";opacity:.9}

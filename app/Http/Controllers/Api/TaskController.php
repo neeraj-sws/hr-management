@@ -29,6 +29,21 @@ class TaskController extends ApiController
         $query->when($status === 'open', fn ($q) => $q->where('status', '!=', 'completed'))
             ->when($status && $status !== 'open', fn ($q) => $q->where('status', $status))
             ->when($request->boolean('overdue'), fn ($q) => $q->where('status', '!=', 'completed')->whereDate('due_on', '<', today()));
+        // Completed tasks are history: with ?month=YYYY-MM only those finished in that month.
+        $month = $this->monthRange($request);
+        if ($month && $status === 'completed') $query->whereBetween('completed_at', [$month[0].' 00:00:00', $month[1].' 23:59:59']);
+        // ?date=YYYY-MM-DD: "what did I do that day" - tasks timed, planned, started or completed that day (any status).
+        $day = $this->dayFilter($request);
+        if ($day) {
+            $query->where(fn ($q) => $q->whereDate('work_date', $day)->orWhereDate('completed_at', $day)->orWhereDate('started_at', $day)
+                ->orWhereHas('timeEntries', fn ($t) => $t->whereDate('started_at', $day)));
+
+            return response()->json($query->latest('updated_at')->paginate(100)->through(fn ($task) => [
+                ...$this->present($task),
+                'day_seconds' => (int) $task->timeEntries->filter(fn ($entry) => $entry->started_at?->toDateString() === $day)
+                    ->sum(fn ($entry) => $entry->status === 'running' ? (int) $entry->started_at->diffInSeconds(now()) : (int) $entry->duration_seconds),
+            ]));
+        }
 
         return response()->json($query->orderByRaw('due_on IS NULL')->orderBy('due_on')->paginate(50)->through(fn ($task) => $this->present($task)));
     }

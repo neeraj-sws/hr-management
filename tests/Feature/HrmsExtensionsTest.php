@@ -181,8 +181,8 @@ class HrmsExtensionsTest extends TestCase
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 900, 'screen_idle_seconds' => 0])->assertOk()->assertJsonPath('data.screen_active_seconds', 25 + 45);
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => -5])->assertUnprocessable();
 
-        $this->actingAs($this->admin)->get(route('attendance.dashboard'))->assertOk()->assertSee('00:01:10 active', false); // 70 s, shown as HH:MM:SS
-        $this->actingAs($this->admin)->get(route('reports.show', 'attendance').'?from=2026-10-07&to=2026-10-07')->assertOk()->assertSee('screen active time', false);
+        $this->actingAs($this->admin)->get(route('attendance.dashboard'))->assertOk()->assertSeeText('00:01:10 in use'); // 70 s, shown as HH:MM:SS
+        $this->actingAs($this->admin)->get(route('reports.show', 'attendance').'?from=2026-10-07&to=2026-10-07')->assertOk()->assertSee('Screen: in use', false);
     }
 
     public function test_expense_claim_is_approved_and_reimbursed_in_payroll(): void
@@ -192,7 +192,7 @@ class HrmsExtensionsTest extends TestCase
         AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-05', 'check_in' => '2026-10-05 09:00:00', 'status' => 'completed']);
         Sanctum::actingAs($this->employeeUser, ['*']);
         $this->postJson('/api/expenses', ['category' => 'Travel', 'spent_on' => '2026-10-10', 'amount' => 500, 'description' => 'Future'])->assertUnprocessable();
-        $this->post('/api/expenses', ['category' => 'Travel', 'spent_on' => '2026-10-06', 'amount' => '750.50', 'description' => 'Cab to client', 'receipt' => UploadedFile::fake()->image('bill.jpg')], ['Accept' => 'application/json'])
+        $this->post('/api/expenses', ['category' => 'Travel', 'spent_on' => '2026-10-06', 'amount' => '750.50', 'description' => 'Cab to client', 'receipt' => $this->fakeImage('bill.jpg')], ['Accept' => 'application/json'])
             ->assertCreated()->assertJsonPath('data.has_receipt', true)->assertJsonPath('data.status', 'pending');
         $claim = ExpenseClaim::firstOrFail();
         Storage::disk('local')->assertExists($claim->receipt_path);

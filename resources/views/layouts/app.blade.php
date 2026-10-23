@@ -16,6 +16,30 @@
     <title>{{ $pageTitle }} · SWS HR</title>
     <link rel="stylesheet" href="{{ asset('css/sws.css') }}?v={{ filemtime(public_path('css/sws.css')) }}">
     @livewireStyles
+    <script>
+        /* Live attendance figures: the server's numbers (AttendanceService::liveFigures) counted on each second
+           by the same rule as the desktop and phone apps. Use: x-data="swsLive(...figures as JSON...)" and x-text="hms(v.worked)". */
+        window.swsLive = function (c) {
+            return {
+                t0: Date.now(), now: Date.now(), timer: null,
+                init() { if (c.running) this.timer = setInterval(() => this.now = Date.now(), 1000); },
+                destroy() { clearInterval(this.timer); },
+                get v() {
+                    const s = c.running ? Math.max(0, Math.floor((this.now - this.t0) / 1000)) : 0;
+                    const k = Math.min(s, c.tick_for || 0), r = s - k;
+                    const v = { worked: c.worked, inOut: c.in_out, idle: c.idle, brk: c.break, active: c.screen.active, meeting: c.screen.meeting, sIdle: c.screen.idle, corrected: c.screen.corrected, untracked: c.screen.untracked };
+                    if (!c.running) return v;
+                    v.inOut += s;
+                    if (c.status === 'on_break') { v.brk += s; return v; }
+                    if (c.state === 'idle') { v.idle += k; v.sIdle += k; v.worked += r; }
+                    else { v.worked += s; if (c.state === 'active') v.active += k; else if (c.state === 'meeting') v.meeting += k; }
+                    return v;
+                },
+                get pct() { const v = this.v, all = v.active + v.sIdle + v.meeting + v.corrected; return all ? Math.round((v.active + v.meeting + v.corrected) * 100 / all) : 0; },
+                hms(n) { n = Math.max(0, Math.floor(n || 0)); const p = (x) => String(x).padStart(2, '0'); return p(Math.floor(n / 3600)) + ':' + p(Math.floor(n % 3600 / 60)) + ':' + p(n % 60); },
+            };
+        };
+    </script>
 </head>
 <body>
     <input type="checkbox" id="nav-toggle" aria-label="Toggle navigation">
@@ -122,7 +146,7 @@
                     </div>
                 </details>
                 <details class="menu">
-                    <summary class="profile-chip"><span class="avatar">{{ $initials }}</span><span class="profile-copy"><strong>{{ $user->name }}</strong><small>{{ $roleLabel }}</small></span></summary>
+                    <summary class="profile-chip"><x-avatar :employee="$user->employeeProfile" :name="$user->name" /><span class="profile-copy"><strong>{{ $user->name }}</strong><small>{{ $roleLabel }}</small></span></summary>
                     <div class="menu-panel">
                         <div class="menu-head"><strong>{{ $user->name }}</strong><div class="small muted">{{ $user->email }}</div><div class="small muted">{{ $roleLabel }}</div></div>
                         <a class="menu-item" href="{{ route('account.profile') }}"><x-icon name="user" class="icon-sm" />My profile</a>
@@ -149,5 +173,6 @@
 
     @livewireScripts
     <script src="{{ asset('js/offline-action-queue.js') }}" defer></script>
+    <script src="{{ asset('js/table-sort.js') }}?v={{ filemtime(public_path('js/table-sort.js')) }}" defer></script>
 </body>
 </html>

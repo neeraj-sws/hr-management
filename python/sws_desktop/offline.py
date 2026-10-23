@@ -74,6 +74,15 @@ class OfflineQueue:
             counts[item["status"]] = counts.get(item["status"], 0) + 1
         return counts
 
+    def retry(self, action_id: str) -> None:
+        """Puts an action that needs attention back in the queue, to be sent with the next sync."""
+        with self._lock, self._connect() as db:
+            db.execute("UPDATE actions SET status = 'queued', last_error = NULL WHERE action_id = ?", (action_id,))
+
+    def attention(self) -> list[dict]:
+        """Actions the server refused (conflict or failed): shown to the employee to retry or discard."""
+        return [item for item in self.items() if item["status"] in ("conflict", "failed")]
+
     def discard(self, action_id: str) -> None:
         with self._lock, self._connect() as db:
             db.execute("DELETE FROM actions WHERE action_id = ?", (action_id,))

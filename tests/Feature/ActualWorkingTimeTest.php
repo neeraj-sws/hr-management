@@ -53,7 +53,7 @@ class ActualWorkingTimeTest extends TestCase
         $this->assertSame(7 * 3600 + 45 * 60, $this->attendance->workedSeconds($session));
         $this->assertSame(7 * 3600 + 45 * 60, (int) $session->active_seconds);
         Livewire::actingAs($this->user)->test(MyAttendance::class)
-            ->assertSee('In–out')->assertSee('Actual working time')
+            ->assertSee('In–out')->assertSee('Worked')
             ->assertSeeInOrder(['09:00 AM', '06:00 PM', '09:00:00', '− 00:30:00', '− 00:45:00', '07:45:00']);
     }
 

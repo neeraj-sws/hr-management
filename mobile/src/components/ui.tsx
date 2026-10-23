@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle, KeyboardAvoidingView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const colors = {
   navy: '#14284b', blue: '#3461d1', blueSoft: '#ecf2ff', ink: '#172033', ink2: '#334258', muted: '#6b778a', faint: '#94a0b2',
@@ -9,11 +9,16 @@ export const colors = {
 };
 
 export function Screen({ children, refreshing, onRefresh, padded = true }: { children: ReactNode; refreshing?: boolean; onRefresh?: () => void; padded?: boolean }) {
+  // Extra scroll room at the end so the last item is never under the phone's navigation buttons.
+  const { bottom } = useSafeAreaInsets();
   return (
     <SafeAreaView style={styles.safe} edges={['left', 'right']}>
-      <ScrollView contentContainerStyle={padded ? styles.content : undefined} refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined} keyboardShouldPersistTaps="handled">
-        {children}
-      </ScrollView>
+      {/* The page moves up with the keyboard and scrolls, so no field or button is left behind it. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={padded ? [styles.content, { paddingBottom: 40 + bottom }] : { paddingBottom: bottom }} refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -133,7 +138,12 @@ ${message}`));
   });
 }
 
-export const formatDuration = (seconds: number) => `${Math.floor(seconds / 3600)}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}`;
+/** HH:MM:SS, the same format as the website and the desktop app. */
+export const formatDuration = (seconds: number) => {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
+};
 export const formatTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
 export const formatDate = (date: string | null | undefined) => (date ? new Date(date.length === 10 ? `${date}T00:00:00` : date).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 export const money = (value: number) => Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

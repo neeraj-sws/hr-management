@@ -24,6 +24,9 @@ class Salary extends Component
 
     public ?int $profileEmployeeId = null;
     public string $monthly = '';
+    /** monthly | daily (daily wage paid per working day attended). */
+    public string $payBasis = 'monthly';
+    public string $dailyRate = '';
     public string $workingDays = '22';
     public string $dailyHours = '8';
     public string $effectiveFrom = '';
@@ -74,7 +77,7 @@ class Salary extends Component
             return;
         }
         $this->correcting = $correct;
-        $this->fill(['profileEmployeeId' => $employee->id, 'monthly' => (string) ($current?->monthly_salary ?? ''), 'workingDays' => (string) ($current?->working_days_per_month ?? 22), 'dailyHours' => (string) app(\App\Services\AttendanceService::class)->dailyHours($employee),
+        $this->fill(['profileEmployeeId' => $employee->id, 'monthly' => (string) ($current?->monthly_salary ?? ''), 'payBasis' => $current?->pay_basis ?: 'monthly', 'dailyRate' => (string) ($current?->daily_rate ?? ''), 'workingDays' => (string) ($current?->working_days_per_month ?? 22), 'dailyHours' => (string) app(\App\Services\AttendanceService::class)->dailyHours($employee),
             'effectiveFrom' => $correct ? $current->effective_from->toDateString() : today()->startOfMonth()->toDateString(),
             'components' => collect($current?->components ?? [])->map(fn ($c) => ['name' => (string) $c['name'], 'type' => (string) $c['type'], 'amount' => (string) $c['amount']])->all()]);
         $this->resetValidation();
@@ -102,14 +105,21 @@ class Salary extends Component
     public function saveProfile(AuditLogger $audit): void
     {
         abort_unless($this->canManage(), 403);
-        $this->validate(['monthly' => ['required', 'numeric', 'min:0', 'max:100000000'], 'workingDays' => ['required', 'integer', 'min:1', 'max:31'], 'dailyHours' => ['required', 'numeric', 'gt:0', 'max:24'], 'effectiveFrom' => ['required', 'date']], [], ['monthly' => 'monthly salary', 'workingDays' => 'working days', 'dailyHours' => 'daily hours', 'effectiveFrom' => 'effective date']);
+        $daily = $this->payBasis === 'daily';
+        if ($daily) {
+            $this->validate(['dailyRate' => ['required', 'numeric', 'gt:0', 'max:1000000']], [], ['dailyRate' => 'per-day salary']);
+            // Daily wage: the monthly figure is only an estimate for lists; payroll pays rate × days present.
+            $this->monthly = (string) round((float) $this->dailyRate * max(1, (int) $this->workingDays), 2);
+            $this->components = [];
+        }
+        $this->validate(['payBasis' => ['required', 'in:monthly,daily'], 'monthly' => ['required', 'numeric', 'min:0', 'max:100000000'], 'workingDays' => ['required', 'integer', 'min:1', 'max:31'], 'dailyHours' => ['required', 'numeric', 'gt:0', 'max:24'], 'effectiveFrom' => ['required', 'date']], [], ['monthly' => 'monthly salary', 'workingDays' => 'working days', 'dailyHours' => 'daily hours', 'effectiveFrom' => 'effective date']);
         $lockedThrough = PayrollRun::where('status', 'locked')->max('period_ends_on');
         if ($lockedThrough && $this->effectiveFrom <= substr((string) $lockedThrough, 0, 10)) {
             throw ValidationException::withMessages(['effectiveFrom' => 'Payroll is locked through '.substr((string) $lockedThrough, 0, 10).'. Choose a later effective date.']);
         }
         $rows = app(\App\Services\SalaryStructureService::class)->validate($this->components, (float) $this->monthly);
         app(\App\Services\PayrollLockGuard::class)->changed((int) $this->profileEmployeeId, $this->effectiveFrom, 'salary', '2999-12-31');
-        $values = ['components' => $rows ?: null, 'monthly_salary' => $this->monthly, 'working_days_per_month' => $this->workingDays, 'standard_daily_hours' => $this->dailyHours, 'configured_by' => auth()->id()];
+        $values = ['components' => $rows ?: null, 'monthly_salary' => $this->monthly, 'pay_basis' => $daily ? 'daily' : 'monthly', 'daily_rate' => $daily ? $this->dailyRate : null,'working_days_per_month' => $this->workingDays, 'standard_daily_hours' => $this->dailyHours, 'configured_by' => auth()->id()];
         // Match on the date part (robust across MySQL/SQLite) so editing the same effective date overwrites that record.
         $profile = SalaryProfile::where('employee_id', $this->profileEmployeeId)->whereDate('effective_from', $this->effectiveFrom)->first();
         if ($profile) {
@@ -122,7 +132,7 @@ class Salary extends Component
         AttendanceEmployee::whereKey($this->profileEmployeeId)->update(['monthly_salary' => $latest->monthly_salary, 'daily_work_hours' => $latest->standard_daily_hours]);
         $audit->record('salary.profile_configured', $profile, ['monthly_salary' => (float) $this->monthly, 'effective_from' => $this->effectiveFrom, 'components' => $rows]);
         $employee = AttendanceEmployee::with('user')->find($this->profileEmployeeId);
-        \App\Services\Notifier::send($employee?->user, 'SalaryProfile', $profile->id, 'Your salary '.($this->correcting ? 'record was corrected' : 'was updated').': '.number_format((float) $this->monthly, 2).' per month from '.\Illuminate\Support\Carbon::parse($this->effectiveFrom)->format('d M Y').'.', null, auth()->id());
+        \App\Services\Notifier::send($employee?->user, 'SalaryProfile', $profile->id, 'Your salary '.($this->correcting ? 'record was corrected' : 'was updated').': '.($daily ? number_format((float) $this->dailyRate, 2).' per day' : number_format((float) $this->monthly, 2).' per month').' from '.\Illuminate\Support\Carbon::parse($this->effectiveFrom)->format('d M Y').'.', null, auth()->id());
         $message = $this->correcting ? 'Salary corrected. The employee was notified.' : 'Salary profile saved. The employee was notified.';
         $this->profileEmployeeId = null;
         $this->correcting = false;
@@ -184,9 +194,9 @@ class Salary extends Component
         $own = $this->ownEmployee();
         $employees = null;
         if ($this->canManage() || $user->can('payroll.approve')) {
-            $employees = AttendanceEmployee::with(['salaryProfile', 'department'])->where('is_active', true)
+            $employees = AttendanceEmployee::with(['salaryProfile', 'department'])->where('is_active', true)->onPayroll()
                 ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%')->orWhere('employee_code', 'like', '%'.trim($this->search).'%')))
-                ->orderBy('name')->paginate(15);
+                ->inCodeOrder()->paginate(15);
         }
         $adjustments = SalaryAdjustment::with('employee')
             ->when(! $user->canAny(['salary.adjust', 'payroll.manage', 'payroll.approve']), fn ($q) => $q->where('employee_id', $own?->id ?? 0))
@@ -196,10 +206,12 @@ class Salary extends Component
             'employees' => $employees,
             'own' => $own,
             'myProfiles' => $own ? $own->salaryProfiles()->orderByDesc('effective_from')->get() : collect(),
+            'mySoFar' => $own ? app(\App\Services\SalarySummaryService::class)->soFar($own) : null,
+            'myHistory' => $own ? app(\App\Services\SalarySummaryService::class)->history($own) : [],
             'adjustments' => $adjustments,
             'decidable' => $inbox->pending($user, SalaryAdjustment::class)->pluck('approvable_id')->all(),
             'canManage' => $this->canManage(),
-            'allEmployees' => $user->can('salary.adjust') ? AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
+            'allEmployees' => $user->can('salary.adjust') ? AttendanceEmployee::where('is_active', true)->onPayroll()->orderBy('name')->get(['id', 'name']) : collect(),
             'editing' => $this->profileEmployeeId ? AttendanceEmployee::find($this->profileEmployeeId) : null,
             // Days one month's salary is divided by — auto from the calendar every month, or the fixed number.
             'salaryDays' => $employees ? $employees->getCollection()->filter->salaryProfile->mapWithKeys(fn ($e) => [$e->id => app(\App\Services\HrWorkflowService::class)->salaryDaysFor($e, today()->toDateString(), $e->salaryProfile)])->all() : [],

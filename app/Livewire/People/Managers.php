@@ -19,7 +19,7 @@ class Managers extends Component
         $managers = AttendanceEmployee::with(['department', 'user.roles', 'directReports' => fn ($q) => $q->where('is_active', true)->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')])
             ->where('is_active', true)
             ->where(fn ($q) => $q->whereHas('directReports')->orWhereHas('user.roles', fn ($r) => $r->where('name', 'Manager')))
-            ->orderBy('name')->get()
+            ->inCodeOrder()->get()
             ->map(function (AttendanceEmployee $manager) {
                 $ids = $manager->directReports->pluck('id');
                 $manager->setAttribute('pending_leave', LeaveRequest::whereIn('employee_id', $ids)->where('status', 'pending')->count());
@@ -31,6 +31,7 @@ class Managers extends Component
 
         return $this->page('livewire.people.managers', [
             'managers' => $this->paginateCollection($managers, 15),
+            'overtimeOn' => app(\App\Services\PeopleOperationsService::class)->overtimeEnabled(),
             'totals' => ['managers' => $managers->count(), 'reports' => $managers->sum(fn ($m) => $m->directReports->count()), 'pending_leave' => $managers->sum('pending_leave'), 'pending_overtime' => $managers->sum('pending_overtime'), 'overdue' => $managers->sum('overdue_tasks'), 'without_manager' => AttendanceEmployee::where('is_active', true)->whereNull('manager_id')->count()],
         ], 'Managers');
     }

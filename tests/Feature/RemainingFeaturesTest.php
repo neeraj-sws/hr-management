@@ -61,8 +61,8 @@ class RemainingFeaturesTest extends TestCase
 
         Storage::fake('local');
         $claim = ['category' => 'Travel', 'spent_on' => '2026-10-06', 'amount' => '250', 'description' => 'Cab to client'];
-        $this->post('/api/expenses', [...$claim, 'receipt' => UploadedFile::fake()->image('bill.jpg')], ['X-Action-Id' => 'exp-1', 'Accept' => 'application/json'])->assertCreated();
-        $this->post('/api/expenses', [...$claim, 'receipt' => UploadedFile::fake()->image('bill.jpg')], ['X-Action-Id' => 'exp-1', 'Accept' => 'application/json'])->assertOk()->assertJsonPath('replayed', true);
+        $this->post('/api/expenses', [...$claim, 'receipt' => $this->fakeImage('bill.jpg')], ['X-Action-Id' => 'exp-1', 'Accept' => 'application/json'])->assertCreated();
+        $this->post('/api/expenses', [...$claim, 'receipt' => $this->fakeImage('bill.jpg')], ['X-Action-Id' => 'exp-1', 'Accept' => 'application/json'])->assertOk()->assertJsonPath('replayed', true);
         $this->assertSame(1, \App\Models\ExpenseClaim::where('employee_id', $this->employee->id)->count());
 
         // Written offline yesterday, synced today: stored against yesterday.

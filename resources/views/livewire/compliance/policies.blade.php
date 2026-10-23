@@ -22,6 +22,10 @@
                         @if($field === 'salary_rate')
                             {{-- How much a minute costs: a fixed amount, or the employee's own salary per minute (salary ÷ working days ÷ hours ÷ 60). --}}
                             <x-field label="Deduction per minute" :name="'values.'.$ruleSlot.'.'.$field"><select wire:model.live="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)><option value="0">Fixed amount (below)</option><option value="1">Employee's salary per minute</option></select></x-field>
+                        @elseif($field === 'auto_deduct')
+                            {{-- A workday with no attendance and no leave request: deduct straight away, or let HR approve each one. --}}
+                            <x-field label="When it happens" :name="'values.'.$ruleSlot.'.'.$field"><select wire:model="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)><option value="1">Deduct automatically (no HR approval)</option><option value="0">Wait for HR approval</option></select></x-field>
+                            <p class="small muted" style="margin:0">Counts a scheduled workday with no check-in and no leave request (sent or approved). The employee is told; HR can still waive it.</p>
                         @elseif($field === 'amount_per_minute' && (string) ($values[$ruleSlot]['salary_rate'] ?? '0') === '1')
                             <p class="small muted" style="margin:0">Each minute costs the employee's salary per minute: monthly salary ÷ the month's working days ÷ hours in the working day ÷ 60 (e.g. 10,000 ÷ 25 ÷ 9 ÷ 60 = 0.74).</p>
                         @else

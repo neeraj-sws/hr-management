@@ -15,7 +15,7 @@
             <ul>
                 <li>✓ Attendance with breaks, late and half-day tracking</li>
                 <li>✓ Tasks with timers, daily status and productivity</li>
-                <li>✓ Leave, overtime, approvals and payroll with audit trail</li>
+                <li>✓ Leave, approvals and payroll with audit trail</li>
             </ul>
         </div>
         <small style="color:#8ea3c3">© {{ date('Y') }} SWS HR</small>

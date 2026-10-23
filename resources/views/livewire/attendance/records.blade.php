@@ -16,8 +16,17 @@
             <label class="field"><span>Session</span><select wire:model.live="status"><option value="">Any</option><option value="working">Working</option><option value="on_break">On break</option><option value="completed">Completed</option></select></label>
         </div>
         <x-errors />
+        @if($dayEmployee)
+            <div class="toolbar" style="padding-top:0">
+                <div class="seg" role="group" aria-label="View"><button type="button" @class(['btn btn-sm', 'btn-primary' => $view !== 'calendar']) wire:click="$set('view', 'list')">List</button><button type="button" @class(['btn btn-sm', 'btn-primary' => $view === 'calendar']) wire:click="$set('view', 'calendar')">Calendar</button></div>
+                @if($view === 'calendar')<span class="small muted">{{ $dayEmployee->name }} · {{ $calendarMonth->format('F Y') }} (the month of “From”)</span>@endif
+            </div>
+        @endif
+        @if($dayEmployee && $view === 'calendar')
+            <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" />
+        @else
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th><th>Employee</th><th>In</th><th>Out</th><th class="num">Active</th><th class="num">Idle</th><th class="num">Break</th><th>Screen time</th><th class="num">Late by</th><th>Source</th><th>Status</th></tr></thead>
+            <thead><tr><th>Date</th><th>Employee</th><th>In</th><th>Out</th><th class="num" title="In–out time less break and idle">Worked</th><th class="num">Idle</th><th class="num">Break</th><th>Screen time</th><th class="num">Late by</th><th>Source</th><th>Status</th></tr></thead>
             <tbody>
             @if($dayRows)
                 {{-- One employee: every day of the range, incl. leave, weekly off / 3rd Saturday and absent days. --}}
@@ -42,6 +51,7 @@
             </tbody>
         </table></div>
         @unless($dayRows){{ $sessions->links() }}@endunless
+        @endif
         @if($dayRows)<div class="card-foot small muted">{{ collect($dayRows)->where('session', '!=', null)->count() }} present · {{ collect($dayRows)->where('status', 'on_leave')->count() }} on leave · {{ collect($dayRows)->where('status', 'weekend')->count() + collect($dayRows)->where('status', 'holiday')->count() }} off / holiday · {{ collect($dayRows)->where('status', 'absent')->count() }} absent</div>@endif
     </section>
 </div>

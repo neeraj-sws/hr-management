@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, colors, Field, Muted, Notice } from '../components/ui';
 import { ApiError } from '../lib/api';
@@ -34,7 +34,9 @@ export default function Login() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.navy }}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
+      {/* Moves up with the keyboard (Android too) and scrolls, so the fields and Sign in stay reachable. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginBottom: 24 }}>
           <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: colors.navy, fontWeight: '900', fontSize: 20 }}>SW</Text>
@@ -57,6 +59,7 @@ export default function Login() {
             <Text style={{ color: colors.blue, textAlign: 'center', fontWeight: '600' }}>Forgot your password?</Text>
           </Pressable>
         </Card>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

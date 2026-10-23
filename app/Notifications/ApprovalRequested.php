@@ -37,6 +37,9 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'ManagerChange' => 'approvals.pending',
         'AttendanceSession' => 'attendance.my',
         'AttendanceLate' => 'attendance.my',
+        'ShiftReminder' => 'attendance.my',
+        'CheckoutReminder' => 'attendance.my',
+        'Payslip' => 'payroll.payslips',
         'WeeklyOff' => 'company.holidays',
         'PasswordChanged' => 'account.profile',
         'DailyStatusRequested' => 'work.daily-status',
@@ -73,7 +76,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     private const KIND_GROUP = [
         'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
         'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance',
-        'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders',
+        'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders', 'ShiftReminder' => 'reminders', 'CheckoutReminder' => 'reminders',
         'Announcement' => 'company', 'Celebration' => 'company', 'WeeklyOff' => 'attendance', 'Shift' => 'attendance',
     ];
 
@@ -121,6 +124,13 @@ class ApprovalRequested extends Notification implements ShouldQueue
         if ($this->allowEmail && self::preference($saved, $group, 'email') && ! empty($notifiable->email) && ($notifiable->is_active ?? true) && SafeMailChannel::enabled()) $channels[] = SafeMailChannel::class;
 
         return $channels;
+    }
+
+    /** The in-app bell and the phone push are sent straight away (never waiting on a queue worker); only e-mail is queued. */
+    public function viaConnections(): array
+    {
+        // Phone pushes go out at once too: a shift reminder that waits for a queue worker is useless.
+        return ['database' => 'sync', \App\Notifications\Channels\ExpoPushChannel::class => 'sync'];
     }
 
     public function toMail(object $notifiable): MailMessage

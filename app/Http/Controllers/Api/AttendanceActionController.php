@@ -59,9 +59,9 @@ class AttendanceActionController extends ApiController
     public function heartbeat(Request $request): JsonResponse
     {
         $this->trackDesktop($request, true);
-        $data = $request->validate(['screen_active_seconds' => ['nullable', 'integer', 'min:0', 'max:3600'], 'screen_idle_seconds' => ['nullable', 'integer', 'min:0', 'max:3600']]);
+        $data = $request->validate(['screen_active_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'], 'screen_idle_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'], 'screen_meeting_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'], 'screen_state' => ['nullable', 'in:active,idle,meeting']]);
 
-        return $this->respond($this->attendance->heartbeat($this->apiEmployee($request), (int) ($data['screen_active_seconds'] ?? 0), (int) ($data['screen_idle_seconds'] ?? 0)));
+        return $this->respond($this->attendance->heartbeat($this->apiEmployee($request), (int) ($data['screen_active_seconds'] ?? 0), (int) ($data['screen_idle_seconds'] ?? 0), (int) ($data['screen_meeting_seconds'] ?? 0), $data['screen_state'] ?? null));
     }
 
     public function history(Request $request): JsonResponse
@@ -124,6 +124,11 @@ class AttendanceActionController extends ApiController
 
     private function respond(?AttendanceSession $session, int $status = 200): JsonResponse
     {
-        return response()->json(['data' => $session ? array_merge((new AttendanceSessionResource($session->load('events')))->resolve(), ['worked_seconds' => $this->attendance->workedSeconds($session)]) : null], $status);
+        // break_started_at: when the break now running began, so the apps can show "on break for …" live.
+        $breakStart = $session && $session->status === 'on_break' ? $session->events()->where('event_type', 'break_start')->latest('event_time')->value('event_time') : null;
+
+        return response()->json(['data' => $session ? array_merge((new AttendanceSessionResource($session->load('events')))->resolve(), [
+            'break_started_at' => $breakStart ? \Illuminate\Support\Carbon::parse($breakStart)->toIso8601String() : null,
+        ]) : null], $status);
     }
 }

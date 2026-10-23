@@ -80,6 +80,12 @@ class AttendanceDeviceController extends Controller
                 PersonalAccessToken::query()->whereKey($device->personal_access_token_id)->delete();
             }
 
+            // A device left behind by a deleted employee cannot be updated (broken employee link), so it is removed.
+            if (! $device->employee()->exists()) {
+                $device->delete();
+
+                return;
+            }
             $device->forceFill([
                 'personal_access_token_id' => null,
                 'is_active' => false,

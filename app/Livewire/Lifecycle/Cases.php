@@ -160,7 +160,9 @@ class Cases extends Component
             ['label' => 'Department assigned', 'done' => (bool) $e->department_id, 'required' => true],
             ['label' => 'Added to a team', 'done' => $e->teams()->exists(), 'required' => false],
             ['label' => 'Manager assigned', 'done' => (bool) $e->manager_id, 'required' => true],
-            ['label' => 'Salary profile configured', 'done' => $e->salaryProfiles()->exists(), 'required' => true],
+            $e->isTrainee()
+                ? ['label' => 'Enrolled in a course (Training > Course fees)', 'done' => \App\Models\TrainingEnrollment::where('employee_id', $e->id)->exists(), 'required' => false]
+                : ['label' => 'Salary profile configured', 'done' => $e->salaryProfiles()->exists(), 'required' => true],
             ['label' => 'Leave balances for '.\App\Support\LeaveYear::label(\App\Support\LeaveYear::current()), 'done' => $e->leaveBalances()->where('year', \App\Support\LeaveYear::current())->exists(), 'required' => true],
             ['label' => 'Documents uploaded', 'done' => $e->documents()->exists(), 'required' => false],
             ['label' => 'Assets issued', 'done' => $e->assets()->exists(), 'required' => false],
@@ -170,9 +172,10 @@ class Cases extends Component
 
     public function render(LeaveAccrualService $leave)
     {
-        $cases = EmployeeLifecycleCase::with(['employee', 'clearances', 'settlement'])->where('kind', $this->kind)
+        // whereHas('employee'): a case whose employee no longer exists is skipped, not a crash.
+        $cases = EmployeeLifecycleCase::with(['employee', 'clearances', 'settlement'])->where('kind', $this->kind)->whereHas('employee')
             ->when($this->status !== 'all', fn ($q) => $q->where('status', $this->status))->latest()->paginate(20);
-        $selected = $this->case ? EmployeeLifecycleCase::with(['employee.department', 'employee.manager', 'clearances', 'settlement.payments', 'canceller'])->where('kind', $this->kind)->find($this->case) : null;
+        $selected = $this->case ? EmployeeLifecycleCase::with(['employee.department', 'employee.manager', 'clearances', 'settlement.payments', 'canceller'])->where('kind', $this->kind)->whereHas('employee')->find($this->case) : null;
         $people = app(PeopleOperationsService::class);
         $details = [];
         if ($selected) {

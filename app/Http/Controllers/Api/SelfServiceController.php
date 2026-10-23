@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\EmployeeDocumentService;
+use App\Services\EmployeePhotoService;
+
 use App\Models\ApprovalRequest;
 use App\Models\AttendanceEmployee;
 use App\Models\AttendanceSession;
@@ -19,17 +22,45 @@ use Illuminate\Support\Facades\URL;
 /** Mobile self-service: my documents, assets and performance; and a manager's team today. */
 class SelfServiceController extends ApiController
 {
-    public function documents(Request $request): JsonResponse
+    public function documents(Request $request, EmployeeDocumentService $service): JsonResponse
     {
         $employee = $this->apiEmployee($request);
         $user = $this->apiUser($request);
 
         return response()->json(['data' => EmployeeDocument::where('employee_id', $employee->id)->latest()->get()->map(fn ($d) => [
-            'id' => $d->id, 'name' => $d->original_name, 'category' => $d->category, 'expires_on' => $d->expires_on?->toDateString(),
+            'id' => $d->id, 'name' => $d->original_name, 'category' => EmployeeDocumentService::CATEGORIES[$d->category] ?? $d->category, 'category_key' => $d->category,'expires_on' => $d->expires_on?->toDateString(),
             'expired' => (bool) ($d->expires_on && $d->expires_on->lt(today())),
+            'can_delete' => $d->uploaded_by === $user->id,
             // Opening a private file from the phone's browser: a link signed for this user, valid 5 minutes.
             'url' => URL::temporarySignedRoute('files.document', now()->addMinutes(5), ['document' => $d->id, 'user' => $user->id]),
-        ])->values()]);
+        ])->values(),
+            // What is still missing from the onboarding papers, and which types the employee can upload.
+            'checklist' => $service->checklist($employee),
+            'upload_types' => collect([EmployeeDocumentService::PHOTO => 'Photo'] + EmployeeDocumentService::employeeCategories())->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
+        ]);
+    }
+
+    /** The employee uploads one of their own documents (or their photo). */
+    public function uploadDocument(Request $request, EmployeeDocumentService $service): JsonResponse
+    {
+        $employee = $this->apiEmployee($request);
+        $data = $request->validate([
+            'category' => ['required', 'string', 'in:'.implode(',', array_keys([EmployeeDocumentService::PHOTO => 1] + EmployeeDocumentService::employeeCategories()))],
+            'file' => $request->input('category') === EmployeeDocumentService::PHOTO ? EmployeePhotoService::RULES : EmployeeDocumentService::FILE_RULES,
+            'expires_on' => ['nullable', 'date'],
+        ], ['file.mimes' => 'Upload a PDF, JPG, PNG or Word file (a photo: JPG, PNG or WebP).', 'file.max' => 'The file is too large (max 10 MB, a photo 3 MB).']);
+        $document = $service->store($employee, $data['category'], $request->file('file'), $this->apiUser($request), $data['expires_on'] ?? null);
+
+        return response()->json(['data' => ['id' => $document?->id, 'checklist' => $service->checklist($employee->fresh())], 'message' => 'Uploaded — HR has been told.'], 201);
+    }
+
+    public function deleteDocument(Request $request, EmployeeDocument $document, EmployeeDocumentService $service): JsonResponse
+    {
+        $employee = $this->apiEmployee($request);
+        abort_unless($document->employee_id === $employee->id, 404);
+        $service->delete($document, $this->apiUser($request));
+
+        return response()->json(['message' => 'Document deleted.']);
     }
 
     public function assets(Request $request): JsonResponse
@@ -61,7 +92,7 @@ class SelfServiceController extends ApiController
     {
         $user = $this->apiUser($request);
         $own = $this->apiEmployee($request);
-        $reports = AttendanceEmployee::where('is_active', true)->where('manager_id', $own->id)->orderBy('name')->get();
+        $reports = AttendanceEmployee::where('is_active', true)->where('manager_id', $own->id)->inCodeOrder()->get();
         abort_if($reports->isEmpty() && ! $user->canAny(['approvals.manage', 'hr.manage']), 403, 'You do not manage a team.');
         $ids = $reports->pluck('id');
         $sessions = AttendanceSession::with('employee')->whereIn('employee_id', $ids)->whereDate('work_date', today())->get()->keyBy('employee_id');
@@ -84,5 +115,13 @@ class SelfServiceController extends ApiController
                 'pending_approvals' => $inbox->pendingCount($user)],
             'people' => $people,
         ]);
+    }
+
+    /** The employee's own salary: this month so far (as payroll would pay it today) and month-by-month history with every deduction. */
+    public function salary(Request $request, \App\Services\SalarySummaryService $salary): JsonResponse
+    {
+        $employee = $this->apiEmployee($request);
+
+        return response()->json(['current' => $salary->soFar($employee), 'history' => $salary->history($employee)]);
     }
 }

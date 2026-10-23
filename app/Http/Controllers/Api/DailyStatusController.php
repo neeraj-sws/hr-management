@@ -16,9 +16,14 @@ class DailyStatusController extends ApiController
     public function index(Request $request): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $items = DailyWorkStatus::where('employee_id', $employee->id)->latest('work_date')->limit(30)->get();
+        $month = $this->monthRange($request);
+        $items = DailyWorkStatus::where('employee_id', $employee->id)
+            ->when($month, fn ($q) => $q->whereDate('work_date', '>=', $month[0])->whereDate('work_date', '<=', $month[1]))
+            ->latest('work_date')->limit($month ? 31 : 30)->get();
+        // Today's status is always returned (for the form), whichever month the list shows.
+        $today = DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', today())->first();
 
-        return response()->json(['data' => $items->map(fn ($s) => $this->present($s))->values(), 'today' => optional($items->first(fn ($s) => $s->work_date->isToday()), fn ($s) => $this->present($s))]);
+        return response()->json(['data' => $items->map(fn ($s) => $this->present($s))->values(), 'today' => $today ? $this->present($today) : null]);
     }
 
     public function store(Request $request, AuditLogger $audit, WorkService $work): JsonResponse

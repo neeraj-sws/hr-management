@@ -20,13 +20,16 @@ class Policies extends Component
 
     public const RULES = [
         'attendance.late_penalty' => ['Late attendance', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per late minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
-        'attendance.unauthorized_absence' => ['Unauthorized absence', ['amount_per_day' => 'Amount per absent workday']],
+        'attendance.unauthorized_absence' => ['Unauthorized absence (no leave mail)', ['amount_per_day' => 'Amount per absent workday', 'auto_deduct' => 'Deduct automatically']],
         'task.late_penalty' => ['Late / overdue tasks', ['amount_per_day' => 'Amount per overdue workday', 'max_amount' => 'Maximum per task']],
         'attendance.early_checkout' => ['Early check-out', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per early minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
         'task.missing_entry' => ['No task entered for a worked day', ['amount_per_day' => 'Amount per day']],
         'task.late_entry' => ['Task entered late (after the day it was for)', ['amount' => 'Amount per late task', 'grace_hours' => 'Grace hours after the day ends']],
         'daily_status.missing' => ['Daily status not submitted', ['amount_per_day' => 'Amount per day', 'grace_hours' => 'Grace hours after the day ends']],
     ];
+
+    /** Values a field starts with when the rule has never been saved with it. */
+    public const DEFAULTS = ['auto_deduct' => '1'];
 
     /** Rules that can also be set per team or per employee (compliance rules plus OT, leave advance and screen capture). */
     public const OVERRIDABLE = self::RULES + [
@@ -49,7 +52,7 @@ class Policies extends Component
     {
         foreach (self::RULES as $key => [, $fields]) {
             $config = $policies->forEmployee(null, $key, today()->toDateString(), []);
-            foreach ($fields as $field => $label) $this->values[self::slot($key)][$field] = (string) ($config[$field] ?? '0');
+            foreach ($fields as $field => $label) $this->values[self::slot($key)][$field] = (string) ($config[$field] ?? self::DEFAULTS[$field] ?? '0');
         }
         $this->assessFrom = now()->subMonthNoOverflow()->startOfMonth()->toDateString();
         $this->assessTo = now()->subMonthNoOverflow()->endOfMonth()->toDateString();
@@ -105,7 +108,8 @@ class Policies extends Component
     {
         return $this->page('livewire.compliance.policies', [
             'rules' => self::RULES,
-            'overridable' => self::OVERRIDABLE,
+            // Overtime switched off in Settings > Payroll: no per-person overtime rule to set.
+            'overridable' => app(PeopleOperationsService::class)->overtimeEnabled() ? self::OVERRIDABLE : array_diff_key(self::OVERRIDABLE, ['overtime.multiplier' => true]),
             'teamOverrides' => \App\Models\TeamPolicyOverride::with('team')->whereIn('rule_key', array_keys(self::OVERRIDABLE))->latest()->get(),
             'teams' => \App\Models\Team::orderBy('name')->get(['id', 'name']),
             'canConfigure' => $this->user()->can('policies.manage'),

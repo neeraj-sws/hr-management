@@ -444,6 +444,29 @@ class ReviewRoundThreeTest extends TestCase
         $this->assertEquals(28000.0, round((float) $item->calculation_breakdown['base_salary'], 2), '35000 ÷ 25 × 20 days = 28,000 (as in the sheet)');
     }
 
+    public function test_calendar_working_days_leave_out_holidays_and_a_full_month_still_pays_in_full(): void
+    {
+        $e = $this->employee('SWS-201');
+        \App\Models\SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 35000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 22, 'standard_daily_hours' => 9]);
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $calendar = ['days' => [1, 2, 3, 4, 5, 6], 'holidays' => ['2026-10-20'], 'off_weeks' => ['6' => [3]]];
+        $people->setPolicy('calendar.working_days', 'calendar', 'Calendar', $calendar, null, $this->admin->id, '2026-01-01');
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'divisor' => 'calendar'], null, $this->admin->id, '2026-01-01');
+        $workflow = app(\App\Services\HrWorkflowService::class);
+        $this->assertSame(25, $workflow->salaryDaysFor($e, '2026-10-22')['days'], 'October: 31 − 4 Sundays − 3rd Saturday − Dussehra = 25');
+
+        // Present on every working day: the paid holiday is still paid, so the full salary.
+        for ($d = Carbon::parse('2026-10-01'); $d->lte(Carbon::parse('2026-10-31')); $d->addDay()) {
+            if (! \App\Support\WorkCalendar::isWorkday($d->toDateString(), $calendar)) continue;
+            \App\Models\AttendanceSession::create(['employee_id' => $e->id, 'work_date' => $d->toDateString(), 'check_in' => $d->toDateString().' 09:30:00', 'check_out' => $d->toDateString().' 18:30:00', 'status' => 'completed', 'active_seconds' => 9 * 3600]);
+        }
+        Carbon::setTestNow('2026-11-05 10:00:00');
+        $run = $workflow->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id);
+        $item = \App\Models\PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $e->id)->firstOrFail();
+        $this->assertSame(['2026-10' => 25], $item->calculation_data['month_divisors']);
+        $this->assertEquals(35000.0, round((float) $item->calculation_breakdown['base_salary'], 2));
+    }
+
     public function test_remind_on_daily_status_always_reaches_people_who_have_not_submitted(): void
     {
         $e = $this->employee('SWS-210', ['name' => 'Fahad Shaikh']);

@@ -118,13 +118,13 @@ class PayrollCarryOverTest extends TestCase
         $user = $this->employee->user;
         \Livewire\Livewire::actingAs($user)->test(\App\Livewire\Attendance\Corrections::class)
             ->call('create', '2026-09-14')
-            ->assertSee('Recorded on Mon 14 Sep 2026')->assertSee('Actual working time')->assertSee('08:00:00')
+            ->assertSee('Recorded on Mon 14 Sep 2026')->assertSee('Worked')->assertSee('08:00:00')
             ->assertSee('Salary for 01 Sep – 30 Sep 2026 is already processed')
             ->set('workDate', '2026-10-05')->assertDontSee('is already processed');
         \Livewire\Livewire::actingAs($user)->test(\App\Livewire\Leave\Requests::class)
             ->call('create')->set('startsOn', '2026-09-21')->set('endsOn', '2026-09-21')->assertSee('is already processed');
         \Livewire\Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->set('month', '2026-09')
-            ->assertSee('Actual working time')->assertSee('160:00:00')->assertSee('of 160:00:00 required on 20 days')->assertSee('In–out time 160:00:00');
+            ->assertSee('Worked')->assertSee('160:00:00')->assertSee('of 160:00:00 required on 20 days')->assertSee('In–out time 160:00:00');
         $correction = app(AttendanceCorrectionService::class)->request($this->employee, '2026-09-14', null, '18:00', 'Stayed late');
         \Livewire\Livewire::actingAs($this->managerUser)->test(\App\Livewire\Attendance\Corrections::class)
             ->call('openDecision', $correction->id)->assertSee('actual working time 08:00:00')->assertSee('After approval')->assertSee('09:00:00')

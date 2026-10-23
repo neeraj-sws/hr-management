@@ -49,6 +49,8 @@ class MyTraining extends Component
             'done' => $base()->where('status', 'completed')->latest('completed_at')->paginate(15, ['*'], 'donePage'),
             'completing' => $this->completingId ? $base()->find($this->completingId) : null,
             'overdueCount' => $base()->where('status', '!=', 'completed')->get()->filter->isOverdue()->count(),
+            // A trainee's course fees: what they owe and every payment with its receipt.
+            'fees' => \App\Models\TrainingEnrollment::with('payments')->where('employee_id', $employee->id)->latest('id')->get(),
         ], 'My Training');
     }
 }

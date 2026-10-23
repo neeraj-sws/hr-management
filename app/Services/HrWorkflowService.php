@@ -29,15 +29,23 @@ use Illuminate\Validation\ValidationException;
 
 class HrWorkflowService
 {
+    /** Old salary sheet working days per month, looked up once per request. */
+    private array $sheetDaysCache = [];
+
     public function __construct(private readonly AuditLogger $audit) {}
 
     public function createEmployee(array $data, ?int $userId = null): AttendanceEmployee
     {
         return DB::transaction(function () use ($data, $userId) {
+            $payBasis = ($data['pay_basis'] ?? 'monthly') === 'daily' ? 'daily' : 'monthly';
+            $dailyRate = $payBasis === 'daily' ? (float) ($data['daily_rate'] ?? 0) : null;
+            unset($data['pay_basis'], $data['daily_rate']);
+            // Daily wage: the monthly figure is an estimate (rate × the record's working days) used only in lists.
+            if ($payBasis === 'daily') $data['monthly_salary'] = round($dailyRate * 22, 2);
             $employee = AttendanceEmployee::create($data);
             if (isset($data['monthly_salary'])) {
                 // The salary record carries the hours entered for the employee, so Payroll shows the same working day.
-                SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
+                SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'pay_basis' => $payBasis, 'daily_rate' => $dailyRate, 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
             }
             foreach (LeaveType::where('is_active', true)->get() as $leaveType) {
                 LeaveBalance::open($employee->id, $leaveType, LeaveYear::current());
@@ -213,8 +221,17 @@ class HrWorkflowService
                 }
             }
             $run->items()->delete();
-            $employees = AttendanceEmployee::where('is_active', true)->get();
+            $employees = AttendanceEmployee::where('is_active', true)->onPayroll()->get(); // trainees pay a fee, they are not paid
+            // A month that was already paid from the old salary sheet (Payroll > Legacy Salary) takes the sheet's
+            // figures: that is what was really calculated and paid. Advances, adjustments and penalties are not
+            // attached to it — the sheet already settled that month.
+            $sheetMonth = substr($start, 0, 7) === substr($end, 0, 7) ? substr($start, 0, 7) : null;
+            $sheets = $sheetMonth ? \App\Models\LegacySalaryRecord::where('payroll_month', $sheetMonth)->whereNotNull('employee_id')->get()->keyBy('employee_id') : collect();
             foreach ($employees as $employee) {
+                if ($sheet = $sheets->get($employee->id)) {
+                    $this->storeOldSheetItem($run, $employee, $sheet);
+                    continue;
+                }
                 // Everything is computed first (no writes), then stored as this run's item.
                 $figures = $this->employeePayFigures($employee, $start, $end, true);
                 if ($figures === null) continue;
@@ -224,7 +241,7 @@ class HrWorkflowService
                     'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
-                    'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
+                    'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
                     'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
@@ -243,6 +260,34 @@ class HrWorkflowService
             $this->audit->record('payroll.calculated', $run, ['items' => $run->items()->count()]);
             return $run->load('items.employee');
         });
+    }
+
+    /** A payroll item for a month taken as-is from the old salary sheet (its basic, deductions, net and what was paid). */
+    private function storeOldSheetItem(PayrollRun $run, AttendanceEmployee $employee, \App\Models\LegacySalaryRecord $sheet): PayrollItem
+    {
+        $n = fn ($v) => round((float) $v, 2);
+        $gross = $n((float) $sheet->salary_before_adjustment + (float) $sheet->increment_bonus);
+        $net = $n($sheet->total_salary_with_bonus ?? $sheet->salary_after_deduction);
+        $lines = array_filter([
+            'basic_salary' => $n($sheet->basic_salary), 'total_working_days' => (float) $sheet->total_working_days, 'salary_per_day' => $n($sheet->salary_per_day),
+            'per_hour_salary' => round((float) $sheet->per_hour_salary, 4), 'present_days' => (float) $sheet->present_days, 'leave_days' => (float) $sheet->leave_days,
+            'paid_leave' => (float) $sheet->paid_leave, 'total_salary_paid_days' => (float) $sheet->total_salary_paid_days, 'salary_before_adjustment' => $n($sheet->salary_before_adjustment),
+            'late_and_hourly_leave_minutes' => (float) $sheet->late_and_hourly_leave_minutes, 'late_coming_deduction' => $n($sheet->late_coming_deduction), 'late_coming_adjusted' => $n($sheet->late_coming_adjusted),
+            'without_application_deduction' => $n($sheet->without_application_deduction), 'short_leave_deduction' => $n($sheet->short_leave_deduction),
+            'total_payment_deduction' => $n($sheet->total_payment_deduction), 'increment_bonus' => $n($sheet->increment_bonus), 'tds' => $n($sheet->tds),
+            'salary_after_deduction' => $n($sheet->salary_after_deduction), 'total_salary_with_bonus' => $net,
+        ], fn ($v) => $v != 0);
+
+        return PayrollItem::create([
+            'payroll_run_id' => $run->id, 'employee_id' => $employee->id, 'gross_amount' => $gross, 'adjustments' => 0, 'net_amount' => $net,
+            'working_days' => (int) round((float) $sheet->total_working_days), 'present_days' => (float) $sheet->present_days, 'paid_leave_days' => (float) $sheet->paid_leave,
+            'unpaid_leave_days' => max(0, (float) $sheet->leave_days - (float) $sheet->paid_leave), 'overtime_hours' => 0, 'overtime_amount' => 0, 'penalties_amount' => 0,
+            'recovery_amount' => 0, 'adjustments_amount' => 0, 'statutory_earnings' => 0, 'statutory_deductions' => 0, 'reimbursements_amount' => 0,
+            'calculation_data' => ['source' => 'old_sheet', 'monthly_salary' => $n($sheet->basic_salary), 'working_days_per_month' => (int) round((float) $sheet->total_working_days), 'legacy_salary_record_id' => $sheet->id],
+            'calculation_breakdown' => ['working_days' => (int) round((float) $sheet->total_working_days), 'present_days' => (float) $sheet->present_days, 'gross_salary' => $gross, 'payable_salary' => $net,
+                'old_sheet' => ['lines' => $lines, 'paid' => $n($sheet->salary_paid), 'remains' => $n(max(0, (float) $sheet->salary_remains)), 'payment_date' => $sheet->payment_date?->toDateString(), 'status' => $sheet->payment_status,
+                    'file' => $sheet->source_file, 'sheet' => $sheet->source_sheet]],
+        ]);
     }
 
     /**
@@ -335,7 +380,7 @@ class HrWorkflowService
                 $dayProfile = $profileOn($date);
                 if (! $dayProfile) continue;
                 $segment = &$segments[$dayProfile->id];
-                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0];
+                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0, 'present' => 0];
                 if (! $this->isConfiguredWorkday($date,$calendar)) {
                     // A holiday on what would otherwise be a working day: paid or unpaid per Settings > Calendar.
                     if (in_array($date, \App\Support\WorkCalendar::offHolidays($calendar), true) && $this->isConfiguredWorkday($date, [...$calendar, 'holidays' => []])) {
@@ -345,14 +390,16 @@ class HrWorkflowService
                     unset($segment); continue;
                 }
                 $segment['scheduled']++;
-                if (isset($presentSet[$date]) || ($includePaidLeave && isset($paidLeaveSet[$date]))) $segment['eligible']++;
+                if (isset($presentSet[$date])) $segment['present']++;
+                if (isset($presentSet[$date]) ||($includePaidLeave && isset($paidLeaveSet[$date]))) $segment['eligible']++;
                 unset($segment);
             }
             $scheduledMonth = array_sum(array_column($segments, 'scheduled'));
             // Pay is per day at salary ÷ working days per month. A paid holiday tops a short month up to
             // that divisor (it is paid like a day worked); in a month that already has enough working days
             // it changes nothing. An unpaid holiday takes one day off what the month can pay.
-            $monthDivisor = $calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth;
+            $sheetDays = $this->sheetWorkingDays($monthKey);
+            $monthDivisor = $sheetDays ?: ($calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth);
             $monthDivisors[$monthKey] = $monthDivisor;
             $topUp = min($monthPaidHolidays, max(0, $monthDivisor - $scheduledMonth));
             foreach ($segments as &$seg) {
@@ -368,8 +415,14 @@ class HrWorkflowService
             $paidMonth = array_sum(array_map(fn ($seg) => $attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled'], $segments));
             $scale = $paidMonth > $cap && $paidMonth > 0 ? $cap / $paidMonth : 1;
             foreach ($segments as $seg) {
+                // Daily wage: the day's rate for every working day actually attended (no monthly divisor or components).
+                if ($seg['profile']->isDaily()) {
+                    $basePay += (float) $seg['profile']->daily_rate * $seg['present'];
+                    $salarySegments[] = ['month' => $monthKey, 'pay_basis' => 'daily', 'daily_rate' => (float) $seg['profile']->daily_rate, 'monthly_salary' => (float) $seg['profile']->monthly_salary, 'effective_from' => $seg['profile']->effective_from->toDateString(), 'paid_days' => $seg['present']];
+                    continue;
+                }
                 $segDays = ($attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled']) * $scale;
-                $segDivisor = $calendarDivisor ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
+                $segDivisor = ($calendarDivisor || $sheetDays) ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
                 $basePay += ((float) $seg['profile']->monthly_salary / max(1, $segDivisor)) * $segDays;
                 foreach ($structure->components($seg['profile'], $employee, $end) as $component) {
                     if ($component['type'] !== 'earning') continue;
@@ -400,7 +453,11 @@ class HrWorkflowService
         if ($approvedMinutes > 0 && ! array_key_exists('multiplier', $overtimePolicy)) throw ValidationException::withMessages(['payroll' => 'Configure an employer overtime multiplier before calculating payroll with approved overtime.']);
         $multiplier = (float) ($overtimePolicy['multiplier'] ?? 0);
         $holidayMultiplier = isset($overtimePolicy['holiday_multiplier']) ? (float) $overtimePolicy['holiday_multiplier'] : $multiplier;
-        $hourly = (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$standardDailyHours);
+        // Per-hour rate = one day's pay ÷ hours (Settings > Payroll "Hours per day for the hourly rate", else the working day).
+        $rateHours = (float) ($payrollPolicy['hourly_rate_hours'] ?? 0) > 0 ? (float) $payrollPolicy['hourly_rate_hours'] : $standardDailyHours;
+        $hourly = $profile->isDaily()
+            ? (float) $profile->daily_rate / max(0.25, $rateHours)
+            : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
         $overtimeHours = $approvedMinutes/60;
         $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
         // Extra working: the hours actually worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set).
@@ -429,7 +486,8 @@ class HrWorkflowService
             $missing = 0;
             foreach (array_keys($presentSet) as $date) {
                 $daySession = $daySessions->get($date);
-                if (! $daySession) continue;
+                // Only finished days: a day still in progress (not checked out yet) is not short.
+                if (! $daySession || ! $daySession->check_out) continue;
                 $required = (int) round($standardDailyHours * 3600 * (1 - (float) ($partLeave[$date] ?? 0)));
                 $worked = $attendanceService->workedSeconds($daySession);
                 $short['required_seconds'] += $required;
@@ -468,6 +526,27 @@ class HrWorkflowService
         $reimbursements = round((float)$claims->sum('amount'),2);
         $net = round(max(0,round($gross-$adjustmentDeductions-$penalties-$shortAmount-$advanceRecovery-$statutory['deductions']-$fixedDeductionTotal,2))+$reimbursements,2);
         return get_defined_vars();
+    }
+
+    /**
+     * What payroll would pay for a period as things stand (nothing is written): the same figures and
+     * the same breakdown keys a payroll item stores, for "salary so far this month".
+     */
+    public function payEstimate(AttendanceEmployee $employee, string $start, string $end): ?array
+    {
+        $f = $this->employeePayFigures($employee, $start, $end, false);
+        if ($f === null) return null;
+
+        return [
+            'gross' => (float) $f['gross'], 'net' => (float) $f['net'], 'working_days' => (int) $f['scheduledTotal'], 'present_days' => (float) $f['presentDays'],
+            'paid_leave_days' => (float) $f['paidLeaveDays'], 'unpaid_leave_days' => (float) $f['unpaidLeaveDays'],
+            'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
+            'breakdown' => [
+                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
+                'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],
+                'penalties' => (float) $f['penalties'], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
+            ],
+        ];
     }
 
     /**
@@ -577,9 +656,15 @@ class HrWorkflowService
             $paid = (float) $item->payments()->sum('amount');
             if ((float) $data['amount'] <= 0 || $paid + (float) $data['amount'] > (float) $item->net_amount) throw ValidationException::withMessages(['amount' => 'Payment exceeds the remaining payroll balance.']);
             $payment = $item->payments()->create([...$data, 'recorded_by' => $userId]);
-            Payslip::firstOrCreate(['payroll_item_id' => $item->id], ['employee_id' => $item->employee_id, 'issued_at' => now(), 'reference' => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT)]);
+            $payslip = Payslip::firstOrCreate(['payroll_item_id' => $item->id], ['employee_id' => $item->employee_id, 'issued_at' => now(), 'reference' => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT)]);
             $this->audit->record('payroll.payment_recorded', $payment, ['payroll_item_id' => $item->id]);
-            $item->employee?->user?->notify(new \App\Notifications\ApprovalRequested('SalaryPayment', $payment->id, 'A salary payment of '.$payment->amount.' has been recorded.'));
+            $amount = number_format((float) $payment->amount, 2);
+            // The first payment issues the payslip: say so plainly (it is what the employee is waiting for).
+            if ($payslip->wasRecentlyCreated) {
+                Notifier::send($item->employee?->user, 'Payslip', $payslip->id, 'Your payslip for '.$run->period_starts_on->format('F Y').' is ready. Salary payment of '.$amount.' recorded.', route('hr.payslips.show', $payslip, false));
+            } else {
+                Notifier::send($item->employee?->user, 'SalaryPayment', $payment->id, 'A further salary payment of '.$amount.' for '.$run->period_starts_on->format('F Y').' has been recorded.');
+            }
             return $payment;
         });
     }
@@ -626,7 +711,7 @@ class HrWorkflowService
 
     /**
      * What one day of salary is for this employee in the month of $date — the same number payroll divides by:
-     * "auto" = that month's working days from the calendar (Sundays, the off Saturdays and unpaid holidays left out),
+     * "auto" = that month's working days from the calendar (Sundays, the off Saturdays and holidays left out),
      * otherwise the fixed number from Settings > Payroll or the salary profile.
      *
      * @return array{days: int, auto: bool, month: string}
@@ -635,6 +720,7 @@ class HrWorkflowService
     {
         $policy = $this->policyConfiguration($employee, 'payroll.calculation', $date, []);
         $month = \Illuminate\Support\Carbon::parse($date)->startOfMonth();
+        if ($sheet = $this->sheetWorkingDays($month->format('Y-m'))) return ['days' => $sheet, 'auto' => false, 'month' => $month->format('M Y')];
         if (($policy['divisor'] ?? 'fixed') === 'calendar') {
             $calendar = $this->policyConfiguration($employee, 'calendar.working_days', $month->copy()->endOfMonth()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
 
@@ -645,15 +731,27 @@ class HrWorkflowService
         return ['days' => max(1, (int) ($policy['working_days_per_month'] ?? $profile?->working_days_per_month ?? 22)), 'auto' => false, 'month' => $month->format('M Y')];
     }
 
-    /** Working days of the whole month from the calendar, a paid holiday on a working weekday counting as a working day. */
+    /**
+     * Working days the old salary sheet used for a month (the most common value), or 0 when the month is not in it.
+     * A month in the sheet uses these days for everyone: the sheet knew that month's holidays (August 2026 = 24),
+     * so employees with and without a sheet row get the same per-day rate.
+     */
+    public function sheetWorkingDays(string $monthKey): int
+    {
+        return $this->sheetDaysCache[$monthKey] ??= (int) (\App\Models\LegacySalaryRecord::where('payroll_month', $monthKey)->where('total_working_days', '>', 0)
+            ->selectRaw('total_working_days, COUNT(*) as n')->groupBy('total_working_days')->orderByDesc('n')->first()?->total_working_days ?? 0);
+    }
+
+    /**
+     * Working days of the whole month from the calendar: Sundays, the off Saturdays and every holiday left out
+     * (October 2026: 31 - 4 Sundays - 3rd Saturday - Dussehra = 25). A paid holiday is still paid: a month
+     * worked in full pays the full salary.
+     */
     private function calendarDaysInMonth(\Illuminate\Support\Carbon $monthStart, array $calendar): int
     {
         $days = 0;
-        $paidHolidays = \App\Support\WorkCalendar::offHolidays($calendar);
         for ($day = $monthStart->copy()->startOfMonth(); $day->lte($monthStart->copy()->endOfMonth()); $day->addDay()) {
-            $date = $day->toDateString();
-            if ($this->isConfiguredWorkday($date, $calendar)) { $days++; continue; }
-            if (in_array($date, $paidHolidays, true) && $this->isConfiguredWorkday($date, [...$calendar, 'holidays' => []]) && \App\Support\WorkCalendar::holidayTypeOf($calendar, $date)['paid']) $days++;
+            if ($this->isConfiguredWorkday($day->toDateString(), $calendar)) $days++;
         }
 
         return max(1, $days);

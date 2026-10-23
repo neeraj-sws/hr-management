@@ -30,6 +30,27 @@ abstract class ApiController extends Controller
     }
 
     /**
+     * ?month=YYYY-MM → [first day, last day] as Y-m-d, so a history list shows one month at a time.
+     * Null when no month is sent (older app versions still get the whole list).
+     */
+    /** ?date=YYYY-MM-DD (one day picked in the app's filter), or null. */
+    protected function dayFilter(Request $request): ?string
+    {
+        $date = (string) $request->query('date', '');
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && strtotime($date) ? $date : null;
+    }
+
+    protected function monthRange(Request $request): ?array
+    {
+        $month = (string) $request->query('month', '');
+        if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) return null;
+        $start = \Illuminate\Support\Carbon::parse($month.'-01');
+
+        return [$start->toDateString(), $start->copy()->endOfMonth()->toDateString()];
+    }
+
+    /**
      * Runs a create action at most once per X-Action-Id header (sent by the
      * mobile offline queue). A replay with the same body returns the first
      * response; the same id with a different body is a 409 conflict.

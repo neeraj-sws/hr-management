@@ -155,6 +155,29 @@ class Shifts extends Component
         return $out;
     }
 
+    /**
+     * Off days on the roster, per person (each may have their own calendar): "employee|date" =>
+     * ['kind' => holiday|special|weekly, 'label' => 'Diwali' / '3rd Saturday — weekly off' / 'Sunday — weekly off'].
+     */
+    private function offDays($employees, array $dates): array
+    {
+        $policies = app(\App\Services\PolicyConfigurationService::class);
+        $out = [];
+        foreach ($employees as $e) {
+            foreach ($dates as $date) {
+                $calendar = $policies->forEmployee($e, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+                if (\App\Support\WorkCalendar::isWorkday($date, $calendar)) continue;
+                $holiday = in_array($date, \App\Support\WorkCalendar::offHolidays($calendar), true);
+                $special = \App\Support\WorkCalendar::specialOffReason($date, $calendar);
+                $out[$e->id.'|'.$date] = $holiday
+                    ? ['kind' => 'holiday', 'label' => (string) ($calendar['holiday_names'][$date] ?? 'Holiday')]
+                    : ['kind' => $special ? 'special' : 'weekly', 'label' => \App\Support\WorkCalendar::offDayReason($date, $calendar)];
+            }
+        }
+
+        return $out;
+    }
+
     public function closeModal(): void
     {
         $this->showShiftForm = false;
@@ -167,7 +190,7 @@ class Shifts extends Component
         $start = Carbon::parse($this->week);
         $dates = collect(range(0, 6))->map(fn ($i) => $start->copy()->addDays($i)->toDateString())->all();
         $employees = AttendanceEmployee::with('department')->where('is_active', true)
-            ->when($this->department, fn ($q) => $q->where('department_id', $this->department))->orderBy('name')->paginate(20);
+            ->when($this->department, fn ($q) => $q->where('department_id', $this->department))->inCodeOrder()->paginate(20);
 
         return $this->page('livewire.attendance.shifts', [
             'shiftList' => Shift::withCount(['assignments' => fn ($q) => $q->where(fn ($q) => $q->whereNull('ends_on')->orWhereDate('ends_on', '>=', today()))])->orderBy('start_time')->get(),
@@ -177,6 +200,7 @@ class Shifts extends Component
             'dates' => $dates,
             'roster' => $shifts->roster($employees->getCollection(), $dates),
             'actuals' => $this->actuals($employees->getCollection()->pluck('id')->all(), $dates),
+            'offDays' => $this->offDays($employees->getCollection(), $dates),
             'timelineEmployee' => $this->timelineEmployeeId ? AttendanceEmployee::find($this->timelineEmployeeId) : null,
         ], 'Shifts & Roster');
     }

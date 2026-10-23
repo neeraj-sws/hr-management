@@ -77,10 +77,11 @@ class Requests extends Component
         $this->validate([
             'leaveTypeId' => ['required', 'exists:leave_types,id'],
             'duration' => ['required', 'in:full,half,short'],
-            'startsOn' => ['required', 'date'],
+            // Employees ask for leave for today or later; past days are settled by HR (corrections, imports).
+            'startsOn' => ['required', 'date', 'after_or_equal:today'],
             'endsOn' => ['required', 'date', 'after_or_equal:startsOn'],
             'reason' => ['required', 'string', 'max:2000'],
-        ], [], ['leaveTypeId' => 'leave type', 'startsOn' => 'start date', 'endsOn' => 'end date']);
+        ], ['startsOn.after_or_equal' => 'Leave can be requested for today or a later date, not for a past day.'], ['leaveTypeId' => 'leave type', 'startsOn' => 'start date', 'endsOn' => 'end date']);
         if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
         $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'duration' => $this->duration, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
         $this->showForm = false;

@@ -38,6 +38,23 @@
         "TEMP": "E:/devcache/tmp",
         "TMP": "E:/devcache/tmp"
       }
+    },
+    {
+      "name": "sws-mobile-web-local",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8083"
+      ],
+      "cwd": "mobile",
+      "port": 8083,
+      "env": {
+        "CI": "1",
+        "BROWSER": "none"
+      }
     }
   ]
 }

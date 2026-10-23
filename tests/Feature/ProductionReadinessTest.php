@@ -111,7 +111,7 @@ class ProductionReadinessTest extends TestCase
         $response = $this->actingAs($admin)->get('/reports/performance/export?from=2026-10-01&to=2026-10-31');
         $response->assertOk()->assertHeader('content-type', 'text/csv; charset=UTF-8')->assertHeader('content-disposition');
         $content = $response->streamedContent();
-        $this->assertStringContainsString('employee_code,employee_name,completed_tasks,attendance_days,approved_leave_days', $content);
+        $this->assertStringContainsString('"Employee code","Employee name","Completed tasks","Attendance days","Approved leave days"', $content);
         $this->assertStringContainsString('CSV-1,"CSV Employee"', $content);
         $this->assertStringNotContainsString('CSV-2,"=HYPERLINK', $content);
         $this->assertStringContainsString("'=HYPERLINK", $content);
@@ -183,7 +183,34 @@ class ProductionReadinessTest extends TestCase
         $this->assertSame(0, $service->assessCompliance('2026-09-01', '2026-09-02', $admin->id));
         $this->assertDatabaseHas('employee_penalties', ['employee_id' => $employee->id, 'source_key' => 'late_task:'.$task->id.':'.$this->ruleId('task.late_penalty'), 'amount' => '20.00']);
         $this->assertDatabaseHas('employee_penalties', ['employee_id' => $employee->id, 'source_key' => 'absence:'.$employee->id.':2026-09-01:'.$this->ruleId('attendance.unauthorized_absence'), 'amount' => '15.00']);
-        $this->assertDatabaseMissing('employee_penalties', ['employee_id' => $employee->id, 'effective_on' => '2026-09-02', 'reason' => 'No attendance or approved leave recorded for scheduled workday']);
+        $this->assertDatabaseMissing('employee_penalties', ['employee_id' => $employee->id, 'effective_on' => '2026-09-02']);
+    }
+
+    public function test_absence_without_a_leave_mail_is_deducted_automatically_unless_hr_approval_is_chosen(): void
+    {
+        $this->seed();
+        $admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $user = User::factory()->create(['email' => 'nomail@example.com']);
+        $employee = AttendanceEmployee::create(['employee_code' => 'NOMAIL-1', 'name' => 'No Mail', 'email' => $user->email, 'user_id' => $user->id, 'is_active' => true, 'joined_at' => '2026-09-01']);
+        $type = LeaveType::create(['name' => 'Mail PTO', 'annual_allowance' => 10, 'monthly_accrual' => 0, 'carry_forward' => false, 'carry_forward_limit' => 0, 'allow_advance' => false, 'paid' => true, 'is_active' => true]);
+        // 2 Sep: leave mail sent, not yet approved: no fine.
+        LeaveRequest::create(['employee_id' => $employee->id, 'leave_type_id' => $type->id, 'starts_on' => '2026-09-02', 'ends_on' => '2026-09-02', 'days' => 1, 'reason' => 'sent', 'status' => 'pending']);
+        PolicyRule::create(['rule_key' => 'attendance.unauthorized_absence', 'category' => 'compliance', 'name' => 'Unauthorized absence', 'configuration' => ['amount_per_day' => 500], 'is_active' => true]);
+        $service = app(PeopleOperationsService::class);
+
+        // 1 Sep: absent, no leave mail: 500 deducted straight away (approved), and the employee is told.
+        $this->assertSame(1, $service->assessCompliance('2026-09-01', '2026-09-02', $admin->id));
+        $penalty = \App\Models\EmployeePenalty::where('employee_id', $employee->id)->sole();
+        $this->assertSame('approved', $penalty->status);
+        $this->assertSame('500.00', (string) $penalty->amount);
+        $this->assertSame('2026-09-01', $penalty->effective_on->toDateString());
+        $this->assertStringContainsString('no leave request', $penalty->reason);
+        $this->assertTrue($user->notifications()->get()->contains(fn ($n) => str_contains($n->data['message'] ?? '', 'will be deducted in payroll')));
+
+        // "Wait for HR approval" chosen: the next one stays pending.
+        $service->setPolicy('attendance.unauthorized_absence', 'compliance', 'Unauthorized absence', ['amount_per_day' => 500, 'auto_deduct' => 0], null, $admin->id, '2026-09-01');
+        $this->assertSame(1, $service->assessCompliance('2026-09-03', '2026-09-03', $admin->id));
+        $this->assertSame('pending', \App\Models\EmployeePenalty::where('employee_id', $employee->id)->whereDate('effective_on', '2026-09-03')->sole()->status);
     }
 
     public function test_final_settlement_uses_salary_advance_and_unpaid_payroll_payment_data(): void

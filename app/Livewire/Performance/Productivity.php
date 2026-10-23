@@ -34,7 +34,7 @@ class Productivity extends Component
         $employees = AttendanceEmployee::where('is_active', true)
             ->when(! $this->user()->canAny(['hr.manage', 'employees.manage']), fn ($q) => $q->whereIn('id', $this->teamEmployeeIds()->all() ?: [0]))
             ->when($this->department, fn ($q, $id) => $q->where('department_id', $id))
-            ->orderBy('name')->get();
+            ->inCodeOrder()->get();
         $rows = $work->productivity($employees, $this->from, $this->to);
 
         return $this->page('livewire.performance.productivity', [

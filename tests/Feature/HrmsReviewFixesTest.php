@@ -63,9 +63,9 @@ class HrmsReviewFixesTest extends TestCase
         $this->hr = User::factory()->create(['email' => 'rv.hr@example.com']);
         $this->hr->assignRole('HR');
         // A team lead with only the Employee role: approver for their reports.
-        $this->leadUser = User::factory()->create(['email' => 'rv.lead@example.com', 'name' => 'Lata Lead']);
+        $this->leadUser = User::factory()->create(['email' => 'rv.lead@sws-mail-test.com', 'name' => 'Lata Lead']);
         $this->leadUser->assignRole('Employee');
-        $this->lead = AttendanceEmployee::create(['employee_code' => 'RV-LEAD', 'name' => 'Lata Lead', 'email' => 'rv.lead@example.com', 'is_active' => true, 'user_id' => $this->leadUser->id, 'joined_at' => '2026-01-01']);
+        $this->lead = AttendanceEmployee::create(['employee_code' => 'RV-LEAD', 'name' => 'Lata Lead', 'email' => 'rv.lead@sws-mail-test.com', 'is_active' => true, 'user_id' => $this->leadUser->id, 'joined_at' => '2026-01-01']);
         $this->employeeUser = User::factory()->create(['email' => 'rv.emp@example.com', 'name' => 'Ravi Report']);
         $this->employeeUser->assignRole('Employee');
         $this->employee = AttendanceEmployee::create(['employee_code' => 'RV-EMP', 'name' => 'Ravi Report', 'email' => 'rv.emp@example.com', 'is_active' => true, 'user_id' => $this->employeeUser->id, 'manager_id' => $this->lead->id, 'joined_at' => '2026-01-01', 'work_start' => '09:30:00', 'daily_work_hours' => 8]);

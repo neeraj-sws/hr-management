@@ -51,18 +51,18 @@
     @endif
 
     <div class="stats">
-        @if($orgWide)<div class="stat"><span class="stat-icon"><x-icon name="users" /></span><div><span class="stat-label">Active employees</span><span class="stat-value">{{ $metrics['employees'] }}</span><small>In your scope</small></div></div>@endif
-        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Checked in today</span><span class="stat-value">{{ $metrics['checked_in'] }}</span><small>{{ $metrics['still_in'] }} still checked in · {{ $metrics['working'] }} working now</small></div></div>
-        <div class="stat"><span class="stat-icon violet"><x-icon name="user-minus" /></span><div><span class="stat-label">Checked out today</span><span class="stat-value">{{ $metrics['checked_out'] }}</span><small>Finished for the day</small></div></div>
-        <div class="stat"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">On lunch / break now</span><span class="stat-value">{{ $metrics['on_break'] }}</span><small>Currently on a break</small></div></div>
-        <div class="stat"><span class="stat-icon red"><x-icon name="user-minus" /></span><div><span class="stat-label">Absent today</span><span class="stat-value">{{ $metrics['absent'] }}</span><small>Excludes approved leave</small></div></div>
-        <div class="stat"><span class="stat-icon violet"><x-icon name="calendar" /></span><div><span class="stat-label">On leave</span><span class="stat-value">{{ $metrics['on_leave'] }}</span><small>Approved leave today</small></div></div>
-        <div class="stat"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">Late arrivals</span><span class="stat-value">{{ $metrics['late'] }}</span><small>After start time + grace</small></div></div>
-        @if($projectCounts)<div class="stat"><span class="stat-icon violet"><x-icon name="layers" /></span><div><span class="stat-label">{{ ['company' => 'Active projects', 'team' => 'Team active projects', 'mine' => 'My active projects'][$projectScope] }}</span><span class="stat-value">{{ $projectCounts['active'] }}</span><small><a href="{{ route($projectScope !== 'mine' && auth()->user()->canAny(['projects.manage', 'hr.manage']) ? 'work.projects' : 'work.my-projects') }}">{{ $projectCounts['total'] }} {{ $projectScope === 'company' ? 'in the company' : ($projectScope === 'team' ? 'in your team' : 'in total') }}</a> · {{ $projectCounts['planned'] }} planned · {{ $projectCounts['on_hold'] }} on hold · {{ $projectCounts['completed'] }} completed</small></div></div>@endif
-        <div class="stat"><span class="stat-icon"><x-icon name="check-square" /></span><div><span class="stat-label">Open tasks</span><span class="stat-value">{{ $metrics['active_tasks'] }}</span><small>{{ $metrics['overdue_tasks'] }} overdue</small></div></div>
-        <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Today's tasks completed</span><span class="stat-value">{{ $metrics['task_completion_pct'] }}%</span><small>{{ $metrics['completed_today'] }} of {{ $metrics['todays_tasks'] }} done (due today, overdue or finished today)</small></div></div>
-        @if($metrics['pending_approvals'] !== null)<div class="stat"><span class="stat-icon amber"><x-icon name="inbox" /></span><div><span class="stat-label">Pending approvals</span><span class="stat-value">{{ $metrics['pending_approvals'] }}</span><small><a href="{{ route('approvals.pending') }}">Review now</a></small></div></div>@endif
-        @if($metrics['payroll_pending'] !== null)<div class="stat"><span class="stat-icon"><x-icon name="layers" /></span><div><span class="stat-label">Payroll in progress</span><span class="stat-value">{{ $metrics['payroll_pending'] }}</span><small>Draft or awaiting lock</small></div></div>@endif
+        @if($orgWide)<div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('employees')" wire:keydown.enter="openDetail('employees')" title="Click to see the list"><span class="stat-icon"><x-icon name="users" /></span><div><span class="stat-label">Active employees</span><span class="stat-value">{{ $metrics['employees'] }}</span><small>In your scope</small></div></div>@endif
+        <div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('checked_in')" wire:keydown.enter="openDetail('checked_in')" title="Click to see the list"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Checked in today</span><span class="stat-value">{{ $metrics['checked_in'] }}</span><small>{{ $metrics['still_in'] }} still checked in · {{ $metrics['working'] }} working now</small></div></div>
+        <div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('checked_out')" wire:keydown.enter="openDetail('checked_out')" title="Click to see the list"><span class="stat-icon violet"><x-icon name="user-minus" /></span><div><span class="stat-label">Checked out today</span><span class="stat-value">{{ $metrics['checked_out'] }}</span><small>Finished for the day</small></div></div>
+        <div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('on_break')" wire:keydown.enter="openDetail('on_break')" title="Click to see the list"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">On lunch / break now</span><span class="stat-value">{{ $metrics['on_break'] }}</span><small>Currently on a break</small></div></div>
+        <div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('absent')" wire:keydown.enter="openDetail('absent')" title="Click to see the list"><span class="stat-icon red"><x-icon name="user-minus" /></span><div><span class="stat-label">Absent today</span><span class="stat-value">{{ $metrics['absent'] }}</span><small>Excludes approved leave</small></div></div>
+        <button type="button" class="stat stat-click" wire:click="openDetail('on_leave')" title="Click to see the list"><span class="stat-icon violet"><x-icon name="calendar" /></span><div><span class="stat-label">On leave</span><span class="stat-value">{{ $metrics['on_leave'] }}</span><small>Approved leave today</small></div></button>
+        <div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('late')" wire:keydown.enter="openDetail('late')" title="Click to see the list"><span class="stat-icon amber"><x-icon name="clock" /></span><div><span class="stat-label">Late arrivals</span><span class="stat-value">{{ $metrics['late'] }}</span><small>After start time + grace</small></div></div>
+        @if($projectCounts)<div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('projects')" wire:keydown.enter="openDetail('projects')" title="Click to see the list"><span class="stat-icon violet"><x-icon name="layers" /></span><div><span class="stat-label">{{ ['company' => 'Active projects', 'team' => 'Team active projects', 'mine' => 'My active projects'][$projectScope] }}</span><span class="stat-value">{{ $projectCounts['active'] }}</span><small><a wire:click.stop href="{{ route($projectScope !== 'mine' && auth()->user()->canAny(['projects.manage', 'hr.manage']) ? 'work.projects' : 'work.my-projects') }}">{{ $projectCounts['total'] }} {{ $projectScope === 'company' ? 'in the company' : ($projectScope === 'team' ? 'in your team' : 'in total') }}</a> · {{ $projectCounts['planned'] }} planned · {{ $projectCounts['on_hold'] }} on hold · {{ $projectCounts['completed'] }} completed</small></div></div>@endif
+        <div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('open_tasks')" wire:keydown.enter="openDetail('open_tasks')" title="Click to see the list"><span class="stat-icon"><x-icon name="check-square" /></span><div><span class="stat-label">Open tasks</span><span class="stat-value">{{ $metrics['active_tasks'] }}</span><small>{{ $metrics['overdue_tasks'] }} overdue</small></div></div>
+        <div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('todays_tasks')" wire:keydown.enter="openDetail('todays_tasks')" title="Click to see the list"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Today's tasks completed</span><span class="stat-value">{{ $metrics['task_completion_pct'] }}%</span><small>{{ $metrics['completed_today'] }} of {{ $metrics['todays_tasks'] }} done (due today, overdue or finished today)</small></div></div>
+        @if($metrics['pending_approvals'] !== null)<div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('approvals')" wire:keydown.enter="openDetail('approvals')" title="Click to see the list"><span class="stat-icon amber"><x-icon name="inbox" /></span><div><span class="stat-label">Pending approvals</span><span class="stat-value">{{ $metrics['pending_approvals'] }}</span><small><a wire:click.stop href="{{ route('approvals.pending') }}">Review now</a></small></div></div>@endif
+        @if($metrics['payroll_pending'] !== null)<div class="stat stat-click" role="button" tabindex="0" wire:click="openDetail('payroll')" wire:keydown.enter="openDetail('payroll')" title="Click to see the list"><span class="stat-icon"><x-icon name="layers" /></span><div><span class="stat-label">Payroll in progress</span><span class="stat-value">{{ $metrics['payroll_pending'] }}</span><small>Draft or awaiting lock</small></div></div>@endif
     </div>
 
     <div class="grid grid-2">
@@ -167,7 +167,7 @@
                 <div class="card-head"><div><h2>Recent audit events</h2></div><a class="btn btn-sm" href="{{ route('security.audit') }}">Audit logs</a></div>
                 <div class="list">
                     @forelse($recentAudit as $event)
-                        <div class="list-row"><div><strong>{{ str($event->action)->replace(['.', '_'], ' ')->title() }}</strong><small>{{ $event->actor?->name ?? 'System' }} · {{ $event->created_at?->diffForHumans() }}</small></div><span class="small muted">{{ class_basename($event->subject_type ?? '') }} {{ $event->subject_id ? '#'.$event->subject_id : '' }}</span></div>
+                        <div class="list-row"><div><strong>{{ str($event->action)->replace(['.', '_'], ' ')->title() }}</strong><small>{{ $event->actor?->name ?? 'System' }}@if($summary = $event->summary()) · {{ $summary }}@endif · {{ $event->created_at?->diffForHumans() }}</small></div><span class="small muted">{{ class_basename($event->subject_type ?? '') }} {{ $event->subject_id ? '#'.$event->subject_id : '' }}</span></div>
                     @empty
                         <x-empty title="No audit events yet" icon="eye" />
                     @endforelse
@@ -175,4 +175,22 @@
             </section>
         @endcan
     </div>
+
+    @if($details)
+        <x-modal :title="$details['title'].' ('.count($details['rows']).')'" size="lg">
+            <div class="modal-body">
+                <div class="table-wrap"><table class="table">
+                    <thead><tr>@foreach($details['headers'] as $h)<th>{{ $h }}</th>@endforeach</tr></thead>
+                    <tbody>
+                    @forelse($details['rows'] as $i => $row)
+                        <tr wire:key="detail-{{ $i }}">@foreach($row as $c => $cell)<td @class(['nowrap' => $c > 1])>@if($c === 0 && ($link = $details['links'][$i] ?? null))<a href="{{ $link }}"><strong>{{ $cell[0] }}</strong></a>@elseif($c === 0)<strong>{{ $cell[0] }}</strong>@else{{ $cell[0] }}@endif @if(! empty($cell[1]))<small>{{ $cell[1] }}</small>@endif</td>@endforeach</tr>
+                    @empty
+                        <tr><td colspan="{{ max(1, count($details['headers'])) }}"><x-empty title="Nothing to show" icon="check-circle" /></td></tr>
+                    @endforelse
+                    </tbody>
+                </table></div>
+            </div>
+            <div class="modal-foot">@if(! empty($details['more']))<a class="btn btn-primary" href="{{ $details['more'][0] }}">{{ $details['more'][1] }}</a>@endif<button type="button" class="btn" wire:click="closeModal">Close</button></div>
+        </x-modal>
+    @endif
 </div>
