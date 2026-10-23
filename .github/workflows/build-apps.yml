@@ -1,15 +1,13 @@
 # Builds the apps on GitHub's machines, so no Windows PC or Android SDK is needed:
 #   desktop -> SWS-HR-Setup-<version>.exe (Windows installer) + its SHA-256 for the server's .env
 #   android -> SWS-HR-<version>.apk (install directly on phones)
-# Run it from GitHub > Actions > "Build apps" > Run workflow, or by pushing app changes.
+# Run it from GitHub > Actions > "Build apps" > Run workflow.
 # The files are under the run's "Artifacts" (kept 30 days).
 name: Build apps
 
+# Only when started by hand (GitHub Actions must be enabled for the account).
 on:
   workflow_dispatch:
-  push:
-    branches: [main, claude/performance-goals-and-otp]
-    paths: ['python/**', 'mobile/**', '.github/workflows/build-apps.yml']
 
 jobs:
   desktop:
