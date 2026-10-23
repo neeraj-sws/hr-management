@@ -190,9 +190,9 @@ details.nav-group[open]{padding-bottom:6px}
 /* ---------- Badges ---------- */
 .badge{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:2px 9px;background:#eef1f5;color:#5d6a7c;font-size:11px;font-weight:700;text-transform:capitalize;white-space:nowrap}
 .badge-green,.badge-extra_work,.badge-approved,.badge-completed,.badge-paid,.badge-working,.badge-active,.badge-locked,.badge-cleared,.badge-returned,.badge-recovered,.badge-written_off,.badge-present,.badge-closed,.badge-submitted,.badge-acknowledged,.badge-hired,.badge-offer,.badge-hire{background:var(--green-soft);color:var(--green)}
-.badge-amber,.badge-pending,.badge-on_break,.badge-in_progress,.badge-draft,.badge-partially_paid,.badge-open,.badge-late,.badge-half_day,.badge-assigned,.badge-high,.badge-interview,.badge-on_hold,.badge-hold{background:var(--amber-soft);color:var(--amber)}
+.badge-amber,.badge-pending,.badge-on_break,.badge-in_progress,.badge-draft,.badge-partially_paid,.badge-open,.badge-late,.badge-half_day,.badge-assigned,.badge-high,.badge-interview,.badge-on_hold,.badge-hold,.badge-proposed,.badge-self_review,.badge-requested{background:var(--amber-soft);color:var(--amber)}
 .badge-red,.badge-rejected,.badge-overdue,.badge-absent,.badge-inactive,.badge-urgent,.badge-failed,.badge-reject,.badge-leave_conflict,.badge-lost,.badge-recovery_requested{background:var(--red-soft);color:var(--red)}
-.badge-blue,.badge-todo,.badge-normal,.badge-disbursed,.badge-on_leave,.badge-scheduled,.badge-applied{background:var(--blue-soft);color:var(--blue)}
+.badge-blue,.badge-todo,.badge-normal,.badge-disbursed,.badge-on_leave,.badge-scheduled,.badge-applied,.badge-manager_review{background:var(--blue-soft);color:var(--blue)}
 .badge-violet,.badge-old_sheet,.badge-waived,.badge-screening,.badge-birthday,.badge-anniversary,.badge-holiday{background:var(--violet-soft);color:var(--violet)}
 .dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
 
@@ -302,7 +302,7 @@ button.pill:hover{border-color:var(--line)}
 .table .row-actions{justify-content:center}
 .table td .progress{margin-left:auto;margin-right:auto}
 .table td .pill-row{justify-content:center}
-.badge-gray,.badge-cancelled,.badge-ex_employee,.badge-not_run{background:#eef1f6;color:#5b6576}
+.badge-gray,.badge-cancelled,.badge-ex_employee,.badge-not_run,.badge-declined{background:#eef1f6;color:#5b6576}
 
 /* Task view modal */
 .task-view-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line-2)}

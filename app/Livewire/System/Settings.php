@@ -123,6 +123,8 @@ class Settings extends Component
     public bool $encashmentEnabled = false;
     public string $encashmentRate = '0';
     public string $statutoryJson = '';
+    public string $twoFactorMode = 'off';
+    public bool $twoFactorApps = false;
 
     public function mount(PolicyConfigurationService $policies): void
     {
@@ -152,6 +154,8 @@ class Settings extends Component
             'shifts' => array_values((array) ($calendar['shifts'] ?? [])),
             'emailEnabled' => (bool) ($email['enabled'] ?? true),
             'testEmail' => (string) $this->user()->email,
+            'twoFactorMode' => app(\App\Services\TwoFactorService::class)->settings()['mode'],
+            'twoFactorApps' => app(\App\Services\TwoFactorService::class)->settings()['apps'],
             'offboardingWindowHours' => (string) ($offboarding['correction_window_hours'] ?? 72),
             'workdays' => array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]),
             'holidays' => implode("\n", $calendar['holidays'] ?? []),
@@ -391,6 +395,20 @@ class Settings extends Component
         }
         $result = $sheets->sync(\Illuminate\Support\Carbon::parse($this->sheetsFrom), \Illuminate\Support\Carbon::parse($this->sheetsTo), force: true);
         $this->toast($result['message'], $result['ok'] ? 'success' : 'error');
+    }
+
+    /** 2-step sign-in: who must enter an e-mailed code after the password. */
+    public function saveSecurity(PeopleOperationsService $people): void
+    {
+        $this->authorizeSettings();
+        $this->validate(['twoFactorMode' => ['required', 'in:'.implode(',', array_keys(\App\Services\TwoFactorService::MODES))]], [], ['twoFactorMode' => '2-step sign-in']);
+        if ($this->twoFactorMode !== 'off' && ! \App\Notifications\Channels\SafeMailChannel::enabled()) {
+            $this->addError('twoFactorMode', 'Sign-in codes are sent by e-mail, and e-mail is turned off (Settings > E-mail). Turn e-mail on and send a test e-mail first.');
+
+            return;
+        }
+        $people->setPolicy(\App\Services\TwoFactorService::POLICY, 'security', '2-step sign-in', ['mode' => $this->twoFactorMode, 'apps' => $this->twoFactorApps && $this->twoFactorMode !== 'off'], null, auth()->id(), today()->toDateString());
+        $this->toast($this->twoFactorMode === 'off' ? '2-step sign-in is off (people who turned it on for themselves still get a code).' : '2-step sign-in saved. It applies from the next sign-in.');
     }
 
     public function saveEmail(PeopleOperationsService $people): void

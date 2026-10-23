@@ -14,7 +14,7 @@ import sys
 import threading
 import tkinter as tk
 from datetime import datetime, timedelta, timezone
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
 import webbrowser
 
@@ -22,7 +22,7 @@ from . import autostart, presence, settings
 from .tray import Tray
 from . import updater
 from .version import VERSION
-from .client import ApiError, HrClient
+from .client import ApiError, HrClient, OtpRequired
 from .offline import OfflineQueue
 
 NAVY, BLUE, CANVAS, INK, MUTED, GREEN, RED, AMBER = "#14284b", "#3461d1", "#f4f6fa", "#172033", "#6b778a", "#12804a", "#bd3446", "#9a6412"
@@ -198,10 +198,25 @@ class DesktopApp:
             self._show_main()
             self.refresh()
 
-        def failed(error):
+        def failed(error, challenge=None):
+            if isinstance(error, OtpRequired):
+                # 2-step sign-in: ask for the code that was e-mailed, then sign in again with it.
+                code = simpledialog.askstring("Sign-in code", f"{error.message}\n\nEnter the 6-digit code:", parent=self.root)
+                if code and code.strip():
+                    self._run(lambda: self.client.login(email, password, challenge=error.challenge, otp=code.strip()), done,
+                              lambda e: failed(e, error.challenge))
+                    return
+                self.login_button.config(state="normal", text="Sign in")
+                self.login_error.config(text="Sign-in needs the code from the e-mail. Click Sign in to get a new code.")
+                return
+            if isinstance(error, ApiError) and error.status == 422 and challenge and (error.errors or {}).get("otp") and "left" in error.first_message:
+                failed(OtpRequired(challenge, error.first_message))  # a wrong code: ask again for the same e-mail
+                return
             self.login_button.config(state="normal", text="Sign in")
-            if isinstance(error, ApiError) and error.status == 422:
-                self.login_error.config(text="These credentials do not match our records, or the account is inactive.")
+            if isinstance(error, ApiError) and error.status == 422 and challenge and (error.errors or {}).get("otp"):
+                self.login_error.config(text=f"{error.first_message} Click Sign in to get a new code.")
+            elif isinstance(error, ApiError) and error.status == 422 and not (error.errors or {}).get("otp"):
+                self.login_error.config(text=error.first_message if "e-mailed" in error.first_message else "These credentials do not match our records, or the account is inactive.")
             else:
                 self.login_error.config(text=error.first_message if isinstance(error, ApiError) else str(error))
 

@@ -58,6 +58,12 @@
                 <div class="form-actions"><button class="btn btn-primary" wire:loading.attr="disabled">Save preferences</button></div>
             </form>
         </section>
+        <section class="card" id="two-factor">
+            <div class="card-head"><div><h2>2-step sign-in</h2><p>After your password, a 6-digit code is e-mailed to {{ $maskedEmail }}. Someone who learns your password still cannot sign in.</p></div>
+                @if($twoFactorRequired)<x-badge tone="green">On (company rule)</x-badge>
+                @else<button class="btn btn-sm {{ $user->two_factor_enabled ? '' : 'btn-primary' }}" wire:click="toggleTwoFactor" wire:confirm="{{ $user->two_factor_enabled ? 'Turn off 2-step sign-in for your account?' : 'Turn on 2-step sign-in? From your next sign-in you will need the code e-mailed to you.' }}">{{ $user->two_factor_enabled ? 'Turn off' : 'Turn on' }}</button>@endif
+            </div>
+        </section>
         <section class="card" id="password">
             <div class="card-head"><div><h2>Password</h2><p>For security, only an administrator can change your password. Contact your HR administrator if you need it reset.</p></div></div>
         </section>

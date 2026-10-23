@@ -60,7 +60,8 @@ return [
         ['label' => 'Legacy Salary', 'route' => 'payroll.legacy', 'icon' => 'file'],
     ]],
     ['heading' => 'Performance', 'items' => [
-        ['label' => 'Performance', 'route' => 'performance.reviews', 'icon' => 'star'],
+        ['label' => 'Goals (KRA / OKR)', 'route' => 'performance.goals', 'icon' => 'check'],
+        ['label' => 'Reviews & 360', 'route' => 'performance.reviews', 'icon' => 'star'],
         ['label' => 'Productivity', 'route' => 'performance.productivity', 'icon' => 'activity'],
     ]],
     ['heading' => 'Training', 'items' => [

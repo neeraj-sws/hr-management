@@ -70,10 +70,27 @@ class Profile extends Component
         $this->toast('Notification preferences saved.');
     }
 
+    /** Turns the e-mailed sign-in code on or off for this person's own account. */
+    public function toggleTwoFactor(AuditLogger $audit, \App\Services\TwoFactorService $twoFactor): void
+    {
+        $user = $this->user();
+        $on = ! $user->two_factor_enabled;
+        if ($on && ! \App\Notifications\Channels\SafeMailChannel::enabled()) {
+            $this->toast('Sign-in codes are sent by e-mail, and the company has e-mail turned off. Ask HR.', 'error');
+
+            return;
+        }
+        $user->forceFill(['two_factor_enabled' => $on])->save();
+        $audit->record($on ? 'profile.two_factor_on' : 'profile.two_factor_off', $user);
+        $this->toast($on ? 'From your next sign-in, a code will be e-mailed to '.$twoFactor->maskedEmail($user).'.' : '2-step sign-in turned off for your account.');
+    }
+
     public function render()
     {
         $employee = $this->ownEmployee()?->load(['department', 'manager', 'teams', 'salaryProfile']);
 
-        return $this->page('livewire.account.profile', ['employee' => $employee, 'user' => $this->user()], 'My profile');
+        $twoFactor = app(\App\Services\TwoFactorService::class);
+
+        return $this->page('livewire.account.profile', ['employee' => $employee, 'user' => $this->user(), 'twoFactorRequired' => $twoFactor->requiredFor($this->user()) && ! $this->user()->two_factor_enabled, 'maskedEmail' => $twoFactor->maskedEmail($this->user())], 'My profile');
     }
 }

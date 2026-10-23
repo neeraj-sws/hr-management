@@ -48,6 +48,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'is_active' => 'boolean',
+            'two_factor_enabled' => 'boolean',
             'screen_capture_acknowledged_at' => 'datetime',
             'notification_preferences' => 'array',
         ];

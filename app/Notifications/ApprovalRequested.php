@@ -56,6 +56,8 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'EmployeeFinalSettlement' => 'lifecycle.settlements',
         'EmployeeFinalSettlementPayment' => 'lifecycle.settlements',
         'PerformanceReview' => 'performance.reviews',
+        'PerformanceGoal' => 'performance.goals',
+        'PerformanceFeedback' => 'performance.reviews',
         'AttendanceCorrection' => 'attendance.corrections',
         'ExpenseClaim' => 'expenses.index',
         'Announcement' => 'company.announcements',
@@ -74,7 +76,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     ];
 
     private const KIND_GROUP = [
-        'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work',
+        'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work', 'PerformanceGoal' => 'work', 'PerformanceFeedback' => 'work',
         'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance',
         'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders', 'ShiftReminder' => 'reminders', 'CheckoutReminder' => 'reminders',
         'Announcement' => 'company', 'Celebration' => 'company', 'WeeklyOff' => 'attendance', 'Shift' => 'attendance',

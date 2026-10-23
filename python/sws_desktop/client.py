@@ -27,6 +27,15 @@ def _computer_headers() -> dict:
     return {k: v for k, v in headers.items() if v}
 
 
+class OtpRequired(Exception):
+    """2-step sign-in: the server e-mailed a code; sign in again with this challenge and the code."""
+
+    def __init__(self, challenge: str, message: str):
+        super().__init__(message)
+        self.challenge = challenge
+        self.message = message
+
+
 class ApiError(Exception):
     """Non-2xx response, or status 0 when the server could not be reached."""
 
@@ -76,9 +85,16 @@ class HrClient:
         raise ApiError(message or f"Request failed ({response.status_code})", response.status_code, errors)
 
     # Authentication -------------------------------------------------------
-    def login(self, email: str, password: str, device_name: str = "") -> str:
+    def login(self, email: str, password: str, device_name: str = "", challenge: str | None = None, otp: str | None = None) -> str:
+        """Signs in and returns the token. With 2-step sign-in on, the first call raises OtpRequired (a code was
+        e-mailed); call again with its challenge and the code."""
         device_name = device_name or f"SWS HR Desktop on {platform.node() or 'this computer'}"[:255]
-        body = self.request("POST", "/auth/token", {"email": email, "password": password, "device_name": device_name})
+        payload = {"email": email, "password": password, "device_name": device_name}
+        if challenge and otp:
+            payload.update({"challenge": challenge, "otp": otp})
+        body = self.request("POST", "/auth/token", payload)
+        if isinstance(body, dict) and body.get("otp_required"):
+            raise OtpRequired(str(body.get("challenge") or ""), str(body.get("message") or "We e-mailed you a 6-digit sign-in code."))
         self.token = body["token"]
         return self.token
 

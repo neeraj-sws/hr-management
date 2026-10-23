@@ -10,11 +10,14 @@ import type { Me } from './types';
 const TOKEN_KEY = 'sws.token';
 const SERVER_KEY = 'sws.server';
 
+export type OtpChallenge = { challenge: string; message: string };
+
 type AuthState = {
   ready: boolean;
   me: Me | null;
   serverUrl: string;
-  signIn: (serverUrl: string, email: string, password: string) => Promise<void>;
+  /** Resolves to an OTP challenge when 2-step sign-in is on: call again with { challenge, otp }. */
+  signIn: (serverUrl: string, email: string, password: string, otp?: { challenge: string; otp: string }) => Promise<OtpChallenge | void>;
   signOut: () => Promise<void>;
   refreshMe: () => Promise<void>;
   locked: boolean;
@@ -83,10 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (await authenticate()) setLocked(false);
   }, []);
 
-  const signIn = useCallback(async (url: string, email: string, password: string) => {
+  const signIn = useCallback(async (url: string, email: string, password: string, otp?: { challenge: string; otp: string }) => {
     const cleanUrl = url.trim().replace(/\/+$/, '');
     configureApi({ baseUrl: cleanUrl, token: null });
-    const response = await post<{ token: string }>('/auth/token', { email: email.trim(), password, device_name: 'SWS HR Mobile' });
+    const response = await post<{ token: string; otp_required?: boolean; challenge?: string; message?: string }>('/auth/token', { email: email.trim(), password, device_name: 'SWS HR Mobile', ...(otp ?? {}) });
+    // 2-step sign-in: a code was e-mailed; the login screen asks for it and signs in again.
+    if (response.otp_required) return { challenge: response.challenge ?? '', message: response.message ?? 'We e-mailed you a 6-digit sign-in code.' };
     await secure.set(TOKEN_KEY, response.token);
     await store.setJson(SERVER_KEY, cleanUrl);
     setServerUrl(cleanUrl);

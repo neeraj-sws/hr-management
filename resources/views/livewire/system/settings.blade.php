@@ -2,7 +2,7 @@
     <div class="page-head"><div><h1>Settings</h1><p>Employer policies are saved as effective-dated rules starting today; history is kept and individual employees can have overrides (see Compliance). No statutory or legal rates are built in.</p></div></div>
     <x-errors />
     <div class="tabs">
-        @foreach(['leave' => 'Leave types', 'calendar' => 'Working calendar & weekly offs', 'hours' => 'Work hours & attendance', 'locations' => 'Office locations', 'capture' => 'Screen capture', 'payroll' => $otEnabled ? 'Payroll & overtime' : 'Payroll', 'statutory' => 'Statutory components', 'sheets' => 'Google Sheets', 'email' => 'E-mail', 'offboarding' => 'Offboarding'] as $key => $label)
+        @foreach(['leave' => 'Leave types', 'calendar' => 'Working calendar & weekly offs', 'hours' => 'Work hours & attendance', 'locations' => 'Office locations', 'capture' => 'Screen capture', 'payroll' => $otEnabled ? 'Payroll & overtime' : 'Payroll', 'statutory' => 'Statutory components', 'sheets' => 'Google Sheets', 'email' => 'E-mail', 'security' => 'Security', 'offboarding' => 'Offboarding'] as $key => $label)
             <button class="tab {{ $tab === $key ? 'active' : '' }}" wire:click="$set('tab','{{ $key }}')">{{ $label }}</button>
         @endforeach
     </div>
@@ -276,6 +276,20 @@
                     <button class="btn" wire:loading.attr="disabled"><span wire:loading wire:target="sendTestEmail" class="spinner"></span>Send test e-mail</button>
                 </form>
             </div>
+        </section>
+    @elseif($tab === 'security')
+        <section class="card">
+            <div class="card-head"><div><h2>2-step sign-in (OTP)</h2><p>After the password, a 6-digit code is e-mailed to the person and must be entered to sign in. A stolen password alone is then not enough. A browser can be trusted for {{ \App\Services\TwoFactorService::TRUST_DAYS }} days.</p></div></div>
+            <form class="card-body stack" wire:submit="saveSecurity">
+                <x-errors />
+                <x-field label="Who must enter a code" name="twoFactorMode" hint="anyone can also turn it on for their own account in My profile"><select wire:model.live="twoFactorMode">@foreach(\App\Services\TwoFactorService::MODES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
+                @if($twoFactorMode !== 'off')
+                    <label class="check"><input type="checkbox" wire:model="twoFactorApps"> Also when signing in to the desktop and mobile apps</label>
+                    <p class="small muted" style="margin:0">Turn this on after everyone has desktop app 1.17.0 or newer and mobile app 1.1.4 or newer: older apps cannot show the code box. People already signed in to an app stay signed in.</p>
+                @endif
+                <div class="alert alert-info" style="margin:0">Codes go by e-mail, so check that e-mail works (Settings &gt; E-mail &gt; send a test) before turning this on. If e-mail ever stops working and nobody can sign in, run <code>php artisan security:two-factor-off</code> on the server.</div>
+                <div><button class="btn btn-primary">Save</button></div>
+            </form>
         </section>
     @elseif($tab === 'offboarding')
         <section class="card">

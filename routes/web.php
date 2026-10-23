@@ -15,6 +15,9 @@ Route::get('/', fn () => auth()->check() ? redirect()->route('dashboard') : redi
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware('throttle:6,1')->name('login.store');
+    Route::get('/login/code', [AuthenticatedSessionController::class, 'twoFactor'])->name('login.two-factor');
+    Route::post('/login/code', [AuthenticatedSessionController::class, 'verifyTwoFactor'])->middleware('throttle:10,1')->name('login.two-factor.verify');
+    Route::post('/login/code/resend', [AuthenticatedSessionController::class, 'resendTwoFactor'])->middleware('throttle:4,1')->name('login.two-factor.resend');
     Route::get('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'create'])->name('password.request');
     Route::post('/forgot-password', [\App\Http\Controllers\Auth\PasswordResetController::class, 'store'])->middleware('throttle:5,1')->name('password.email');
     Route::get('/reset-password/{token}', [\App\Http\Controllers\Auth\PasswordResetController::class, 'edit'])->name('password.reset');
@@ -88,6 +91,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/payroll/payments', Livewire\Payroll\Payments::class)->middleware('access:payroll.manage,payroll.approve')->name('payroll.payments');
 
     // Performance
+    Route::get('/performance/goals', Livewire\Performance\Goals::class)->middleware('access:profile,performance.review,hr.manage')->name('performance.goals');
     Route::get('/performance/reviews', Livewire\Performance\Reviews::class)->middleware('access:profile,performance.review,hr.manage')->name('performance.reviews');
     Route::get('/performance/productivity', Livewire\Performance\Productivity::class)->middleware('access:reports.view,hr.manage')->name('performance.productivity');
 
