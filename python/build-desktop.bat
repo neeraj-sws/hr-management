@@ -7,7 +7,7 @@ cd /d "%~dp0"
 if not exist .build-venv\Scripts\python.exe python -m venv .build-venv || goto :error
 .build-venv\Scripts\python -m pip install -q -r requirements.txt "pyinstaller>=6,<7" || goto :error
 for /f "usebackq delims=" %%v in (`.build-venv\Scripts\python -c "from sws_desktop.version import VERSION; print(VERSION)"`) do set VERSION=%%v
-.build-venv\Scripts\pyinstaller --noconfirm --clean --windowed --name "SWS HR" --paths . --hidden-import pystray._win32 sws_desktop_entry.py || goto :error
+.build-venv\Scripts\pyinstaller --noconfirm --clean --windowed --name "SWS HR" --paths . --hidden-import pystray._win32 --icon "sws_desktop\assets\icon.ico" --add-data "sws_desktop\assets;sws_desktop\assets" sws_desktop_entry.py || goto :error
 echo Built dist\SWS HR\SWS HR.exe (version %VERSION%)
 
 set ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe

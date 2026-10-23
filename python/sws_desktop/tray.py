@@ -7,13 +7,20 @@ from typing import Callable
 
 
 def _icon_image():
+    """The company logo (sws_desktop/assets/icon.png); a plain "SW" badge if the file is missing."""
+    from pathlib import Path
+
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((2, 2, 62, 62), radius=14, fill=(20, 40, 75, 255))
-    draw.text((15, 20), "SW", fill=(255, 255, 255, 255))
-    return image
+    logo = Path(__file__).resolve().parent / "assets" / "icon.png"
+    try:
+        return Image.open(logo).convert("RGBA").resize((64, 64), Image.LANCZOS)
+    except OSError:
+        image = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle((2, 2, 62, 62), radius=14, fill=(20, 40, 75, 255))
+        draw.text((15, 20), "SW", fill=(255, 255, 255, 255))
+        return image
 
 
 class Tray:

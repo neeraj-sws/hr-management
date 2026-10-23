@@ -18,6 +18,8 @@ OutputBaseFilename=SWS-HR-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\sws_desktop\assets\icon.ico
+UninstallDisplayIcon={app}\SWS HR.exe
 ; Updates close the running app first and start it again afterwards.
 CloseApplications=force
 RestartApplications=no

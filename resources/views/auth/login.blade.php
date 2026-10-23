@@ -4,12 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign in · SWS HR</title>
+    @include('partials.favicon')
     <link rel="stylesheet" href="{{ asset('css/sws.css') }}?v={{ filemtime(public_path('css/sws.css')) }}">
 </head>
 <body>
 <div class="auth">
     <section class="auth-hero">
-        <div class="profile-chip"><span class="brand-mark">SW</span><span><span class="brand-name">SWS HR</span><span class="brand-sub">HR &amp; Work Management</span></span></div>
+        <div class="profile-chip"><img class="brand-mark brand-logo" src="{{ asset('images/sws-logo.png') }}?v=2" alt="SWS"><span><span class="brand-name">SWS HR</span><span class="brand-sub">HR &amp; Work Management</span></span></div>
         <div>
             <h1>People, attendance, work and payroll — in one place.</h1>
             <ul>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, colors, Field, Muted, Notice } from '../components/ui';
 import { ApiError } from '../lib/api';
@@ -54,9 +54,7 @@ export default function Login() {
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginBottom: 24 }}>
-          <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: colors.navy, fontWeight: '900', fontSize: 20 }}>SW</Text>
-          </View>
+          <Image source={require('../../assets/icon.png')} style={{ width: 72, height: 72, borderRadius: 18 }} accessibilityLabel="SWS" />
           <Text style={{ color: colors.white, fontSize: 24, fontWeight: '800', marginTop: 12 }}>SWS HR</Text>
           <Text style={{ color: '#9fb3d1' }}>HR & Work Management</Text>
         </View>

@@ -14,6 +14,7 @@
         $initials = collect(explode(' ', trim($user->name)))->filter()->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->join('');
     @endphp
     <title>{{ $pageTitle }} · SWS HR</title>
+    @include('partials.favicon')
     <link rel="stylesheet" href="{{ asset('css/sws.css') }}?v={{ filemtime(public_path('css/sws.css')) }}">
     @livewireStyles
     <script>
@@ -46,7 +47,7 @@
     <input type="checkbox" id="nav-toggle" aria-label="Toggle navigation">
     <aside class="sidebar" aria-label="Main navigation">
         <a class="brand" href="{{ route('dashboard') }}">
-            <span class="brand-mark">SW</span>
+            <img class="brand-mark brand-logo" src="{{ asset('images/sws-logo.png') }}?v=2" alt="SWS">
             <span><span class="brand-name">SWS HR</span><span class="brand-sub">HR &amp; Work Management</span></span>
         </a>
         <div class="nav-find">

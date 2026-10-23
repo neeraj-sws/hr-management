@@ -9,6 +9,7 @@ only if an administrator turns screen capture on for this employee (see presence
 from __future__ import annotations
 
 import queue
+from pathlib import Path
 import socket
 import sys
 import threading
@@ -91,6 +92,7 @@ class DesktopApp:
         self.online = True
 
         root.title(f"SWS HR {VERSION}")  # version in the title bar, so it is easy to tell which app a PC runs
+        self._set_window_icon(root)
         root.geometry("760x640")
         root.minsize(640, 560)
         root.configure(bg=CANVAS)
@@ -107,6 +109,18 @@ class DesktopApp:
             self._show_login()
 
     # Plumbing ---------------------------------------------------------------
+    @staticmethod
+    def _set_window_icon(root: tk.Tk) -> None:
+        """The company logo in the title bar, taskbar and Alt+Tab (dialogs use it too)."""
+        assets = Path(__file__).resolve().parent / "assets"
+        try:
+            if sys.platform == "win32":
+                root.iconbitmap(default=str(assets / "icon.ico"))
+            root._logo = tk.PhotoImage(file=str(assets / "icon.png"))  # kept on root so it is not garbage-collected
+            root.iconphoto(True, root._logo)
+        except (tk.TclError, OSError):
+            pass  # no logo file: the default icon
+
     def _styles(self):
         style = ttk.Style(self.root)
         style.theme_use("clam")
