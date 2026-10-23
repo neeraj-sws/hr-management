@@ -138,7 +138,12 @@ ${message}`));
   });
 }
 
-export const formatDuration = (seconds: number) => `${Math.floor(seconds / 3600)}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}`;
+/** HH:MM:SS, the same format as the website and the desktop app. */
+export const formatDuration = (seconds: number) => {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
+};
 export const formatTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—');
 export const formatDate = (date: string | null | undefined) => (date ? new Date(date.length === 10 ? `${date}T00:00:00` : date).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 export const money = (value: number) => Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

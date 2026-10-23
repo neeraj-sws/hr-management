@@ -29,6 +29,9 @@ class AttendanceSessionResource extends JsonResource
                 // Working time the desktop app did not see (closed, updating, opened after check-in).
                 'screen_untracked_seconds' => $t['untracked'],
             ])($this->resource->screenTime()),
+            // Worked time (in-out less break less idle, up to now while working) and idle, exactly as the website shows them.
+            'worked_seconds' => app(\App\Services\AttendanceService::class)->workedSeconds($this->resource),
+            'idle_counted_seconds' => $this->resource->idleSeconds(),
             'status'=>$this->status,
             'server_version'=>(int)$this->server_version,
             'events'=>$this->whenLoaded('events'),

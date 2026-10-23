@@ -105,5 +105,17 @@ class MeetingTimeTest extends TestCase
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 180])->assertOk()->assertJsonPath('data.screen_untracked_seconds', 360);
         Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('00:06:00 not tracked');
         Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('Not tracked');
+
+        // One moment, one set of figures: phone/desktop API, history, admin list and employee page.
+        // In-out 49:00 - break 0 - idle 05:00 = worked 44:00.
+        $today = $this->getJson('/api/attendance/today')->assertOk()
+            ->assertJsonPath('data.worked_seconds', 2640)->assertJsonPath('data.idle_counted_seconds', 300)
+            ->assertJsonPath('data.screen_active_seconds', 780)->assertJsonPath('data.screen_meeting_seconds', 1500)->assertJsonPath('data.screen_idle_seconds', 300);
+        $this->getJson('/api/attendance/history?from=2026-10-23&to=2026-10-23')->assertOk()
+            ->assertJsonPath('data.0.session.worked_seconds', 2640)->assertJsonPath('data.0.session.idle_counted_seconds', 300);
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)
+            ->assertSee('00:44:00')->assertSee('00:13:00 active')->assertSee('00:25:00 in meetings')->assertSee('00:05:00 idle')->assertSee('x-data', false);
+        Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)
+            ->assertSee('00:44:00')->assertSee('00:05:00')->assertSee('00:25:00');
     }
 }

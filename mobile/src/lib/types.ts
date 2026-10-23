@@ -9,6 +9,14 @@ export type AttendanceSession = {
   status: 'working' | 'on_break' | 'completed' | string;
   server_version: number;
   worked_seconds?: number;
+  /** Idle time as the website shows it. */
+  idle_counted_seconds?: number;
+  /** Screen time from the desktop app, the same figures as the website. */
+  screen_active_seconds?: number;
+  screen_idle_seconds?: number;
+  screen_meeting_seconds?: number;
+  screen_corrected_seconds?: number;
+  screen_untracked_seconds?: number;
   events?: { event_type: string; event_time: string; duration_seconds: number }[];
 };
 

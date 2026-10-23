@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { useAttendance } from '../lib/useAttendance';
 import { useAuth } from '../lib/auth';
-import { Badge, Button, Card, colors, confirmAction, Eyebrow, formatTime, Muted, Notice } from './ui';
+import { Badge, Button, Card, colors, confirmAction, Eyebrow, formatDuration, formatTime, Muted, Notice } from './ui';
 
 /** Today's attendance with a live worked-time counter and the next allowed actions. */
 export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof useAttendance> }) {
@@ -45,6 +45,18 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
           <Text style={{ color: colors.muted }}>Not checked in yet</Text>
         )}
       </View>
+      {session ? (
+        // The same figures as the website and the desktop app (from the server).
+        <Muted style={{ marginBottom: 8 }}>
+          {`Break ${formatDuration(session.break_seconds)} · Idle ${formatDuration(session.idle_counted_seconds ?? session.idle_seconds)}`
+            + (session.screen_meeting_seconds ? ` · Meeting ${formatDuration(session.screen_meeting_seconds)}` : '')
+            + ((session.screen_active_seconds ?? 0) + (session.screen_idle_seconds ?? 0) + (session.screen_meeting_seconds ?? 0) > 0
+              ? `\nScreen time: ${formatDuration(session.screen_active_seconds ?? 0)} active`
+                + ((session.screen_corrected_seconds ?? 0) >= 60 ? ` · ${formatDuration(session.screen_corrected_seconds ?? 0)} added by correction` : '')
+                + ((session.screen_untracked_seconds ?? 0) >= 60 ? ` · ${formatDuration(session.screen_untracked_seconds ?? 0)} not tracked` : '')
+              : '')}
+        </Muted>
+      ) : null}
       {message ? <View style={{ marginBottom: 10 }}><Notice tone={message.tone} text={message.text} /></View> : null}
       {mobileAllowed ? (
         <View style={{ gap: 8 }}>

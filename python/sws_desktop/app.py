@@ -827,14 +827,11 @@ class DesktopApp:
         self.break_label.config(text=self._break_text(session))
         self.total_label.config(text=self._total_text(session))
         if session:
-            # The seconds since the last 5-second check go to what the computer was doing then, so the
-            # screen line moves every second, like the clock above.
-            live = {"active": 0.0, "idle": 0.0, "meeting": 0.0}
-            if self.presence_bucket and self.last_presence_poll and session.get("status") == "working":
-                live[self.presence_bucket] = min(max((datetime.now().astimezone() - self.last_presence_poll).total_seconds(), 0), 10)
-            active = int(int(session.get("screen_active_seconds") or 0) + self.screen_active + self.screen_quiet + live["active"])
-            idle = int(int(session.get("screen_idle_seconds") or 0) + self.screen_idle + live["idle"])
-            meeting = int(int(session.get("screen_meeting_seconds") or 0) + self.screen_meeting + live["meeting"])
+            # Exactly the server's figures (the same as the website, admin list and phone), updated with
+            # every report to the server (30 s); the worked clock above counts every second everywhere.
+            active = int(session.get("screen_active_seconds") or 0)
+            idle = int(session.get("screen_idle_seconds") or 0)
+            meeting = int(session.get("screen_meeting_seconds") or 0)
             corrected = int(session.get("screen_corrected_seconds") or 0)  # time the app missed, confirmed by an approved correction
             text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
             untracked = int(session.get("screen_untracked_seconds") or 0)  # app closed / updating: counted as worked

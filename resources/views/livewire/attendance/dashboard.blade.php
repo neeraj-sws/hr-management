@@ -1,4 +1,4 @@
-<div @if($date === today()->toDateString()) wire:poll.60s @endif>
+<div @if($date === today()->toDateString()) wire:poll.30s @endif>
     <div class="page-head"><div><h1>Team Attendance</h1><p>{{ \Illuminate\Support\Carbon::parse($date)->format('l, d F Y') }} · {{ $total }} employees in scope</p></div></div>
     <div class="stats">
         <button type="button" class="stat" wire:click="$set('show','present')" style="cursor:pointer;text-align:left"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Present</span><span class="stat-value">{{ $counts['present'] }}</span><small>{{ $counts['working'] }} working · {{ $counts['on_break'] }} break · {{ $counts['completed'] }} done</small></div></button>
@@ -22,7 +22,7 @@
                     <td><strong>{{ $row->employee->name }}</strong><small>{{ $row->employee->employee_code }} · {{ $row->employee->department?->name ?? '—' }}</small></td>
                     <td>{{ $row->session?->check_in?->format('h:i A') ?? '—' }}@if($row->session?->check_in_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'in']) }}" target="_blank" title="Check-in selfie">📸</a>@endif @if($row->session?->check_in_latitude) <span title="{{ $row->session->check_in_latitude }}, {{ $row->session->check_in_longitude }}">📍</span>@endif</td>
                     <td>{{ $row->session?->check_out?->format('h:i A') ?? '—' }}@if($row->session?->check_out_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'out']) }}" target="_blank" title="Check-out selfie">📸</a>@endif</td>
-                    <td class="num">{{ $row->session ? \App\Support\Duration::hms($row->worked) : '—' }}</td>
+                    <td class="num">@if($row->session)<x-live-duration :seconds="$row->worked" :running="! $row->session->check_out && $row->session->status === 'working' && $date === today()->toDateString()" />@else — @endif</td>
                     <td class="num">{{ $row->session ? \App\Support\Duration::hms($row->session->idleSeconds()) : '—' }}</td>
                     <td class="num">{{ $row->session ? \App\Support\Duration::hms((int) $row->session->break_seconds) : '—' }}</td>
                     <td class="nowrap">@include('livewire.attendance.partials.screen-time', ['s' => $row->session])</td>

@@ -9,7 +9,7 @@
         <div class="clock-card">
             <div>
                 <p class="eyebrow">Worked today</p>
-                <div class="timer-display">@hms($worked)</div>
+                <div class="timer-display"><x-live-duration :seconds="$worked" :running="$session && ! $session->check_out && $session->status === 'working'" /></div>
                 <div class="pill-row mt">
                     @if($session)
                         <span class="pill"><b>In</b>{{ $session->check_in->format('h:i A') }}@if($session->check_in_photo_path) <a href="{{ route('attendance.photo', [$session, 'in']) }}" target="_blank" title="Check-in selfie">📸</a>@endif @if($session->check_in_latitude) <span title="Location recorded">📍</span>@endif</span>
@@ -92,10 +92,10 @@
                     @php($worked = $day['session'] ? app(\App\Services\AttendanceService::class)->workedSeconds($day['session']) : null)
                     @php($idle = $day['session'] ? $day['session']->idleSeconds() : null)
                     @php($span = $day['session']?->check_in ? ($day['session']->check_out ? (int) $day['session']->check_in->diffInSeconds($day['session']->check_out) : $worked + (int) $day['session']->break_seconds + $idle) : null)
-                    <td class="num">{{ $span !== null ? \App\Support\Duration::hms($span) : '—' }}</td>
+                    <td class="num">@if($span !== null)<x-live-duration :seconds="$span" :running="! $day['session']->check_out && $day['session']->status === 'working' && $day['date'] === today()->toDateString()" />@else — @endif</td>
                     <td class="num">{{ $day['session'] ? '− '.\App\Support\Duration::hms((int) $day['session']->break_seconds) : '—' }}</td>
                     <td class="num">{{ $day['session'] ? '− '.\App\Support\Duration::hms($idle) : '—' }}</td>
-                    <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}">@hms($worked)</strong><small>of @hms($required)@if($day['session']->check_out && $worked < $required) · @hms($required - $worked) short @elseif($day['session']->check_out && $worked > $required) · +@hms($worked - $required) @endif</small>@else — @endif</td>
+                    <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}"><x-live-duration :seconds="$worked" :running="! $day['session']->check_out && $day['session']->status === 'working' && $day['date'] === today()->toDateString()" /></strong><small>of @hms($required)@if($day['session']->check_out && $worked < $required) · @hms($required - $worked) short @elseif($day['session']->check_out && $worked > $required) · +@hms($worked - $required) @endif</small>@else — @endif</td>
                     <td>@if(! empty($day['extra']))<x-badge tone="green">Extra working</x-badge><small>{{ $day['extra_reason'] }} · paid on top</small>@elseif($day['status'] === 'weekend' && ($offReason = $day['label'] ?? null))<x-badge tone="violet">Weekly off</x-badge><small>{{ $offReason }}</small>@elseif($day['status'] === 'weekend')<x-badge status="weekend">Weekly off</x-badge>@else<x-badge :status="$day['status']" />@if(! empty($day['label']))<small>{{ $day['label'] }}</small>@endif @endif</td>
                     <td>@if($overtimeOn && empty($day['extra']) && $worked !== null && $day['session']->check_out && $worked > $required + 1800)<a class="btn btn-sm" href="{{ route('leave.overtime', ['date' => $day['date'], 'minutes' => intdiv($worked - $required, 60)]) }}" title="Extra time on a working day is paid only after your overtime request is approved">Request overtime</a>@endif @if(in_array($day['status'], ['present', 'late', 'half_day', 'absent'], true) && (! $day['session'] || ! $day['session']->check_out || $day['status'] !== 'present'))<a class="btn btn-sm" href="{{ route('attendance.corrections', ['date' => $day['date']]) }}" title="Ask your manager to correct this day">Correct</a>@endif</td></tr>
             @endforeach
