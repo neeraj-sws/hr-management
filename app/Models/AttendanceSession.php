@@ -139,9 +139,11 @@ class AttendanceSession extends Model
      * as idle; when the employee then answers the away question:
      *  - "I was working" (a meeting, a call, away from the desk for work) moves it to meetings,
      *  - "count it as a break" moves it out of screen time (it is in the break time).
-     * Only what is left is idle.
+     * Only what is left is idle. 'untracked' is working time the desktop app did not see (it was
+     * closed, being updated, or opened after check-in): in-out less break, less everything above.
+     * So active + meeting + idle + corrected + untracked = in-out time less break.
      *
-     * @return array{active: int, meeting: int, idle: int, corrected: int}
+     * @return array{active: int, meeting: int, idle: int, corrected: int, untracked: int}
      */
     public function screenTime(): array
     {
@@ -150,12 +152,22 @@ class AttendanceSession extends Model
         $asWork = min($idle, $answered['work']);
         $asBreak = min($idle - $asWork, $answered['break']);
 
-        return [
+        $time = [
             'active' => (int) $this->screen_active_seconds,
             'meeting' => (int) $this->screen_meeting_seconds + $asWork,
             'idle' => $idle - $asWork - $asBreak,
             'corrected' => $this->correctedScreenSeconds(),
+            'untracked' => 0,
         ];
+        $measured = $time['active'] + $time['meeting'] + $time['idle'];
+        if ($this->check_in && $measured > 0) {
+            // Up to check-out, or (still working) to the app's last report, so it does not grow between reports.
+            $end = $this->check_out ?? $this->screen_reported_at ?? now();
+            $span = (int) $this->check_in->diffInSeconds($end) - (int) $this->break_seconds;
+            $time['untracked'] = max(0, $span - $measured - $time['corrected']);
+        }
+
+        return $time;
     }
 
     /** Away periods the employee answered for: as working time, and as a break (seconds). */

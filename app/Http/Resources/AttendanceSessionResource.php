@@ -26,6 +26,8 @@ class AttendanceSessionResource extends JsonResource
                 'screen_meeting_seconds' => $t['meeting'],
                 // Time the desktop app missed but an approved correction confirmed as working.
                 'screen_corrected_seconds' => $t['corrected'],
+                // Working time the desktop app did not see (closed, updating, opened after check-in).
+                'screen_untracked_seconds' => $t['untracked'],
             ])($this->resource->screenTime()),
             'status'=>$this->status,
             'server_version'=>(int)$this->server_version,

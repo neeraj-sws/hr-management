@@ -4,7 +4,7 @@
     {{-- Time the app missed (e.g. it stopped) but an approved correction confirmed counts as working, shown apart. --}}
     @php($total = $t['active'] + $t['idle'] + $t['meeting'] + $t['corrected'])
     <span title="Computer in use, in meetings, and untouched while checked in (desktop app)">@hms($t['active']) active</span>
-    <small>@if($t['meeting'])<span title="Online meetings, plus away time the employee confirmed as working (e.g. a meeting away from the computer)">@hms($t['meeting']) in meetings</span> · @endif @if($t['corrected'])<span title="The desktop app did not record this time, but an approved attendance correction confirmed it as working time">@hms($t['corrected']) added by approved correction</span> · @endif @hms($t['idle']) idle · {{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $total) }}% working</small>
+    <small>@if($t['meeting'])<span title="Online meetings, plus away time the employee confirmed as working (e.g. a meeting away from the computer)">@hms($t['meeting']) in meetings</span> · @endif @if($t['corrected'])<span title="The desktop app did not record this time, but an approved attendance correction confirmed it as working time">@hms($t['corrected']) added by approved correction</span> · @endif @hms($t['idle']) idle · @if($t['untracked'] >= 60)<span title="Working time the desktop app did not see: it was closed, being updated, or opened after check-in. Counted as worked.">@hms($t['untracked']) not tracked</span> · @endif{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $total) }}% working</small>
 @else
     <span class="muted small">no desktop app</span>
 @endif

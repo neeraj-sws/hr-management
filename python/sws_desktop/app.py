@@ -263,7 +263,7 @@ class DesktopApp:
         att.pack(fill="x")
         left = tk.Frame(att, bg="white")
         left.grid(row=0, column=0, sticky="w")
-        tk.Label(left, text="ACTIVE WORK TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        tk.Label(left, text="WORKED TODAY", fg=MUTED, bg="white", font=("Segoe UI", 8, "bold")).pack(anchor="w")
         self.clock_label = tk.Label(left, text="--:--:--", font=("Segoe UI", 34, "bold"), fg=NAVY, bg="white")
         self.clock_label.pack(anchor="w")
         # Second time: everything since check-in (break and idle included), same as "In–out" on the website.
@@ -837,6 +837,9 @@ class DesktopApp:
             meeting = int(int(session.get("screen_meeting_seconds") or 0) + self.screen_meeting + live["meeting"])
             corrected = int(session.get("screen_corrected_seconds") or 0)  # time the app missed, confirmed by an approved correction
             text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
+            untracked = int(session.get("screen_untracked_seconds") or 0)  # app closed / updating: counted as worked
+            if untracked >= 60:
+                text += f" · {hms(untracked)} not tracked"
             if self.meeting_reason:
                 text += f"\n● In a meeting now ({self.meeting_reason}) — counted as working time, not idle"
             self.screen_label.config(text=text if active + idle + meeting + corrected else "Screen time starts counting while you are checked in.")

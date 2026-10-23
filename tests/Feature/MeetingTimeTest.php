@@ -89,7 +89,7 @@ class MeetingTimeTest extends TestCase
             ->assertJsonPath('data.screen_meeting_seconds', 1500)->assertJsonPath('data.screen_idle_seconds', 300);
 
         $session = AttendanceSession::where('employee_id', $e->id)->firstOrFail();
-        $this->assertSame(['active' => 600, 'meeting' => 1500, 'idle' => 300, 'corrected' => 0], $session->screenTime());
+        $this->assertSame(['active' => 600, 'meeting' => 1500, 'idle' => 300, 'corrected' => 0, 'untracked' => 0], $session->screenTime());
         $this->assertSame(300, $session->idleSeconds(), 'The Idle column matches the screen time');
         $this->getJson('/api/attendance/today')->assertJsonPath('data.screen_idle_seconds', 300)->assertJsonPath('data.idle_counted_seconds', 300);
 
@@ -98,5 +98,12 @@ class MeetingTimeTest extends TestCase
         Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('00:25:00');
         $row = app(ReportService::class)->rows($admin, 'attendance', ['from' => '2026-10-23', 'to' => '2026-10-23', 'employee_id' => $e->id])->first();
         $this->assertSame(['00:25:00', '00:05:00'], [$row['screen_meeting_time'], $row['screen_idle_time']]);
+
+        // The app was closed for 6 minutes (e.g. while being updated): shown as "not tracked", counted as worked,
+        // so active + meetings + idle + not tracked = in-out less break, on every page.
+        Carbon::setTestNow('2026-10-23 10:49:00');
+        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 180])->assertOk()->assertJsonPath('data.screen_untracked_seconds', 360);
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('00:06:00 not tracked');
+        Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('Not tracked');
     }
 }

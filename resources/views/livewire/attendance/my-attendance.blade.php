@@ -17,6 +17,7 @@
                         <span class="pill"><b>Break</b>@hms((int) $session->break_seconds)</span>
                         @if($session->idleSeconds())<span class="pill"><b>Idle</b>@hms($session->idleSeconds())</span>@endif
                         @if($session->screenTime()['meeting'])<span class="pill" title="Online meetings (Teams, Zoom, Google Meet) and away time you confirmed as working — counted as working time, not idle"><b>Meeting</b>@hms($session->screenTime()['meeting'])</span>@endif
+                        @if($session->screenTime()['untracked'] >= 60)<span class="pill" title="Working time the desktop app did not see (closed, being updated, or opened after check-in) — counted as worked"><b>Not tracked</b>@hms($session->screenTime()['untracked'])</span>@endif
                         <x-badge :status="$session->status" />
                         @if($late)<x-badge status="late" />@endif
                     @else
