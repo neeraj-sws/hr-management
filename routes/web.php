@@ -35,6 +35,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // People
     Route::middleware('access:employees.manage,hr.manage')->group(function () {
         Route::get('/people/employees', Livewire\People\Employees::class)->name('people.employees');
+        Route::get('/people/trainees', Livewire\People\Trainees::class)->name('people.trainees');
         Route::get('/people/departments', Livewire\People\Departments::class)->name('people.departments');
         Route::get('/people/managers', Livewire\People\Managers::class)->name('people.managers');
     });

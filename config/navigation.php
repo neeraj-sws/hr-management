@@ -21,6 +21,7 @@ return [
         // Only people who manage someone see it (access:manager on the route).
         ['label' => 'My team', 'route' => 'people.my-team', 'icon' => 'team'],
         ['label' => 'Employees', 'route' => 'people.employees', 'icon' => 'users'],
+        ['label' => 'Trainees', 'route' => 'people.trainees', 'icon' => 'user-plus'],
         ['label' => 'Departments', 'route' => 'people.departments', 'icon' => 'building'],
         ['label' => 'Teams', 'route' => 'people.teams', 'icon' => 'team'],
         ['label' => 'Managers', 'route' => 'people.managers', 'icon' => 'user-check'],

@@ -1,9 +1,9 @@
 <div>
     <div class="page-head">
-        <div><h1>Employees</h1><p>{{ $counts['active'] }} active · {{ $counts['inactive'] }} inactive</p></div>
+        <div><h1>{{ $traineesOnly ? 'Trainees' : 'Employees' }}</h1><p>{{ $counts['active'] }} active · {{ $counts['inactive'] }} inactive @if($counts['other']) · <a href="{{ route($traineesOnly ? 'people.employees' : 'people.trainees') }}">{{ $counts['other'] }} {{ $traineesOnly ? str('employee')->plural($counts['other']) : str('trainee')->plural($counts['other']) }} {{ $counts['other'] === 1 ? 'is' : 'are' }} listed under {{ $traineesOnly ? 'Employees' : 'Trainees' }}</a>@endif</p></div>
         <div class="actions">
             @if(\App\Support\Navigation::canAccess(auth()->user(), 'reports.show', ['type' => 'employees']))<a class="btn" href="{{ route('reports.show', 'employees') }}"><x-icon name="download" class="icon-sm" />Export</a>@endif
-            <button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Add employee</button>
+            <button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />{{ $traineesOnly ? 'Add trainee' : 'Add employee' }}</button>
         </div>
     </div>
     @unless($showForm || $pwEmployee)<x-errors />@endunless
@@ -50,7 +50,7 @@
     </section>
 
     @if($showForm)
-        <x-modal :title="$editingId ? 'Edit employee' : 'Add employee'" size="lg">
+        <x-modal :title="$editingId ? ($traineesOnly ? 'Edit trainee' : 'Edit employee') : ($traineesOnly ? 'Add trainee' : 'Add employee')" size="lg">
             <form wire:submit="save">
                 <div class="modal-body">
                     <x-errors />

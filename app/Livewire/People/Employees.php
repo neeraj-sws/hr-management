@@ -27,6 +27,8 @@ class Employees extends Component
     #[Url(as: 'manager')] public ?int $reportsTo = null;
 
     public bool $showForm = false;
+    /** The Trainees page (People > Trainees) is this list with trainees only; Employees leaves them out. */
+    protected bool $traineesOnly = false;
     public ?int $editingId = null;
     public string $employeeCode = '';
     public string $name = '';
@@ -74,6 +76,7 @@ class Employees extends Component
         if (! empty($hours['start_time'])) $this->workStart = substr((string) $hours['start_time'], 0, 5);
         if (! empty($hours['end_time'])) $this->workEnd = substr((string) $hours['end_time'], 0, 5);
         if ((float) ($hours['standard_daily_hours'] ?? 0) > 0) $this->dailyHours = (string) (float) $hours['standard_daily_hours'];
+        if ($this->traineesOnly) $this->employmentType = EmployeeService::TRAINEE;
         $this->showForm = true;
     }
 
@@ -147,6 +150,8 @@ class Employees extends Component
             $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary === '' ? 0 : $this->monthlySalary, 'pay_basis' => $this->payBasis, 'daily_rate' => $this->payBasis === 'daily' ? $this->dailyRate : null], $this->user());
             $this->toast($left ? 'Ex-employee added (inactive, no login). Their old attendance and salary can now be imported.' : 'Employee and login account created.');
         }
+        // Saved as the other kind (e.g. made a trainee from Employees): say where they now are.
+        if (! $left && ($this->employmentType === EmployeeService::TRAINEE) !== $this->traineesOnly) $this->toast($this->traineesOnly ? 'Saved. Not a trainee any more, so now listed under People > Employees.' : 'Saved as a trainee, so now listed under People > Trainees.');
         $this->closeModal();
     }
 
@@ -203,7 +208,9 @@ class Employees extends Component
     public function render()
     {
         $term = trim($this->search);
+        $kind = fn ($q) => $this->traineesOnly ? $q->where('employment_type', EmployeeService::TRAINEE) : $q->onPayroll();
         $employees = AttendanceEmployee::with(['department', 'manager', 'user.roles', 'teams'])
+            ->where($kind)
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('designation', 'like', "%{$term}%")))
             ->when($this->department, fn ($q, $id) => $q->where('department_id', $id))
             ->when($this->status === 'left', fn ($q) => $q->where('is_active', false)->where(fn ($q) => $q->whereNotNull('exit_date')->orWhere('employment_type', EmployeeService::EX_EMPLOYEE)))
@@ -219,10 +226,12 @@ class Employees extends Component
             'departments' => Department::orderBy('name')->get(),
             'managers' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'teams' => Team::where('is_active', true)->orderBy('name')->get(),
-            'counts' => ['active' => AttendanceEmployee::where('is_active', true)->count(), 'inactive' => AttendanceEmployee::where('is_active', false)->count()],
+            'counts' => ['active' => AttendanceEmployee::where($kind)->where('is_active', true)->count(), 'inactive' => AttendanceEmployee::where($kind)->where('is_active', false)->count(),
+                'other' => $this->traineesOnly ? AttendanceEmployee::onPayroll()->where('is_active', true)->count() : AttendanceEmployee::where('employment_type', EmployeeService::TRAINEE)->where('is_active', true)->count()],
+            'traineesOnly' => $this->traineesOnly,
             'pwEmployee' => $this->pwEmployeeId ? AttendanceEmployee::find($this->pwEmployeeId) : null,
             'reportsToManager' => $this->reportsTo ? AttendanceEmployee::find($this->reportsTo) : null,
             'isAdmin' => \App\Support\Access::isAdmin($this->user()),
-        ], 'Employees');
+        ], $this->traineesOnly ? 'Trainees' : 'Employees');
     }
 }
