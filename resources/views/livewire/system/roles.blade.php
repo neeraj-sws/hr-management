@@ -26,7 +26,7 @@
                 <thead><tr><th>User</th><th>Roles</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                 @foreach($users as $u)
-                    <tr><td><strong>{{ $u->name }}</strong><small>{{ $u->email }}</small></td><td>@forelse($u->roles as $r)<x-badge tone="blue">{{ $r->name }}</x-badge> @empty<span class="muted">none</span>@endforelse</td><td><x-badge :status="$u->is_active ? 'active' : 'inactive'" /></td><td><button class="btn btn-sm" wire:click="editUser({{ $u->id }})">Change roles</button></td></tr>
+                    <tr><td><strong>{{ $u->name }}</strong><small>{{ $u->email }}</small></td><td><x-person-badges :user="$u" /></td><td><x-badge :status="$u->is_active ? 'active' : 'inactive'" /></td><td><button class="btn btn-sm" wire:click="editUser({{ $u->id }})">Change roles</button></td></tr>
                 @endforeach
                 </tbody>
             </table></div>

@@ -1,47 +1,88 @@
-<div>
-    <div class="page-head"><div><h1>Documents</h1><p>Stored on private disk storage; every download is permission-checked and audited.</p></div>
+<div class="docs-page">
+    <div class="page-head"><div><h1>Documents</h1><p class="docs-sub"><x-icon name="lock" class="icon-sm" />Private storage · every download is checked and logged</p></div>
         <div class="row-actions">@if($canManage)<button class="btn" wire:click="editRequiredList"><x-icon name="check" class="icon-sm" />Required at onboarding</button>@endif
-        @if($canUpload)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Upload document</button>@endif</div></div>
+        @if($canUpload)<button class="btn btn-primary" wire:click="create"><x-icon name="upload" class="icon-sm" />Upload document</button>@endif</div></div>
     @if($expiring)<div class="alert alert-info">{{ $expiring }} document(s) expired or expire within 30 days.</div>@endif
 
-    {{-- Onboarding checklist: your own papers (employee), or the employee picked in the filter (HR). --}}
+    @if($canManage)
+        <div class="toolbar docs-employee"><label class="field grow"><span>Employee</span><select wire:model.live="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></label></div>
+    @endif
+
+    {{-- Card 1: onboarding checklist. Missing items first, then the done chips. --}}
     @if($checklistFor && count($checklist))
-        @php($missing = collect($checklist)->where('done', false)->count())
-        <section class="card mb">
-            <div class="card-head"><div><h2>Onboarding documents{{ $canManage ? ' · '.$checklistFor->name : '' }}</h2>
-                <p>{{ $missing ? $missing.' of '.count($checklist).' still missing' : 'All '.count($checklist).' handed in' }}{{ $canManage ? '' : ' — upload each one here; HR is told when you do.' }}</p></div></div>
-            <div class="card-body"><div class="doc-checklist">
-                @foreach($checklist as $item)
-                    <div class="doc-check {{ $item['done'] ? 'done' : '' }}">
-                        <span class="doc-check-mark">{{ $item['done'] ? '✓' : '!' }}</span>
-                        <div class="grow"><strong>{{ $item['label'] }}</strong><small>{{ $item['done'] ? ($item['key'] === 'photo' ? 'Photo added' : $item['count'].' file'.($item['count'] > 1 ? 's' : '')) : 'Missing' }}</small></div>
-                        @if($canUpload)<button class="btn btn-sm {{ $item['done'] ? '' : 'btn-primary' }}" wire:click="create('{{ $item['key'] }}')">{{ $item['done'] ? 'Add more' : 'Upload' }}</button>@endif
-                    </div>
-                @endforeach
-            </div></div>
+        @php($missingItems = collect($checklist)->where('done', false)->values())
+        @php($doneItems = collect($checklist)->where('done', true)->values())
+        @php($total = count($checklist))
+        <section class="docs-card mb">
+            <div class="docs-onb-head">
+                <div><h2>Onboarding documents{{ $canManage ? ' · '.$checklistFor->name : '' }}</h2>
+                    <p class="muted small">@if($missingItems->count()){{ $missingItems->count() }} document{{ $missingItems->count() > 1 ? 's' : '' }} left.@else All documents handed in.@endif {{ $canManage ? '' : 'HR is notified as soon as you upload.' }}</p></div>
+                <div class="docs-onb-count"><strong>{{ $doneItems->count() }} / {{ $total }}</strong><span>done</span></div>
+            </div>
+            <div class="docs-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ $total }}" aria-valuenow="{{ $doneItems->count() }}" aria-label="Onboarding documents done"><span style="width:{{ $total ? round($doneItems->count() / $total * 100) : 0 }}%"></span></div>
+            @if($missingItems->count())
+                <h3 class="docs-section">Missing ({{ $missingItems->count() }})</h3>
+                <div class="docs-missing">
+                    @foreach($missingItems as $item)
+                        <div class="docs-missing-row">
+                            <span class="docs-icon docs-icon-missing"><x-icon :name="$item['icon']" class="icon-sm" /></span>
+                            <div class="grow"><strong>{{ \Illuminate\Support\Str::before($item['label'], ' (') }}</strong><small>{{ $item['hint'] }}</small></div>
+                            @if($canUpload)<button type="button" class="btn btn-sm btn-primary" wire:click="create('{{ $item['key'] }}')" aria-label="Upload {{ $item['label'] }}">Upload</button>@endif
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+            @if($doneItems->count())
+                <h3 class="docs-section">Done ({{ $doneItems->count() }})</h3>
+                <div class="docs-done">
+                    @foreach($doneItems as $item)
+                        <span class="docs-done-chip"><x-icon name="check" class="icon-sm" />{{ \Illuminate\Support\Str::before($item['label'], ' (') }}@if($item['key'] !== 'photo') · {{ $item['count'] }} file{{ $item['count'] > 1 ? 's' : '' }}@endif
+                            @if($canUpload)<button type="button" wire:click="create('{{ $item['key'] }}')" aria-label="Add more: {{ $item['label'] }}">· Add more</button>@endif</span>
+                    @endforeach
+                </div>
+            @endif
         </section>
     @elseif($canManage && ! $checklistFor)
-        <p class="small muted">Pick an employee below to see which onboarding documents they still have to hand in.</p>
+        <p class="small muted">Pick an employee above to see which onboarding documents they still have to hand in.</p>
     @endif
-    <section class="card">
-        <div class="toolbar">
-            @if($canManage)<label class="field grow"><span>Employee</span><select wire:model.live="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></label>@endif
-            <label class="field"><span>Category</span><select wire:model.live="category"><option value="">All</option>@foreach($categories as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></label>
+
+    {{-- Card 2: files. The chips and the search filter in the browser (no reload). --}}
+    @php($chips = ['all' => 'All', 'identity' => 'Identity', 'education' => 'Education', 'bank' => 'Bank', 'other' => 'Other'])
+    @php($index = $files->map(fn ($f) => [$f['group'], mb_strtolower($f['name'].' '.$f['category'].' '.($f['employee'] ?? ''))])->all())
+    <section class="docs-card" x-data="{ group: 'all', q: '', files: @js($index), shown(i) { const f = this.files[i]; return (this.group === 'all' || this.group === f[0]) && f[1].includes(this.q.trim().toLowerCase()); }, get none() { return ! this.files.some((f, i) => this.shown(i)); } }">
+        <div class="docs-files-head">
+            <h2>{{ $canManage ? ($checklistFor ? 'Files' : 'All files') : 'My files' }} ({{ $groupCounts['all'] }})</h2>
+            <label class="docs-search"><x-icon name="search" class="icon-sm" /><input type="search" x-model="q" placeholder="Search files" aria-label="Search files"></label>
         </div>
-        <div class="table-wrap"><table class="table">
-            <thead><tr><th>Document</th>@if($canManage)<th>Employee</th>@endif<th>Category</th><th>Uploaded</th><th>Expires</th><th></th></tr></thead>
-            <tbody>
-            @forelse($documents as $d)
-                <tr><td><strong>{{ $d->original_name }}</strong></td>@if($canManage)<td>{{ $d->employee?->name }}</td>@endif<td>{{ $categories[$d->category] ?? ucfirst($d->category) }}</td>
-                    <td>{{ $d->created_at->format('d M Y') }}<small>{{ $d->uploader?->name }}</small></td>
-                    <td>@if($d->expires_on){{ $d->expires_on->format('d M Y') }}@if($d->expires_on->lt(today()))<x-badge status="overdue">expired</x-badge>@elseif($d->expires_on->lte(today()->addDays(30)))<x-badge status="pending">soon</x-badge>@endif @else — @endif</td>
-                    <td><div class="row-actions"><a class="btn btn-sm" href="{{ route('hr.documents.download', $d) }}"><x-icon name="download" class="icon-sm" />Download</a>@if($canManage || $d->uploaded_by === auth()->id())<button class="btn btn-sm btn-danger" wire:click="delete({{ $d->id }})" wire:confirm="Delete {{ $d->original_name }}? The file is removed permanently.">Delete</button>@endif</div></td></tr>
-            @empty
-                <tr><td colspan="6"><x-empty title="No documents" icon="file" /></td></tr>
-            @endforelse
-            </tbody>
-        </table></div>
-        {{ $documents->links() }}
+        <div class="docs-chips" role="group" aria-label="Filter files by category">
+            @foreach($chips as $key => $label)
+                <button type="button" class="docs-chip" :class="group === '{{ $key }}' && 'is-active'" :aria-pressed="group === '{{ $key }}' ? 'true' : 'false'" x-on:click="group = '{{ $key }}'">{{ $label }} · {{ $groupCounts[$key] }}</button>
+            @endforeach
+        </div>
+        <ul class="docs-list">
+            @foreach($files as $i => $f)
+                @php($daysLeft = $f['expires'] ? today()->diffInDays($f['expires'], false) : null)
+                <li class="docs-file" wire:key="doc-{{ $f['id'] ?? 'photo' }}" x-show="shown({{ $i }})">
+                    <span class="docs-icon docs-kind-{{ $f['kind'] }}"><x-icon :name="$f['kind'] === 'image' ? 'image' : 'file'" class="icon-sm" /></span>
+                    <div class="docs-file-main">
+                        <strong>{{ $f['name'] }}</strong>
+                        <small>@if($canManage && $f['employee'] && ! $checklistFor){{ $f['employee'] }} · @endif{{ $f['category'] }}@if($f['size']) · {{ $f['size'] >= 1048576 ? number_format($f['size'] / 1048576, 1).' MB' : max(1, round($f['size'] / 1024)).' KB' }}@endif
+                            @if($f['expires'] && $daysLeft < 0)<span class="docs-exp docs-exp-red">Expired {{ $f['expires']->format('d M Y') }}</span>@elseif($f['expires'] && $daysLeft <= 30)<span class="docs-exp docs-exp-orange">Expires {{ $f['expires']->format('d M Y') }}</span>@endif</small>
+                        <small class="docs-file-date">{{ $f['date']->format('d M Y') }}@if($f['by']) · by {{ $f['by'] }}@endif</small>
+                    </div>
+                    <div class="docs-file-actions">
+                        <a class="btn btn-sm btn-icon" href="{{ $f['view'] }}" target="_blank" rel="noopener" aria-label="View {{ $f['name'] }}" title="View"><x-icon name="eye" class="icon-sm" /></a>
+                        <a class="btn btn-sm" href="{{ $f['download'] }}" @if(! $f['id']) download="profile-photo" @endif><x-icon name="download" class="icon-sm" /><span>Download</span></a>
+                        @if($f['canDelete'] && $f['id'])<button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $f['id'] }})" wire:confirm="Delete {{ $f['name'] }}? The file is removed permanently." aria-label="Delete {{ $f['name'] }}" title="Delete"><x-icon name="trash" class="icon-sm" /></button>@endif
+                    </div>
+                </li>
+            @endforeach
+        </ul>
+        <div class="docs-empty" x-show="none" @if($files->isNotEmpty()) x-cloak @endif>
+            <x-icon name="file" />
+            <p>No files in this category yet</p>
+            @if($canUpload)<button type="button" class="btn btn-primary btn-sm" wire:click="create"><x-icon name="upload" class="icon-sm" />Upload</button>@endif
+        </div>
     </section>
     @if($showForm)
         <x-modal title="Upload document">

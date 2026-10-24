@@ -19,7 +19,7 @@
             <span wire:loading class="spinner" style="margin-bottom:10px"></span>
         </div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Employee</th><th>Email</th><th>Department</th><th>Manager</th><th>Teams</th><th>Roles</th><th>Work hours</th><th>Joined</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Employee</th><th>Email</th><th>Department</th><th>Manager</th><th>Teams</th><th>Role</th><th>Work hours</th><th>Joined</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @forelse($employees as $employee)
                 <tr wire:key="emp-{{ $employee->id }}">
@@ -28,7 +28,7 @@
                     <td>{{ $employee->department?->name ?? '—' }}</td>
                     <td>{{ $employee->manager?->name ?? '—' }}</td>
                     <td>{{ $employee->teams->pluck('name')->join(', ') ?: '—' }}</td>
-                    <td>{{ $employee->user?->roles->pluck('name')->join(', ') ?: 'No login' }}</td>
+                    <td><x-person-badges :user="$employee->user" :employee="$employee" /></td>
                     <td class="nowrap">{{ \App\Support\Duration::fromHours($employee->daily_work_hours) }}<small>{{ $employee->work_start ? substr($employee->work_start, 0, 5).'–'.substr((string) $employee->work_end, 0, 5) : '' }}</small></td>
                     <td class="nowrap">{{ $employee->joined_at?->format('d M Y') ?? '—' }}</td>
                     <td>@if(! $employee->is_active && $employee->exit_date)<x-badge tone="red">Left</x-badge><small>{{ $employee->exit_date->format('d M Y') }}</small>@else<x-badge :status="$employee->is_active ? 'active' : 'inactive'" />@endif</td>

@@ -126,6 +126,9 @@ class Settings extends Component
     public string $encashmentRate = '0';
     public string $statutoryJson = '';
     public string $twoFactorMode = 'off';
+    public string $webAccessMode = 'all';
+    public array $webAccessRoles = [];
+    public array $webAccessUserIds = [];
     public bool $twoFactorApps = false;
 
     public function mount(PolicyConfigurationService $policies): void
@@ -157,6 +160,9 @@ class Settings extends Component
             'emailEnabled' => (bool) ($email['enabled'] ?? true),
             'testEmail' => (string) $this->user()->email,
             'twoFactorMode' => app(\App\Services\TwoFactorService::class)->settings()['mode'],
+            'webAccessMode' => ($web = app(\App\Services\WebAccessService::class)->settings())['mode'],
+            'webAccessRoles' => $web['roles'],
+            'webAccessUserIds' => array_map('strval', $web['user_ids']),
             'twoFactorApps' => app(\App\Services\TwoFactorService::class)->settings()['apps'],
             'offboardingWindowHours' => (string) ($offboarding['correction_window_hours'] ?? 72),
             'workdays' => array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]),
@@ -399,6 +405,22 @@ class Settings extends Component
         }
         $result = $sheets->sync(\Illuminate\Support\Carbon::parse($this->sheetsFrom), \Illuminate\Support\Carbon::parse($this->sheetsTo), force: true);
         $this->toast($result['message'], $result['ok'] ? 'success' : 'error');
+    }
+
+    /** Website access: everyone, or only selected roles and people (the others use the desktop / mobile app). */
+    public function saveWebAccess(PeopleOperationsService $people): void
+    {
+        $this->authorizeSettings();
+        $roles = \Spatie\Permission\Models\Role::pluck('name')->all();
+        $data = $this->validate([
+            'webAccessMode' => ['required', 'in:'.implode(',', array_keys(\App\Services\WebAccessService::MODES))],
+            'webAccessRoles' => ['array'], 'webAccessRoles.*' => ['string', 'in:'.implode(',', $roles)],
+            'webAccessUserIds' => ['array'], 'webAccessUserIds.*' => ['integer', 'exists:users,id'],
+        ], [], ['webAccessMode' => 'website access']);
+        $people->setPolicy(\App\Services\WebAccessService::POLICY, 'security', 'Website access', [
+            'mode' => $data['webAccessMode'], 'roles' => array_values($data['webAccessRoles'] ?? []), 'user_ids' => array_values(array_map('intval', $data['webAccessUserIds'] ?? [])),
+        ], null, auth()->id(), today()->toDateString());
+        $this->toast($data['webAccessMode'] === 'all' ? 'Everyone can use the website.' : 'Saved. Others are signed out of the website on their next click and use the desktop / mobile app.');
     }
 
     /** 2-step sign-in: who must enter an e-mailed code after the password. */

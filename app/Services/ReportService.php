@@ -102,12 +102,17 @@ class ReportService
             ],
         ];
 
+        if ($column === 's_no') return 'S. No';
+
         return $names[$type][$column] ?? str($column)->replace('_', ' ')->ucfirst()->toString();
     }
 
     public function columns(string $type): array
     {
-        return array_map([self::class, 'durationColumn'], $this->rawColumns($type));
+        // Every report starts with a serial number (S. No) instead of the database ID.
+        $columns = array_values(array_filter($this->rawColumns($type), fn ($c) => $c !== 'id'));
+
+        return $columns ? ['s_no', ...array_map([self::class, 'durationColumn'], $columns)] : [];
     }
 
     private function rawColumns(string $type): array
@@ -229,7 +234,14 @@ class ReportService
                 ->map(fn ($pair) => $pair[0]);
         }
 
-        return $limit ? $rows->take($limit)->values() : $rows->values();
+        $rows = $limit ? $rows->take($limit)->values() : $rows->values();
+
+        // S. No 1, 2, 3 … in the order shown (the database ID is not shown).
+        return $rows->map(function (array $row, int $i) {
+            unset($row['id']);
+
+            return ['s_no' => $i + 1, ...$row];
+        });
     }
 
     /** Converts duration columns to HH:MM:SS under their *_time name. */

@@ -41,11 +41,11 @@ class EmployeeDocumentsSelfServiceTest extends TestCase
     {
         $e = $this->employee();
         $page = Livewire::actingAs($e->user)->test(Documents::class)
-            ->assertSee('Onboarding documents')->assertSee('Resume / CV')->assertSee('7 still missing');
+            ->assertSee('Onboarding documents')->assertSee('Resume / CV')->assertSee('7 documents left.')->assertSee('0 / 7')->assertSee('Missing (7)')->assertSee('Front and back, PDF or JPG');
 
         $page->call('create', 'resume')->assertSet('documentCategory', 'resume')
             ->set('file', UploadedFile::fake()->create('resume.pdf', 120, 'application/pdf'))
-            ->call('saveDocument')->assertHasNoErrors()->assertSee('6 of 7 still missing');
+            ->call('saveDocument')->assertHasNoErrors()->assertSee('6 documents left.')->assertSee('1 / 7')->assertSee('Done (1)')->assertSee('resume.pdf')->assertSee('My files (1)');
         $doc = EmployeeDocument::where('employee_id', $e->id)->sole();
         $this->assertSame('resume', $doc->category);
         $this->assertSame($e->user->id, $doc->uploaded_by);
@@ -54,6 +54,9 @@ class EmployeeDocumentsSelfServiceTest extends TestCase
         // The photo item sets the profile photo.
         $page->call('create', 'photo')->set('file', $this->fakeImage())->call('saveDocument')->assertHasNoErrors();
         $this->assertNotNull($e->fresh()->photo_path);
+
+        // The photo now shows in "My files" too.
+        $page->assertSee('Profile photo')->assertSee('My files (2)');
 
         // Company papers (appointment letter …) are HR-only; another employee's id is ignored.
         $page->call('create')->set('documentCategory', 'appointment')->set('file', UploadedFile::fake()->create('a.pdf', 10, 'application/pdf'))->call('saveDocument')->assertHasErrors('documentCategory');
@@ -72,7 +75,26 @@ class EmployeeDocumentsSelfServiceTest extends TestCase
         $this->assertSame(['resume', 'pan'], app(EmployeeDocumentService::class)->required());
 
         Livewire::actingAs($this->admin)->test(Documents::class)->set('employee', $e->id)
-            ->assertSee('Onboarding documents · Docs Person')->assertSee('2 of 2 still missing');
+            ->assertSee('Onboarding documents · Docs Person')->assertSee('2 documents left.')->assertSee('0 / 2');
+    }
+
+    public function test_aadhaar_uploaded_as_identity_proof_ticks_off_the_checklist(): void
+    {
+        $e = $this->employee();
+        $service = app(EmployeeDocumentService::class);
+        $done = fn () => collect($service->checklist($e->fresh()))->pluck('done', 'key');
+        $this->assertFalse($done()['aadhaar']);
+
+        // A passport under Identity proof does not count as Aadhaar or PAN.
+        $service->store($e, 'identity', UploadedFile::fake()->create('passport.pdf', 20, 'application/pdf'), $e->user);
+        $this->assertFalse($done()['aadhaar']);
+        $this->assertFalse($done()['pan']);
+
+        $service->store($e, 'identity', UploadedFile::fake()->create('khushboo-aadhar.jpg', 20, 'image/jpeg'), $e->user);
+        $this->assertTrue($done()['aadhaar']);
+        $this->assertFalse($done()['pan']);
+
+        Livewire::actingAs($e->user)->test(Documents::class)->assertSeeText('Aadhaar card · 1 file')->assertDontSee('Front and back, PDF or JPG');
     }
 
     public function test_mobile_app_lists_the_checklist_and_uploads(): void

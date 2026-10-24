@@ -283,6 +283,23 @@
             </div>
         </section>
     @elseif($tab === 'security')
+        <section class="card mb">
+            <div class="card-head"><div><h2>Website access</h2><p>Who may use this website. Everyone else signs in to the SWS HR desktop app and mobile app only (those are not affected). The Master Admin can always open the website.</p></div></div>
+            <form class="card-body stack" wire:submit="saveWebAccess">
+                <x-field label="Who can use the website" name="webAccessMode"><select wire:model.live="webAccessMode">@foreach(\App\Services\WebAccessService::MODES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
+                @if($webAccessMode === 'roles')
+                    <div class="field"><span class="label">Roles that can use the website</span>
+                        <div class="checks">@foreach(\Spatie\Permission\Models\Role::orderBy('name')->pluck('name') as $role)<label class="check"><input type="checkbox" value="{{ $role }}" wire:model="webAccessRoles"> {{ $role }}</label>@endforeach</div>
+                        <small class="muted">e.g. Master Admin, HR, Accounts and Manager; leave "Employee" unticked so employees use the apps.</small>
+                    </div>
+                    <div class="field"><span class="label">Also these people (whatever their role)</span>
+                        <div class="checks" style="max-height:220px;overflow:auto">@foreach(\App\Models\User::where('is_active', true)->orderBy('name')->get(['id', 'name', 'email']) as $u)<label class="check"><input type="checkbox" value="{{ $u->id }}" wire:model="webAccessUserIds"> {{ $u->name }} <x-person-badges :user="$u" /></label>@endforeach</div>
+                    </div>
+                    <div class="alert alert-info" style="margin:0">People who are not allowed see "{{ \App\Services\WebAccessService::MESSAGE }}" when they sign in, and anyone already signed in is signed out on their next click.</div>
+                @endif
+                <div><button class="btn btn-primary">Save</button></div>
+            </form>
+        </section>
         <section class="card">
             <div class="card-head"><div><h2>2-step sign-in (OTP)</h2><p>After the password, a 6-digit code is e-mailed to the person and must be entered to sign in. A stolen password alone is then not enough. A browser can be trusted for {{ \App\Services\TwoFactorService::TRUST_DAYS }} days.</p></div></div>
             <form class="card-body stack" wire:submit="saveSecurity">

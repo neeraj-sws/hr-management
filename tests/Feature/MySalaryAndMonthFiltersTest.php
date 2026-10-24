@@ -52,6 +52,10 @@ class MySalaryAndMonthFiltersTest extends TestCase
         $sep = $json['history'][0];
         $this->assertSame(['September 2026', 'old_sheet', 8562.96, 6000.0, 2562.96], [$sep['label'], $sep['source'], (float) $sep['net'], (float) $sep['paid'], (float) $sep['remaining']]);
         $this->assertSame('Late coming', $sep['deductions'][0][0]);
+        // The app's month card: days paid × day rate and the payment date.
+        $this->assertSame([22.0, 400.0, '2026-10-12'], [(float) $sep['days_paid'], (float) $sep['per_day_rate'], $sep['paid_on']]);
+        $this->assertNull($sep['payslip_url'], 'No payslip for an old-sheet month');
+        $this->assertEqualsWithDelta(400.0, $json['current']['per_day_rate'], 0.01, '10000 / 25 working days');
 
         Livewire::actingAs($this->e->user)->test(\App\Livewire\Payroll\Salary::class)
             ->assertSee('This month so far')->assertSee('Short working hours')->assertSee('Salary history')->assertSee('September 2026')->assertSee('Still due');

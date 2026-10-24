@@ -41,7 +41,7 @@
             <dt>Direct reports</dt><dd>{{ $employee->directReports->pluck('name')->join(', ') ?: '—' }}</dd>
             <dt>Teams</dt><dd>{{ $employee->teams->pluck('name')->join(', ') ?: '—' }}</dd>
             <dt>Projects</dt><dd><strong>{{ $projectCounts['total'] }}</strong> · {{ $projectCounts['active'] }} active · {{ $projectCounts['completed'] }} completed</dd>
-            <dt>Roles</dt><dd>{{ $employee->user?->roles->pluck('name')->join(', ') ?: 'No login' }}</dd>
+            <dt>Role</dt><dd><x-person-badges :user="$employee->user" :employee="$employee" /></dd>
             <dt>Joined</dt><dd>{{ $employee->joined_at?->format('d M Y') ?? '—' }}</dd>
             <dt>Employment</dt><dd>{{ \App\Services\EmployeeService::EMPLOYMENT_TYPES[$employee->employment_type] ?? 'Full time' }}</dd>
             <dt>Probation</dt><dd>@if($employee->confirmed_on)Confirmed {{ $employee->confirmed_on->format('d M Y') }}@elseif($employee->probation_ends_on)Until {{ $employee->probation_ends_on->format('d M Y') }}@if($employee->probation_ends_on->lte(today()->addDays(30))) <x-badge tone="amber">{{ $employee->probation_ends_on->isPast() ? 'ended' : 'ends soon' }}</x-badge>@endif @if($canEdit) <button class="btn btn-sm" wire:click="confirmEmployment" wire:confirm="Confirm {{ $employee->name }}'s employment from today?">Confirm</button>@endif @else — @endif</dd>

@@ -1,7 +1,7 @@
 <div>
     <div class="page-head">
         <div class="profile-chip"><x-avatar :employee="$employee" :name="$user->name" size="lg" />
-            <div><h1>{{ $user->name }}</h1><p>{{ $employee?->designation ?? 'SWS HR user' }} · {{ $user->getRoleNames()->implode(', ') ?: 'No role' }}</p>
+            <div><h1>{{ $user->name }}</h1><p>{{ $employee?->designation ?? 'SWS HR user' }}</p><x-person-badges :user="$user" />
                 @if($employee)
                     <div class="photo-edit">
                         <label class="btn btn-sm" style="cursor:pointer"><x-icon name="user" class="icon-sm" />{{ $employee->photo_path ? 'Change photo' : 'Add photo' }}<input type="file" wire:model="photo" accept="image/jpeg,image/png,image/webp" hidden></label>

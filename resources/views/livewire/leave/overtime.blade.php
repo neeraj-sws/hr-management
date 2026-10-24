@@ -10,10 +10,13 @@
             <div class="stat"><span class="stat-icon amber"><x-icon name="hourglass" /></span><div><span class="stat-label">Pending this month</span><span class="stat-value">{{ \App\Support\Duration::fromMinutes($monthPending) }}</span><small>HH:MM:SS</small></div></div>
         </div>
     @endif
-    <div class="tabs">
-        @if($own)<button class="tab {{ $tab === 'mine' ? 'active' : '' }}" wire:click="$set('tab','mine')">My overtime</button>@endif
-        @if($canApprove)<button class="tab {{ $tab === 'approvals' ? 'active' : '' }}" wire:click="$set('tab','approvals')">Awaiting my approval @if($pendingCount)<span class="nav-count" style="margin-left:6px">{{ $pendingCount }}</span>@endif</button><button class="tab {{ $tab === 'all' ? 'active' : '' }}" wire:click="$set('tab','all')">History</button>@endif
-    </div>
+    {{-- Status cards: my own, waiting for my decision, and everyone I may see (with counts). --}}
+    @php($statusCards = array_values(array_filter([
+        $own ? ['label' => 'My overtime', 'count' => $tabCounts['mine'], 'tone' => 'blue', 'active' => $tab === 'mine', 'click' => "\$set('tab','mine')"] : null,
+        $canApprove ? ['label' => 'Awaiting my approval', 'count' => $pendingCount, 'tone' => 'amber', 'active' => $tab === 'approvals', 'click' => "\$set('tab','approvals')"] : null,
+        $canApprove ? ['label' => 'History', 'count' => $tabCounts['all'], 'tone' => 'gray', 'active' => $tab === 'all', 'click' => "\$set('tab','all')"] : null,
+    ])))
+    <x-status-cards label="Requests" :items="$statusCards" />
     <section class="card">
         <div class="table-wrap"><table class="table">
             <thead><tr>@if($tab !== 'mine')<th>Employee</th>@endif<th>Date</th><th class="num">Requested</th><th class="num">Approved</th><th>Reason</th><th>Status</th><th></th></tr></thead>

@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\EnsureActiveAccount;
 use App\Http\Middleware\EnsureAccess;
+use App\Http\Middleware\EnsureWebAccess;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
         $middleware->append(SecurityHeaders::class);
+        // Settings > Security > Website access: who may use the website (the apps use the API, not this).
+        $middleware->web(append: EnsureWebAccess::class);
         $middleware->alias(['account.active' => EnsureActiveAccount::class, 'access' => EnsureAccess::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

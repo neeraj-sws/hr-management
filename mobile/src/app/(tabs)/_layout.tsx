@@ -31,7 +31,8 @@ export default function TabsLayout() {
         tabBarHideOnKeyboard: true,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home') }} />
+      {/* Home has its own header card (photo, role badge, bell, live status). */}
+      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: icon('home'), headerShown: false }} />
       <Tabs.Screen name="attendance" options={{ title: 'Attendance', tabBarIcon: icon('time') }} />
       <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: icon('checkmark-circle') }} />
       <Tabs.Screen name="leave" options={{ title: 'Leave', tabBarIcon: icon('calendar') }} />

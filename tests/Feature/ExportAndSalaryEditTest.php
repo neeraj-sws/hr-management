@@ -67,6 +67,24 @@ class ExportAndSalaryEditTest extends TestCase
         }
     }
 
+    public function test_reports_show_a_serial_number_instead_of_the_id(): void
+    {
+        $this->actingAs($this->admin);
+        $type = \App\Models\LeaveType::firstOrFail();
+        foreach (['2026-10-05', '2026-10-07'] as $day) {
+            \App\Models\LeaveRequest::create(['employee_id' => $this->employee->id, 'leave_type_id' => $type->id, 'starts_on' => $day, 'ends_on' => $day, 'days' => 1, 'status' => 'pending', 'reason' => 'x']);
+        }
+        $reports = app(\App\Services\ReportService::class);
+        $this->assertSame('s_no', $reports->columns('leave')[0]);
+        $this->assertNotContains('id', $reports->columns('leave'));
+        $this->assertSame('S. No', $reports->heading('leave', 's_no'));
+        $this->assertSame([1, 2], $reports->rows($this->admin, 'leave', ['from' => '2026-10-01', 'to' => '2026-10-12'])->pluck('s_no')->all());
+
+        $csv = $this->get('/reports/leave/export?from=2026-10-01&to=2026-10-12')->streamedContent();
+        $this->assertStringContainsString('"S. No",', $csv);
+        $this->assertMatchesRegularExpression('/^1,/m', $csv);
+    }
+
     public function test_edit_corrects_the_current_salary_in_place_with_validation(): void
     {
         // A wrong salary was entered.

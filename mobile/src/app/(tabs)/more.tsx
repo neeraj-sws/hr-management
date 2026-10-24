@@ -1,3 +1,5 @@
+import { Avatar } from '../../components/Avatar';
+import { RoleBadges } from '../../components/RoleBadge';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -57,10 +59,11 @@ export default function More() {
     <Screen>
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={styles.avatar}><Text style={styles.avatarText}>{initials(me?.name)}</Text></View>
+          <Avatar name={me?.name} photoUrl={me?.photo_url} />
           <View style={{ flex: 1 }}>
             <H2>{me?.name ?? ''}</H2>
-            <Muted>{[me?.employee?.employee_code, me?.employee?.department?.name, me?.roles.join(', ')].filter(Boolean).join(' · ')}</Muted>
+            <Muted>{[me?.employee?.employee_code, me?.employee?.department?.name].filter(Boolean).join(' · ')}</Muted>
+            <View style={{ marginTop: 4 }}><RoleBadges badges={me?.badges ?? me?.roles.map((r) => ({ label: r }))} /></View>
           </View>
         </View>
         {me?.employee ? (

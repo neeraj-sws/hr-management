@@ -34,6 +34,8 @@ class SelfServiceController extends ApiController
             // Opening a private file from the phone's browser: a link signed for this user, valid 5 minutes.
             'url' => URL::temporarySignedRoute('files.document', now()->addMinutes(5), ['document' => $d->id, 'user' => $user->id]),
         ])->values(),
+            // The profile photo is kept on the profile (not as a document); the app lists it with the files.
+            'photo_url' => $employee->photo_path ? url('/api/me/photo').'?v='.substr(md5($employee->photo_path), 0, 8) : null,
             // What is still missing from the onboarding papers, and which types the employee can upload.
             'checklist' => $service->checklist($employee),
             'upload_types' => collect([EmployeeDocumentService::PHOTO => 'Photo'] + EmployeeDocumentService::employeeCategories())->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
@@ -122,6 +124,11 @@ class SelfServiceController extends ApiController
     {
         $employee = $this->apiEmployee($request);
 
-        return response()->json(['current' => $salary->soFar($employee), 'history' => $salary->history($employee)]);
+        $user = $this->apiUser($request);
+        // "Download payslip" in the app: a link signed for this user, valid 10 minutes (the phone's browser has no sign-in).
+        $history = array_map(fn (array $m) => [...$m, 'payslip_url' => ! empty($m['payslip_id'])
+            ? \Illuminate\Support\Facades\URL::temporarySignedRoute('files.payslip', now()->addMinutes(10), ['payslip' => $m['payslip_id'], 'user' => $user->id]) : null], $salary->history($employee));
+
+        return response()->json(['current' => $salary->soFar($employee), 'history' => $history]);
     }
 }

@@ -32,11 +32,14 @@ class AttendanceAlertService
         $session->loadMissing('employee.user', 'employee.manager.user');
         $employee = $session->employee;
         if (! $employee || ! $this->attendance->isLate($session)) return;
+        // Late means at least one whole minute after start time + grace. A few seconds over is not late,
+        // so no "0 min late" alert (the attendance record itself is not changed here).
         $minutes = $this->attendance->lateMinutes($session);
-        $late = \App\Support\Duration::fromMinutes($minutes);
+        if ($minutes < 1) return;
+        $late = \App\Support\Duration::words($minutes);
         $at = $session->check_in->format('h:i A');
-        Notifier::send($employee->user, 'AttendanceLate', $session->id, "You checked in late today at {$at} ({$late} after your start time).", route('attendance.my', [], false));
-        Notifier::send($employee->manager?->user, 'AttendanceLate', $session->id, "{$employee->name} checked in late today at {$at} ({$late} after the start time).", route('attendance.dashboard', ['show' => 'late'], false), $employee->user_id);
+        Notifier::send($employee->user, 'AttendanceLate', $session->id, "You checked in late at {$at} · {$late} late.", route('attendance.my', [], false));
+        Notifier::send($employee->manager?->user, 'AttendanceLate', $session->id, "{$employee->name} checked in late at {$at} · {$late} late.", route('attendance.dashboard', ['show' => 'late'], false), $employee->user_id);
     }
 
     /** @return int employees alerted as absent */

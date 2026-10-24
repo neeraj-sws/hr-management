@@ -61,6 +61,17 @@ class HrFileController extends Controller
         return Storage::disk('local')->download($document->storage_path, $document->original_name);
     }
 
+    /** The payslip opened from the mobile app (signed link): the employee's own, or payroll staff. */
+    public function signedPayslip(\App\Models\Payslip $payslip, AuditLogger $audit): \Illuminate\View\View
+    {
+        $user = \App\Models\User::where('is_active', true)->find((int) request()->query('user'));
+        $payslip->load(['employee.department', 'item.run', 'item.payments']);
+        abort_unless($user && ($payslip->employee?->user_id === $user->id || $user->canAny(['payroll.manage', 'payroll.approve'])), 403);
+        $audit->record('payroll.payslip_viewed', $payslip, ['reference' => $payslip->reference, 'via' => 'mobile_link', 'user_id' => $user->id]);
+
+        return view('hr.payslip', compact('payslip'));
+    }
+
     public function resume(Candidate $candidate, AuditLogger $audit): StreamedResponse
     {
         abort_unless($candidate->resume_path && auth()->user()->can('recruitment.manage') || $candidate->interviews()->where('interviewer_id', auth()->id())->exists(), 403);

@@ -27,6 +27,8 @@ class Requests extends Component
     public bool $showForm = false;
     public ?int $leaveTypeId = null;
     public string $duration = 'full';
+    /** one = a single full day (one date), several = From/To, half / short = part of one day. */
+    public string $dayChoice = 'one';
     public string $startsOn = '';
     public string $endsOn = '';
     public string $reason = '';
@@ -56,6 +58,7 @@ class Requests extends Component
         $this->requireEmployee();
         $this->reset('leaveTypeId', 'startsOn', 'endsOn', 'reason');
         $this->duration = 'full';
+        $this->dayChoice = 'one';
         $this->resetValidation();
         $this->startsOn = $this->endsOn = today()->addDay()->toDateString();
         $this->showForm = true;
@@ -64,16 +67,32 @@ class Requests extends Component
     /** Half-day and short leave are single-day, so keep the end date on the start date. */
     public function updatedDuration(): void
     {
+        // Set directly (older callers): "full" has always meant one or more days.
+        $this->dayChoice = $this->duration === 'full' ? 'several' : $this->duration;
         if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
+    }
+
+    /** One day, several days, half day or short leave: only "several days" has a To date. */
+    public function updatedDayChoice(): void
+    {
+        $this->duration = in_array($this->dayChoice, ['half', 'short'], true) ? $this->dayChoice : 'full';
+        if ($this->dayChoice !== 'several') $this->endsOn = $this->startsOn;
+    }
+
+    /** A field the person just changed no longer shows its old error (e.g. "leave type is required"). */
+    public function updated($property): void
+    {
+        $this->resetErrorBag($property);
     }
 
     public function updatedStartsOn(): void
     {
-        if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
+        if ($this->duration !== 'full' || $this->dayChoice !== 'several') $this->endsOn = $this->startsOn;
     }
 
     public function submit(HrWorkflowService $workflow): void
     {
+        if ($this->dayChoice !== 'several') $this->endsOn = $this->startsOn;
         $this->validate([
             'leaveTypeId' => ['required', 'exists:leave_types,id'],
             'duration' => ['required', 'in:full,half,short'],
@@ -151,6 +170,9 @@ class Requests extends Component
             'payrollNotice' => $payrollNotice,
             'requests' => $query->paginate(15),
             'canApprove' => $canApprove,
+            // Counts on the status cards: my own, and everyone I may see (the same scope as the list).
+            'tabCounts' => ['mine' => $own ? \App\Models\LeaveRequest::where('employee_id', $own->id)->count() : 0,
+                'all' => $canApprove ? \App\Models\LeaveRequest::query()->when(! $user->can('leave.manage'), fn ($q) => $q->whereIn('employee_id', $this->teamEmployeeIds()->all() ?: [0]))->count() : 0],
             'pendingCount' => $canApprove ? $inbox->pending($user, LeaveRequest::class)->count() : 0,
             'types' => $types,
             'balances' => $own ? $types->map(fn ($t) => ['type' => $t, ...$accrual->balance($own, $t, \App\Support\LeaveYear::current())]) : collect(),

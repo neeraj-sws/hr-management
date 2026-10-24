@@ -64,12 +64,13 @@ class SalarySummaryService
 
         return [...$this->fromBreakdown($item->run->period_starts_on->format('Y-m'), 'payroll', $item->run->status, $b, (float) $item->gross_amount, (float) $item->net_amount, $paid, [
             'working' => (int) $item->working_days, 'present' => (float) $item->present_days, 'paid_leave' => (float) $item->paid_leave_days, 'unpaid_leave' => (float) $item->unpaid_leave_days,
-        ], (array) $item->calculation_data), 'payslip_id' => $item->payslip?->id];
+        ], (array) $item->calculation_data), 'payslip_id' => $item->payslip?->id, 'paid_on' => $item->payments->max('paid_on')?->toDateString()];
     }
 
     private function fromBreakdown(string $month, string $source, string $status, array $b, float $gross, float $net, float $paid, array $days, array $data): array
     {
         $money = fn ($v) => round((float) $v, 2);
+        $daysPaid = (float) $days['present'] + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0);
         $earnings = [];
         $earnings[] = ['Salary for days worked', $money($b['base_salary'] ?? 0), ($data['pay_basis'] ?? 'monthly') === 'daily'
             ? number_format((float) ($data['daily_rate'] ?? 0), 2).' × '.$days['present'].' days present'
@@ -94,7 +95,11 @@ class SalarySummaryService
         if ((float) ($b['reimbursements'] ?? 0) > 0) $earnings[] = ['Expense reimbursements', $money($b['reimbursements']), 'approved claims, paid on top'];
 
         return ['month' => $month, 'label' => Carbon::parse($month.'-01')->format('F Y'), 'source' => $source, 'status' => $status, 'days' => $days,
-            'monthly_salary' => $money($data['monthly_salary'] ?? 0), 'earnings' => $earnings, 'deductions' => $deductions,
+            'monthly_salary' => $money($data['monthly_salary'] ?? 0),
+            // Pay for one day: the daily rate, or what was paid for the days worked divided by those days.
+            'per_day_rate' => $money((float) ($data['daily_rate'] ?? 0) ?: ($daysPaid > 0 ? (float) ($b['base_salary'] ?? 0) / $daysPaid : 0)),
+            'days_paid' => $daysPaid,
+            'earnings' => $earnings, 'deductions' => $deductions,
             'gross' => $money($gross), 'deductions_total' => $money(array_sum(array_column($deductions, 1))), 'net' => $money($net),
             'paid' => $money($paid), 'remaining' => $money(max(0, $net - $paid)), 'payslip_id' => null];
     }
@@ -118,7 +123,7 @@ class SalarySummaryService
 
         return ['month' => $s->payroll_month, 'label' => Carbon::parse($s->payroll_month.'-01')->format('F Y'), 'source' => 'old_sheet', 'status' => $s->payment_status ?: 'old sheet',
             'days' => ['working' => (float) $s->total_working_days, 'present' => (float) $s->present_days, 'paid_leave' => (float) $s->paid_leave, 'unpaid_leave' => max(0, (float) $s->leave_days - (float) $s->paid_leave)],
-            'monthly_salary' => $money($s->basic_salary), 'earnings' => $earnings, 'deductions' => $deductions,
+            'monthly_salary' => $money($s->basic_salary), 'per_day_rate' => $money($s->salary_per_day), 'days_paid' => (float) $s->total_salary_paid_days, 'earnings' => $earnings, 'deductions' => $deductions,
             'gross' => $money((float) $s->salary_before_adjustment + (float) $s->increment_bonus), 'deductions_total' => $money($s->total_payment_deduction), 'net' => $net,
             'paid' => $paid, 'remaining' => $money(max(0, (float) $s->salary_remains)), 'payslip_id' => $item?->payslip?->id, 'paid_on' => $s->payment_date?->toDateString()];
     }

@@ -33,6 +33,7 @@ Route::post('/auth/token', [AuthController::class, 'token'])->middleware('thrott
 Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(function () {
     Route::post('/auth/revoke', [AuthController::class, 'revoke'])->name('api.auth.revoke');
     Route::get('/me', [MeController::class, 'show'])->name('api.me');
+    Route::get('/me/photo', [MeController::class, 'photo'])->name('api.me.photo');
 
     Route::get('/employees', [EmployeeController::class, 'index'])->name('api.employees.index');
     Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.employees.show');

@@ -25,6 +25,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::get('/files/documents/{document}', [HrFileController::class, 'signedDocument'])->middleware(['signed', 'throttle:30,1'])->name('files.document');
+Route::get('/files/payslips/{payslip}', [HrFileController::class, 'signedPayslip'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip');
 
 Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');

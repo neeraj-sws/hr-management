@@ -1,3 +1,4 @@
+import { HomeHeader } from '../../components/HomeHeader';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -49,13 +50,9 @@ export default function Home() {
     setRefreshing(false);
   };
 
-  const hour = new Date().getHours();
   return (
     <Screen refreshing={refreshing} onRefresh={refresh}>
-      <View>
-        <H1>Good {hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}, {me?.name.split(' ')[0]}</H1>
-        <Muted>{me?.employee ? `${me.employee.employee_code} · ${me.employee.department?.name ?? 'No department'}` : 'No employee profile is linked to this account.'}</Muted>
-      </View>
+      <HomeHeader attendance={attendance} />
       {queued > 0 && <Card><Row title={`${queued} action(s) waiting to sync`} subtitle="They will be sent automatically when you are online." right={<Badge label="queued" />} onPress={() => router.push('/sync')} /></Card>}
       {me?.employee ? <AttendanceCard attendance={attendance} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>

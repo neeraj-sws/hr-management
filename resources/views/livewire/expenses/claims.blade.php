@@ -10,10 +10,13 @@
             <div class="stat"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Reimbursed this year</span><span class="stat-value">{{ number_format($totals['paid_year'], 2) }}</span></div></div>
         </div>
     @endif
-    <div class="tabs">
-        @if($own)<button class="tab {{ $tab === 'mine' ? 'active' : '' }}" wire:click="$set('tab','mine')">My claims</button>@endif
-        @if($canApprove)<button class="tab {{ $tab === 'approvals' ? 'active' : '' }}" wire:click="$set('tab','approvals')">Awaiting my approval @if($pendingCount)<span class="nav-count" style="margin-left:6px">{{ $pendingCount }}</span>@endif</button><button class="tab {{ $tab === 'all' ? 'active' : '' }}" wire:click="$set('tab','all')">All claims</button>@endif
-    </div>
+    {{-- Status cards: my own, waiting for my decision, and everyone I may see (with counts). --}}
+    @php($statusCards = array_values(array_filter([
+        $own ? ['label' => 'My claims', 'count' => $tabCounts['mine'], 'tone' => 'blue', 'active' => $tab === 'mine', 'click' => "\$set('tab','mine')"] : null,
+        $canApprove ? ['label' => 'Awaiting my approval', 'count' => $pendingCount, 'tone' => 'amber', 'active' => $tab === 'approvals', 'click' => "\$set('tab','approvals')"] : null,
+        $canApprove ? ['label' => 'All claims', 'count' => $tabCounts['all'], 'tone' => 'gray', 'active' => $tab === 'all', 'click' => "\$set('tab','all')"] : null,
+    ])))
+    <x-status-cards label="Requests" :items="$statusCards" />
     <section class="card">
         <div class="card-head"><div><h2>{{ $tab === 'approvals' ? 'Waiting for you' : 'Claims' }}</h2></div>
             @if($tab !== 'approvals')<select wire:model.live="status" class="input" style="width:auto" aria-label="Filter by status"><option value="">All statuses</option><option value="pending">Pending</option><option value="approved">Approved (to be paid)</option><option value="paid">Paid</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option></select>@endif

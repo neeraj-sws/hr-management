@@ -126,6 +126,9 @@ class Corrections extends Component
             'corrections' => $query->paginate(15),
             'own' => $own,
             'canApprove' => $this->canApprove(),
+            // Counts on the status cards: my own, and everyone I may see (the same scope as the list).
+            'tabCounts' => ['mine' => $own ? \App\Models\AttendanceCorrection::where('employee_id', $own->id)->count() : 0,
+                'all' => $this->canApprove() ? \App\Models\AttendanceCorrection::query()->when(! $user->canAny(['attendance.correct', 'hr.manage']), fn ($q) => $q->whereIn('employee_id', $this->teamEmployeeIds()->all() ?: [0]))->count() : 0],
             'pendingCount' => $this->canApprove() ? $inbox->pending($user, AttendanceCorrection::class)->count() : 0,
             'deciding' => $deciding,
             'decidingWorked' => $deciding?->session ? $attendance->workedSeconds($deciding->session) : null,

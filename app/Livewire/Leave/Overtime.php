@@ -103,6 +103,9 @@ class Overtime extends Component
         return $this->page('livewire.leave.overtime', [
             'requests' => $query->paginate(15),
             'canApprove' => $user->can('overtime.manage'),
+            // Counts on the status cards: my own, and everyone I may see (the same scope as the list).
+            'tabCounts' => ['mine' => $own ? \App\Models\OvertimeRequest::where('employee_id', $own->id)->count() : 0,
+                'all' => $user->can('overtime.manage') ? \App\Models\OvertimeRequest::query()->when(! $user->canAny(['hr.manage', 'employees.manage']), fn ($q) => $q->whereIn('employee_id', $this->teamEmployeeIds()->all() ?: [0]))->count() : 0],
             'pendingCount' => $user->can('overtime.manage') ? $inbox->pending($user, OvertimeRequest::class)->count() : 0,
             'own' => $own,
             'monthApproved' => $mine ? (int) (clone $mine)->where('status', 'approved')->sum('approved_minutes') : 0,

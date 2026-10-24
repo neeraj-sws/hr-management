@@ -114,6 +114,9 @@ class Claims extends Component
             'claims' => $query->paginate(15),
             'own' => $own,
             'canApprove' => $this->canApprove(),
+            // Counts on the status cards: my own, and everyone I may see (the same scope as the list).
+            'tabCounts' => ['mine' => $own ? \App\Models\ExpenseClaim::where('employee_id', $own->id)->count() : 0,
+                'all' => $this->canApprove() ? \App\Models\ExpenseClaim::query()->when(! $user->canAny(['expenses.manage', 'hr.manage']), fn ($q) => $q->whereIn('employee_id', $this->teamEmployeeIds()->all() ?: [0]))->count() : 0],
             'pendingCount' => $this->canApprove() ? $inbox->pending($user, ExpenseClaim::class)->count() : 0,
             'categories' => ExpenseClaim::CATEGORIES,
             'totals' => $mine ? [

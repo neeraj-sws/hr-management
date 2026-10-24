@@ -22,6 +22,13 @@ class MeController extends ApiController
             'name' => $user->name,
             'email' => $user->email,
             'roles' => $user->getRoleNames()->values(),
+            // The same badges as the website header (Master Admin / HR / Manager / Team lead / Employee / Trainee).
+            'badges' => \App\Support\PersonBadges::for($user, $employee),
+            // Profile photo set on the website (or in the app): the apps load it from /api/me/photo with their token.
+            // ?v changes when the photo changes, so a new photo shows at once instead of a cached one.
+            // People reporting to them (the "Team" button in the app's header).
+            'team_size' => $employee ? $employee->directReports()->where('is_active', true)->count() : 0,
+            'photo_url' => $employee?->photo_path ? url('/api/me/photo').'?v='.substr(md5($employee->photo_path), 0, 8) : null,
             'permissions' => $user->getAllPermissions()->pluck('name')->values(),
             'employee' => $employee ? (new EmployeeResource($employee))->resolve() : null,
             'today' => $session ? array_merge((new AttendanceSessionResource($session))->resolve(), []) : null,
@@ -50,5 +57,15 @@ class MeController extends ApiController
                 'auto_checkout' => $attendance->autoCheckoutPolicy($employee),
             ],
         ]]);
+    }
+
+    /** The signed-in person's profile photo, for the desktop and mobile apps (token sign-in, no website session). */
+    public function photo(Request $request)
+    {
+        $employee = $request->user()?->employeeProfile;
+        $path = $employee?->photo_path;
+        abort_unless($path && \Illuminate\Support\Facades\Storage::disk('local')->exists($path), 404);
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->response($path, null, ['Cache-Control' => 'private, max-age=86400']);
     }
 }

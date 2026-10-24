@@ -120,7 +120,7 @@ class HrOperationsFlowTest extends TestCase
 
         // Leave: employee requests, manager approves, employee cannot decide.
         $leaveType = LeaveType::where('name', 'Annual Leave')->firstOrFail();
-        Livewire::test(Requests::class)->call('create')->set('leaveTypeId', $leaveType->id)->set('startsOn', '2026-11-02')->set('endsOn', '2026-11-03')->set('reason', 'Personal leave')->call('submit')->assertHasNoErrors();
+        Livewire::test(Requests::class)->call('create')->set('leaveTypeId', $leaveType->id)->set('dayChoice', 'several')->set('startsOn', '2026-11-02')->set('endsOn', '2026-11-03')->set('reason', 'Personal leave')->call('submit')->assertHasNoErrors();
         $leave = LeaveRequest::where('employee_id', $employee->id)->firstOrFail();
         Livewire::test(Requests::class)->set('decidingId', $leave->id)->call('decide', false)->assertHasErrors('decisionNote');
         Livewire::test(Requests::class)->set('decidingId', $leave->id)->set('decisionNote', 'self')->call('decide', false)->assertStatus(403);

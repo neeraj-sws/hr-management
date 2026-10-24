@@ -15,13 +15,13 @@
         </div>
     @endif
 
-    <div class="tabs">
-        @if($own)<button class="tab {{ $tab === 'mine' ? 'active' : '' }}" wire:click="$set('tab','mine')">My requests</button>@endif
-        @if($canApprove)
-            <button class="tab {{ $tab === 'approvals' ? 'active' : '' }}" wire:click="$set('tab','approvals')">Awaiting my approval @if($pendingCount)<span class="nav-count" style="margin-left:6px">{{ $pendingCount }}</span>@endif</button>
-            <button class="tab {{ $tab === 'all' ? 'active' : '' }}" wire:click="$set('tab','all')">{{ auth()->user()->can('leave.manage') ? 'All requests' : 'Team requests' }}</button>
-        @endif
-    </div>
+    {{-- Status cards: my own, waiting for my decision, and everyone I may see (with counts). --}}
+    @php($statusCards = array_values(array_filter([
+        $own ? ['label' => 'My requests', 'count' => $tabCounts['mine'], 'tone' => 'blue', 'active' => $tab === 'mine', 'click' => "\$set('tab','mine')"] : null,
+        $canApprove ? ['label' => 'Awaiting my approval', 'count' => $pendingCount, 'tone' => 'amber', 'active' => $tab === 'approvals', 'click' => "\$set('tab','approvals')"] : null,
+        $canApprove ? ['label' => auth()->user()->can('leave.manage') ? 'All requests' : 'Team requests', 'count' => $tabCounts['all'], 'tone' => 'gray', 'active' => $tab === 'all', 'click' => "\$set('tab','all')"] : null,
+    ])))
+    <x-status-cards label="Requests" :items="$statusCards" />
 
     <section class="card">
         <div class="toolbar"><label class="field"><span>Status</span><select wire:model.live="status"><option value="">Any</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option></select></label></div>
@@ -58,9 +58,9 @@
                         <div @class(['muted' => (int) $leaveTypeId !== $b['type']->id]) style="{{ (int) $leaveTypeId === $b['type']->id ? 'color:var(--ink-2)' : '' }}"><strong>{{ $b['type']->name }}</strong>: {{ $b['type']->describe() }}@if($b['type']->paid) · available {{ round($b['remaining'], 2) }}, pending {{ $b['booked'] }}@endif</div>
                     @endforeach
                 </div>
-                <x-field label="Duration" name="duration" full><select wire:model.live="duration"><option value="full">Full day (one or more days)</option><option value="half">Half day</option><option value="short">Short leave (part of a day)</option></select></x-field>
-                <x-field label="From" name="startsOn"><input type="date" wire:model.live="startsOn" min="{{ today()->toDateString() }}"></x-field>
-                @if($duration === 'full')<x-field label="To" name="endsOn"><input type="date" wire:model.live="endsOn" x-bind:min="$wire.startsOn || @js(today()->toDateString())"></x-field>@endif
+                <x-field label="Duration" name="duration" full><select wire:model.live="dayChoice"><option value="one">Full day — one day</option><option value="several">Full day — several days</option><option value="half">Half day</option><option value="short">Short leave (part of a day)</option></select></x-field>
+                <x-field :label="$dayChoice === 'several' ? 'From' : 'Date'" name="startsOn"><input type="date" wire:model.live="startsOn" min="{{ today()->toDateString() }}"></x-field>
+                @if($dayChoice === 'several')<x-field label="To" name="endsOn"><input type="date" wire:model.live="endsOn" x-bind:min="$wire.startsOn || @js(today()->toDateString())"></x-field>@endif
                 <x-field label="Reason" name="reason" full><textarea wire:model="reason"></textarea></x-field>
             </div><p class="small muted mt">Only your working days are counted — weekly offs (including off Saturdays and moved weekly offs) and holidays are skipped. Half day = 0.5 day, short leave = 0.25 day. Paid leave beyond your balance is allowed only for leave types with advance leave, within the configured limit.</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Submit request</button></div></form>

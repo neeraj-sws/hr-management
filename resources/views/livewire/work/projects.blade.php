@@ -3,12 +3,12 @@
         <div><h1>{{ $mine ? 'My Projects' : 'Projects' }}</h1><p>{{ $mine ? 'Projects you are a member of, manage, or have tasks in.' : ($scoped ? 'Projects you manage.' : 'All projects.') }}</p></div>
         @if($canManage)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />New project</button>@endif
     </div>
-    <div class="pill-row mb" role="group" aria-label="Project count by status">
-        <button type="button" class="pill {{ $status === '' ? 'pill-on' : '' }}" wire:click="$set('status', '')"><b>{{ $counts['total'] }}</b> {{ $mine ? 'my projects' : 'projects' }}</button>
-        @foreach(\App\Services\WorkService::PROJECT_STATUSES as $key => $label)
-            <button type="button" class="pill {{ $status === $key ? 'pill-on' : '' }}" wire:click="$set('status', '{{ $key }}')"><b>{{ $counts[$key] }}</b> {{ strtolower($label) }}</button>
-        @endforeach
-    </div>
+    @php($tones = ['planned' => 'blue', 'active' => 'green', 'on_hold' => 'amber', 'completed' => 'gray'])
+    @php($statusCards = [
+        ['label' => 'All', 'count' => $counts['total'], 'tone' => 'navy', 'active' => $status === '', 'click' => "\$set('status', '')"],
+        ...collect(\App\Services\WorkService::PROJECT_STATUSES)->map(fn ($label, $key) => ['label' => $label, 'count' => $counts[$key], 'tone' => $tones[$key] ?? 'gray', 'active' => $status === $key, 'click' => "\$set('status', '{$key}')"])->values()->all(),
+    ])
+    <x-status-cards label="Projects by status" :items="$statusCards" />
     <section class="card">
         <div class="toolbar">
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Project or client name"></label>

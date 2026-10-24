@@ -13,7 +13,7 @@ use Livewire\WithFileUploads;
 
 class Documents extends Component
 {
-    use InteractsWithHr, WithFileUploads, \Livewire\WithPagination;
+    use InteractsWithHr, WithFileUploads;
 
     /** Kept here for the views and API that read it. */
     public const CATEGORIES = EmployeeDocumentService::CATEGORIES;
@@ -92,7 +92,6 @@ class Documents extends Component
     /** Checks a field as soon as it changes, so problems show before pressing Upload. */
     public function updated(string $property): void
     {
-        if (in_array($property, ['employee', 'category'], true)) $this->resetPage();
         if (in_array($property, ['file', 'employeeId', 'documentCategory', 'expiresOn'], true) && $this->showForm) {
             $this->validateOnly($property, $this->documentRules(), $this->documentMessages(), ['employeeId' => 'employee', 'documentCategory' => 'category', 'expiresOn' => 'expiry date']);
         }
@@ -128,25 +127,55 @@ class Documents extends Component
 
     public function render()
     {
+        $own = $this->ownEmployee()?->fresh(); // fresh: a photo saved a moment ago shows at once
         $documents = EmployeeDocument::with(['employee', 'uploader'])
-            ->when(! $this->canManage(), fn ($q) => $q->where('employee_id', $this->ownEmployee()?->id ?? 0))
+            ->when(! $this->canManage(), fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($this->canManage() && $this->employee, fn ($q) => $q->where('employee_id', $this->employee))
-            ->when($this->category, fn ($q, $c) => $q->where('category', $c))
-            ->latest()->paginate(15);
+            ->latest()->limit(300)->get();
+        $checklistFor = $this->canManage() ? ($this->employee ? AttendanceEmployee::find($this->employee) : null) : $own;
+        $disk = Storage::disk('local');
+        $size = function (?string $path) use ($disk) {
+            try { return $path && $disk->exists($path) ? $disk->size($path) : null; } catch (\Throwable) { return null; }
+        };
+
+        // "My files": every stored document, plus the profile photo (it is kept on the profile, not as a document).
+        $files = $documents->map(fn (EmployeeDocument $d) => [
+            'id' => $d->id, 'name' => $d->original_name, 'category' => self::CATEGORIES[$d->category] ?? ucfirst($d->category),
+            'group' => EmployeeDocumentService::group($d->category), 'kind' => self::fileKind($d->original_name), 'size' => $size($d->storage_path),
+            'date' => $d->created_at, 'by' => $d->uploader?->name, 'employee' => $d->employee?->name, 'expires' => $d->expires_on,
+            'view' => route('hr.documents.view', $d), 'download' => route('hr.documents.download', $d),
+            'canDelete' => $this->canManage() || $d->uploaded_by === auth()->id(),
+        ]);
+        if ($checklistFor?->photo_path && $disk->exists($checklistFor->photo_path)) {
+            $files->prepend(['id' => null, 'name' => 'Profile photo', 'category' => 'Photo', 'group' => 'other', 'kind' => 'image',
+                'size' => $size($checklistFor->photo_path), 'date' => \Illuminate\Support\Carbon::createFromTimestamp($disk->lastModified($checklistFor->photo_path), config('app.timezone')),
+                'by' => null, 'employee' => $checklistFor->name, 'expires' => null,
+                'view' => route('people.photo', $checklistFor), 'download' => route('people.photo', $checklistFor), 'canDelete' => false]);
+        }
+        $groupCounts = ['all' => $files->count()] + collect(['identity', 'education', 'bank', 'other'])->mapWithKeys(fn ($g) => [$g => $files->where('group', $g)->count()])->all();
 
         return $this->page('livewire.lifecycle.documents', [
-            'documents' => $documents,
+            'files' => $files->values(),
+            'groupCounts' => $groupCounts,
             'canManage' => $this->canManage(),
             'categories' => self::CATEGORIES,
             'uploadCategories' => $this->uploadCategories(),
             'requirable' => EmployeeDocumentService::requirable(),
             'requiredKeys' => app(EmployeeDocumentService::class)->required(),
             // The checklist: your own (employee), or the employee picked in the filter (HR).
-            'checklistFor' => $checklistFor = $this->canManage() ? ($this->employee ? AttendanceEmployee::find($this->employee) : null) : $this->ownEmployee(),
+            'checklistFor' => $checklistFor,
             'checklist' => $checklistFor ? app(EmployeeDocumentService::class)->checklist($checklistFor) : [],
-            'canUpload' => $this->canManage() || $this->ownEmployee() !== null,
+            'canUpload' => $this->canManage() || $own !== null,
             'employees' => $this->canManage() ? AttendanceEmployee::orderBy('name')->get(['id', 'name']) : collect(),
-            'expiring' => EmployeeDocument::when(! $this->canManage(), fn ($q) => $q->where('employee_id', $this->ownEmployee()?->id ?? 0))->whereNotNull('expires_on')->whereDate('expires_on', '<=', today()->addDays(30))->count(),
+            'expiring' => EmployeeDocument::when(! $this->canManage(), fn ($q) => $q->where('employee_id', $own?->id ?? 0))->whereNotNull('expires_on')->whereDate('expires_on', '<=', today()->addDays(30))->count(),
         ], 'Documents');
+    }
+
+    /** pdf, image or other: picks the icon colour on the file row. */
+    public static function fileKind(?string $name): string
+    {
+        $ext = strtolower(pathinfo((string) $name, PATHINFO_EXTENSION));
+
+        return $ext === 'pdf' ? 'pdf' : (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true) ? 'image' : 'other');
     }
 }

@@ -27,6 +27,12 @@ export type Me = {
   name: string;
   email: string;
   roles: string[];
+  /** Who the person is, as on the website: Master Admin / HR / Accounts / Manager / Team lead / Employee / Trainee. */
+  badges?: { label: string; tone: string }[];
+  /** Profile photo (set on the website or in the app), loaded with the sign-in token. */
+  photo_url?: string | null;
+  /** People reporting to them (the "Team" button in the header). */
+  team_size?: number;
   permissions: string[];
   employee: {
     id: number;
@@ -73,7 +79,7 @@ export type SalaryMonth = {
   month: string; label: string; source: 'estimate' | 'payroll' | 'old_sheet'; status: string; up_to?: string; paid_on?: string | null;
   days: { working: number; present: number; paid_leave: number; unpaid_leave: number };
   monthly_salary: number; earnings: [string, number, string | null][]; deductions: [string, number, string | null][];
-  gross: number; deductions_total: number; net: number; paid: number; remaining: number; payslip_id: number | null;
+  gross: number; deductions_total: number; net: number; paid: number; remaining: number; payslip_id: number | null; payslip_url?: string | null; per_day_rate?: number; days_paid?: number;
 };
 export type Notification = { id: string; kind: string | null; message: string; read_at: string | null; created_at: string };
 export type Approval = { id: number; type: string; label: string; summary: string; created_at: string };

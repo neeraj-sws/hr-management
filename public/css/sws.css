@@ -385,3 +385,80 @@ button.pill:hover{border-color:var(--line)}
 .table th.sortable::after{content:"⇅";margin-left:5px;font-size:10px;opacity:.35}
 .table th.sorted-asc::after{content:"▲";opacity:.9}
 .table th.sorted-desc::after{content:"▼";opacity:.9}
+
+/* Who someone is (Master Admin, HR, Accounts, Manager, Team lead, Employee, Trainee): x-person-badges */
+.person-badges{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle}
+td .person-badges,small .person-badges{margin-top:3px}
+.badge-navy{background:#e3e8f3;color:#14284b}
+.profile-copy .header-badges{margin-top:2px}.profile-copy .header-badges .badge{font-size:10px;padding:1px 7px}
+/* Status cards (x-status-cards): count + coloured dot + label; clicking filters the list */
+.status-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.status-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px 16px;background:#fff;border:1px solid #d8dfe9;border-radius:10px;cursor:pointer;text-align:left;font:inherit;color:var(--ink,#172033);transition:background .15s,border-color .15s}
+.status-card:hover{border-color:#b9c4d4}
+.status-card.is-active{background:#f6f7f5;border-color:#aeb8c6;box-shadow:inset 0 0 0 1px #aeb8c6}
+.status-card strong{font-size:22px;font-weight:700;line-height:1}
+.status-card span{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#8a8f98}
+.status-dot-navy{background:#14284b}.status-dot-blue{background:#3b82f6}.status-dot-green{background:#22a35a}.status-dot-amber{background:#f0a020}.status-dot-red{background:#d64545}.status-dot-gray{background:#8a8f98}.status-dot-violet{background:#7c5ce0}
+
+/* ---------- Documents page ---------- */
+.docs-sub{display:flex;align-items:center;gap:6px}
+.docs-card{background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:12px;padding:18px 20px}
+.docs-card h2{margin:0;font-size:16px;color:#13254F}
+.docs-onb-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.docs-onb-head p{margin:4px 0 0}
+.docs-onb-count{text-align:right;white-space:nowrap}
+.docs-onb-count strong{display:block;font-size:24px;color:#13254F;line-height:1.1}
+.docs-onb-count span{font-size:12px;color:var(--muted,#6b7a90)}
+.docs-progress{height:6px;border-radius:99px;background:#EDF0F5;margin:14px 0 6px;overflow:hidden}
+.docs-progress span{display:block;height:100%;background:#2EAD5B;border-radius:99px;transition:width .3s}
+.docs-section{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#6b7a90);margin:16px 0 8px;font-weight:700}
+.docs-missing{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.docs-missing-row{display:flex;align-items:center;gap:12px;border:1px solid var(--line,#e4e9f0);border-radius:10px;padding:10px 12px;min-width:0}
+.docs-missing-row strong{display:block;color:#13254F;font-size:14px}
+.docs-missing-row small{display:block;color:var(--muted,#6b7a90);font-size:12px}
+.docs-missing-row .btn-primary,.docs-page .page-head .btn-primary,.docs-empty .btn-primary{background:#2B5BD7;border-color:#2B5BD7}
+.docs-icon{flex:none;width:36px;height:36px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center}
+.docs-icon-missing{background:#FAEEDA;color:#854F0B}
+.docs-kind-pdf{background:#FCEBEB;color:#A32D2D}
+.docs-kind-image{background:#E6F1FB;color:#185FA5}
+.docs-kind-other{background:#F1EFE8;color:#5F5E5A}
+.docs-done{display:flex;flex-wrap:wrap;gap:8px}
+.docs-done-chip{display:inline-flex;align-items:center;gap:5px;background:#E7F6EC;color:#1E7A41;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600}
+.docs-done-chip button{background:none;border:0;padding:0;color:#2B5BD7;font:inherit;cursor:pointer}
+.docs-done-chip button:hover{text-decoration:underline}
+.docs-files-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.docs-search{display:flex;align-items:center;gap:6px;border:1px solid var(--line,#e4e9f0);border-radius:8px;padding:0 10px;color:var(--muted,#6b7a90);background:#fff}
+.docs-search:focus-within{border-color:#2B5BD7}
+.docs-search input{border:0;outline:0;padding:7px 0;font:inherit;font-size:13px;min-width:180px;background:transparent}
+.docs-chips{display:flex;gap:8px;margin:14px 0 6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.docs-chips::-webkit-scrollbar{display:none}
+.docs-chip{flex:none;border:1px solid var(--line,#e4e9f0);background:#fff;color:#334258;padding:6px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.docs-chip:hover{border-color:#8eb0ff}
+.docs-chip.is-active{background:#13254F;border-color:#13254F;color:#fff}
+.docs-list{list-style:none;margin:0;padding:0}
+.docs-file{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #EEF1F5}
+.docs-file:last-child{border-bottom:0}
+.docs-file-main{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:16px;min-width:0}
+.docs-file-main strong{color:#13254F;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.docs-file-main small{display:block;color:var(--muted,#6b7a90);font-size:12px;grid-column:1}
+.docs-file-main .docs-file-date{grid-column:2;grid-row:1 / span 2;align-self:center;text-align:right;white-space:nowrap}
+.docs-file-actions{display:flex;gap:6px;align-items:center}
+.btn-icon{padding-left:8px;padding-right:8px}
+.docs-exp{display:inline-block;margin-left:6px;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600}
+.docs-exp-orange{background:#FAEEDA;color:#854F0B}
+.docs-exp-red{background:#FCEBEB;color:#A32D2D}
+.docs-empty{text-align:center;padding:28px 10px;color:var(--muted,#6b7a90)}
+.docs-empty .icon{width:28px;height:28px}
+.docs-empty p{margin:6px 0 12px}
+.docs-employee{margin-bottom:14px}
+@media (max-width:720px){
+  .docs-missing{grid-template-columns:1fr}
+  .docs-card{padding:14px}
+  .docs-file{grid-template-columns:auto minmax(0,1fr)}
+  .docs-file-actions{grid-column:2}
+  .docs-file-main{grid-template-columns:minmax(0,1fr)}
+  .docs-file-main .docs-file-date{grid-column:1;grid-row:auto;text-align:left}
+  .docs-search{flex:1}
+  .docs-search input{min-width:0;width:100%}
+}

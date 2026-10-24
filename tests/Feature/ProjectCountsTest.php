@@ -73,7 +73,7 @@ class ProjectCountsTest extends TestCase
 
     public function test_projects_page_shows_counts_by_status(): void
     {
-        $this->actingAs($this->admin)->get(route('work.projects'))->assertOk()->assertSee('projects')->assertSeeInOrder(['4', 'projects', '0', 'planned', '2', 'active', '1', 'on hold', '1', 'completed']);
+        $this->actingAs($this->admin)->get(route('work.projects'))->assertOk()->assertSee('projects')->assertSeeInOrder(['4', 'All', '0', 'Planned', '2', 'Active', '1', 'On hold', '1', 'Completed']);
         Livewire::actingAs($this->admin)->test(Projects::class)->set('status', 'active')
             ->assertViewHas('counts', fn ($c) => $c['total'] === 4)->assertSee('Portal')->assertDontSee('Old site');
     }

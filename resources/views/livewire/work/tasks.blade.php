@@ -8,12 +8,16 @@
         </div>
     </div>
     <x-errors />
-    <div class="stats">
-        <button type="button" class="stat" wire:click="$set('status','open')" style="cursor:pointer;text-align:left"><span class="stat-icon"><x-icon name="list" /></span><div><span class="stat-label">Open</span><span class="stat-value">{{ $counts['open'] }}</span></div></button>
-        <button type="button" class="stat" wire:click="$set('status','in_progress')" style="cursor:pointer;text-align:left"><span class="stat-icon amber"><x-icon name="timer" /></span><div><span class="stat-label">In progress</span><span class="stat-value">{{ $counts['in_progress'] }}</span></div></button>
-        <button type="button" class="stat" wire:click="$set('due','overdue')" style="cursor:pointer;text-align:left"><span class="stat-icon red"><x-icon name="alert" /></span><div><span class="stat-label">Overdue</span><span class="stat-value">{{ $counts['overdue'] }}</span></div></button>
-        <button type="button" class="stat" wire:click="$set('status','completed')" style="cursor:pointer;text-align:left"><span class="stat-icon green"><x-icon name="check-circle" /></span><div><span class="stat-label">Completed</span><span class="stat-value">{{ $counts['completed'] }}</span><small>{{ $counts['done_week'] }} this week</small></div></button>
-    </div>
+    {{-- Status cards: clicking one filters the list (Overdue = open tasks past their due date). --}}
+    @php($statusCards = [
+        ['label' => 'All', 'count' => $counts['total'], 'tone' => 'navy', 'active' => $status === '' && $due !== 'overdue', 'click' => "\$set('due', ''); \$set('status', '')"],
+        ['label' => 'To do', 'count' => $counts['todo'], 'tone' => 'blue', 'active' => $status === 'todo', 'click' => "\$set('due', ''); \$set('status', 'todo')"],
+        ['label' => 'In progress', 'count' => $counts['in_progress'], 'tone' => 'green', 'active' => $status === 'in_progress', 'click' => "\$set('due', ''); \$set('status', 'in_progress')"],
+        ['label' => 'On hold', 'count' => $counts['on_hold'], 'tone' => 'amber', 'active' => $status === 'on_hold', 'click' => "\$set('due', ''); \$set('status', 'on_hold')"],
+        ['label' => 'Overdue', 'count' => $counts['overdue'], 'tone' => 'red', 'active' => $due === 'overdue', 'click' => "\$set('status', ''); \$set('due', 'overdue')"],
+        ['label' => 'Completed', 'count' => $counts['completed'], 'tone' => 'gray', 'active' => $status === 'completed', 'click' => "\$set('due', ''); \$set('status', 'completed')"],
+    ])
+    <x-status-cards label="Tasks by status" :items="$statusCards" />
     <section class="card">
         <div class="toolbar">
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Task title"></label>

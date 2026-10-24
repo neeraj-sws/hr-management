@@ -2,6 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Avatar } from '../components/Avatar';
 import { AddButton, FormSheet } from '../components/FormSheet';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, formatDate, H2, Muted, Notice, Row, Screen } from '../components/ui';
 import { ApiError, api, get, upload } from '../lib/api';
@@ -17,6 +18,7 @@ export default function DocumentsScreen() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [types, setTypes] = useState<UploadType[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -30,10 +32,11 @@ export default function DocumentsScreen() {
   const load = useCallback(async () => {
     try {
       const [d, a] = await Promise.all([
-        get<{ data: Document[]; checklist: ChecklistItem[]; upload_types: UploadType[] }>('/my/documents'),
+        get<{ data: Document[]; checklist: ChecklistItem[]; upload_types: UploadType[]; photo_url?: string | null }>('/my/documents'),
         get<{ data: Asset[] }>('/my/assets'),
       ]);
       setDocuments(d.data);
+      setPhotoUrl(d.photo_url ?? null);
       setChecklist(d.checklist ?? []);
       setTypes(d.upload_types ?? []);
       setAssets(a.data);
@@ -147,10 +150,17 @@ export default function DocumentsScreen() {
 
       <Card>
         <H2>My documents</H2>
+        {photoUrl ? (
+          <View style={styles.photoRow}>
+            <Avatar name="Profile photo" photoUrl={photoUrl} size={40} />
+            <View style={{ flex: 1 }}><Text style={styles.photoTitle}>Profile photo</Text><Muted>Photo · shown on your profile</Muted></View>
+            <Text style={styles.delete} onPress={() => startUpload('photo')}>Change</Text>
+          </View>
+        ) : null}
         {documents.length ? documents.map((d) => (
           <Row key={d.id} title={d.name} subtitle={`${d.category}${d.expires_on ? ` · expires ${formatDate(d.expires_on)}` : ''}`} onPress={() => open(d.id)}
             right={<View style={styles.rowRight}>{d.expired ? <Badge label="expired" tone="red" /> : <Muted>Open ›</Muted>}{d.can_delete ? <Text style={styles.delete} onPress={() => remove(d)}>Delete</Text> : null}</View>} />
-        )) : <Empty text={loaded ? 'No documents yet' : 'Loading…'} />}
+        )) : photoUrl ? null : <Empty text={loaded ? 'No documents yet' : 'Loading…'} />}
       </Card>
       <Card>
         <H2>My assets</H2>
@@ -179,6 +189,8 @@ export default function DocumentsScreen() {
 }
 
 const styles = StyleSheet.create({
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
+  photoTitle: { fontWeight: '700', color: colors.navy, fontSize: 15 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.line },
   mark: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#f59e0b', alignItems: 'center', justifyContent: 'center' },
   markDone: { backgroundColor: '#16a34a' },

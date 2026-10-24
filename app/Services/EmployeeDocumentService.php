@@ -44,6 +44,47 @@ class EmployeeDocumentService
     /** Required at onboarding until HR changes the list. */
     public const DEFAULT_REQUIRED = ['photo', 'resume', 'aadhaar', 'pan', 'address', 'education', 'bank'];
 
+    /** One-line hint and icon for each checklist item (Documents page). */
+    public const HINTS = [
+        'photo' => ['Clear passport-size photo', 'camera'],
+        'resume' => ['Latest PDF', 'file'],
+        'aadhaar' => ['Front and back, PDF or JPG', 'id-card'],
+        'pan' => ['Clear photo or scan', 'credit-card'],
+        'identity' => ['Passport, voter ID or driving licence', 'id-card'],
+        'address' => ['Electricity bill, rent agreement, etc.', 'home'],
+        'education' => ['Marksheets and degree certificates', 'file'],
+        'experience' => ['From your previous employer', 'briefcase'],
+        'salary_slips' => ['Last 3 months, previous employer', 'receipt'],
+        'bank' => ['Cancelled cheque or passbook', 'bank'],
+        'policy' => ['Signed copy', 'file'],
+        'other' => ['Any other paper', 'file'],
+    ];
+
+    /** Filter chips on "My files": each document type belongs to one group. */
+    public const GROUPS = [
+        'identity' => ['aadhaar', 'pan', 'identity', 'address'],
+        'education' => ['education', 'experience'],
+        'bank' => ['bank', 'salary_slips'],
+    ];
+
+    /**
+     * Files saved under the general "Identity proof" type still tick off the matching checklist item
+     * when the file name says what it is (e.g. "khushboo-aadhar.jpg" counts for Aadhaar card).
+     */
+    public const IDENTITY_ALIASES = [
+        'aadhaar' => '/aa?dh?aa?r/i',
+        'pan' => '/(^|[^a-z])pan([^a-z]|$)|pan-?card/i',
+    ];
+
+    public static function group(string $category): string
+    {
+        foreach (self::GROUPS as $group => $categories) {
+            if (in_array($category, $categories, true)) return $group;
+        }
+
+        return 'other';
+    }
+
     public const FILE_RULES = ['required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,doc,docx'];
 
     public function __construct(private readonly AuditLogger $audit, private readonly EmployeePhotoService $photos) {}
@@ -88,12 +129,18 @@ class EmployeeDocumentService
     public function checklist(AttendanceEmployee $employee): array
     {
         $counts = EmployeeDocument::where('employee_id', $employee->id)->selectRaw('category, COUNT(*) as n')->groupBy('category')->pluck('n', 'category');
+        $identityNames = EmployeeDocument::where('employee_id', $employee->id)->where('category', 'identity')->pluck('original_name');
         $labels = self::requirable();
 
-        return array_map(function (string $key) use ($employee, $counts, $labels) {
+        return array_map(function (string $key) use ($employee, $counts, $labels, $identityNames) {
             $count = $key === self::PHOTO ? ($employee->photo_path ? 1 : 0) : (int) ($counts[$key] ?? 0);
+            // An Aadhaar or PAN uploaded as "Identity proof" counts too.
+            if (isset(self::IDENTITY_ALIASES[$key])) {
+                $count += $identityNames->filter(fn ($name) => preg_match(self::IDENTITY_ALIASES[$key], (string) $name))->count();
+            }
 
-            return ['key' => $key, 'label' => $labels[$key], 'done' => $count > 0, 'count' => $count];
+            return ['key' => $key, 'label' => $labels[$key], 'done' => $count > 0, 'count' => $count,
+                'hint' => self::HINTS[$key][0] ?? '', 'icon' => self::HINTS[$key][1] ?? 'file'];
         }, $this->required());
     }
 

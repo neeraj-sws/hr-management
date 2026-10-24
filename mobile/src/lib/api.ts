@@ -53,6 +53,11 @@ export function getBaseUrl(): string {
   return baseUrl;
 }
 
+/** The sign-in token, e.g. to load the profile photo (an image request cannot go through api()). */
+export function getToken(): string | null {
+  return token;
+}
+
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 /** body may be a FormData (file uploads); anything else is sent as JSON. */

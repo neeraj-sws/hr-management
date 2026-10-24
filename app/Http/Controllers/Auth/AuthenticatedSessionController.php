@@ -37,6 +37,11 @@ class AuthenticatedSessionController extends Controller
                 ->onlyInput('email');
         }
 
+        // Website access (Settings > Security): this person uses the desktop / mobile app, not the website.
+        if (! app(\App\Services\WebAccessService::class)->allows($user)) {
+            return back()->withErrors(['email' => \App\Services\WebAccessService::MESSAGE])->onlyInput('email');
+        }
+
         // An older hash (e.g. imported accounts) is upgraded now that the password is known to be right.
         Auth::getProvider()->rehashPasswordIfRequired($user, ['password' => $credentials['password']]);
 

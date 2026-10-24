@@ -19,7 +19,7 @@
             <tbody>
             @forelse($rows as $row)
                 <tr wire:key="row-{{ $row->employee->id }}-{{ now()->timestamp }}" @if($row->live) x-data="swsLive(@js($row->live))" @endif>
-                    <td><strong>{{ $row->employee->name }}</strong><small>{{ $row->employee->employee_code }} · {{ $row->employee->department?->name ?? '—' }}</small></td>
+                    <td><strong>{{ $row->employee->name }}</strong><small>{{ $row->employee->employee_code }} · {{ $row->employee->department?->name ?? '—' }}</small><x-person-badges :employee="$row->employee" /></td>
                     <td>{{ $row->session?->check_in?->format('h:i A') ?? '—' }}@if($row->session?->check_in_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'in']) }}" target="_blank" title="Check-in selfie">📸</a>@endif @if($row->session?->check_in_latitude) <span title="{{ $row->session->check_in_latitude }}, {{ $row->session->check_in_longitude }}">📍</span>@endif</td>
                     <td>{{ $row->session?->check_out?->format('h:i A') ?? '—' }}@if($row->session?->autoCheckedOut())<small>auto check-out (left the computer)</small>@endif@if($row->session?->check_out_photo_path) <a href="{{ route('attendance.photo', [$row->session, 'out']) }}" target="_blank" title="Check-out selfie">📸</a>@endif</td>
                     <td class="num">@if($row->live)<span x-text="hms(v.worked)">@hms($row->live['worked'])</span>@else — @endif</td>

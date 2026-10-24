@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
+import { clock as liveClock, liveFigures } from '../lib/live';
 import type { useAttendance } from '../lib/useAttendance';
 import { useAuth } from '../lib/auth';
 import { Badge, Button, Card, colors, confirmAction, Eyebrow, formatDuration, formatTime, Muted, Notice } from './ui';
@@ -23,29 +24,10 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
     return () => clearInterval(timer);
   }, [session?.status]);
 
-  // The server's figures counted on to this second by the same rule as the website and the desktop app:
-  // while working, the state last reported keeps counting for a while (in use / meeting -> worked and that
-  // bucket; idle -> idle, worked stands still); on a break, break counts.
-  const running = session?.live?.running ?? (!!session && !session.check_out && ['working', 'on_break'].includes(session.status));
-  const s = running ? Math.max(0, Math.floor((tick - fetchedAt.current) / 1000)) : 0;
-  const v = {
-    worked: session?.worked_seconds ?? session?.active_seconds ?? 0,
-    idle: session?.idle_counted_seconds ?? session?.idle_seconds ?? 0,
-    brk: session?.live?.break_seconds ?? session?.break_seconds ?? 0,
-    active: session?.screen_active_seconds ?? 0,
-    meeting: session?.screen_meeting_seconds ?? 0,
-    sIdle: session?.screen_idle_seconds ?? 0,
-  };
-  if (s && session?.status === 'on_break') v.brk += s;
-  else if (s && session?.status === 'working') {
-    const k = Math.min(s, session.live?.tick_for ?? 0);
-    const state = session.live?.state ?? null;
-    if (state === 'idle' && session.live?.idle_deducted !== false) { v.idle += k; v.sIdle += k; v.worked += s - k; }
-    else if (state === 'idle') { v.sIdle += k; v.worked += s; } // field / mobile work: idle is not taken off
-    else { v.worked += s; if (state === 'active') v.active += k; else if (state === 'meeting') v.meeting += k; }
-  }
-  const worked = Math.max(0, v.worked);
-  const clock = `${String(Math.floor(worked / 3600)).padStart(2, '0')}:${String(Math.floor((worked % 3600) / 60)).padStart(2, '0')}:${String(worked % 60).padStart(2, '0')}`;
+  // The same live rule as the website, the desktop app and the home header (lib/live.ts).
+  const v = liveFigures(session, (tick - fetchedAt.current) / 1000);
+  const worked = v.worked;
+  const clock = liveClock(worked);
 
   // Hooks above always run (React rule); decide what to show afterwards.
   const mobileAllowed = (me?.policies?.attendance_sources ?? ['mobile']).includes('mobile');

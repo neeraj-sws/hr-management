@@ -3,10 +3,13 @@
         <div><h1>Attendance Corrections</h1><p>Forgot to check out, or checked in late by mistake? Ask for a correction — your manager approves it and the attendance is updated.</p></div>
         @if($own)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Request correction</button>@endif
     </div>
-    <div class="tabs">
-        @if($own)<button class="tab {{ $tab === 'mine' ? 'active' : '' }}" wire:click="$set('tab','mine')">My requests</button>@endif
-        @if($canApprove)<button class="tab {{ $tab === 'approvals' ? 'active' : '' }}" wire:click="$set('tab','approvals')">Awaiting my approval @if($pendingCount)<span class="nav-count" style="margin-left:6px">{{ $pendingCount }}</span>@endif</button><button class="tab {{ $tab === 'all' ? 'active' : '' }}" wire:click="$set('tab','all')">History</button>@endif
-    </div>
+    {{-- Status cards: my own, waiting for my decision, and everyone I may see (with counts). --}}
+    @php($statusCards = array_values(array_filter([
+        $own ? ['label' => 'My requests', 'count' => $tabCounts['mine'], 'tone' => 'blue', 'active' => $tab === 'mine', 'click' => "\$set('tab','mine')"] : null,
+        $canApprove ? ['label' => 'Awaiting my approval', 'count' => $pendingCount, 'tone' => 'amber', 'active' => $tab === 'approvals', 'click' => "\$set('tab','approvals')"] : null,
+        $canApprove ? ['label' => 'History', 'count' => $tabCounts['all'], 'tone' => 'gray', 'active' => $tab === 'all', 'click' => "\$set('tab','all')"] : null,
+    ])))
+    <x-status-cards label="Requests" :items="$statusCards" />
     <section class="card">
         <div class="table-wrap"><table class="table">
             <thead><tr>@if($tab !== 'mine')<th>Employee</th>@endif<th>Day</th><th>Recorded</th><th>Requested</th><th>Reason</th><th>Status</th><th></th></tr></thead>

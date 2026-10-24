@@ -71,8 +71,19 @@ class AttendanceExtrasTest extends TestCase
     {
         Carbon::setTestNow('2026-10-14 10:05:00');
         app(AttendanceService::class)->checkIn($this->employee, 'web');
-        $this->assertStringContainsString('You checked in late today at 10:05 AM (00:35:00', $this->kinds($this->employeeUser, 'AttendanceLate')->first()->data['message']);
+        $this->assertSame('You checked in late at 10:05 AM · 35 min late.', $this->kinds($this->employeeUser, 'AttendanceLate')->first()->data['message']);
         $this->assertStringContainsString('Esha Employee checked in late', $this->kinds($this->managerUser, 'AttendanceLate')->first()->data['message']);
+    }
+
+    public function test_seconds_after_start_and_grace_is_not_late_for_alerts(): void
+    {
+        // Start + grace is 09:30; 40 seconds over is "0 min" late, so nobody is alerted.
+        Carbon::setTestNow('2026-10-14 09:30:40');
+        app(AttendanceService::class)->checkIn($this->employee, 'web');
+        $this->assertCount(0, $this->kinds($this->employeeUser, 'AttendanceLate'));
+        $this->assertCount(0, $this->kinds($this->managerUser, 'AttendanceLate'));
+        $this->assertSame('1 h 5 min', \App\Support\Duration::words(65));
+        $this->assertSame('41 min', \App\Support\Duration::words(41));
     }
 
     public function test_absence_alert_after_the_cut_off_once_a_day_and_not_when_on_leave(): void

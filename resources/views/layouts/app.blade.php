@@ -10,7 +10,7 @@
         $pageTitle = $title ?? ($crumb[1] ?? 'SWS HR');
         $unreadCount = $user->unreadNotifications()->count();
         $recentNotifications = $user->notifications()->latest()->limit(6)->get();
-        $roleLabel = $user->getRoleNames()->implode(', ') ?: 'Employee';
+        $roleLabel = \App\Support\PersonBadges::primary($user);
         $initials = collect(explode(' ', trim($user->name)))->filter()->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->join('');
     @endphp
     <title>{{ $pageTitle }} · SWS HR</title>
@@ -148,9 +148,9 @@
                     </div>
                 </details>
                 <details class="menu">
-                    <summary class="profile-chip"><x-avatar :employee="$user->employeeProfile" :name="$user->name" /><span class="profile-copy"><strong>{{ $user->name }}</strong><small>{{ $roleLabel }}</small></span></summary>
+                    <summary class="profile-chip"><x-avatar :employee="$user->employeeProfile" :name="$user->name" /><span class="profile-copy"><strong>{{ $user->name }}</strong><x-person-badges :user="$user" class="header-badges" /></span></summary>
                     <div class="menu-panel">
-                        <div class="menu-head"><strong>{{ $user->name }}</strong><div class="small muted">{{ $user->email }}</div><div class="small muted">{{ $roleLabel }}</div></div>
+                        <div class="menu-head"><strong>{{ $user->name }}</strong><div class="small muted">{{ $user->email }}</div><div style="margin-top:6px"><x-person-badges :user="$user" /></div></div>
                         <a class="menu-item" href="{{ route('account.profile') }}"><x-icon name="user" class="icon-sm" />My profile</a>
                         <a class="menu-item" href="{{ route('account.profile') }}#password"><x-icon name="lock" class="icon-sm" />Change password</a>
                         <form method="POST" action="{{ route('logout') }}">@csrf<button class="menu-item danger" type="submit"><x-icon name="logout" class="icon-sm" />Log out</button></form>

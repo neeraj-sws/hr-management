@@ -22,6 +22,17 @@ class Duration
         return self::hms((float) $minutes * 60);
     }
 
+    /** Short words for people: "41 min", "1 h 5 min", "2 h" (used in notifications). */
+    public static function words(int|float|string|null $minutes): string
+    {
+        $minutes = max(0, (int) round((float) $minutes));
+        $h = intdiv($minutes, 60);
+        $m = $minutes % 60;
+        if ($h === 0) return "{$m} min";
+
+        return $m === 0 ? "{$h} h" : "{$h} h {$m} min";
+    }
+
     /** For values stored as decimal hours (estimates, policy hours). */
     public static function fromHours(int|float|string|null $hours): string
     {
