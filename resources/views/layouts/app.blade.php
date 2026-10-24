@@ -216,10 +216,7 @@
                     <span class="sep">/</span><strong>{{ $pageTitle }}</strong>
                 </nav>
             </div>
-            <form class="top-search" method="GET" action="{{ route('search') }}" role="search">
-                <x-icon name="search" class="icon-sm" />
-                <input type="search" name="q" value="{{ request()->routeIs('search') ? request('q') : '' }}" placeholder="Search employees, tasks, projects…" aria-label="Search">
-            </form>
+            @include('partials.global-search')
             <div class="top-actions">
                 {{-- Bell: the 6 latest, newest first. No tabs or approve buttons here; the page has those. --}}
                 <details class="menu nf-bell">

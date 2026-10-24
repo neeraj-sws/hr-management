@@ -3,40 +3,39 @@
 namespace App\Livewire;
 
 use App\Livewire\Concerns\InteractsWithHr;
-use App\Models\AttendanceEmployee;
-use App\Models\Project;
-use App\Models\Task;
+use App\Services\GlobalSearch;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
-/** Global search across records the user is allowed to see. */
+/** All search results (the header box shows the first few): the same groups, chips and rules, with Load more. */
 class Search extends Component
 {
     use InteractsWithHr;
 
-    #[Url]
-    public string $q = '';
+    #[Url] public string $q = '';
+    #[Url] public string $type = 'all';
+    public int $limit = 10;
 
-    public function render()
+    public function updated(string $property): void
     {
-        $user = $this->user();
-        $term = trim($this->q);
-        $orgWide = $user->canAny(['hr.manage', 'employees.manage']);
-        $scope = $this->teamEmployeeIds();
-        $employees = $tasks = $projects = collect();
+        if (in_array($property, ['q', 'type'], true)) $this->limit = 10;
+    }
 
-        if (mb_strlen($term) >= 2) {
-            $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $term).'%';
-            $employees = AttendanceEmployee::with('department')
-                ->when(! $orgWide, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))
-                ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('employee_code', 'like', $like)->orWhere('email', 'like', $like)->orWhere('designation', 'like', $like))
-                ->orderBy('name')->limit(20)->get();
-            $tasks = Task::with('assignee')
-                ->when(! $orgWide, fn ($q) => $q->whereIn('assignee_id', $scope->all() ?: [0]))
-                ->where('title', 'like', $like)->latest()->limit(20)->get();
-            $projects = $user->canAny(['projects.manage', 'hr.manage']) ? Project::where('name', 'like', $like)->limit(10)->get() : collect();
-        }
+    public function loadMore(): void
+    {
+        $this->limit = min(200, $this->limit + 20);
+    }
 
-        return $this->page('livewire.search', compact('employees', 'tasks', 'projects', 'term', 'orgWide'), 'Search');
+    public function render(GlobalSearch $search)
+    {
+        if (! array_key_exists($this->type, GlobalSearch::GROUPS)) $this->type = 'all';
+        $all = $search->search($this->user(), $this->q, 'all', 1);
+        $result = $search->search($this->user(), $this->q, $this->type, $this->type === 'all' ? 5 : $this->limit);
+
+        return $this->page('livewire.search', [
+            'result' => $result,
+            'totals' => collect($all['groups'])->map(fn ($g) => $g['total'])->all(),
+            'term' => trim($this->q),
+        ], 'Search');
     }
 }

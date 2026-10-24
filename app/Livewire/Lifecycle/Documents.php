@@ -29,6 +29,12 @@ class Documents extends Component
     public array $required = [];
     public bool $editRequired = false;
 
+    /** ?upload=1 (Quick actions in the search): open the upload form straight away. */
+    public function mount(): void
+    {
+        if (request()->boolean('upload') && ($this->canManage() || $this->ownEmployee())) $this->create();
+    }
+
     private function canManage(): bool
     {
         return $this->user()->can('lifecycle.manage');

@@ -40,6 +40,8 @@ class Requests extends Component
         $canApprove = $this->canApprove();
         if (! in_array($this->tab, ['mine', 'approvals', 'all'], true)) $this->tab = ! $this->ownEmployee() || ($canApprove && app(ApprovalInbox::class)->pending($this->user(), LeaveRequest::class)->isNotEmpty()) ? 'approvals' : 'mine';
         if ($this->tab !== 'mine' && ! $canApprove) $this->tab = 'mine';
+        // ?new=1 (Quick actions in the search): open "Apply leave" straight away.
+        if (request()->boolean('new') && $this->ownEmployee()) $this->create();
     }
 
     /** Leave administrators/approvers, and team leads for their own team's requests. */

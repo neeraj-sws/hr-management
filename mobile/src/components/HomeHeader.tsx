@@ -55,6 +55,9 @@ export function HomeHeader({ attendance }: { attendance: ReturnType<typeof useAt
           </View>
           <Text style={styles.sub} numberOfLines={1}>{sub}</Text>
         </View>
+        <Pressable onPress={() => router.push('/search')} hitSlop={8} style={styles.searchBtn} accessibilityRole="button" accessibilityLabel="Search">
+          <Ionicons name="search" size={22} color={colors.white} />
+        </Pressable>
         <NotificationBell />
       </View>
       <View style={styles.pills}>
@@ -74,6 +77,7 @@ export function HomeHeader({ attendance }: { attendance: ReturnType<typeof useAt
 }
 
 const styles = StyleSheet.create({
+  searchBtn: { padding: 6, marginRight: 2 },
   card: { backgroundColor: colors.navy, borderRadius: 18, padding: 14, marginBottom: 12 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dot: { position: 'absolute', right: 1, bottom: 1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: colors.navy },

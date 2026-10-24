@@ -32,6 +32,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
     Route::get('/dashboard', Livewire\Hr\Dashboard::class)->name('dashboard');
     Route::get('/search', Livewire\Search::class)->name('search');
+    Route::get('/search/suggest', \App\Http\Controllers\SearchController::class)->middleware('throttle:120,1')->name('search.suggest');
     Route::get('/profile', Livewire\Account\Profile::class)->name('account.profile');
 
     // People
