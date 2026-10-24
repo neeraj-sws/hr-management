@@ -412,7 +412,11 @@ class AttendanceService
             }
             $session->update($changes);
             // What the computer is doing right now, so every page and app counts the same bucket on live.
-            if (in_array($screenState, self::SCREEN_STATES, true)) \Illuminate\Support\Facades\Cache::put(self::screenStateKey($session), $screenState, now()->addMinutes(5));
+            if (in_array($screenState, self::SCREEN_STATES, true)) {
+                // A change of state (active → idle, idle → meeting …) is kept as an event for the day timeline.
+                if (\Illuminate\Support\Facades\Cache::get(self::screenStateKey($session)) !== $screenState) $this->event($session, 'screen_state', now(), 0, ['state' => $screenState]);
+                \Illuminate\Support\Facades\Cache::put(self::screenStateKey($session), $screenState, now()->addMinutes(5));
+            }
         }
 
         return $session;

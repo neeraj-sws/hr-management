@@ -2,12 +2,15 @@
     <div class="page-head"><div><h1>Monitoring policy</h1><p>What the SWS HR desktop app records about your work time, why, and who can see it.</p></div></div>
 
     @if($own && $policy['enabled'])
-        <div class="alert {{ $acknowledged ? 'alert-info' : 'alert-warn' }}">
-            <strong>● Screen capture is ON for you.</strong> {{ $terms['frequency'] }}
+        <div class="alert alert-danger mon-banner">
+            <strong>● Screen capture is ON for you{{ $capture['since'] ? ' since '.\Illuminate\Support\Carbon::parse($capture['since'])->format('d M Y') : '' }}.</strong>
+            @if($capture['reason'])<span>Reason: {{ $capture['reason'] }}.</span>@endif
+            @if($capture['until'])<span>Until {{ \Illuminate\Support\Carbon::parse($capture['until'])->format('d M Y') }}.</span>@endif
+            {{ $terms['frequency'] }}
             @if($acknowledged)<small>You confirmed this policy on {{ $acknowledgedAt?->format('d M Y, h:i A') }}.</small>@endif
         </div>
     @elseif($own)
-        <div class="alert alert-success"><strong>Screen capture is OFF for you.</strong> No screenshots of your screen are taken. If your employer turns it on, you are told in the app and by e-mail first.</div>
+        <div class="alert alert-success mon-banner"><strong>Screen capture is OFF for you.</strong> No screenshots of your screen are taken. If your employer turns it on, you are told in the app and by e-mail first.</div>
     @endif
 
     <section class="card">
@@ -28,4 +31,21 @@
             <div class="card-foot actions"><button class="btn btn-primary" wire:click="acknowledge" wire:loading.attr="disabled">I have read and understood this policy</button></div>
         @endif
     </section>
+
+    @if($own)
+        <section class="card mt">
+            <div class="card-head"><div><h2>Who looked at your monitoring data</h2><p>Every view and download of your screenshots and work timeline is logged.</p></div></div>
+            <div class="table-wrap"><table class="table" data-no-sort>
+                <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+                <tbody>
+                @forelse($views as $log)
+                    <tr><td class="nowrap">{{ $log->created_at->format('d M Y, h:i A') }}</td><td>{{ $log->actor?->name ?? 'System' }}</td>
+                        <td>{{ ['screenshot.viewed' => 'Viewed a screenshot', 'screenshot.downloaded' => 'Downloaded a screenshot', 'monitoring.detail_viewed' => 'Opened your work timeline', 'monitoring.screenshots_viewed' => 'Opened your screenshots'][$log->action] ?? str($log->action)->after('.')->replace('_', ' ')->ucfirst() }}</td></tr>
+                @empty
+                    <tr><td colspan="3"><x-empty title="Nobody has looked at your monitoring data" icon="eye" /></td></tr>
+                @endforelse
+                </tbody>
+            </table></div>
+        </section>
+    @endif
 </div>

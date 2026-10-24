@@ -115,6 +115,8 @@ return [
     ['heading' => 'Monitoring', 'items' => [
         ['label' => 'Monitoring Policy', 'route' => 'monitoring.policy', 'icon' => 'eye'],
         ['label' => 'Screenshots', 'route' => 'monitoring.screenshots', 'icon' => 'monitor'],
+        ['label' => 'Team monitoring', 'route' => 'monitoring.team', 'icon' => 'users'],
+        ['label' => 'Monitoring audit log', 'route' => 'monitoring.audit', 'icon' => 'history'],
         ['label' => 'Capture Report', 'route' => 'reports.show', 'params' => ['type' => 'screenshots'], 'icon' => 'chart'],
         ['label' => 'App Usage', 'route' => 'reports.show', 'params' => ['type' => 'app_usage'], 'icon' => 'chart'],
         ['label' => 'Window Titles', 'route' => 'reports.show', 'params' => ['type' => 'window_titles'], 'icon' => 'chart'],

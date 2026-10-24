@@ -22,13 +22,13 @@ class DatabaseSeeder extends Seeder
         'payroll.manage', 'payroll.approve', 'salary.adjust', 'salary.advance',
         'penalties.manage', 'policies.manage', 'performance.review', 'reports.view', 'audit.view',
         'notes.manage', 'credentials.manage', 'credentials.view', 'lifecycle.manage', 'roles.manage',
-        'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view', 'monitoring.manage',
+        'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view', 'monitoring.manage', 'monitoring.team', 'monitoring.capture',
     ];
 
     public const ROLE_PERMISSIONS = [
-        'HR' => ['employees.manage', 'teams.manage', 'projects.manage', 'tasks.manage', 'attendance.view', 'leave.manage', 'overtime.manage', 'approvals.manage', 'payroll.approve', 'salary.adjust', 'salary.advance', 'penalties.manage', 'policies.manage', 'performance.review', 'reports.view', 'audit.view', 'notes.manage', 'credentials.view', 'lifecycle.manage', 'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view'],
+        'HR' => ['employees.manage', 'teams.manage', 'projects.manage', 'tasks.manage', 'attendance.view', 'leave.manage', 'overtime.manage', 'approvals.manage', 'payroll.approve', 'salary.adjust', 'salary.advance', 'penalties.manage', 'policies.manage', 'performance.review', 'reports.view', 'audit.view', 'notes.manage', 'credentials.view', 'lifecycle.manage', 'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view', 'monitoring.team', 'monitoring.capture'],
         'Accounts' => ['payroll.manage', 'salary.adjust', 'salary.advance', 'penalties.manage', 'reports.view', 'audit.view', 'credentials.view', 'expenses.manage'],
-        'Manager' => ['projects.manage', 'tasks.manage', 'attendance.view', 'leave.approve', 'overtime.manage', 'approvals.manage', 'performance.review', 'reports.view', 'notes.manage', 'credentials.view', 'training.assign'],
+        'Manager' => ['projects.manage', 'tasks.manage', 'attendance.view', 'leave.approve', 'overtime.manage', 'approvals.manage', 'performance.review', 'reports.view', 'notes.manage', 'credentials.view', 'training.assign', 'monitoring.team'],
         'Employee' => ['credentials.view'],
     ];
 

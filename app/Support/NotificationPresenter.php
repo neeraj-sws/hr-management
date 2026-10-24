@@ -43,6 +43,7 @@ class NotificationPresenter
         'TaskAssignment' => 'task', 'TaskCompleted' => 'task', 'TaskOverdue' => 'task', 'TaskComment' => 'task', 'ProjectMember' => 'task', 'ProjectManager' => 'task', 'TrainingAssignment' => 'task', 'PerformanceGoal' => 'task', 'PerformanceReview' => 'task', 'PerformanceFeedback' => 'task',
         'PayrollRun' => 'payroll', 'SalaryPayment' => 'payroll', 'Payslip' => 'payroll', 'SalaryAdjustment' => 'payroll', 'SalaryAdvance' => 'payroll', 'SalaryProfile' => 'payroll', 'EmployeeFinalSettlement' => 'payroll', 'EmployeeFinalSettlementPayment' => 'payroll',
         'LeaveRequest' => 'leave', 'OvertimeRequest' => 'leave', 'LeaveBalance' => 'leave', 'ExpenseClaim' => 'leave',
+        'MonitoringRequest' => 'other', 'ScreenCapture' => 'other',
         'AttendanceAbsent' => 'attendance', 'AttendanceSession' => 'attendance', 'ShiftReminder' => 'attendance', 'CheckoutReminder' => 'attendance', 'AutoCheckout' => 'attendance', 'Shift' => 'attendance', 'WeeklyOff' => 'attendance',
     ];
 
@@ -52,6 +53,7 @@ class NotificationPresenter
         'LeaveRequest' => LeaveRequest::class,
         'OvertimeRequest' => OvertimeRequest::class,
         'ExpenseClaim' => ExpenseClaim::class,
+        'MonitoringRequest' => \App\Models\MonitoringRequest::class,
     ];
 
     /** @var list<string>|null known people, longest name first */
@@ -236,6 +238,7 @@ class NotificationPresenter
             return [$x[1], ' requested attendance correction for '.$date($x[2]), $x[3] ?: null, ($x[4] ?? '') !== '' ? $x[4] : null, null];
         }
         if (preg_match('/^A leave request from (.+?) needs review: (.*)$/su', $m, $x)) return [$x[1], ' requested leave', rtrim($x[2], '.'), null, null];
+        if (preg_match('/^A screen capture request from (.+?) for (.+?) needs review\. Reason: (.*)$/su', $m, $x)) return [$x[1], ' asks to turn on screen capture for '.$x[2], null, $x[3], null];
         if (preg_match('/^An expense claim from (.+?) \((.*)\) needs review\.?$/su', $m, $x)) return [$x[1], ' submitted an expense claim', $x[2], null, null];
         if (preg_match('/^(.+?) submitted the daily status for (.+?)(?: — (.*)|: (.*))?$/su', $m, $x)) {
             $quote = trim(($x[3] ?? '') !== '' ? $x[3] : ($x[4] ?? ''));

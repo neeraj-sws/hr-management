@@ -155,6 +155,10 @@ class ScreenCaptureService
         if (! $employee) return false;
         if ($employee->user_id === $user->id || $user->can('monitoring.view')) return true;
         $manager = $employee->manager;
+        if ((! $manager || $manager->user_id !== $user->id) && $user->can('monitoring.team')) {
+            // Team monitoring: the manager's reports' reports too (never outside their tree).
+            return (bool) app(TeamMonitoringService::class)->scopeIds($user)?->contains($employee->id);
+        }
         if (! $manager || $manager->user_id !== $user->id) return false;
         $since = EmployeeManagerHistory::where('employee_id', $employee->id)->where('manager_id', $manager->id)->whereNull('ends_on')->value('starts_on');
 

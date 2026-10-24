@@ -119,6 +119,10 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/monitoring/policy', Livewire\Monitoring\Policy::class)->middleware('access:profile,monitoring.view,monitoring.manage')->name('monitoring.policy');
     Route::get('/monitoring/screenshots', Livewire\Monitoring\Screenshots::class)->middleware('access:profile,monitoring.view,approvals.manage')->name('monitoring.screenshots');
     Route::get('/monitoring/screenshots/{screenshot}/image', [HrFileController::class, 'screenshot'])->name('monitoring.screenshot');
+    // Team monitoring: managers (their team) and HR / Admin (everyone); the scope is checked again on every request.
+    Route::get('/monitoring/team', Livewire\Monitoring\Team::class)->middleware('access:monitoring.team,monitoring.view')->name('monitoring.team');
+    Route::get('/monitoring/team/{employee}', Livewire\Monitoring\TeamMember::class)->middleware('access:monitoring.team,monitoring.view')->name('monitoring.team.show');
+    Route::get('/monitoring/audit', Livewire\Monitoring\AuditLog::class)->middleware('access:monitoring.view')->name('monitoring.audit');
 
     // Training
     Route::get('/training/my', Livewire\Training\MyTraining::class)->middleware('access:profile')->name('training.my');

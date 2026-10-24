@@ -30,6 +30,7 @@ class ApprovalInbox
         EmployeeFinalSettlement::class => ['Final settlement', ['payroll.approve']],
         AttendanceCorrection::class => ['Attendance correction', ['attendance.correct', 'approvals.manage']],
         ExpenseClaim::class => ['Expense claim', ['expenses.manage', 'approvals.manage']],
+        \App\Models\MonitoringRequest::class => ['Screen capture', ['monitoring.capture', 'monitoring.manage']],
     ];
 
     public function __construct(
@@ -148,6 +149,7 @@ class ApprovalInbox
             $subject instanceof ExpenseClaim => $this->expenses->decide($subject, $user->id, $approve, $note),
             $subject instanceof PayrollRun => $approve ? $this->workflow->approvePayroll($subject, $user->id) : $this->workflow->rejectPayroll($subject, $user->id, $note),
             $subject instanceof EmployeeFinalSettlement => $approve ? $this->settlements->approve($subject, $user->id) : $this->settlements->reject($subject, $user->id, $note),
+            $subject instanceof \App\Models\MonitoringRequest => app(TeamMonitoringService::class)->decideRequest($subject, $user, $approve, $note),
             default => $this->people->decideFinancialRequest($subject::class, $subject->id, $user->id, $approve, $note, $amount),
         };
     }
@@ -173,6 +175,7 @@ class ApprovalInbox
             $subject instanceof ExpenseClaim => "{$who} · {$subject->category} · ".number_format((float) $subject->amount, 2).' · '.$subject->spent_on->format('d M Y'),
             $subject instanceof PayrollRun => "Period {$subject->period_starts_on->format('d M')}–{$subject->period_ends_on->format('d M Y')} · {$subject->items()->count()} employees",
             $subject instanceof EmployeeFinalSettlement => "{$who} · net ".number_format((float) $subject->net_amount, 2),
+            $subject instanceof \App\Models\MonitoringRequest => "{$who} · turn on screen capture".($subject->until ? ' until '.$subject->until->format('d M Y') : '').' · asked by '.($subject->requester?->name ?? '—').' · '.$subject->reason,
             default => class_basename($subject).' #'.$subject?->id,
         };
     }
