@@ -18,6 +18,7 @@ class EmployeeDocumentService
 {
     /** Every document type. */
     public const CATEGORIES = [
+        'photo' => 'Photo',
         'resume' => 'Resume / CV',
         'aadhaar' => 'Aadhaar card',
         'pan' => 'PAN card',
@@ -38,7 +39,7 @@ class EmployeeDocumentService
     /** Types the company issues: only HR uploads these. */
     public const HR_ONLY = ['employment', 'appointment', 'relieving', 'noc'];
 
-    /** "photo" is the profile photo; it can be a required onboarding item too. */
+    /** "photo": a photo handed in as a document (the profile picture is changed only from the profile). */
     public const PHOTO = 'photo';
 
     /** Required at onboarding until HR changes the list. */
@@ -98,7 +99,7 @@ class EmployeeDocumentService
     /** Checklist items HR can require: the photo plus every type an employee can upload. */
     public static function requirable(): array
     {
-        return [self::PHOTO => 'Photo'] + self::employeeCategories();
+        return self::employeeCategories();
     }
 
     public function canManage(User $user): bool
@@ -133,7 +134,9 @@ class EmployeeDocumentService
         $labels = self::requirable();
 
         return array_map(function (string $key) use ($employee, $counts, $labels, $identityNames) {
-            $count = $key === self::PHOTO ? ($employee->photo_path ? 1 : 0) : (int) ($counts[$key] ?? 0);
+            $count = (int) ($counts[$key] ?? 0);
+            // A profile picture also counts as the onboarding photo.
+            if ($key === self::PHOTO && $count === 0 && $employee->photo_path) $count = 1;
             // An Aadhaar or PAN uploaded as "Identity proof" counts too.
             if (isset(self::IDENTITY_ALIASES[$key])) {
                 $count += $identityNames->filter(fn ($name) => preg_match(self::IDENTITY_ALIASES[$key], (string) $name))->count();
@@ -149,12 +152,6 @@ class EmployeeDocumentService
     {
         $manager = $this->canManage($actor);
         abort_unless($manager || $employee->user_id === $actor->id, 403);
-        if ($category === self::PHOTO) {
-            $this->photos->save($employee, $file, $actor);
-            $this->tellOtherSide($employee, $actor, 'Photo', null);
-
-            return null;
-        }
         $allowed = $manager ? self::CATEGORIES : self::employeeCategories();
         if (! isset($allowed[$category])) throw ValidationException::withMessages(['category' => 'Choose a document type you can upload.']);
         $path = $file->store('employee-documents/'.$employee->id, 'local');

@@ -56,7 +56,7 @@ class Documents extends Component
     /** Types the signed-in person can upload (the photo included). */
     private function uploadCategories(): array
     {
-        return [EmployeeDocumentService::PHOTO => 'Photo'] + ($this->canManage() ? EmployeeDocumentService::CATEGORIES : EmployeeDocumentService::employeeCategories());
+        return $this->canManage() ? EmployeeDocumentService::CATEGORIES : EmployeeDocumentService::employeeCategories();
     }
 
     public function editRequiredList(EmployeeDocumentService $service): void
@@ -110,12 +110,11 @@ class Documents extends Component
         // On a validation error the form stays open with everything already entered (including the chosen file).
         $this->validate($this->documentRules(), $this->documentMessages(), ['employeeId' => 'employee', 'documentCategory' => 'category', 'expiresOn' => 'expiry date']);
         $service->store(AttendanceEmployee::findOrFail($this->employeeId), $this->documentCategory, $this->file, $this->user(), $this->expiresOn ?: null);
-        $photo = $this->documentCategory === EmployeeDocumentService::PHOTO;
         $this->showForm = false;
         $this->reset('file', 'employeeId', 'expiresOn');
         $this->resetValidation();
         $this->dispatch('document-uploaded');
-        $this->toast($photo ? 'Photo saved.' : ($this->canManage() ? 'Document stored privately.' : 'Uploaded — HR has been told.'));
+        $this->toast($this->canManage() ? 'Document stored privately.' : 'Uploaded — HR has been told.');
     }
 
     public function delete(int $id, EmployeeDocumentService $service): void
@@ -144,7 +143,7 @@ class Documents extends Component
             try { return $path && $disk->exists($path) ? $disk->size($path) : null; } catch (\Throwable) { return null; }
         };
 
-        // "My files": every stored document, plus the profile photo (it is kept on the profile, not as a document).
+        // "My files": every stored document (a photo handed in here is a document; the profile picture is set on the profile).
         $files = $documents->map(fn (EmployeeDocument $d) => [
             'id' => $d->id, 'name' => $d->original_name, 'category' => self::CATEGORIES[$d->category] ?? ucfirst($d->category),
             'group' => EmployeeDocumentService::group($d->category), 'kind' => self::fileKind($d->original_name), 'size' => $size($d->storage_path),
@@ -152,12 +151,6 @@ class Documents extends Component
             'view' => route('hr.documents.view', $d), 'download' => route('hr.documents.download', $d),
             'canDelete' => $this->canManage() || $d->uploaded_by === auth()->id(),
         ]);
-        if ($checklistFor?->photo_path && $disk->exists($checklistFor->photo_path)) {
-            $files->prepend(['id' => null, 'name' => 'Profile photo', 'category' => 'Photo', 'group' => 'other', 'kind' => 'image',
-                'size' => $size($checklistFor->photo_path), 'date' => \Illuminate\Support\Carbon::createFromTimestamp($disk->lastModified($checklistFor->photo_path), config('app.timezone')),
-                'by' => null, 'employee' => $checklistFor->name, 'expires' => null,
-                'view' => route('people.photo', $checklistFor), 'download' => route('people.photo', $checklistFor), 'canDelete' => false]);
-        }
         $groupCounts = ['all' => $files->count()] + collect(['identity', 'education', 'bank', 'other'])->mapWithKeys(fn ($g) => [$g => $files->where('group', $g)->count()])->all();
 
         return $this->page('livewire.lifecycle.documents', [

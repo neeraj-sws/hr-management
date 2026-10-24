@@ -36,7 +36,7 @@
                 <h3 class="docs-section">Done ({{ $doneItems->count() }})</h3>
                 <div class="docs-done">
                     @foreach($doneItems as $item)
-                        <span class="docs-done-chip"><x-icon name="check" class="icon-sm" />{{ \Illuminate\Support\Str::before($item['label'], ' (') }}@if($item['key'] !== 'photo') · {{ $item['count'] }} file{{ $item['count'] > 1 ? 's' : '' }}@endif
+                        <span class="docs-done-chip"><x-icon name="check" class="icon-sm" />{{ \Illuminate\Support\Str::before($item['label'], ' (') }} · {{ $item['count'] }} file{{ $item['count'] > 1 ? 's' : '' }}
                             @if($canUpload)<button type="button" wire:click="create('{{ $item['key'] }}')" aria-label="Add more: {{ $item['label'] }}">· Add more</button>@endif</span>
                     @endforeach
                 </div>
@@ -98,7 +98,7 @@
                 @if($canManage)<x-field label="Employee" name="employeeId" full><select wire:model.live="employeeId"><option value="">Select</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></x-field>@endif
                 <x-field label="Document" name="documentCategory"><select wire:model.live="documentCategory">@foreach($uploadCategories as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
                 @if($documentCategory !== 'photo')<x-field label="Expiry date" name="expiresOn" hint="optional (e.g. passport)"><input type="date" wire:model.live="expiresOn"></x-field>@endif
-                <x-field label="File" name="file" :hint="$documentCategory === 'photo' ? 'JPG, PNG or WebP, max 3 MB — becomes your profile photo' : 'PDF, JPG, PNG or Word, max 10 MB'" full>
+                <x-field label="File" name="file" :hint="$documentCategory === 'photo' ? 'JPG, PNG or WebP, max 3 MB (your profile picture is changed under My profile)' : 'PDF, JPG, PNG or Word, max 10 MB'" full>
                     <input type="file" wire:model="file" accept="{{ $documentCategory === 'photo' ? '.jpg,.jpeg,.png,.webp' : '.pdf,.jpg,.jpeg,.png,.doc,.docx' }}" x-on:click="failed = ''">
                     <span x-show="uploading" class="small muted">Uploading… <span x-text="progress + '%'"></span></span>
                     <span x-show="failed" x-text="failed" class="error"></span>

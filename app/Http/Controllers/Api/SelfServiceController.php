@@ -37,11 +37,9 @@ class SelfServiceController extends ApiController
             'file_type' => $type = \App\Livewire\Lifecycle\Documents::fileKind($d->original_name),
             'view_url' => in_array($type, ['pdf', 'image'], true) ? URL::temporarySignedRoute('files.document.viewer', now()->addMinutes(5), ['document' => $d->id, 'user' => $user->id]) : null,
         ])->values(),
-            // The profile photo is kept on the profile (not as a document); the app lists it with the files.
-            'photo_url' => $employee->photo_path ? url('/api/me/photo').'?v='.substr(md5($employee->photo_path), 0, 8) : null,
             // What is still missing from the onboarding papers, and which types the employee can upload.
             'checklist' => $service->checklist($employee),
-            'upload_types' => collect([EmployeeDocumentService::PHOTO => 'Photo'] + EmployeeDocumentService::employeeCategories())->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
+            'upload_types' => collect(EmployeeDocumentService::employeeCategories())->map(fn ($label, $key) => ['key' => $key, 'label' => $label])->values(),
         ]);
     }
 
@@ -50,7 +48,7 @@ class SelfServiceController extends ApiController
     {
         $employee = $this->apiEmployee($request);
         $data = $request->validate([
-            'category' => ['required', 'string', 'in:'.implode(',', array_keys([EmployeeDocumentService::PHOTO => 1] + EmployeeDocumentService::employeeCategories()))],
+            'category' => ['required', 'string', 'in:'.implode(',', array_keys(EmployeeDocumentService::employeeCategories()))],
             'file' => $request->input('category') === EmployeeDocumentService::PHOTO ? EmployeePhotoService::RULES : EmployeeDocumentService::FILE_RULES,
             'expires_on' => ['nullable', 'date'],
         ], ['file.mimes' => 'Upload a PDF, JPG, PNG or Word file (a photo: JPG, PNG or WebP).', 'file.max' => 'The file is too large (max 10 MB, a photo 3 MB).']);

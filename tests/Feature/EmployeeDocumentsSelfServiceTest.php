@@ -51,12 +51,11 @@ class EmployeeDocumentsSelfServiceTest extends TestCase
         $this->assertSame($e->user->id, $doc->uploaded_by);
         $this->assertTrue($this->admin->notifications()->get()->contains(fn ($n) => str_contains($n->data['message'] ?? '', 'Docs Person uploaded: Resume / CV')));
 
-        // The photo item sets the profile photo.
+        // The photo item is a document: listed and viewable, and the profile picture is NOT changed.
         $page->call('create', 'photo')->set('file', $this->fakeImage())->call('saveDocument')->assertHasNoErrors();
-        $this->assertNotNull($e->fresh()->photo_path);
-
-        // The photo now shows in "My files" too.
-        $page->assertSee('Profile photo')->assertSee('My files (2)');
+        $this->assertNull($e->fresh()->photo_path);
+        $this->assertSame(1, EmployeeDocument::where('employee_id', $e->id)->where('category', 'photo')->count());
+        $page->assertSee('My files (2)')->assertSeeText('Photo · 1 file');
 
         // Company papers (appointment letter …) are HR-only; another employee's id is ignored.
         $page->call('create')->set('documentCategory', 'appointment')->set('file', UploadedFile::fake()->create('a.pdf', 10, 'application/pdf'))->call('saveDocument')->assertHasErrors('documentCategory');
@@ -112,6 +111,19 @@ class EmployeeDocumentsSelfServiceTest extends TestCase
         $this->assertFalse($done()['pan']);
 
         Livewire::actingAs($e->user)->test(Documents::class)->assertSeeText('Aadhaar card · 1 file')->assertDontSee('Front and back, PDF or JPG');
+    }
+
+    public function test_app_sets_the_profile_picture_on_its_own(): void
+    {
+        $e = $this->employee();
+        Sanctum::actingAs($e->user, ['*']);
+        $this->post('/api/me/photo', ['photo' => $this->fakeImage()], ['Accept' => 'application/json'])->assertOk()->assertJsonPath('message', 'Profile picture updated.');
+        $this->assertNotNull($e->fresh()->photo_path);
+        $this->assertSame(0, EmployeeDocument::where('employee_id', $e->id)->count(), 'Not a document');
+        $this->assertTrue(collect(app(EmployeeDocumentService::class)->checklist($e->fresh()))->firstWhere('key', 'photo')['done'], 'A profile picture also ticks off the onboarding photo');
+        $this->post('/api/me/photo', ['photo' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf')], ['Accept' => 'application/json'])->assertUnprocessable();
+        $this->deleteJson('/api/me/photo')->assertOk();
+        $this->assertNull($e->fresh()->photo_path);
     }
 
     public function test_mobile_app_lists_the_checklist_and_uploads(): void

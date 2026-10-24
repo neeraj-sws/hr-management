@@ -1,17 +1,51 @@
 import { Avatar } from '../../components/Avatar';
 import { RoleBadges } from '../../components/RoleBadge';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge, Button, Card, colors, confirmAction, H2, Muted, Notice, Row, Screen } from '../../components/ui';
 import { authenticate, biometricAvailable, biometricEnabled, setBiometricEnabled } from '../../lib/biometric';
-import { get, getBaseUrl } from '../../lib/api';
+import { ApiError, api, get, getBaseUrl, upload } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { subscribe } from '../../lib/queue';
 import type { Approval } from '../../lib/types';
 
 export default function More() {
-  const { me, signOut } = useAuth();
+  const { me, signOut, refreshMe } = useAuth();
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoNote, setPhotoNote] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+
+  // Profile picture: its own button here (a photo uploaded under Documents is a document, not the picture).
+  const changePhoto = async (source: 'library' | 'camera') => {
+    if (source === 'camera' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) { setPhotoNote({ tone: 'error', text: 'Allow camera access to take a photo.' }); return; }
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.6, allowsEditing: true, aspect: [1, 1], exif: false };
+    const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+    if (result.canceled || !result.assets.length) return;
+    const asset = result.assets[0];
+    if (asset.fileSize && asset.fileSize > 3 * 1024 * 1024) { setPhotoNote({ tone: 'error', text: 'The photo is larger than 3 MB. Choose a smaller one.' }); return; }
+    setPhotoBusy(true);
+    setPhotoNote(null);
+    try {
+      const form = new FormData();
+      const type = asset.mimeType ?? 'image/jpeg';
+      const file = (asset as { file?: File }).file;
+      if (file) form.append('photo', file, file.name);
+      else form.append('photo', { uri: asset.uri, name: `profile.${type.split('/')[1] ?? 'jpg'}`, type } as unknown as Blob);
+      await upload('/me/photo', form);
+      await refreshMe();
+      setPhotoNote({ tone: 'success', text: 'Profile picture updated.' });
+    } catch (e) {
+      setPhotoNote({ tone: 'error', text: e instanceof ApiError ? (e.isNetwork ? 'The photo did not reach the server. Check the internet and try again.' : e.firstMessage) : 'Could not update the photo.' });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+  const removePhoto = async () => {
+    if (!(await confirmAction('Remove photo', 'Remove your profile picture?', 'Remove'))) return;
+    try { await api('DELETE', '/me/photo'); await refreshMe(); setPhotoNote({ tone: 'success', text: 'Profile picture removed.' }); }
+    catch (e) { setPhotoNote({ tone: 'error', text: e instanceof ApiError ? e.firstMessage : 'Could not remove the photo.' }); }
+  };
   const router = useRouter();
   const [approvals, setApprovals] = useState(0);
   const [queue, setQueue] = useState({ queued: 0, problems: 0 });
@@ -59,13 +93,23 @@ export default function More() {
     <Screen>
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Avatar name={me?.name} photoUrl={me?.photo_url} />
+          <Pressable onPress={() => changePhoto('library')} accessibilityRole="button" accessibilityLabel="Change profile picture">
+            <Avatar name={me?.name} photoUrl={me?.photo_url} />
+          </Pressable>
           <View style={{ flex: 1 }}>
             <H2>{me?.name ?? ''}</H2>
             <Muted>{[me?.employee?.employee_code, me?.employee?.department?.name].filter(Boolean).join(' · ')}</Muted>
             <View style={{ marginTop: 4 }}><RoleBadges badges={me?.badges ?? me?.roles.map((r) => ({ label: r }))} /></View>
           </View>
         </View>
+        {me?.employee ? (
+          <View style={styles.photoActions}>
+            <Button small title={photoBusy ? 'Uploading…' : me?.photo_url ? 'Change photo' : 'Add photo'} onPress={() => changePhoto('library')} disabled={photoBusy} />
+            <Button small title="Take photo" onPress={() => changePhoto('camera')} disabled={photoBusy} />
+            {me?.photo_url ? <Button small title="Remove" tone="danger" onPress={removePhoto} disabled={photoBusy} /> : null}
+          </View>
+        ) : null}
+        {photoNote ? <Notice tone={photoNote.tone} text={photoNote.text} /> : null}
         {me?.employee ? (
           <Pressable onPress={() => setShowDetails((v) => !v)} style={{ marginTop: 8 }}>
             <Muted style={{ color: colors.blue }}>{showDetails ? 'Hide details ▲' : 'Show details ▼'}</Muted>
@@ -110,6 +154,7 @@ function initials(name?: string): string {
 }
 
 const styles = StyleSheet.create({
+  photoActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.white, fontWeight: '800', fontSize: 16 },
   section: { fontSize: 12, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 2 },

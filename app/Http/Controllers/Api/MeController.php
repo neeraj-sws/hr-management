@@ -59,6 +59,28 @@ class MeController extends ApiController
         ]]);
     }
 
+    /** POST /api/me/photo: the app sets the profile picture (the same as "Change photo" on the website profile). */
+    public function updatePhoto(Request $request, \App\Services\EmployeePhotoService $photos)
+    {
+        $employee = $request->user()?->employeeProfile;
+        abort_unless($employee, 404);
+        $request->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.mimes' => 'Use a JPG, PNG or WebP photo.', 'photo.max' => 'The photo is larger than 3 MB.']);
+        $photos->save($employee, $request->file('photo'), $request->user());
+        $employee->refresh();
+
+        return response()->json(['message' => 'Profile picture updated.', 'photo_url' => url('/api/me/photo').'?v='.substr(md5((string) $employee->photo_path), 0, 8)]);
+    }
+
+    /** DELETE /api/me/photo: back to initials. */
+    public function deletePhoto(Request $request, \App\Services\EmployeePhotoService $photos)
+    {
+        $employee = $request->user()?->employeeProfile;
+        abort_unless($employee, 404);
+        $photos->remove($employee, $request->user());
+
+        return response()->json(['message' => 'Profile picture removed.', 'photo_url' => null]);
+    }
+
     /** The signed-in person's profile photo, for the desktop and mobile apps (token sign-in, no website session). */
     public function photo(Request $request)
     {
