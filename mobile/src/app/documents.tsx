@@ -1,7 +1,8 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { AddButton, FormSheet } from '../components/FormSheet';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, formatDate, H2, Muted, Notice, Row, Screen } from '../components/ui';
 import { ApiError, api, get, upload } from '../lib/api';
@@ -46,7 +47,8 @@ export default function DocumentsScreen() {
       setLoaded(true);
     }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  // Reloaded every time the screen opens: a file added or removed on the website shows here at once.
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // Links are signed for you and expire in 5 minutes, so fetch fresh ones before opening.
   const open = async (id: number, view = false) => {

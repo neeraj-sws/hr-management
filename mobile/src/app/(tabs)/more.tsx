@@ -62,7 +62,9 @@ export default function More() {
 
   useFocusEffect(useCallback(() => {
     get<{ data: Approval[] }>('/approvals').then((r) => setApprovals(r.data.length)).catch(() => undefined);
-  }, []));
+    // A profile picture changed on the website shows here too.
+    refreshMe().catch(() => undefined);
+  }, [refreshMe]));
   useEffect(() => subscribe((items) => setQueue({ queued: items.filter((i) => i.status === 'queued').length, problems: items.filter((i) => i.status !== 'queued').length })), []);
 
   type Tile = { label: string; icon: string; href: string; badge?: number; tone?: 'red' | 'amber' };
