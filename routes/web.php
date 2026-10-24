@@ -43,6 +43,9 @@ Route::middleware(['auth', 'account.active'])->group(function () {
         Route::get('/people/managers', Livewire\People\Managers::class)->name('people.managers');
     });
     Route::get('/people/employees/{employee}', Livewire\People\EmployeeProfile::class)->name('people.employees.show');
+    // View as employee (Master Admin): the website as that person sees it; Return ends it.
+    Route::post('/people/employees/{employee}/view-as', [\App\Http\Controllers\ImpersonationController::class, 'start'])->middleware('throttle:20,1')->name('people.view-as');
+    Route::post('/view-as/stop', [\App\Http\Controllers\ImpersonationController::class, 'stop'])->name('people.view-as.stop');
     // Employee photo: any signed-in colleague may see it (like the org chart); stored privately.
     Route::get('/people/photos/{employee}', function (\App\Models\AttendanceEmployee $employee) {
         abort_unless($employee->photo_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($employee->photo_path), 404);

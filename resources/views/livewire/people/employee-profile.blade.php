@@ -2,7 +2,10 @@
     <div class="page-head">
         <div class="profile-chip">
             <x-avatar :employee="$employee" size="lg" />
-            <div><p class="eyebrow">{{ $employee->employee_code }}</p><h1>{{ $employee->name }}</h1><p>{{ $employee->designation ?? 'Employee' }} · {{ $employee->department?->name ?? 'No department' }} · <x-badge :status="$employee->is_active ? 'active' : ($employee->exit_date ? 'ex-employee' : 'inactive')" /></p>
+            <div><p class="eyebrow">{{ $employee->employee_code }}</p><h1>{{ $employee->name }}</h1>
+                @if(! app(\App\Services\ImpersonationService::class)->refusal(auth()->user(), $employee))
+                    <form method="POST" action="{{ route('people.view-as', $employee) }}" class="viewas-start" onsubmit="return confirm('View the website as {{ addslashes($employee->name) }}? Their password and account are not changed, and this is logged.')">@csrf<button type="submit" class="btn btn-sm"><x-icon name="eye" class="icon-sm" />View as employee</button></form>
+                @endif<p>{{ $employee->designation ?? 'Employee' }} · {{ $employee->department?->name ?? 'No department' }} · <x-badge :status="$employee->is_active ? 'active' : ($employee->exit_date ? 'ex-employee' : 'inactive')" /></p>
                 @if($canChangePhoto)
                     <div class="photo-edit">
                         <label class="btn btn-sm" style="cursor:pointer"><x-icon name="user" class="icon-sm" />{{ $employee->photo_path ? 'Change photo' : 'Add photo' }}<input type="file" wire:model="photo" accept="image/jpeg,image/png,image/webp" hidden></label>

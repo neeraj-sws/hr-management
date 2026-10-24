@@ -207,6 +207,13 @@
     <label class="scrim" for="nav-toggle" aria-hidden="true"></label>
 
     <div class="main">
+        @if(\App\Services\ImpersonationService::active())
+            <div class="viewas-bar" role="status">
+                <x-icon name="eye" class="icon-sm" />
+                <span>You are viewing as <strong>{{ $user->name }}</strong>. View only: nothing can be saved in their name, and this visit is logged under {{ \App\Services\ImpersonationService::impersonator()?->name ?? 'your name' }}.</span>
+                <form method="POST" action="{{ route('people.view-as.stop') }}">@csrf<button type="submit" class="btn btn-sm"><x-icon name="arrow-left" class="icon-sm" />Return to my account</button></form>
+            </div>
+        @endif
         <header class="topbar">
             <div class="topbar-left">
                 <label class="burger icon-btn" for="nav-toggle" aria-label="Open navigation"><x-icon name="menu" /></label>

@@ -64,6 +64,7 @@
                                     <a class="menu-item" href="{{ route('people.employees.show', $employee) }}"><x-icon name="user" class="icon-sm" />View profile</a>
                                     <button type="button" class="menu-item" wire:click="edit({{ $employee->id }})"><x-icon name="edit" class="icon-sm" />Edit</button>
                                     @if($employee->user_id && $isAdmin)<button type="button" class="menu-item" wire:click="openPassword({{ $employee->id }})"><x-icon name="key" class="icon-sm" />Reset password</button>@endif
+                                    @if(! app(\App\Services\ImpersonationService::class)->refusal(auth()->user(), $employee))<form method="POST" action="{{ route('people.view-as', $employee) }}">@csrf<button type="submit" class="menu-item"><x-icon name="eye" class="icon-sm" />View as employee</button></form>@endif
                                     @if($employee->user_id !== auth()->id())
                                         <button type="button" class="menu-item {{ $employee->is_active ? 'danger' : '' }}" wire:click="toggleActive({{ $employee->id }})" wire:confirm="{{ $employee->is_active ? 'Deactivate '.$employee->name.'? Their login and device tokens will be revoked.' : 'Reactivate '.$employee->name.'?' }}"><x-icon name="{{ $employee->is_active ? 'user-minus' : 'user-check' }}" class="icon-sm" />{{ $employee->is_active ? 'Deactivate' : 'Reactivate' }}</button>
                                     @endif

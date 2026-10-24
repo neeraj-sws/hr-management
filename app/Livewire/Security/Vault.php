@@ -88,6 +88,7 @@ class Vault extends Component
 
     public function reveal(int $id, AuditLogger $audit): void
     {
+        \App\Services\ImpersonationService::block(); // saved passwords are never shown while viewing as someone
         $entry = CredentialVaultEntry::findOrFail($id);
         if (! $this->user()->can('view', $entry)) {
             $audit->record('credential.access_denied', $entry, ['category' => $entry->category]);

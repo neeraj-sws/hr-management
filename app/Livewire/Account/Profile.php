@@ -15,6 +15,7 @@ class Profile extends Component
 
     public function updatedPhoto(\App\Services\EmployeePhotoService $photos): void
     {
+        \App\Services\ImpersonationService::block();
         $this->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.mimes' => 'Choose a JPG, PNG or WebP picture.', 'photo.max' => 'The picture must be 3 MB or smaller.']);
         $photos->save($this->requireEmployee(), $this->photo, $this->user());
         $this->reloadWith('Photo updated.');
@@ -22,6 +23,7 @@ class Profile extends Component
 
     public function removePhoto(\App\Services\EmployeePhotoService $photos): void
     {
+        \App\Services\ImpersonationService::block();
         $photos->remove($this->requireEmployee(), $this->user());
         $this->reloadWith('Photo removed.');
     }
@@ -51,6 +53,7 @@ class Profile extends Component
 
     public function saveContact(AuditLogger $audit): void
     {
+        \App\Services\ImpersonationService::block();
         $employee = $this->requireEmployee();
         $data = $this->validate(['phone' => ['nullable', 'string', 'max:40', 'regex:/^[0-9+\-\s()]*$/'], 'dateOfBirth' => ['nullable', 'date', 'before:today', 'after:1900-01-01']], [], ['dateOfBirth' => 'date of birth']);
         $employee->update(['phone' => $data['phone'] ?: null, 'date_of_birth' => $data['dateOfBirth'] ?: null, 'share_birthday' => $this->shareBirthday]);
@@ -60,6 +63,7 @@ class Profile extends Component
 
     public function savePreferences(AuditLogger $audit): void
     {
+        \App\Services\ImpersonationService::block();
         $clean = [];
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => [, $mutable]) {
             $clean[$group] = ['in_app' => $mutable ? (bool) ($this->prefs[$group]['in_app'] ?? true) : true, 'email' => (bool) ($this->prefs[$group]['email'] ?? false), 'push' => (bool) ($this->prefs[$group]['push'] ?? true)];
@@ -73,6 +77,7 @@ class Profile extends Component
     /** Turns the e-mailed sign-in code on or off for this person's own account. */
     public function toggleTwoFactor(AuditLogger $audit, \App\Services\TwoFactorService $twoFactor): void
     {
+        \App\Services\ImpersonationService::block();
         $user = $this->user();
         $on = ! $user->two_factor_enabled;
         if ($on && ! \App\Notifications\Channels\SafeMailChannel::enabled()) {

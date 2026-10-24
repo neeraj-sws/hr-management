@@ -20,7 +20,7 @@ class EnsureWebAccess
     public function handle(Request $request, Closure $next): Response
     {
         $user = Auth::guard('web')->user();
-        if (! $user || $request->routeIs('logout') || $this->access->allows($user)) return $next($request);
+        if (! $user || $request->routeIs('logout') || \App\Services\ImpersonationService::active() || $this->access->allows($user)) return $next($request);
 
         Auth::guard('web')->logout();
         $request->session()->invalidate();

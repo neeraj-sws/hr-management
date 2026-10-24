@@ -110,6 +110,10 @@ class AuthenticatedSessionController extends Controller
 
     public function destroy(Request $request): RedirectResponse
     {
+        if (\App\Services\ImpersonationService::active()) {
+            app(\App\Services\ImpersonationService::class)->stop($request);
+            if (Auth::check()) return redirect()->route('dashboard')->with('toast', ['message' => 'Back to your own account.', 'type' => 'success']);
+        }
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

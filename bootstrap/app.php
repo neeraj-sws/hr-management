@@ -19,7 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
         $middleware->append(SecurityHeaders::class);
         // Settings > Security > Website access: who may use the website (the apps use the API, not this).
-        $middleware->web(append: EnsureWebAccess::class);
+        $middleware->web(append: [EnsureWebAccess::class, \App\Http\Middleware\ViewAsReadOnly::class]);
         $middleware->alias(['account.active' => EnsureActiveAccount::class, 'access' => EnsureAccess::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

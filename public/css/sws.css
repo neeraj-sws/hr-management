@@ -958,3 +958,11 @@ div.tm-card{cursor:default}
 .sec-dirty i{width:8px;height:8px;border-radius:50%;background:#EF9F27}
 @media (max-width:900px){.sec-status,.sec-options,.sec-options-3{grid-template-columns:1fr}.sec-head{padding:14px 16px}.sec-body{padding:14px 16px}.sec-foot{padding:12px 16px}.sec-test-input{width:100%}}
 .emp-input-icon input:focus,.emp-input-icon input:focus-visible{outline:none;box-shadow:none}
+
+/* ---------- View as employee ---------- */
+.viewas-bar{position:sticky;top:0;z-index:45;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#A32D2D;color:#fff;padding:9px 20px;font-size:13.5px}
+.viewas-bar strong{color:#fff}
+.viewas-bar span{flex:1;min-width:220px}
+.viewas-bar form{margin:0}
+.viewas-bar .btn{background:#fff;color:#A32D2D;border-color:#fff;font-weight:700}
+.viewas-start{display:inline-block;margin:4px 0 6px}

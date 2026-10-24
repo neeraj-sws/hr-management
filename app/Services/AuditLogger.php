@@ -13,8 +13,12 @@ class AuditLogger
     {
         $request ??= app()->bound('request') ? request() : null;
 
+        // Viewing as an employee: the admin is the actor; the account used is noted.
+        $impersonator = ImpersonationService::active() ? (int) session(ImpersonationService::SESSION_KEY) : null;
+        if ($impersonator && $action !== 'user.impersonation_started') $metadata = [...$metadata, 'viewing_as_user_id' => Auth::id()];
+
         return AuditLog::create([
-            'actor_id' => Auth::id(),
+            'actor_id' => $impersonator ?: Auth::id(),
             'action' => $action,
             'subject_type' => $subject ? $subject::class : null,
             'subject_id' => $subject?->getKey(),
