@@ -15,7 +15,7 @@ use Livewire\WithPagination;
 
 class Employees extends Component
 {
-    use InteractsWithHr, WithPagination;
+    use InteractsWithHr, WithPagination, \Livewire\WithFileUploads;
 
     #[Url] public string $search = '';
     #[Url] public ?int $department = null;
@@ -23,6 +23,49 @@ class Employees extends Component
     /** Joined between these dates (empty = any). */
     #[Url] public string $joinedFrom = '';
     #[Url] public string $joinedTo = '';
+    /** Column sort: code | name | email | department | hours | joined | status, and direction. */
+    #[Url] public string $sort = 'code';
+    #[Url] public string $dir = 'asc';
+    #[Url] public int $perPage = 10;
+    /** Import employees from a CSV / Excel sheet. */
+    public bool $showImport = false;
+    public $importFile = null;
+    public ?array $importResult = null;
+
+    public const SORTS = ['code' => null, 'name' => 'name', 'email' => 'email', 'department' => 'department', 'hours' => 'daily_work_hours', 'joined' => 'joined_at', 'status' => 'is_active'];
+
+    public function sortBy(string $column): void
+    {
+        if (! array_key_exists($column, self::SORTS)) return;
+        $this->dir = $this->sort === $column && $this->dir === 'asc' ? 'desc' : 'asc';
+        $this->sort = $column;
+        $this->resetPage();
+    }
+
+    public function resetFilters(): void
+    {
+        $this->reset('search', 'department', 'joinedFrom', 'joinedTo', 'reportsTo');
+        $this->status = 'active';
+        $this->resetPage();
+    }
+
+    public function openImport(): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        $this->reset('importFile', 'importResult');
+        $this->resetValidation();
+        $this->showImport = true;
+    }
+
+    public function importEmployees(\App\Services\EmployeeImport $import): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        $this->validate(['importFile' => ['required', 'file', 'max:5120', 'mimes:csv,txt,xlsx']], ['importFile.required' => 'Choose a CSV or Excel file.', 'importFile.mimes' => 'Upload a .csv or .xlsx file.']);
+        $this->importResult = $import->import($this->importFile, $this->user());
+        $this->reset('importFile');
+        if (! $this->importResult['fatal']) $this->toast("Import done: {$this->importResult['created']} added, {$this->importResult['updated']} updated.");
+    }
+
     /** Only people reporting to this manager (opened from Managers). */
     #[Url(as: 'manager')] public ?int $reportsTo = null;
 
@@ -62,7 +105,7 @@ class Employees extends Component
 
     public function updated($property): void
     {
-        if (in_array($property, ['search', 'department', 'status', 'joinedFrom', 'joinedTo', 'reportsTo'], true)) $this->resetPage();
+        if (in_array($property, ['search', 'department', 'status', 'joinedFrom', 'joinedTo', 'reportsTo', 'perPage'], true)) $this->resetPage();
         // Choosing "Daily wage" sets the salary to per day.
         if ($property === 'employmentType' && $this->employmentType === 'daily_wage') $this->payBasis = 'daily';
     }
@@ -194,6 +237,7 @@ class Employees extends Component
     public function closeModal(): void
     {
         $this->showForm = false;
+        $this->showImport = false;
         $this->pwEmployeeId = null;
         $this->pwPassword = '';
         $this->resetForm();
@@ -218,8 +262,17 @@ class Employees extends Component
             ->when($this->reportsTo, fn ($q, $id) => $q->where('manager_id', $id))
             ->when(strtotime($this->joinedFrom), fn ($q) => $q->whereDate('joined_at', '>=', $this->joinedFrom))
             ->when(strtotime($this->joinedTo), fn ($q) => $q->whereDate('joined_at', '<=', $this->joinedTo))
-            // Newest employee number first (natural order: EMP-10 after EMP-9).
-            ->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code')->paginate(15);
+            ->tap(function ($q) {
+                $dir = $this->dir === 'desc' ? 'desc' : 'asc';
+                match ($this->sort) {
+                    'department' => $q->orderBy(Department::select('name')->whereColumn('departments.id', 'attendance_employees.department_id'), $dir),
+                    'code' => $q->orderByRaw('LENGTH(employee_code) '.$dir)->orderBy('employee_code', $dir),
+                    default => $q->orderBy(self::SORTS[$this->sort] ?? 'employee_code', $dir),
+                };
+                // Then employee number in natural order (EMP-10 after EMP-9).
+                $q->orderByRaw('LENGTH(employee_code)')->orderBy('employee_code');
+            })
+            ->paginate(in_array($this->perPage, [10, 15, 25, 50], true) ? $this->perPage : 10);
 
         return $this->page('livewire.people.employees', [
             'employees' => $employees,
@@ -232,6 +285,7 @@ class Employees extends Component
             'pwEmployee' => $this->pwEmployeeId ? AttendanceEmployee::find($this->pwEmployeeId) : null,
             'reportsToManager' => $this->reportsTo ? AttendanceEmployee::find($this->reportsTo) : null,
             'isAdmin' => \App\Support\Access::isAdmin($this->user()),
+            'canImport' => $this->user()->canAny(['employees.manage', 'hr.manage']),
         ], $this->traineesOnly ? 'Trainees' : 'Employees');
     }
 }

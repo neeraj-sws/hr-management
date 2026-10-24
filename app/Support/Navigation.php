@@ -26,6 +26,47 @@ class Navigation
         return $groups;
     }
 
+    /** Sidebar look per module: [section, icon, tile colour]. Modules not listed go under "More". */
+    public const META = [
+        'Dashboard' => [null, 'home', '#2B5BD7'],
+        'Company' => ['Organization', 'building', '#2563EB'],
+        'People' => ['Organization', 'users', '#5B6B86'],
+        'Attendance' => ['Attendance & Work', 'calendar', '#2563EB'],
+        'Work' => ['Attendance & Work', 'briefcase', '#7C3AED'],
+        'Leave & Time' => ['Attendance & Work', 'clock', '#16A34A'],
+        'Expenses' => ['Finance', 'credit-card', '#2563EB'],
+        'Payroll' => ['Finance', 'wallet', '#D97706'],
+        'Performance' => ['Performance & Growth', 'chart', '#0D9488'],
+        'Training' => ['Performance & Growth', 'layers', '#0284C7'],
+        'Recruitment' => ['Performance & Growth', 'user-plus', '#DB2777'],
+        'Compliance' => ['Administration', 'shield', '#4F46E5'],
+        'Approvals' => ['Administration', 'check-circle', '#DC2626'],
+        'Notes' => ['Administration', 'note', '#2563EB'],
+        'Employee Lifecycle' => ['Administration', 'user-check', '#0EA5E9'],
+        'Reports' => ['Reports & System', 'pie', '#1D4ED8'],
+        'Monitoring' => ['Reports & System', 'monitor', '#0891B2'],
+        'Security' => ['Reports & System', 'lock', '#5B6B86'],
+        'System' => ['Reports & System', 'settings', '#5B6B86'],
+    ];
+
+    /**
+     * The menu grouped into sections for the sidebar.
+     *
+     * @return list<array{title: ?string, groups: list<array>}>
+     */
+    public static function sections(User $user): array
+    {
+        $sections = [];
+        foreach (self::for($user) as $group) {
+            [$section, $icon, $tone] = self::META[$group['heading']] ?? ['More', $group['items'][0]['icon'] ?? 'layers', '#5B6B86'];
+            $key = $section ?? '';
+            $sections[$key] ??= ['title' => $section, 'groups' => []];
+            $sections[$key]['groups'][] = [...$group, 'icon' => $icon, 'tone' => $tone, 'active' => collect($group['items'])->contains('active', true)];
+        }
+
+        return array_values($sections);
+    }
+
     public static function canAccess(User $user, string $routeName, array $params = []): bool
     {
         $route = Route::getRoutes()->getByName($routeName);

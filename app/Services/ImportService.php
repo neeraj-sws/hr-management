@@ -270,6 +270,7 @@ class ImportService
         return match ($type) {
             'salary' => [self::SALARY_COLUMNS, []],
             'attendance' => [['employee_code', 'work_date', 'check_in', 'check_out', 'break_minutes'], []],
+            'employees' => [EmployeeImport::COLUMNS, []],
             default => abort(404),
         };
     }
@@ -495,7 +496,8 @@ class ImportService
      *
      * @return array{0: array<int, array{0: int, 1: array<string, string>}>, 1: ?string}  [rows, fatal error]
      */
-    private function read(UploadedFile $file, array $known, array $required): array
+    /** Reads a CSV / XLSX into [line, row] pairs keyed by header (also used by the employee import). */
+    public function read(UploadedFile $file, array $known, array $required): array
     {
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
         try {

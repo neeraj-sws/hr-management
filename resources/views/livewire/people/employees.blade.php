@@ -1,54 +1,110 @@
-<div>
+<div class="emp-page">
     <div class="page-head">
         <div><h1>{{ $traineesOnly ? 'Trainees' : 'Employees' }}</h1><p>{{ $counts['active'] }} active · {{ $counts['inactive'] }} inactive @if($counts['other']) · <a href="{{ route($traineesOnly ? 'people.employees' : 'people.trainees') }}">{{ $counts['other'] }} {{ $traineesOnly ? str('employee')->plural($counts['other']) : str('trainee')->plural($counts['other']) }} {{ $counts['other'] === 1 ? 'is' : 'are' }} listed under {{ $traineesOnly ? 'Employees' : 'Trainees' }}</a>@endif</p></div>
         <div class="actions">
             @if(\App\Support\Navigation::canAccess(auth()->user(), 'reports.show', ['type' => 'employees']))<a class="btn" href="{{ route('reports.show', 'employees') }}"><x-icon name="download" class="icon-sm" />Export</a>@endif
+            @if($canImport)<button type="button" class="btn" wire:click="openImport"><x-icon name="upload" class="icon-sm" />Import</button>@endif
             <button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />{{ $traineesOnly ? 'Add trainee' : 'Add employee' }}</button>
         </div>
     </div>
-    @unless($showForm || $pwEmployee)<x-errors />@endunless
+    @unless($showForm || $pwEmployee || $showImport)<x-errors />@endunless
     @if($reportsToManager)<div class="alert alert-info">Showing people who report to <strong>{{ $reportsToManager->name }}</strong> ({{ $employees->total() }}). <button type="button" class="btn btn-sm" wire:click="$set('reportsTo', null)">Show everyone</button></div>@endif
 
-    <section class="card">
-        <div class="toolbar">
-            <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name, code, email or designation"></label>
+    <section class="emp-card">
+        <div class="emp-filters">
+            <label class="field emp-search"><span>Search</span><span class="emp-input-icon"><x-icon name="search" class="icon-sm" /><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name, code, email or designation"></span></label>
             <label class="field"><span>Department</span><select wire:model.live="department"><option value="">All departments</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
             <label class="field"><span>Joined from</span><input type="date" wire:model.live="joinedFrom"></label>
             <label class="field"><span>Joined to</span><input type="date" wire:model.live="joinedTo" x-bind:min="$wire.joinedFrom" max="{{ today()->toDateString() }}"></label>
-            <label class="field"><span>Status</span><select wire:model.live="status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="left">Ex-employees (left)</option><option value="all">All</option></select></label>
-            <span wire:loading class="spinner" style="margin-bottom:10px"></span>
+            <label class="field"><span>Status</span><select wire:model.live="status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="left">Ex-employees (left)</option><option value="all">All status</option></select></label>
+            <button type="button" class="btn emp-reset" wire:click="resetFilters"><x-icon name="refresh" class="icon-sm" />Reset</button>
         </div>
-        <div class="table-wrap"><table class="table">
-            <thead><tr><th>Employee</th><th>Email</th><th>Department</th><th>Manager</th><th>Teams</th><th>Role</th><th>Work hours</th><th>Joined</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-            @forelse($employees as $employee)
-                <tr wire:key="emp-{{ $employee->id }}">
-                    <td><a href="{{ route('people.employees.show', $employee) }}"><strong>{{ $employee->name }}</strong></a><small>{{ $employee->employee_code }} · {{ $employee->designation ?? '—' }}</small></td>
-                    <td class="small nowrap">@if($mail = ($employee->email ?? $employee->user?->email))<a href="mailto:{{ $mail }}">{{ $mail }}</a> <button type="button" class="btn btn-sm btn-ghost" title="Copy email" aria-label="Copy email" x-data="{ copied: false }" x-on:click="navigator.clipboard.writeText(@js($mail)); copied = true; setTimeout(() => copied = false, 1500)"><span x-show="! copied">⧉</span><span x-show="copied" style="color:var(--green)">✓</span></button>@else — @endif</td>
-                    <td>{{ $employee->department?->name ?? '—' }}</td>
-                    <td>{{ $employee->manager?->name ?? '—' }}</td>
-                    <td>{{ $employee->teams->pluck('name')->join(', ') ?: '—' }}</td>
-                    <td><x-person-badges :user="$employee->user" :employee="$employee" /></td>
-                    <td class="nowrap">{{ \App\Support\Duration::fromHours($employee->daily_work_hours) }}<small>{{ $employee->work_start ? substr($employee->work_start, 0, 5).'–'.substr((string) $employee->work_end, 0, 5) : '' }}</small></td>
-                    <td class="nowrap">{{ $employee->joined_at?->format('d M Y') ?? '—' }}</td>
-                    <td>@if(! $employee->is_active && $employee->exit_date)<x-badge tone="red">Left</x-badge><small>{{ $employee->exit_date->format('d M Y') }}</small>@else<x-badge :status="$employee->is_active ? 'active' : 'inactive'" />@endif</td>
-                    <td><div class="row-actions">
-                        <button class="btn btn-sm" wire:click="edit({{ $employee->id }})">Edit</button>
-                        @if($employee->user_id && $isAdmin)<button class="btn btn-sm" wire:click="openPassword({{ $employee->id }})">Reset password</button>@endif
-                        @if($isAdmin && $employee->user_id !== auth()->id())<button class="btn btn-sm btn-danger" wire:click="remove({{ $employee->id }})" wire:confirm="Permanently remove {{ $employee->name }} ({{ $employee->employee_code }}) and their login? Only possible if they have no attendance, payroll, leave or other records.">Remove</button>@endif
-                        @if($employee->user_id !== auth()->id())
-                            <button class="btn btn-sm {{ $employee->is_active ? 'btn-danger' : '' }}" wire:click="toggleActive({{ $employee->id }})" wire:confirm="{{ $employee->is_active ? 'Deactivate '.$employee->name.'? Their login and device tokens will be revoked.' : 'Reactivate '.$employee->name.'?' }}">{{ $employee->is_active ? 'Deactivate' : 'Reactivate' }}</button>
-                        @endif
-                    </div></td>
-                </tr>
-            @empty
-                <tr><td colspan="10"><x-empty title="No employees match these filters" icon="users" /></td></tr>
-            @endforelse
-            </tbody>
-        </table></div>
-        {{ $employees->links() }}
+
+        @php($sortHead = function (string $key, string $label) use ($sort, $dir) {
+            $on = $sort === $key;
+            $aria = $on ? ($dir === 'asc' ? 'ascending' : 'descending') : 'none';
+            $arrow = $on ? ($dir === 'asc' ? '↑' : '↓') : '⇅';
+            return '<th aria-sort="'.$aria.'"><button type="button" class="emp-sort'.($on ? ' is-on' : '').'" wire:click="sortBy(\''.$key.'\')">'.e($label).' <span aria-hidden="true">'.$arrow.'</span></button></th>';
+        })
+        <div class="table-wrap emp-table-wrap" wire:loading.class="is-loading">
+            <table class="table emp-table" data-no-sort>
+                <thead><tr>
+                    {!! $sortHead('name', 'Employee') !!}
+                    {!! $sortHead('email', 'Email') !!}
+                    {!! $sortHead('department', 'Department') !!}
+                    <th>Manager</th><th>Teams</th><th>Roles</th>
+                    {!! $sortHead('hours', 'Work hours') !!}
+                    {!! $sortHead('joined', 'Joined') !!}
+                    {!! $sortHead('status', 'Status') !!}
+                    <th class="emp-actions-col">Actions</th>
+                </tr></thead>
+                <tbody>
+                @forelse($employees as $employee)
+                    @php($left = ! $employee->is_active && $employee->exit_date)
+                    @php($pill = $left ? ['Left', 'red'] : ($employee->employment_type === \App\Services\EmployeeService::TRAINEE && $employee->is_active ? ['Trainee', 'blue'] : ($employee->is_active ? ['Active', 'green'] : ['Inactive', 'amber'])))
+                    <tr wire:key="emp-{{ $employee->id }}">
+                        <td>
+                            <div class="emp-person">
+                                <x-avatar :employee="$employee" />
+                                <div class="emp-person-text"><a href="{{ route('people.employees.show', $employee) }}"><strong>{{ $employee->name }}</strong></a><small>{{ $employee->employee_code }}@if($employee->designation) · {{ $employee->designation }}@endif</small></div>
+                            </div>
+                        </td>
+                        <td class="emp-email">@if($mail = ($employee->email ?? $employee->user?->email))<a href="mailto:{{ $mail }}">{{ $mail }}</a><button type="button" class="emp-copy" title="Copy email" aria-label="Copy email {{ $mail }}" x-data="{ copied: false }" x-on:click="navigator.clipboard.writeText(@js($mail)); copied = true; setTimeout(() => copied = false, 1500)"><x-icon name="clipboard" class="icon-sm" x-show="! copied" /><x-icon name="check" class="icon-sm" x-show="copied" x-cloak /></button>@else — @endif</td>
+                        <td>{{ $employee->department?->name ?? '—' }}</td>
+                        <td>{{ $employee->manager?->name ?? '—' }}</td>
+                        <td>@if($employee->teams->isNotEmpty())<div class="emp-chips">@foreach($employee->teams as $team)<span class="emp-chip">{{ $team->name }}</span>@endforeach</div>@else — @endif</td>
+                        <td><x-person-badges :user="$employee->user" :employee="$employee" /></td>
+                        <td class="nowrap">{{ \App\Support\Duration::fromHours($employee->daily_work_hours) }}<small>{{ $employee->work_start ? substr($employee->work_start, 0, 5).' – '.substr((string) $employee->work_end, 0, 5) : '' }}</small></td>
+                        <td class="nowrap">{{ $employee->joined_at?->format('d M Y') ?? '—' }}</td>
+                        <td><span class="emp-status emp-status-{{ $pill[1] }}"><i aria-hidden="true"></i>{{ $pill[0] }}</span>@if($left)<small>{{ $employee->exit_date->format('d M Y') }}</small>@endif</td>
+                        <td class="emp-actions-col">
+                            <details class="menu emp-menu">
+                                <summary class="btn btn-sm btn-icon" aria-label="Actions for {{ $employee->name }}"><x-icon name="more" class="icon-sm" /></summary>
+                                <div class="menu-panel">
+                                    <a class="menu-item" href="{{ route('people.employees.show', $employee) }}"><x-icon name="user" class="icon-sm" />View profile</a>
+                                    <button type="button" class="menu-item" wire:click="edit({{ $employee->id }})"><x-icon name="edit" class="icon-sm" />Edit</button>
+                                    @if($employee->user_id && $isAdmin)<button type="button" class="menu-item" wire:click="openPassword({{ $employee->id }})"><x-icon name="key" class="icon-sm" />Reset password</button>@endif
+                                    @if($employee->user_id !== auth()->id())
+                                        <button type="button" class="menu-item {{ $employee->is_active ? 'danger' : '' }}" wire:click="toggleActive({{ $employee->id }})" wire:confirm="{{ $employee->is_active ? 'Deactivate '.$employee->name.'? Their login and device tokens will be revoked.' : 'Reactivate '.$employee->name.'?' }}"><x-icon name="{{ $employee->is_active ? 'user-minus' : 'user-check' }}" class="icon-sm" />{{ $employee->is_active ? 'Deactivate' : 'Reactivate' }}</button>
+                                    @endif
+                                    @if($isAdmin && $employee->user_id !== auth()->id())<button type="button" class="menu-item danger" wire:click="remove({{ $employee->id }})" wire:confirm="Permanently remove {{ $employee->name }} ({{ $employee->employee_code }}) and their login? Only possible if they have no attendance, payroll, leave or other records."><x-icon name="trash" class="icon-sm" />Remove</button>@endif
+                                </div>
+                            </details>
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td colspan="10"><x-empty title="No employees match these filters" icon="users" /></td></tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="emp-foot">
+            <span class="muted small">@if($employees->total())Showing {{ $employees->firstItem() }} to {{ $employees->lastItem() }} of {{ $employees->total() }} {{ $traineesOnly ? str('trainee')->plural($employees->total()) : str('employee')->plural($employees->total()) }}@else No results @endif</span>
+            <div class="emp-foot-right">
+                {{ $employees->onEachSide(1)->links('components.pager') }}
+                <label class="emp-per-page"><span class="sr-only">Rows per page</span><select wire:model.live="perPage">@foreach([10, 15, 25, 50] as $n)<option value="{{ $n }}">{{ $n }} per page</option>@endforeach</select></label>
+            </div>
+        </div>
     </section>
 
+    @if($showImport)
+        <x-modal title="Import employees">
+            <form wire:submit="importEmployees">
+                <div class="modal-body">
+                    <p class="small muted" style="margin-top:0">One row per person. A row whose <strong>employee_code</strong> already exists updates that person (only the cells you fill in); a new code adds the person with a login. New logins get a random password: use <em>Reset password</em> or <em>Forgot password</em>.</p>
+                    <p class="small"><a href="{{ route('imports.template', ['type' => 'employees', 'format' => 'csv']) }}"><x-icon name="download" class="icon-sm" /> Download the CSV template</a> · <a href="{{ route('imports.template', ['type' => 'employees']) }}">Excel template</a></p>
+                    <p class="small muted">Columns: {{ implode(', ', \App\Services\EmployeeImport::COLUMNS) }}. Required: employee_code, name (and email for a new person). Department must already exist; manager_code is the manager's employee code; dates like 2026-10-24.</p>
+                    <x-field label="File" name="importFile" hint="CSV or Excel (.xlsx), max 5 MB" full><input type="file" wire:model="importFile" accept=".csv,.xlsx"><span wire:loading wire:target="importFile" class="small muted">Uploading…</span></x-field>
+                    @if($importResult)
+                        @if($importResult['fatal'])<div class="alert alert-danger">{{ $importResult['fatal'] }}</div>
+                        @else<div class="alert alert-info">{{ $importResult['created'] }} added · {{ $importResult['updated'] }} updated @if($importResult['errors']) · {{ count($importResult['errors']) }} row(s) skipped @endif</div>@endif
+                        @if($importResult['errors'])<ul class="small emp-import-errors">@foreach($importResult['errors'] as $error)<li>{{ $error }}</li>@endforeach</ul>@endif
+                    @endif
+                </div>
+                <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Close</button><button class="btn btn-primary" wire:loading.attr="disabled" wire:target="importEmployees,importFile"><span wire:loading wire:target="importEmployees" class="spinner"></span>Import</button></div>
+            </form>
+        </x-modal>
+    @endif
     @if($showForm)
         <x-modal :title="$editingId ? ($traineesOnly ? 'Edit trainee' : 'Edit employee') : ($traineesOnly ? 'Add trainee' : 'Add employee')" size="lg">
             <form wire:submit="save">
