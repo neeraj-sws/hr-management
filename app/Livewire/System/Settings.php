@@ -130,6 +130,8 @@ class Settings extends Component
     public array $webAccessRoles = [];
     public array $webAccessUserIds = [];
     public bool $twoFactorApps = false;
+    /** Security tab: search box of the "also these people" picker. */
+    public string $webPeopleSearch = '';
 
     public function mount(PolicyConfigurationService $policies): void
     {
@@ -424,6 +426,77 @@ class Settings extends Component
     }
 
     /** 2-step sign-in: who must enter an e-mailed code after the password. */
+    /** Security tab: a role chip on / off (Master Admin can always use the website, so it is not a choice). */
+    public function toggleWebRole(string $role): void
+    {
+        if ($role === 'Master Admin') return;
+        $this->webAccessRoles = in_array($role, $this->webAccessRoles, true)
+            ? array_values(array_diff($this->webAccessRoles, [$role]))
+            : [...$this->webAccessRoles, $role];
+    }
+
+    public function addWebUser(int $id): void
+    {
+        if (! in_array((string) $id, array_map('strval', $this->webAccessUserIds), true)) $this->webAccessUserIds[] = (string) $id;
+        $this->webPeopleSearch = '';
+    }
+
+    public function removeWebUser(int $id): void
+    {
+        $this->webAccessUserIds = array_values(array_filter($this->webAccessUserIds, fn ($u) => (int) $u !== $id));
+    }
+
+    /** "Cancel": back to what is saved. */
+    public function resetWebAccess(): void
+    {
+        $web = app(\App\Services\WebAccessService::class)->settings();
+        $this->webAccessMode = $web['mode'];
+        $this->webAccessRoles = $web['roles'];
+        $this->webAccessUserIds = array_map('strval', $web['user_ids']);
+        $this->webPeopleSearch = '';
+        $this->resetValidation();
+    }
+
+    public function resetSecurity(): void
+    {
+        $saved = app(\App\Services\TwoFactorService::class)->settings();
+        $this->twoFactorMode = $saved['mode'];
+        $this->twoFactorApps = $saved['apps'];
+        $this->resetValidation();
+    }
+
+    /** Everything the Security tab shows besides the form: status, counts, who changed it last. */
+    private function securityData(): array
+    {
+        $web = app(\App\Services\WebAccessService::class)->settings();
+        $otp = app(\App\Services\TwoFactorService::class)->settings();
+        $users = \App\Models\User::with('roles')->where('is_active', true)->get(['id', 'name', 'email']);
+        $ids = array_map('intval', $this->webAccessUserIds);
+        // Who could use the website with the choices on screen (saved or not).
+        $allowed = $this->webAccessMode === 'all' ? $users->count()
+            : $users->filter(fn ($u) => \App\Support\Access::isAdmin($u) || in_array($u->id, $ids, true) || $u->roles->pluck('name')->intersect($this->webAccessRoles)->isNotEmpty())->count();
+        $changed = fn (string $key) => \App\Models\AuditLog::with('actor')->where('action', 'policy.updated')->where('metadata->rule_key', $key)->latest('id')->first();
+        $term = mb_strtolower(trim($this->webPeopleSearch));
+        $codes = \App\Models\AttendanceEmployee::whereNotNull('user_id')->pluck('employee_code', 'user_id');
+
+        return [
+            'web' => $web, 'otp' => $otp,
+            'webDirty' => $this->webAccessMode !== $web['mode'] || collect($this->webAccessRoles)->sort()->values()->all() !== collect($web['roles'])->sort()->values()->all() || collect($ids)->sort()->values()->all() !== collect($web['user_ids'])->sort()->values()->all(),
+            'otpDirty' => $this->twoFactorMode !== $otp['mode'] || ($this->twoFactorMode !== 'off' && $this->twoFactorApps !== $otp['apps']),
+            'allowedCount' => $allowed, 'appsOnlyCount' => $users->count() - $allowed,
+            'roles' => \Spatie\Permission\Models\Role::orderBy('name')->pluck('name'),
+            'selectedPeople' => $users->whereIn('id', $ids)->sortBy('name')->values(),
+            'peopleMatches' => $term === '' ? collect() : $users->reject(fn ($u) => in_array($u->id, $ids, true))
+                ->filter(fn ($u) => str_contains(mb_strtolower($u->name.' '.$u->email.' '.($codes[$u->id] ?? '')), $term))->sortBy('name')->take(8)->values(),
+            'codes' => $codes,
+            'webChanged' => $changed(\App\Services\WebAccessService::POLICY),
+            'otpChanged' => $changed(\App\Services\TwoFactorService::POLICY),
+            'mailOn' => \App\Notifications\Channels\SafeMailChannel::enabled(),
+            'mailError' => \Illuminate\Support\Facades\Cache::get(\App\Notifications\Channels\SafeMailChannel::LAST_ERROR_KEY),
+            'mailTest' => \App\Models\AuditLog::where('action', 'notification.email_test_sent')->latest('id')->first(),
+        ];
+    }
+
     public function saveSecurity(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
@@ -612,6 +685,7 @@ class Settings extends Component
             'leaveTypes' => LeaveType::orderBy('name')->get(), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
             'allEmployees' => $this->tab === 'calendar' ? \App\Models\AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']) : collect(),
             'calendarOverrides' => $calendarOverrides,
+            'security' => $this->tab === 'security' ? $this->securityData() : null,
             'sheetsStatus' => $this->tab === 'sheets' ? ['stored_secret' => (bool) app(\App\Services\GoogleSheetsSync::class)->settings()['secret'], 'last' => app(\App\Services\GoogleSheetsSync::class)->lastResult()] : null,
             'mail' => ['mailer' => config('mail.default'), 'host' => config('mail.mailers.'.config('mail.default').'.host'), 'port' => config('mail.mailers.'.config('mail.default').'.port'), 'from' => config('mail.from.address'), 'queue' => config('queue.default'), 'last_error' => \Illuminate\Support\Facades\Cache::get(\App\Notifications\Channels\SafeMailChannel::LAST_ERROR_KEY)],
         ], 'Settings');

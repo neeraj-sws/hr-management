@@ -283,36 +283,153 @@
             </div>
         </section>
     @elseif($tab === 'security')
-        <section class="card mb">
-            <div class="card-head"><div><h2>Website access</h2><p>Who may use this website. Everyone else signs in to the SWS HR desktop app and mobile app only (those are not affected). The Master Admin can always open the website.</p></div></div>
-            <form class="card-body stack" wire:submit="saveWebAccess">
-                <x-field label="Who can use the website" name="webAccessMode"><select wire:model.live="webAccessMode">@foreach(\App\Services\WebAccessService::MODES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
-                @if($webAccessMode === 'roles')
-                    <div class="field"><span class="label">Roles that can use the website</span>
-                        <div class="checks">@foreach(\Spatie\Permission\Models\Role::orderBy('name')->pluck('name') as $role)<label class="check"><input type="checkbox" value="{{ $role }}" wire:model="webAccessRoles"> {{ $role }}</label>@endforeach</div>
-                        <small class="muted">e.g. Master Admin, HR, Accounts and Manager; leave "Employee" unticked so employees use the apps.</small>
+        @php($sec = $security)
+        <div class="sec-page">
+            {{-- At a glance: what is set now (saved values). --}}
+            <div class="sec-status">
+                <div class="sec-stat">
+                    <span class="sec-stat-icon sec-blue"><x-icon name="monitor" /></span>
+                    <div><span>Website access</span>
+                        <strong>{{ $sec['web']['mode'] === 'all' ? 'Everyone' : 'Selected roles and people' }}</strong>
+                        <small @class(['sec-ok' => $sec['web']['mode'] === 'roles', 'sec-warn' => $sec['web']['mode'] === 'all'])>{{ $sec['web']['mode'] === 'all' ? 'All staff can sign in on the web' : count($sec['web']['roles']).' '.str('role')->plural(count($sec['web']['roles'])).' · '.count($sec['web']['user_ids']).' '.str('person')->plural(count($sec['web']['user_ids'])) }}</small></div>
+                </div>
+                <div class="sec-stat">
+                    <span class="sec-stat-icon sec-violet"><x-icon name="key" /></span>
+                    <div><span>2-step sign-in</span>
+                        <strong>{{ $sec['otp']['mode'] === 'off' ? 'Off' : 'On · '.\App\Services\TwoFactorService::MODES[$sec['otp']['mode']] }}</strong>
+                        <small @class(['sec-ok' => $sec['otp']['mode'] !== 'off', 'sec-warn' => $sec['otp']['mode'] === 'off'])>{{ $sec['otp']['mode'] === 'off' ? 'Password only' : ($sec['otp']['apps'] ? 'Website and apps' : 'Website only') }}</small></div>
+                </div>
+                <div class="sec-stat">
+                    <span class="sec-stat-icon {{ $sec['mailOn'] && ! $sec['mailError'] ? 'sec-green' : 'sec-amber' }}"><x-icon name="mail" /></span>
+                    <div><span>E-mail (sends the codes)</span>
+                        <strong>{{ ! $sec['mailOn'] ? 'Turned off' : ($sec['mailError'] ? 'Last send failed' : 'Working') }}</strong>
+                        <small @class(['sec-ok' => $sec['mailOn'] && ! $sec['mailError'], 'sec-warn' => ! $sec['mailOn'] || $sec['mailError']])>{{ $sec['mailTest'] ? 'Last test '.$sec['mailTest']->created_at->format('d M, h:i A') : 'No test e-mail sent yet' }}</small></div>
+                </div>
+            </div>
+
+            {{-- Website access --}}
+            <section class="card sec-card">
+                <div class="sec-head">
+                    <div><h2><x-icon name="monitor" class="icon-sm" />Website access</h2><p>Who can open this website. Everyone else uses the desktop and mobile apps (not affected).</p></div>
+                    @if($sec['webChanged'])<span class="sec-changed">Changed by {{ $sec['webChanged']->actor?->name ?? 'System' }} · {{ $sec['webChanged']->created_at->format('d M Y, h:i A') }}</span>@endif
+                </div>
+                <form wire:submit="saveWebAccess">
+                    <div class="sec-body">
+                        <div class="sec-options" role="radiogroup" aria-label="Who can use the website">
+                            @foreach(['all' => ['users', 'Everyone', 'All active staff can sign in on the web'], 'roles' => ['user-check', 'Selected roles and people', 'Recommended: employees use the apps']] as $key => [$icon, $title, $sub])
+                                <label @class(['sec-option', 'is-on' => $webAccessMode === $key])>
+                                    <input type="radio" class="sr-only" value="{{ $key }}" wire:model.live="webAccessMode">
+                                    <span class="sec-option-icon"><x-icon :name="$icon" /></span>
+                                    <span><strong>{{ $title }}</strong><small>{{ $sub }}</small></span>
+                                    <span class="sec-radio" aria-hidden="true"></span>
+                                </label>
+                            @endforeach
+                        </div>
+
+                        @if($webAccessMode === 'roles')
+                            <div class="sec-block">
+                                <span class="sec-label">Roles that can use the website</span>
+                                <div class="sec-chips">
+                                    @foreach($sec['roles'] as $role)
+                                        @php($on = $role === 'Master Admin' || in_array($role, $webAccessRoles, true))
+                                        <button type="button" @class(['sec-chip', 'is-on' => $on, 'is-locked' => $role === 'Master Admin']) wire:click="toggleWebRole(@js($role))" aria-pressed="{{ $on ? 'true' : 'false' }}" @if($role === 'Master Admin') title="Master Admin can always open the website" @endif>
+                                            <x-icon :name="$role === 'Master Admin' ? 'lock' : ($on ? 'check' : 'plus')" class="icon-sm" />{{ $role }}
+                                        </button>
+                                    @endforeach
+                                </div>
+                                <small class="muted">Leave “Employee” off so employees sign in to the apps only.</small>
+                            </div>
+
+                            <div class="sec-block">
+                                <span class="sec-label">Also these people (whatever their role)</span>
+                                <div class="sec-picker">
+                                    <label class="emp-input-icon sec-search"><x-icon name="search" class="icon-sm" /><input type="search" wire:model.live.debounce.250ms="webPeopleSearch" placeholder="Search name, e-mail or employee code" aria-label="Search people to allow"></label>
+                                    @if($sec['peopleMatches']->isNotEmpty())
+                                        <div class="sec-matches" role="listbox">
+                                            @foreach($sec['peopleMatches'] as $u)
+                                                <button type="button" class="sec-match" wire:click="addWebUser({{ $u->id }})" role="option">
+                                                    <x-avatar :name="$u->name" /><span><strong>{{ $u->name }}</strong><small>{{ $sec['codes'][$u->id] ?? '' }}{{ isset($sec['codes'][$u->id]) ? ' · ' : '' }}{{ $u->email }}</small></span>
+                                                    <x-person-badges :user="$u" /><x-icon name="plus" class="icon-sm" />
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                    @elseif(trim($webPeopleSearch) !== '')
+                                        <p class="small muted">Nobody else matches.</p>
+                                    @endif
+                                </div>
+                                <div class="sec-chips">
+                                    @forelse($sec['selectedPeople'] as $u)
+                                        <span class="sec-chip is-on sec-person"><span class="sec-mini-avatar">{{ collect(explode(' ', $u->name))->filter()->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->join('') }}</span>{{ $u->name }}<button type="button" wire:click="removeWebUser({{ $u->id }})" aria-label="Remove {{ $u->name }}"><x-icon name="x" class="icon-sm" /></button></span>
+                                    @empty
+                                        <small class="muted">No extra people added.</small>
+                                    @endforelse
+                                </div>
+                            </div>
+                        @endif
+
+                        <div class="sec-note"><x-icon name="users" class="icon-sm" /><span><strong>{{ $sec['allowedCount'] }}</strong> {{ str('person')->plural($sec['allowedCount']) }} can use the website · <strong>{{ $sec['appsOnlyCount'] }}</strong> use the apps only</span></div>
+                        @if($webAccessMode === 'roles')<p class="small muted sec-fine">People who are not allowed see “{{ \App\Services\WebAccessService::MESSAGE }}” when they sign in; anyone already signed in is signed out on their next click.</p>@endif
                     </div>
-                    <div class="field"><span class="label">Also these people (whatever their role)</span>
-                        <div class="checks" style="max-height:220px;overflow:auto">@foreach(\App\Models\User::where('is_active', true)->orderBy('name')->get(['id', 'name', 'email']) as $u)<label class="check"><input type="checkbox" value="{{ $u->id }}" wire:model="webAccessUserIds"> {{ $u->name }} <x-person-badges :user="$u" /></label>@endforeach</div>
+                    <div @class(['sec-foot', 'is-dirty' => $sec['webDirty']])>
+                        @if($sec['webDirty'])<span class="sec-dirty"><i></i>Unsaved changes</span>@else<span class="muted small">All changes saved</span>@endif
+                        <div class="row-actions">
+                            @if($sec['webDirty'])<button type="button" class="btn" wire:click="resetWebAccess">Cancel</button>@endif
+                            <button class="btn btn-primary" @disabled(! $sec['webDirty']) wire:loading.attr="disabled" wire:target="saveWebAccess">Save</button>
+                        </div>
                     </div>
-                    <div class="alert alert-info" style="margin:0">People who are not allowed see "{{ \App\Services\WebAccessService::MESSAGE }}" when they sign in, and anyone already signed in is signed out on their next click.</div>
-                @endif
-                <div><button class="btn btn-primary">Save</button></div>
-            </form>
-        </section>
-        <section class="card">
-            <div class="card-head"><div><h2>2-step sign-in (OTP)</h2><p>After the password, a 6-digit code is e-mailed to the person and must be entered to sign in. A stolen password alone is then not enough. A browser can be trusted for {{ \App\Services\TwoFactorService::TRUST_DAYS }} days.</p></div></div>
-            <form class="card-body stack" wire:submit="saveSecurity">
-                <x-errors />
-                <x-field label="Who must enter a code" name="twoFactorMode" hint="anyone can also turn it on for their own account in My profile"><select wire:model.live="twoFactorMode">@foreach(\App\Services\TwoFactorService::MODES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
-                @if($twoFactorMode !== 'off')
-                    <label class="check"><input type="checkbox" wire:model="twoFactorApps"> Also when signing in to the desktop and mobile apps</label>
-                    <p class="small muted" style="margin:0">Turn this on after everyone has desktop app 1.17.0 or newer and mobile app 1.1.4 or newer: older apps cannot show the code box. People already signed in to an app stay signed in.</p>
-                @endif
-                <div class="alert alert-info" style="margin:0">Codes go by e-mail, so check that e-mail works (Settings &gt; E-mail &gt; send a test) before turning this on. If e-mail ever stops working and nobody can sign in, run <code>php artisan security:two-factor-off</code> on the server.</div>
-                <div><button class="btn btn-primary">Save</button></div>
-            </form>
-        </section>
+                </form>
+            </section>
+
+            {{-- 2-step sign-in --}}
+            <section class="card sec-card">
+                <div class="sec-head">
+                    <div><h2><x-icon name="key" class="icon-sm" />2-step sign-in (OTP)</h2><p>After the password, a 6-digit code is e-mailed and must be entered. A stolen password alone is then not enough. A browser can be trusted for {{ \App\Services\TwoFactorService::TRUST_DAYS }} days.</p></div>
+                    @if($sec['otpChanged'])<span class="sec-changed">Changed by {{ $sec['otpChanged']->actor?->name ?? 'System' }} · {{ $sec['otpChanged']->created_at->format('d M Y, h:i A') }}</span>@endif
+                </div>
+                <form wire:submit="saveSecurity">
+                    <div class="sec-body">
+                        <x-errors />
+                        <div class="sec-options sec-options-3" role="radiogroup" aria-label="Who must enter a code">
+                            @foreach(\App\Services\TwoFactorService::MODES as $key => $label)
+                                <label @class(['sec-option', 'is-on' => $twoFactorMode === $key])>
+                                    <input type="radio" class="sr-only" value="{{ $key }}" wire:model.live="twoFactorMode">
+                                    <span class="sec-option-icon"><x-icon :name="['off' => 'lock', 'admins' => 'shield', 'everyone' => 'users'][$key] ?? 'key'" /></span>
+                                    <span><strong>{{ $label }}</strong><small>{{ ['off' => 'Password only', 'admins' => 'Most protected accounts', 'everyone' => 'Every account'][$key] ?? '' }}</small></span>
+                                    <span class="sec-radio" aria-hidden="true"></span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <small class="muted">Anyone can also turn it on for their own account in My profile.</small>
+
+                        @if($twoFactorMode !== 'off')
+                            <label class="sec-row">
+                                <span><strong>Also for the desktop and mobile apps</strong><small>Needs desktop app 1.17.0+ and mobile app 1.1.4+ (older apps can't show the code box). People already signed in stay signed in.</small></span>
+                                <span class="sec-switch"><input type="checkbox" wire:model.live="twoFactorApps" aria-label="Also ask for a code in the desktop and mobile apps"><i aria-hidden="true"></i></span>
+                            </label>
+                        @endif
+
+                        <div class="sec-row">
+                            <span><strong><x-icon :name="$sec['mailOn'] && ! $sec['mailError'] ? 'check-circle' : 'alert'" class="icon-sm {{ $sec['mailOn'] && ! $sec['mailError'] ? 'sec-ok' : 'sec-warn' }}" /> {{ ! $sec['mailOn'] ? 'E-mail is turned off' : ($sec['mailError'] ? 'The last e-mail could not be sent' : 'E-mail is working') }}</strong>
+                                <small>Codes go by e-mail. Send yourself a test before turning this on.@if($sec['mailError']) Last error: {{ \Illuminate\Support\Str::limit($sec['mailError']['error'] ?? '', 120) }}@endif</small></span>
+                            <span class="row-actions"><input type="email" wire:model="testEmail" class="sec-test-input" aria-label="Test address"><button type="button" class="btn btn-sm" wire:click="sendTestEmail" wire:loading.attr="disabled" wire:target="sendTestEmail"><x-icon name="mail" class="icon-sm" />Send test e-mail</button></span>
+                        </div>
+                        @error('testEmail')<span class="error">{{ $message }}</span>@enderror
+
+                        <details class="sec-help">
+                            <summary><x-icon name="chevron-right" class="icon-sm" />If nobody can sign in</summary>
+                            <p>If e-mail stops working and nobody can get a code, run <code>php artisan security:two-factor-off</code> on the server. It turns 2-step sign-in off for everyone.</p>
+                        </details>
+                    </div>
+                    <div @class(['sec-foot', 'is-dirty' => $sec['otpDirty']])>
+                        @if($sec['otpDirty'])<span class="sec-dirty"><i></i>Unsaved changes</span>@else<span class="muted small">All changes saved</span>@endif
+                        <div class="row-actions">
+                            @if($sec['otpDirty'])<button type="button" class="btn" wire:click="resetSecurity">Cancel</button>@endif
+                            <button class="btn btn-primary" @disabled(! $sec['otpDirty']) wire:loading.attr="disabled" wire:target="saveSecurity">Save</button>
+                        </div>
+                    </div>
+                </form>
+            </section>
+        </div>
     @elseif($tab === 'offboarding')
         <section class="card">
             <div class="card-head"><div><h2>Offboarding correction window</h2><p>How long after an offboarding case is opened (or closed) it can still be corrected or cancelled by people who manage offboarding. After the window only an administrator can cancel it. Every correction and cancellation needs a reason and is written to the audit log.</p></div></div>
