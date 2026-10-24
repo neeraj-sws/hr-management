@@ -798,3 +798,4 @@ details.nav-group[data-current]>summary.nav-mod{background:#ffffff12;color:#fff}
 .sr-box input{flex:1;border:0;outline:none;font:inherit;font-size:15px;background:transparent}
 .sr-chips{padding:0 0 12px}
 .sr-card{background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:12px;margin-bottom:12px;padding:6px 0}
+.report-range{align-self:end;padding-bottom:10px;white-space:nowrap}

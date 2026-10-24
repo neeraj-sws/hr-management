@@ -28,6 +28,8 @@ class Report extends Component
     #[Url] public string $search = '';
     /** Attendance report: only one kind of day (present, late, on_leave, holiday, weekend, absent …). */
     #[Url] public string $day = '';
+    /** Month picker: "2026-10" shows that whole month (this month: up to today); "custom" shows From / To. */
+    #[Url] public string $month = '';
 
     public function mount(string $type, ReportService $reports): void
     {
@@ -35,6 +37,29 @@ class Report extends Component
         $this->type = $type;
         $this->from = strtotime($this->from) ? $this->from : now()->startOfMonth()->toDateString();
         $this->to = strtotime($this->to) ? $this->to : today()->toDateString();
+        if (preg_match('/^\d{4}-\d{2}$/', $this->month)) {
+            $this->applyMonth();
+        } elseif ($this->month !== 'custom') {
+            // Opened with dates only: a whole month reads as that month, anything else as a custom range.
+            $start = \Illuminate\Support\Carbon::parse($this->from);
+            $wholeMonth = $start->isSameDay($start->copy()->startOfMonth()) && in_array($this->to, [$start->copy()->endOfMonth()->toDateString(), today()->toDateString()], true) && substr($this->to, 0, 7) === $start->format('Y-m');
+            $this->month = $wholeMonth ? $start->format('Y-m') : 'custom';
+        }
+    }
+
+    /** From / To for the picked month (this month runs up to today). */
+    private function applyMonth(): void
+    {
+        $start = \Illuminate\Support\Carbon::parse($this->month.'-01');
+        $end = $start->copy()->endOfMonth();
+        $this->from = $start->toDateString();
+        $this->to = ($end->isFuture() ? today() : $end)->toDateString();
+    }
+
+    public function updatedMonth(): void
+    {
+        if (preg_match('/^\d{4}-\d{2}$/', $this->month)) $this->applyMonth();
+        $this->resetPage();
     }
 
     public function updated($property): void
@@ -48,6 +73,7 @@ class Report extends Component
         $this->reset('employee', 'department', 'team', 'search', 'day');
         $this->from = now()->startOfMonth()->toDateString();
         $this->to = today()->toDateString();
+        $this->month = now()->format('Y-m');
     }
 
     private function filters(): array

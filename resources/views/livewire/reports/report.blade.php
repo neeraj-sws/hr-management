@@ -10,8 +10,17 @@
     <div class="tabs">@foreach($types as $key => $name)<a class="tab {{ $key === $type ? 'active' : '' }}" href="{{ route('reports.show', $key) }}">{{ $name }}</a>@endforeach</div>
     <section class="card">
         <div class="toolbar">
-            <label class="field"><span>From</span><input type="date" wire:model.live="from"></label>
-            <label class="field"><span>To</span><input type="date" wire:model.live="to" x-bind:min="$wire.from"></label>
+            {{-- Month by month, or a custom range (From / To). --}}
+            <label class="field"><span>Month</span><select wire:model.live="month">
+                @for($m = now()->startOfMonth(), $i = 0; $i < 24; $i++, $m->subMonth())<option value="{{ $m->format('Y-m') }}">{{ $m->format('F Y') }}</option>@endfor
+                <option value="custom">Custom range…</option>
+            </select></label>
+            @if($month === 'custom')
+                <label class="field"><span>From</span><input type="date" wire:model.live="from"></label>
+                <label class="field"><span>To</span><input type="date" wire:model.live="to" x-bind:min="$wire.from"></label>
+            @else
+                <span class="small muted report-range">{{ \Illuminate\Support\Carbon::parse($from)->format('d M') }} – {{ \Illuminate\Support\Carbon::parse($to)->format('d M Y') }}</span>
+            @endif
             @if($usesEmployees)
                 <label class="field"><span>Employee</span><select wire:model.live="employee"><option value="">All in scope</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->employee_code }} · {{ $e->name }}</option>@endforeach</select></label>
                 <label class="field"><span>Department</span><select wire:model.live="department"><option value="">All</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>

@@ -67,6 +67,19 @@ class ExportAndSalaryEditTest extends TestCase
         }
     }
 
+    public function test_reports_go_month_by_month_or_a_custom_range(): void
+    {
+        $this->actingAs($this->admin);
+        // Today is 12 Oct 2026: this month runs to today, an earlier month is the whole month.
+        \Livewire\Livewire::test(\App\Livewire\Reports\Report::class, ['type' => 'leave'])
+            ->assertSet('month', '2026-10')->assertSet('from', '2026-10-01')->assertSet('to', '2026-10-12')
+            ->set('month', '2026-08')->assertSet('from', '2026-08-01')->assertSet('to', '2026-08-31')->assertSee('01 Aug – 31 Aug 2026')
+            ->set('month', 'custom')->set('from', '2026-07-15')->set('to', '2026-09-10')->assertSee('Custom range')->assertSet('from', '2026-07-15');
+        // A link with any dates opens as a custom range.
+        \Livewire\Livewire::withQueryParams(['from' => '2026-09-03', 'to' => '2026-09-20'])->test(\App\Livewire\Reports\Report::class, ['type' => 'audit'])->assertSet('month', 'custom')->assertSet('to', '2026-09-20');
+        \Livewire\Livewire::withQueryParams(['from' => '2026-09-01', 'to' => '2026-09-30'])->test(\App\Livewire\Reports\Report::class, ['type' => 'payments'])->assertSet('month', '2026-09');
+    }
+
     public function test_reports_show_a_serial_number_instead_of_the_id(): void
     {
         $this->actingAs($this->admin);
