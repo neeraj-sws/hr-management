@@ -72,7 +72,7 @@ class ExpenseService
             $this->audit->record($approve ? 'expense.approved' : 'expense.rejected', $claim);
             $amount = number_format((float) $claim->amount, 2);
             $by = User::find($approverId)?->name ?? 'Your approver';
-            Notifier::send($claim->employee?->user, 'ExpenseClaim', $claim->id, $approve ? "{$by} approved your expense claim of {$amount}; it will be paid with salary." : "{$by} rejected your expense claim of {$amount}: {$note}");
+            Notifier::send($claim->employee?->user, 'ExpenseClaim', $claim->id, $approve ? "{$by} approved your expense claim of {$amount}; it will be paid with salary." : "{$by} rejected your expense claim of {$amount}".($note ? ": {$note}" : '.'));
 
             return $claim->fresh();
         });

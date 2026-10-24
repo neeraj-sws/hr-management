@@ -45,7 +45,10 @@ class TaskController extends ApiController
             ]));
         }
 
-        return response()->json($query->orderByRaw('due_on IS NULL')->orderBy('due_on')->paginate(50)->through(fn ($task) => $this->present($task)));
+        // Newest first: the latest task at the top (completed: the most recently finished first).
+        $status === 'completed' ? $query->orderByDesc('completed_at') : $query->orderByDesc('created_at');
+
+        return response()->json($query->orderByDesc('id')->paginate(50)->through(fn ($task) => $this->present($task)));
     }
 
     public function store(Request $request): JsonResponse

@@ -25,6 +25,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::get('/files/documents/{document}', [HrFileController::class, 'signedDocument'])->middleware(['signed', 'throttle:30,1'])->name('files.document');
+Route::get('/files/documents/{document}/viewer', [HrFileController::class, 'documentViewer'])->middleware(['signed', 'throttle:30,1'])->name('files.document.viewer');
 Route::get('/files/payslips/{payslip}', [HrFileController::class, 'signedPayslip'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip');
 
 Route::middleware(['auth', 'account.active'])->group(function () {
@@ -155,6 +156,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // System
     Route::get('/notifications', Livewire\System\Notifications::class)->name('system.notifications');
     Route::get('/notifications/{id}/open', [NotificationController::class, 'open'])->name('system.notifications.open');
+    Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->name('system.notifications.read-all');
     Route::get('/system/roles', Livewire\System\Roles::class)->middleware('access:roles.manage')->name('system.roles');
     Route::get('/system/settings', Livewire\System\Settings::class)->middleware('access:policies.manage')->name('system.settings');
 });

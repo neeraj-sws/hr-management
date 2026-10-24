@@ -26,14 +26,31 @@ class NotificationController extends ApiController
         return $this->preferences($request);
     }
 
+    /**
+     * The person's notifications, newest first, each with its type (icon and colours), a title with the
+     * name in bold, details, time, and — for requests waiting on them — the approval to approve or reject.
+     * ?filter=all|action|attendance|daily_status|tasks|payroll, ?unread=1, ?month=YYYY-MM (older apps).
+     * "meta" carries the chip counts and the type table, so the app uses the same icons and colours as the website.
+     */
     public function index(Request $request): JsonResponse
     {
         $user = $this->apiUser($request);
-        $month = $this->monthRange($request);
-        $query = $user->notifications()->when($request->boolean('unread'), fn ($q) => $q->whereNull('read_at'))
-            ->when($month, fn ($q) => $q->whereBetween('created_at', [$month[0].' 00:00:00', $month[1].' 23:59:59']))->latest();
+        $presenter = new \App\Support\NotificationPresenter($user);
+        $filter = (string) $request->query('filter', 'all');
+        $meta = ['counts' => $presenter->counts(), 'types' => \App\Support\NotificationPresenter::typesForApi(), 'chips' => \App\Support\NotificationPresenter::CHIPS];
 
-        return response()->json($query->paginate(30)->through(fn ($n) => ['id' => $n->id, 'kind' => $n->data['kind'] ?? null, 'record_id' => $n->data['record_id'] ?? null, 'message' => $n->data['message'] ?? '', 'url' => $n->data['url'] ?? null, 'read_at' => $n->read_at?->toIso8601String(), 'created_at' => $n->created_at->toIso8601String()]));
+        if ($filter === 'action') {
+            $items = collect($presenter->needsAction())->when($request->boolean('unread'), fn ($c) => $c->where('unread', true))->values();
+
+            return response()->json(['data' => $items->all(), 'total' => $items->count(), 'current_page' => 1, 'last_page' => 1, 'meta' => $meta]);
+        }
+        $month = $this->monthRange($request);
+        $chip = array_key_exists($filter, \App\Support\NotificationPresenter::CHIPS) ? $filter : null;
+        $page = $user->notifications()->when($request->boolean('unread'), fn ($q) => $q->whereNull('read_at'))
+            ->when($chip, fn ($q) => $q->whereIn('data->kind', \App\Support\NotificationPresenter::kindsForChip($chip)))
+            ->when($month, fn ($q) => $q->whereBetween('created_at', [$month[0].' 00:00:00', $month[1].' 23:59:59']))->latest()->orderBy('id')->paginate(30);
+
+        return response()->json(['data' => $presenter->present($page->items()), 'total' => $page->total(), 'current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'meta' => $meta]);
     }
 
     public function read(Request $request, string $id): JsonResponse

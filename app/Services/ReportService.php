@@ -482,7 +482,8 @@ class ReportService
                     'payroll_payable' => $item ? (float) $item->net_amount : null, 'paid' => $item ? round((float) $item->payments->sum('amount'), 2) : null,
                     // Still to pay for the month: payable less what was already paid.
                     'remaining' => $item ? round(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2) : null,
-                    'payroll_status' => $item ? $item->run->status : 'not run']);
+                    // A draft is a snapshot: say when it was calculated, so an old draft (0 for people with no counted days yet) is clear.
+                    'payroll_status' => $item ? ($item->run->status === 'draft' ? 'draft · calculated '.$item->updated_at?->format('d M H:i') : $item->run->status) : 'not run']);
                 if ($limit && $rows->count() >= $limit) return $rows;
             }
         }

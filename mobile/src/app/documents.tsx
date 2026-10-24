@@ -7,11 +7,13 @@ import { AddButton, FormSheet } from '../components/FormSheet';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, formatDate, H2, Muted, Notice, Row, Screen } from '../components/ui';
 import { ApiError, api, get, upload } from '../lib/api';
 
-type Document = { id: number; name: string; category: string; expires_on: string | null; expired: boolean; url: string; can_delete: boolean };
+type Document = { id: number; name: string; category: string; expires_on: string | null; expired: boolean; url: string; view_url?: string | null; file_type?: 'pdf' | 'image' | 'other'; can_delete: boolean };
+// Limits the server checks too; checked here first so a big file never starts uploading.
+const MAX_BYTES = { photo: 3 * 1024 * 1024, file: 10 * 1024 * 1024 };
 type Asset = { id: number; tag: string; name: string; status: string; assigned_on: string | null; returned_on: string | null };
 type ChecklistItem = { key: string; label: string; done: boolean; count: number };
 type UploadType = { key: string; label: string };
-type Picked = { uri: string; name: string; type: string; file?: File };
+type Picked = { uri: string; name: string; type: string; size?: number | null; file?: File };
 
 export default function DocumentsScreen() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -50,10 +52,11 @@ export default function DocumentsScreen() {
   useEffect(() => { load(); }, [load]);
 
   // Links are signed for you and expire in 5 minutes, so fetch fresh ones before opening.
-  const open = async (id: number) => {
+  const open = async (id: number, view = false) => {
     try {
       const fresh = (await get<{ data: Document[] }>('/my/documents')).data.find((d) => d.id === id);
-      if (fresh) await Linking.openURL(fresh.url);
+      // View shows a PDF or image on screen; Download saves the file.
+      if (fresh) await Linking.openURL(view && fresh.view_url ? fresh.view_url : fresh.url);
     } catch (e) {
       setError(e instanceof ApiError ? e.firstMessage : 'Could not open the document.');
     }
@@ -70,13 +73,21 @@ export default function DocumentsScreen() {
 
   // A file from the phone (PDF, Word or image) …
   const chooseFile = async () => {
+    if (isPhoto && Platform.OS !== 'web') {
+      const library = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6, exif: false });
+      if (library.canceled || !library.assets.length) return;
+      const photo = library.assets[0];
+      setPicked({ uri: photo.uri, name: `photo.${(photo.mimeType ?? 'image/jpeg').split('/')[1] ?? 'jpg'}`, type: photo.mimeType ?? 'image/jpeg', size: photo.fileSize ?? null });
+      setFormError(null);
+      return;
+    }
     const result = await DocumentPicker.getDocumentAsync({
       type: isPhoto ? ['image/jpeg', 'image/png', 'image/webp'] : ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
       copyToCacheDirectory: true,
     });
     if (result.canceled || !result.assets?.length) return;
     const asset = result.assets[0];
-    setPicked({ uri: asset.uri, name: asset.name, type: asset.mimeType ?? 'application/octet-stream', file: (asset as { file?: File }).file });
+    setPicked({ uri: asset.uri, name: asset.name, type: asset.mimeType ?? 'application/octet-stream', size: asset.size ?? null, file: (asset as { file?: File }).file });
     setFormError(null);
   };
 
@@ -84,16 +95,18 @@ export default function DocumentsScreen() {
   const takePhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) { setFormError('Allow camera access to photograph the document.'); return; }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6, exif: false });
     if (result.canceled || !result.assets.length) return;
     const asset = result.assets[0];
     const type = asset.mimeType ?? 'image/jpeg';
-    setPicked({ uri: asset.uri, name: asset.fileName ?? `${category}.${type.split('/')[1] ?? 'jpg'}`, type, file: (asset as { file?: File }).file });
+    setPicked({ uri: asset.uri, name: asset.fileName ?? `${category}.${type.split('/')[1] ?? 'jpg'}`, type, size: asset.fileSize ?? null, file: (asset as { file?: File }).file });
     setFormError(null);
   };
 
   const send = async () => {
     if (!picked) { setFormError('Choose a file or take a photo first.'); return; }
+    const limit = isPhoto ? MAX_BYTES.photo : MAX_BYTES.file;
+    if (picked.size && picked.size > limit) { setFormError(`This file is ${(picked.size / 1048576).toFixed(1)} MB. The limit is ${limit / 1048576} MB — choose a smaller file.`); return; }
     setBusy(true);
     setFormError(null);
     try {
@@ -107,7 +120,8 @@ export default function DocumentsScreen() {
       setMessage(response.message ?? 'Uploaded.');
       await load();
     } catch (e) {
-      setFormError(e instanceof ApiError ? (e.isNetwork ? 'You are offline. Try again when you are connected.' : e.firstMessage) : 'Could not upload the file.');
+      // A dropped upload is not always "offline": a big file or a slow line can cut it too, so say so.
+      setFormError(e instanceof ApiError ? (e.isNetwork ? `The upload did not reach the server${typeof e.body === 'string' && e.body ? ` (${e.body})` : ''}. Check the internet, or try a smaller file.` : e.firstMessage) : 'Could not upload the file.');
     } finally {
       setBusy(false);
     }
@@ -158,8 +172,13 @@ export default function DocumentsScreen() {
           </View>
         ) : null}
         {documents.length ? documents.map((d) => (
-          <Row key={d.id} title={d.name} subtitle={`${d.category}${d.expires_on ? ` · expires ${formatDate(d.expires_on)}` : ''}`} onPress={() => open(d.id)}
-            right={<View style={styles.rowRight}>{d.expired ? <Badge label="expired" tone="red" /> : <Muted>Open ›</Muted>}{d.can_delete ? <Text style={styles.delete} onPress={() => remove(d)}>Delete</Text> : null}</View>} />
+          <Row key={d.id} title={d.name} subtitle={`${d.category}${d.expires_on ? ` · expires ${formatDate(d.expires_on)}` : ''}`} onPress={() => open(d.id, !!d.view_url)}
+            right={<View style={styles.rowRight}>
+              {d.expired ? <Badge label="expired" tone="red" /> : null}
+              {d.view_url ? <Text style={styles.action} onPress={() => open(d.id, true)} accessibilityRole="button" accessibilityLabel={`View ${d.name}`}>View</Text> : null}
+              <Text style={styles.action} onPress={() => open(d.id)} accessibilityRole="button" accessibilityLabel={`Download ${d.name}`}>Download</Text>
+              {d.can_delete ? <Text style={styles.delete} onPress={() => remove(d)}>Delete</Text> : null}
+            </View>} />
         )) : photoUrl ? null : <Empty text={loaded ? 'No documents yet' : 'Loading…'} />}
       </Card>
       <Card>
@@ -189,6 +208,7 @@ export default function DocumentsScreen() {
 }
 
 const styles = StyleSheet.create({
+  action: { color: colors.blue, fontWeight: '700', fontSize: 13 },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
   photoTitle: { fontWeight: '700', color: colors.navy, fontSize: 15 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.line },

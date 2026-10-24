@@ -82,6 +82,12 @@ export type SalaryMonth = {
   gross: number; deductions_total: number; net: number; paid: number; remaining: number; payslip_id: number | null; payslip_url?: string | null; per_day_rate?: number; days_paid?: number;
 };
 export type Notification = { id: string; kind: string | null; message: string; read_at: string | null; created_at: string };
+/** A notification as the server presents it (same icons and colours as the website). */
+export type NotificationItem = Notification & {
+  record_id: number | null; type: string; tag: string; app_icon: string; bg: string; fg: string; chip: string;
+  actor: string | null; parts: { text: string; bold: boolean }[]; title: string; details: string | null; quote: string | null;
+  unread: boolean; time: string; day: 'Today' | 'Yesterday' | 'Earlier'; needs_action: boolean; approval_id: number | null; decision: string | null; url: string | null;
+};
 export type Approval = { id: number; type: string; label: string; summary: string; created_at: string };
 export type Paginated<T> = { data: T[]; total: number; current_page: number; last_page: number };
 export type Correction = { id: number; work_date: string; check_in: string | null; check_out: string | null; reason: string; status: string; decision_note: string | null };

@@ -7,6 +7,14 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
+    /** "Mark all read" in the bell. */
+    public function readAll(Request $request): RedirectResponse
+    {
+        $request->user()->unreadNotifications->markAsRead();
+
+        return back();
+    }
+
     /** Marks a notification read and follows its link (relative paths only). */
     public function open(Request $request, string $id): RedirectResponse
     {

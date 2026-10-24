@@ -86,7 +86,7 @@ class AttendanceCorrectionService
             if ($carry) app(PayrollCarryOver::class)->settle($correction->employee_id, $correction->work_date->toDateString(), $correction->work_date->toDateString(), 'Attendance correction for '.$correction->work_date->format('d M Y'), $approverId);
             $day = $correction->work_date->format('d M');
             $by = User::find($approverId)?->name ?? 'Your approver';
-            Notifier::send($correction->employee?->user, 'AttendanceCorrection', $correction->id, $approve ? "{$by} approved your attendance correction for {$day}." : "{$by} rejected your attendance correction for {$day}: {$note}");
+            Notifier::send($correction->employee?->user, 'AttendanceCorrection', $correction->id, $approve ? "{$by} approved your attendance correction for {$day}." : "{$by} rejected your attendance correction for {$day}".($note ? ": {$note}" : '.'));
 
             return $correction->fresh();
         });

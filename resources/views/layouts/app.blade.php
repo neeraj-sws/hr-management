@@ -9,7 +9,7 @@
         $crumb = \App\Support\Navigation::breadcrumb();
         $pageTitle = $title ?? ($crumb[1] ?? 'SWS HR');
         $unreadCount = $user->unreadNotifications()->count();
-        $recentNotifications = $user->notifications()->latest()->limit(6)->get();
+        $bellItems = (new \App\Support\NotificationPresenter($user))->present($user->notifications()->latest()->limit(6)->get());
         $roleLabel = \App\Support\PersonBadges::primary($user);
         $initials = collect(explode(' ', trim($user->name)))->filter()->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->join('');
     @endphp
@@ -130,21 +130,29 @@
                 <input type="search" name="q" value="{{ request()->routeIs('search') ? request('q') : '' }}" placeholder="Search employees, tasks, projects…" aria-label="Search">
             </form>
             <div class="top-actions">
-                <details class="menu">
-                    <summary class="icon-btn" aria-label="Notifications"><x-icon name="bell" />@if($unreadCount)<span class="icon-count">{{ $unreadCount > 9 ? '9+' : $unreadCount }}</span>@endif</summary>
-                    <div class="menu-panel">
-                        <div class="menu-head"><strong>Notifications</strong> <span class="small muted">· {{ $unreadCount }} unread</span></div>
-                        @forelse($recentNotifications as $notification)
-                            <a class="notif-item" href="{{ route('system.notifications.open', $notification->id) }}">
-                                @if(!$notification->read_at)<span class="dot" style="color:var(--blue)"></span>@endif
-                                {{ $notification->data['message'] ?? 'You have an update.' }}
-                                <small>{{ $notification->created_at?->diffForHumans() }}</small>
-                            </a>
-                        @empty
-                            <p class="small muted" style="padding:10px">You're all caught up.</p>
-                        @endforelse
-                        <div class="divider" style="margin:6px 0"></div>
-                        <a class="menu-item" href="{{ route('system.notifications') }}"><x-icon name="inbox" class="icon-sm" />View all notifications</a>
+                {{-- Bell: the 6 latest, newest first. No tabs or approve buttons here; the page has those. --}}
+                <details class="menu nf-bell">
+                    <summary class="icon-btn" aria-label="Notifications{{ $unreadCount ? ', '.$unreadCount.' unread' : '' }}"><x-icon name="bell" />@if($unreadCount)<span class="icon-count">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>@endif</summary>
+                    <div class="menu-panel nf-panel">
+                        <div class="nf-panel-head">
+                            <span><strong>Notifications</strong> <span class="muted">· {{ $unreadCount }} unread</span></span>
+                            @if($unreadCount)<form method="POST" action="{{ route('system.notifications.read-all') }}">@csrf<button type="submit" class="nf-link">Mark all read</button></form>@endif
+                        </div>
+                        <div class="nf-panel-list">
+                            @forelse($bellItems as $item)
+                                <a @class(['nf-bell-item', 'is-unread' => $item['unread']]) href="{{ $item['open_url'] }}">
+                                    <x-notif-icon :item="$item" />
+                                    <span class="nf-body">
+                                        <x-notif-title :item="$item" class="nf-clamp" />
+                                        <span class="nf-meta">{{ $item['needs_action'] ? 'Needs review · ' : '' }}{{ $item['time'] }}</span>
+                                    </span>
+                                    @if($item['unread'])<span class="nf-dot" aria-label="Unread"></span>@endif
+                                </a>
+                            @empty
+                                <p class="nf-panel-empty"><x-icon name="check" class="icon-sm" /> You're all caught up</p>
+                            @endforelse
+                        </div>
+                        <a class="nf-panel-foot" href="{{ route('system.notifications') }}">View all notifications <x-icon name="arrow-right" class="icon-sm" /></a>
                     </div>
                 </details>
                 <details class="menu">
@@ -174,6 +182,14 @@
     @endif
 
     @livewireScripts
+    <script>
+        // Header menus (bell, profile) close on a click outside or Esc, and Esc puts focus back on the button.
+        document.addEventListener('click', (e) => document.querySelectorAll('details.menu[open]').forEach((d) => { if (! d.contains(e.target)) d.removeAttribute('open'); }));
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            document.querySelectorAll('details.menu[open]').forEach((d) => { d.removeAttribute('open'); d.querySelector('summary')?.focus(); });
+        });
+    </script>
     <script src="{{ asset('js/offline-action-queue.js') }}" defer></script>
     <script src="{{ asset('js/table-sort.js') }}?v={{ filemtime(public_path('js/table-sort.js')) }}" defer></script>
 </body>

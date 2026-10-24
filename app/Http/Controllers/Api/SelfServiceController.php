@@ -33,6 +33,9 @@ class SelfServiceController extends ApiController
             'can_delete' => $d->uploaded_by === $user->id,
             // Opening a private file from the phone's browser: a link signed for this user, valid 5 minutes.
             'url' => URL::temporarySignedRoute('files.document', now()->addMinutes(5), ['document' => $d->id, 'user' => $user->id]),
+            // "View" (PDF and images): a viewer page that shows the file without downloading it.
+            'file_type' => $type = \App\Livewire\Lifecycle\Documents::fileKind($d->original_name),
+            'view_url' => in_array($type, ['pdf', 'image'], true) ? URL::temporarySignedRoute('files.document.viewer', now()->addMinutes(5), ['document' => $d->id, 'user' => $user->id]) : null,
         ])->values(),
             // The profile photo is kept on the profile (not as a document); the app lists it with the files.
             'photo_url' => $employee->photo_path ? url('/api/me/photo').'?v='.substr(md5($employee->photo_path), 0, 8) : null,

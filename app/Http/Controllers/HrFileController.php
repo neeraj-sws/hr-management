@@ -52,13 +52,40 @@ class HrFileController extends Controller
     /** Phone download link: the signature binds the document to one user and expires in minutes; access is re-checked. */
     public function signedDocument(\App\Models\EmployeeDocument $document, AuditLogger $audit): StreamedResponse
     {
+        $user = $this->signedDocumentUser($document);
+        $inline = request()->boolean('inline');
+        $audit->record('employee.document_accessed', $document, ['category' => $document->category, 'via' => $inline ? 'mobile_view' : 'mobile_link', 'user_id' => $user->id]);
+
+        // inline=1 (part of the signed link): shown in the browser / viewer instead of downloaded.
+        return $inline
+            ? Storage::disk('local')->response($document->storage_path, $document->original_name, ['Cache-Control' => 'private, no-store'], 'inline')
+            : Storage::disk('local')->download($document->storage_path, $document->original_name);
+    }
+
+    /** "View" from the app: a small page that shows the PDF (pages drawn in the browser) or the image, without downloading. */
+    public function documentViewer(\App\Models\EmployeeDocument $document): \Illuminate\View\View
+    {
+        $user = $this->signedDocumentUser($document);
+        $kind = \App\Livewire\Lifecycle\Documents::fileKind($document->original_name);
+        abort_unless(in_array($kind, ['pdf', 'image'], true), 404);
+        $params = ['document' => $document->id, 'user' => $user->id];
+
+        return view('files.document-viewer', [
+            'document' => $document, 'kind' => $kind,
+            'fileUrl' => \Illuminate\Support\Facades\URL::temporarySignedRoute('files.document', now()->addMinutes(10), [...$params, 'inline' => 1]),
+            'downloadUrl' => \Illuminate\Support\Facades\URL::temporarySignedRoute('files.document', now()->addMinutes(10), $params),
+        ]);
+    }
+
+    /** The user a signed document link was made for: the employee, HR, or their manager. */
+    private function signedDocumentUser(\App\Models\EmployeeDocument $document): \App\Models\User
+    {
         $user = \App\Models\User::where('is_active', true)->find((int) request()->query('user'));
         $employee = $document->employee;
         abort_unless($user && ($employee?->user_id === $user->id || $user->can('lifecycle.manage') || $employee?->manager?->user_id === $user->id), 403);
         abort_unless(Storage::disk('local')->exists($document->storage_path), 404);
-        $audit->record('employee.document_accessed', $document, ['category' => $document->category, 'via' => 'mobile_link', 'user_id' => $user->id]);
 
-        return Storage::disk('local')->download($document->storage_path, $document->original_name);
+        return $user;
     }
 
     /** The payslip opened from the mobile app (signed link): the employee's own, or payroll staff. */

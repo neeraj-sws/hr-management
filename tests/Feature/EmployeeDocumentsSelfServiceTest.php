@@ -78,6 +78,23 @@ class EmployeeDocumentsSelfServiceTest extends TestCase
             ->assertSee('Onboarding documents · Docs Person')->assertSee('2 documents left.')->assertSee('0 / 2');
     }
 
+    public function test_app_can_view_a_pdf_without_downloading_it(): void
+    {
+        $e = $this->employee();
+        Sanctum::actingAs($e->user, ['*']);
+        $this->post('/api/my/documents', ['category' => 'resume', 'file' => UploadedFile::fake()->create('cv.pdf', 30, 'application/pdf')], ['Accept' => 'application/json'])->assertCreated();
+        $this->post('/api/my/documents', ['category' => 'other', 'file' => UploadedFile::fake()->create('notes.docx', 30, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')], ['Accept' => 'application/json'])->assertCreated();
+        $docs = collect($this->getJson('/api/my/documents')->json('data'))->keyBy('name');
+        $this->assertSame('pdf', $docs['cv.pdf']['file_type']);
+        $this->assertNull($docs['notes.docx']['view_url'], 'Word files are download only');
+
+        $viewer = $this->get($docs['cv.pdf']['view_url'])->assertOk()->assertSee('pdf.min.js')->assertSee('Download');
+        preg_match('/getDocument\(("[^"]+")/', $viewer->getContent(), $m);
+        $inline = $this->get(json_decode($m[1]))->assertOk();
+        $this->assertStringStartsWith('inline', (string) $inline->headers->get('content-disposition'));
+        $this->get(str_replace('signature=', 'signature=x', $docs['cv.pdf']['view_url']))->assertForbidden();
+    }
+
     public function test_aadhaar_uploaded_as_identity_proof_ticks_off_the_checklist(): void
     {
         $e = $this->employee();
