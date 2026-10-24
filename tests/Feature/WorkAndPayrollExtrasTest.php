@@ -72,7 +72,9 @@ class WorkAndPayrollExtrasTest extends TestCase
     {
         Livewire::actingAs($this->employeeUser)->test(DailyStatus::class)
             ->set('summary', 'Finished the export')->set('pending', 'Excel styling')->set('tomorrowPlan', 'Start the import screen')
-            ->call('save')->assertHasNoErrors()->assertSee('Pending:')->assertSee('Tomorrow:');
+            ->call('save')->assertHasNoErrors()
+            // The full update (pending, tomorrow) is in View details.
+            ->call('view', \App\Models\DailyWorkStatus::firstOrFail()->id)->assertSee('Pending:')->assertSee('Plan for tomorrow:')->assertSee('Excel styling');
         $status = \App\Models\DailyWorkStatus::firstOrFail();
         $this->assertSame(['Excel styling', 'Start the import screen'], [$status->pending, $status->tomorrow_plan]);
     }

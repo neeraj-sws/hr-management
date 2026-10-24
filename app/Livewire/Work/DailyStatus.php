@@ -30,6 +30,15 @@ class DailyStatus extends Component
     #[Url] public string $date = '';
     #[Url] public ?int $employee = null;
     #[Url] public ?int $project = null;
+    /** Team view filters: department, blockers, free text, quick period, sort. */
+    #[Url] public ?int $department = null;
+    #[Url(as: 'blockers')] public string $blockerFilter = '';
+    #[Url(as: 'q')] public string $search = '';
+    #[Url] public string $period = 'all';
+    #[Url] public string $sortBy = 'latest';
+    /** View details drawer: the status shown and its tab. */
+    public ?int $viewing = null;
+    public string $viewTab = 'work';
 
     public function mount(): void
     {
@@ -43,7 +52,9 @@ class DailyStatus extends Component
 
     public function updated($property): void
     {
-        if (in_array($property, ['date', 'employee', 'project'], true)) $this->resetPage();
+        if (in_array($property, ['date', 'employee', 'project', 'department', 'blockerFilter', 'search', 'period', 'sortBy'], true)) $this->resetPage();
+        // Picking a date replaces the quick period tabs.
+        if ($property === 'date' && $this->date) $this->period = 'all';
     }
 
     /**
@@ -130,6 +141,94 @@ class DailyStatus extends Component
         return $this->teamEmployeeIds()->merge($projectMembers)->unique()->values();
     }
 
+    public function resetFilters(): void
+    {
+        $this->reset('date', 'employee', 'project', 'department', 'blockerFilter', 'search', 'period', 'sortBy');
+        $this->resetPage();
+    }
+
+    /** Reminder to one person who has not written today's status. */
+    public function remindOne(int $employeeId): void
+    {
+        $orgWide = $this->user()->canAny(['hr.manage', 'employees.manage']);
+        $scope = $orgWide ? null : $this->statusScope();
+        abort_unless($orgWide || ($scope->count() > 1 && $scope->contains($employeeId)), 403);
+        $sent = app(\App\Services\WorkService::class)->remindDailyStatus(today()->toDateString(), [$employeeId], $this->user());
+        $this->toast($sent ? 'Reminder sent (in the app and by e-mail).' : 'Already reminded in the last hour — try again later.');
+    }
+
+    public function view(int $id): void
+    {
+        $this->viewing = $this->visibleStatus($id)->id;
+        $this->viewTab = 'work';
+    }
+
+    public function closeView(): void
+    {
+        $this->viewing = null;
+    }
+
+    public function showTab(string $tab): void
+    {
+        if (in_array($tab, ['work', 'timesheet', 'tasks', 'projects', 'attendance', 'leaves', 'activity'], true)) $this->viewTab = $tab;
+    }
+
+    /** Previous / next day's status of the same person. */
+    public function stepDay(int $direction): void
+    {
+        $current = $this->visibleStatus((int) $this->viewing);
+        $next = DailyWorkStatus::where('employee_id', $current->employee_id)
+            ->whereDate('work_date', $direction < 0 ? '<' : '>', $current->work_date->toDateString())
+            ->orderBy('work_date', $direction < 0 ? 'desc' : 'asc')->first();
+        if ($next) $this->viewing = $next->id;
+    }
+
+    /** A status the signed-in person may read (own, team / project scope, or everyone for HR) — 403 otherwise. */
+    private function visibleStatus(int $id): DailyWorkStatus
+    {
+        $status = DailyWorkStatus::findOrFail($id);
+        $user = $this->user();
+        $allowed = $user->canAny(['hr.manage', 'employees.manage']) || $status->employee_id === $this->ownEmployee()?->id || $this->statusScope()->contains($status->employee_id);
+        abort_unless($allowed, 403);
+
+        return $status;
+    }
+
+    /** Everything the View details drawer shows for one status. */
+    private function details(DailyWorkStatus $status): array
+    {
+        $status->loadMissing(['employee.department', 'employee.manager', 'employee.user']);
+        $employee = $status->employee;
+        $day = $status->work_date->toDateString();
+        $tasks = Task::with('project')->where('assignee_id', $employee->id)
+            ->where(fn ($q) => $q->whereDate('completed_at', $day)->orWhereDate('started_at', $day)->orWhereDate('work_date', $day)
+                ->orWhereHas('timeEntries', fn ($t) => $t->whereDate('started_at', $day))
+                ->orWhere(fn ($q) => $q->where('status', '!=', 'completed')->whereDate('created_at', '<=', $day)))
+            ->orderByDesc('updated_at')->limit(40)->get();
+        $data = [
+            'status' => $status, 'employee' => $employee,
+            'prev' => DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', '<', $day)->exists(),
+            'next' => DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', '>', $day)->exists(),
+            'taskSummary' => ['completed' => $tasks->filter(fn ($t) => $t->completed_at?->toDateString() === $day)->count(), 'in_progress' => $tasks->where('status', 'in_progress')->count(), 'open' => $tasks->where('status', '!=', 'completed')->count()],
+            'projectLines' => collect((array) ($status->project_updates ?? [])),
+            'canEdit' => $employee->user_id === auth()->id() && $status->work_date->isToday(),
+            'onTime' => $status->submitted_at && $employee->work_end ? $status->submitted_at->lte(\Illuminate\Support\Carbon::parse($day.' '.$employee->work_end)->addHours(2)) : null,
+        ];
+        // Only the open tab's data is loaded.
+        $data['tab'] = match ($this->viewTab) {
+            'timesheet' => \App\Models\TaskTimeEntry::with('task')->where('employee_id', $employee->id)->whereDate('started_at', $day)->orderBy('started_at')->get(),
+            'tasks' => $tasks,
+            'projects' => Project::where(fn ($q) => $q->where('manager_id', $employee->id)->orWhereHas('members', fn ($m) => $m->where('attendance_employees.id', $employee->id)))->orderBy('name')->get(),
+            'attendance' => \App\Models\AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $day)->orderBy('check_in')->get(),
+            'leaves' => \App\Models\LeaveRequest::with('leaveType')->where('employee_id', $employee->id)->whereDate('ends_on', '>=', \Illuminate\Support\Carbon::parse($day)->subDays(60))->orderByDesc('starts_on')->limit(10)->get(),
+            'activity' => \App\Models\AuditLog::with('actor')->where(fn ($q) => $q->where(fn ($q) => $q->where('subject_type', DailyWorkStatus::class)->where('subject_id', $status->id))
+                ->orWhere(fn ($q) => $q->where('actor_id', $employee->user_id ?? 0)->whereDate('created_at', $day)))->latest('id')->limit(25)->get(),
+            default => null,
+        };
+
+        return $data;
+    }
+
     public function render()
     {
         $user = $this->user();
@@ -139,21 +238,53 @@ class DailyStatus extends Component
         // members of their projects; everyone else only themselves.
         $scope = $orgWide ? null : $this->statusScope();
         $canSeeTeam = $orgWide || $scope->count() > 1;
-        $statuses = DailyWorkStatus::with('employee')
+        $day = $this->date ?: today()->toDateString();
+        $term = trim($this->search);
+
+        // The filters every count shares (scope, employee, department, project, blockers, search) — not the period or date.
+        $filtered = fn () => DailyWorkStatus::query()
             ->when(! $canSeeTeam, fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($canSeeTeam && $scope, fn ($q) => $q->whereIn('employee_id', $scope->all() ?: [0]))
-            ->when($this->date, fn ($q, $d) => $q->whereDate('work_date', $d))
             ->when($this->employee && ($scope === null || $scope->contains($this->employee)), fn ($q) => $q->where('employee_id', $this->employee))
+            ->when($this->department, fn ($q, $id) => $q->whereHas('employee', fn ($e) => $e->where('department_id', $id)))
             // project_updates is JSON: MySQL stores it as {"project_id": 5, …} (with a space), SQLite without.
             ->when($this->project, fn ($q, $id) => $q->where(fn ($q) => $q->where('project_updates', 'like', '%"project_id":'.(int) $id.',%')->orWhere('project_updates', 'like', '%"project_id": '.(int) $id.',%')))
-            ->latest('work_date')->latest('id')->paginate(15);
+            ->when($this->blockerFilter === 'yes', fn ($q) => $q->whereNotNull('blockers')->where('blockers', '!=', ''))
+            ->when($this->blockerFilter === 'no', fn ($q) => $q->where(fn ($q) => $q->whereNull('blockers')->orWhere('blockers', '')))
+            ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('summary', 'like', "%{$term}%")->orWhere('plan', 'like', "%{$term}%")->orWhere('blockers', 'like', "%{$term}%")
+                ->orWhereHas('employee', fn ($e) => $e->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%"))));
+        $periods = [
+            'today' => fn ($q) => $q->whereDate('work_date', today()),
+            'yesterday' => fn ($q) => $q->whereDate('work_date', today()->subDay()),
+            'week' => fn ($q) => $q->whereDate('work_date', '>=', today()->startOfWeek())->whereDate('work_date', '<=', today()),
+        ];
+        $statuses = $filtered()->with(['employee.department'])
+            ->when($this->date, fn ($q, $d) => $q->whereDate('work_date', $d))
+            ->when(! $this->date && isset($periods[$this->period]), fn ($q) => $periods[$this->period]($q))
+            ->when($this->sortBy === 'oldest', fn ($q) => $q->orderBy('work_date')->orderBy('submitted_at'))
+            ->when($this->sortBy === 'name', fn ($q) => $q->orderBy(AttendanceEmployee::select('name')->whereColumn('attendance_employees.id', 'daily_work_statuses.employee_id'))->latest('work_date'))
+            ->when(! in_array($this->sortBy, ['oldest', 'name'], true), fn ($q) => $q->latest('work_date')->orderByDesc('submitted_at')->latest('id'))
+            ->paginate(10);
 
         $missing = collect();
-        // "Missing today" on the company's working days (Saturdays too where they are worked).
-        if ($canSeeTeam && \App\Support\WorkCalendar::isWorkday(today()->toDateString(), app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5]]))) {
-            $submitted = DailyWorkStatus::whereDate('work_date', today())->pluck('employee_id');
-            $missing = AttendanceEmployee::where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))
-                ->whereNotIn('id', $submitted)->whereHas('sessions', fn ($q) => $q->whereDate('work_date', today()))->inCodeOrder()->get();
+        $expected = 0;
+        // "Missing" on the company's working days (Saturdays too where they are worked): checked in, no status yet.
+        if ($canSeeTeam && \App\Support\WorkCalendar::isWorkday($day, app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'calendar.working_days', $day, ['days' => [1, 2, 3, 4, 5]]))) {
+            $submitted = DailyWorkStatus::whereDate('work_date', $day)->pluck('employee_id');
+            $people = AttendanceEmployee::with('department')->where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))
+                ->whereHas('sessions', fn ($q) => $q->whereDate('work_date', $day));
+            $expected = (clone $people)->count() + DailyWorkStatus::whereDate('work_date', $day)->when($scope, fn ($q) => $q->whereIn('employee_id', $scope->all() ?: [0]))
+                ->whereNotIn('employee_id', (clone $people)->pluck('id'))->count();
+            $missing = $people->whereNotIn('id', $submitted)->inCodeOrder()->get();
+        }
+        $onDay = fn (string $d) => $filtered()->whereDate('work_date', $d);
+        $submittedOnDay = $onDay($day)->count();
+        $blockers = $canSeeTeam ? $onDay($day)->with('employee')->whereNotNull('blockers')->where('blockers', '!=', '')->latest('submitted_at')->get() : collect();
+
+        $detail = null;
+        if ($this->viewing) {
+            $detail = rescue(fn () => $this->details($this->visibleStatus($this->viewing)), null, false);
+            if (! $detail) $this->viewing = null;
         }
 
         return $this->page('livewire.work.daily-status', [
@@ -161,10 +292,25 @@ class DailyStatus extends Component
             'own' => $own,
             'canSeeTeam' => $canSeeTeam,
             'missing' => $missing,
+            'day' => \Illuminate\Support\Carbon::parse($day),
+            'cards' => [
+                'updates' => $statuses->total(),
+                'people' => $canSeeTeam ? ($scope ? $scope->count() : AttendanceEmployee::where('is_active', true)->count()) : 1,
+                'submitted' => $submittedOnDay,
+                'expected' => max($expected, $submittedOnDay),
+                'submittedBefore' => $onDay(\Illuminate\Support\Carbon::parse($day)->subDay()->toDateString())->count(),
+                'missing' => $missing->count(),
+                'blockers' => $blockers->count(),
+            ],
+            'needsAttention' => $blockers->take(5),
+            'periodCounts' => ['all' => $filtered()->when($this->date, fn ($q, $d) => $q->whereDate('work_date', $d))->count()] + collect($periods)->map(fn ($apply) => $apply($filtered())->count())->all(),
             'todayTasks' => $own ? Task::where('assignee_id', $own->id)->where(fn ($q) => $q->whereDate('completed_at', today())->orWhere('status', 'in_progress'))->get() : collect(),
             'byProject' => $own ? $this->todayByProject($own) : collect(),
             'projects' => $canSeeTeam ? Project::orderBy('name')->get(['id', 'name']) : collect(),
+            'departments' => $canSeeTeam ? \App\Models\Department::orderBy('name')->get(['id', 'name']) : collect(),
             'people' => $canSeeTeam ? AttendanceEmployee::where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))->orderBy('name')->get(['id', 'name']) : collect(),
+            'detail' => $detail,
+            'projectNames' => Project::pluck('name', 'id'),
         ], 'Daily Work Status');
     }
 }
