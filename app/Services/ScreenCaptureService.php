@@ -24,7 +24,7 @@ class ScreenCaptureService
 {
     public const INTERVALS = [5, 10, 15, 30];
     public const DEFAULT_PURPOSE = 'To confirm working time and to support work reviews.';
-    public const VIEWERS = 'You, your current manager, and HR/administrators with the monitoring permission. Every view and download is logged.';
+    public const VIEWERS = 'Your current manager, and HR/administrators with the monitoring permission. You do not see your own screenshots. Every view and download is logged.';
     public const NEVER_RECORDED = 'Keystrokes, passwords, webcam, microphone and clipboard are never recorded.';
     public const IMAGE_RULES = ['required', 'file', 'max:4096', 'mimes:jpg,jpeg,png'];
 
@@ -153,7 +153,8 @@ class ScreenCaptureService
     {
         $employee = $shot->employee;
         if (! $employee) return false;
-        if ($employee->user_id === $user->id || $user->can('monitoring.view')) return true;
+        if ($employee->user_id === $user->id) return false; // never your own screenshots
+        if ($user->can('monitoring.view')) return true;
         $manager = $employee->manager;
         if ((! $manager || $manager->user_id !== $user->id) && $user->can('monitoring.team')) {
             // Team monitoring: the manager's reports' reports too (never outside their tree).

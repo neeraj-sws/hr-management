@@ -21,17 +21,18 @@ class Screenshots extends Component
     {
         $this->date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->date) ? $this->date : today()->toDateString();
         $allowed = $this->viewable()->pluck('id');
-        if (! $this->employee || ! $allowed->contains($this->employee)) $this->employee = $this->ownEmployee()?->id ?? $allowed->first();
+        if (! $this->employee || ! $allowed->contains($this->employee)) $this->employee = $allowed->first();
     }
 
-    /** People whose captures this user may see. */
+    /** People whose captures this user may see: never themselves; HR everyone else, a manager their team. */
     private function viewable()
     {
-        $query = AttendanceEmployee::where('is_active', true)->inCodeOrder();
-        if ($this->user()->can('monitoring.view')) return $query;
         $own = $this->ownEmployee();
+        $query = AttendanceEmployee::where('is_active', true)->whereKeyNot($own?->id ?? 0)->inCodeOrder();
+        if ($this->user()->can('monitoring.view')) return $query;
+        $team = $this->user()->can('monitoring.team') ? app(\App\Services\TeamMonitoringService::class)->scopeIds($this->user()) : null;
 
-        return $query->where(fn ($q) => $q->whereKey($own?->id ?? 0)->orWhere('manager_id', $own?->id ?? 0));
+        return $query->where(fn ($q) => $q->where('manager_id', $own?->id ?? 0)->when($team, fn ($q) => $q->orWhereIn('id', $team->all() ?: [0])));
     }
 
     public function render(ScreenCaptureService $captures)

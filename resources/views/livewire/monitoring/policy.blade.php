@@ -24,7 +24,7 @@
                 <dt>How long they are kept</dt><dd>{{ $terms['retention'] }}</dd>
                 <dt>Never recorded</dt><dd>{{ $terms['never'] }}</dd>
                 <dt>How you know it is on</dt><dd>The desktop app shows a red "● Screen capture ON" sign while it is active, and the tray icon says so too. It never captures while the app is closed.</dd>
-                @if($own)<dt>Your screenshots</dt><dd>@if($myShots)<a href="{{ route('monitoring.screenshots') }}">See your {{ $myShots }} {{ str('screenshot')->plural($myShots) }}</a>@else None stored. @endif You can always see every screenshot taken of your screen.</dd>@endif
+                @if($own)<dt>Your screenshots</dt><dd>{{ $myShots ? $myShots.' '.str('screenshot')->plural($myShots).' stored (deleted after the retention period).' : 'None stored.' }} You don't see your own screenshots; below you can see who looked at them.</dd>@endif
             </dl>
         </div>
         @if($own && $policy['enabled'] && ! $acknowledged)

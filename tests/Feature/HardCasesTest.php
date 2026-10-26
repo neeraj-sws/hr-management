@@ -479,10 +479,10 @@ class HardCasesTest extends TestCase
         $this->actingAs($otherUser)->get($url)->assertForbidden();
         $this->actingAs($otherMgrUser)->get($url)->assertForbidden();
         $this->actingAs($accounts)->get($url)->assertForbidden();
-        $this->actingAs($this->employeeUser)->get($url)->assertOk();
+        $this->actingAs($this->employeeUser)->get($url)->assertForbidden(); // nobody sees their own screenshots
         $this->actingAs($this->managerUser)->get($url)->assertOk();
         $this->actingAs($hr)->get($url.'?download=1')->assertOk()->assertDownload();
-        $this->assertSame(2, AuditLog::where('action', 'screenshot.viewed')->count());
+        $this->assertSame(1, AuditLog::where('action', 'screenshot.viewed')->count());
         $this->assertSame(1, AuditLog::where('action', 'screenshot.downloaded')->count());
         $this->get(route('monitoring.screenshot', $shot))->assertOk();
 

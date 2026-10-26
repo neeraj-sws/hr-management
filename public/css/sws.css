@@ -966,3 +966,12 @@ div.tm-card{cursor:default}
 .viewas-bar form{margin:0}
 .viewas-bar .btn{background:#fff;color:#A32D2D;border-color:#fff;font-weight:700}
 .viewas-start{display:inline-block;margin:4px 0 6px}
+
+/* ---------- Screenshots page ---------- */
+.shot-open{display:block;width:100%;padding:0;border:0;background:#EEF1F5;cursor:zoom-in}
+.shot-open img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}
+.shot-missing{display:grid;place-items:center;width:100%;aspect-ratio:16/10;color:#8a96aa;font-size:12px;background:#F1F4F9}
+.shot figcaption{align-items:center;gap:6px}
+.shot-actions{display:flex;gap:10px}
+.shot-link{display:inline-flex;align-items:center;gap:4px;background:none;border:0;padding:0;color:#2B5BD7;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.shot-link:hover{text-decoration:underline}

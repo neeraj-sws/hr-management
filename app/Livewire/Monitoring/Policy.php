@@ -29,7 +29,7 @@ class Policy extends Component
             'terms' => $captures->describe($policy),
             'acknowledged' => $captures->isAcknowledged($this->user(), $policy),
             'acknowledgedAt' => $this->user()->screen_capture_acknowledged_at,
-            'myShots' => $own ? Screenshot::where('employee_id', $own->id)->count() : 0,
+            'myShots' => $own ? Screenshot::where('employee_id', $own->id)->count() : 0, // shown as a number only
             // Since when, why and who — and who has looked at your screenshots / monitoring data.
             'capture' => $own ? app(\App\Services\TeamMonitoringService::class)->captureState($own) : null,
             'views' => $own ? app(\App\Services\TeamMonitoringService::class)->viewsOf($own) : collect(),
