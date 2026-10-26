@@ -27,9 +27,10 @@ class TrainingFeeService
     public function enroll(AttendanceEmployee $employee, array $data, User $actor): TrainingEnrollment
     {
         if ((float) ($data['discount'] ?? 0) > (float) $data['total_fee']) throw ValidationException::withMessages(['discount' => 'The discount cannot be more than the fee.']);
-        $course = ! empty($data['fee_course_id']) ? TrainingFeeCourse::find($data['fee_course_id']) : null;
+        // The one course list (Training > Courses).
+        $course = ! empty($data['training_course_id']) ? \App\Models\TrainingCourse::find($data['training_course_id']) : null;
         $enrollment = TrainingEnrollment::create([
-            'employee_id' => $employee->id, 'fee_course_id' => $course?->id, 'course_name' => $course?->name ?? $data['course_name'],
+            'employee_id' => $employee->id, 'training_course_id' => $course?->id, 'course_name' => $course?->title ?? $data['course_name'],
             'total_fee' => $data['total_fee'], 'discount' => $data['discount'] ?? 0, 'installments' => max(1, (int) ($data['installments'] ?? 1)),
             'starts_on' => $data['starts_on'] ?? null, 'ends_on' => $data['ends_on'] ?? null, 'status' => 'active', 'notes' => $data['notes'] ?? null, 'created_by' => $actor->id,
         ]);

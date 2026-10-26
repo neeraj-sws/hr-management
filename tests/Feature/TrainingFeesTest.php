@@ -68,8 +68,9 @@ class TrainingFeesTest extends TestCase
         $page = Livewire::actingAs($this->admin)->test(Fees::class)
             ->call('editCourse')->set('cName', 'Web Development')->set('cDuration', '6 months')->set('cFee', '30000')->call('saveCourse')->assertHasNoErrors()
             ->call('enroll')->assertSee('Person TF-3')
-            ->set('employeeId', $trainee->id)->set('feeCourseId', \App\Models\TrainingFeeCourse::first()->id)->assertSet('totalFee', '30000')
-            ->set('discount', '3000')->set('installments', '3')->call('saveEnrollment')->assertHasNoErrors();
+            ->set('employeeId', $trainee->id)->set('feeCourseId', \App\Models\TrainingCourse::where('title', 'Web Development')->value('id'))->assertSet('totalFee', '30000')
+            // A special discount typed by HR stays (the automatic one-time discount is tested below).
+            ->set('installments', '3')->set('discount', '3000')->call('saveEnrollment')->assertHasNoErrors();
         $enrollment = TrainingEnrollment::firstOrFail();
         $this->assertSame(27000.0, $enrollment->payable());
 
@@ -95,5 +96,25 @@ class TrainingFeesTest extends TestCase
         // Ordinary employees cannot open the fees page.
         $this->actingAs($trainee->user)->get(route('training.fees'))->assertForbidden();
         $this->actingAs($this->admin)->get(route('training.fees'))->assertOk()->assertSee('Course fees');
+    }
+
+    public function test_one_course_list_one_time_discount_and_trainees_not_enrolled(): void
+    {
+        $trainee = $this->person('TF-5', 'trainee');
+        // A course added under Training > Courses, with a fee and a discount for paying at once.
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Training\Courses::class)
+            ->call('edit')->set('title', 'Web Designing')->set('fee', '25000')->set('oneTimeDiscount', '3000')->set('durationLabel', '4 months')->call('save')->assertHasNoErrors();
+        $course = \App\Models\TrainingCourse::where('title', 'Web Designing')->firstOrFail();
+
+        $page = Livewire::actingAs($this->admin)->test(Fees::class)
+            ->assertSee('Not in a course yet')->assertSee('Person TF-5')
+            ->call('enroll', null, $trainee->id)->assertSet('employeeId', $trainee->id)->assertSee('Web Designing')
+            ->set('feeCourseId', $course->id)->assertSet('totalFee', '25000')->assertSet('discount', '3000')
+            ->set('installments', '2')->assertSet('discount', '0')
+            ->set('installments', '1')->assertSet('discount', '3000')
+            ->call('saveEnrollment')->assertHasNoErrors();
+        $enrollment = TrainingEnrollment::where('employee_id', $trainee->id)->sole();
+        $this->assertSame([$course->id, 'Web Designing', 22000.0], [$enrollment->training_course_id, $enrollment->course_name, $enrollment->payable()]);
+        $page->assertDontSee('Not in a course yet');
     }
 }

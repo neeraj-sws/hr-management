@@ -71,6 +71,7 @@ class AttendanceEmployee extends Authenticatable
     public function directReports(): HasMany { return $this->hasMany(self::class, 'manager_id'); }
     public function tasks(): HasMany { return $this->hasMany(Task::class, 'assignee_id'); }
     public function leaveRequests(): HasMany { return $this->hasMany(LeaveRequest::class, 'employee_id'); }
+    public function trainingEnrollments(): HasMany { return $this->hasMany(TrainingEnrollment::class, 'employee_id'); }
     public function salaryProfile() { return $this->hasOne(SalaryProfile::class, 'employee_id')->latestOfMany(); }
     public function salaryProfiles(): HasMany { return $this->hasMany(SalaryProfile::class, 'employee_id'); }
     public function overtimeRequests(): HasMany { return $this->hasMany(OvertimeRequest::class, 'employee_id'); }

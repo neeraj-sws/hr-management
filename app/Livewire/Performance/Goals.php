@@ -26,6 +26,7 @@ class Goals extends Component
 
     public function mount(): void
     {
+        abort_unless(config('features.goals'), 404);
         $canManage = $this->manageable()->isNotEmpty();
         if (! in_array($this->tab, ['mine', 'team'], true)) $this->tab = $this->ownEmployee() ? 'mine' : 'team';
         if ($this->tab === 'team' && ! $canManage) $this->tab = 'mine';

@@ -9,7 +9,7 @@ class TrainingEnrollment extends Model
 {
     public const STATUSES = ['active' => 'Studying', 'completed' => 'Completed', 'dropped' => 'Left the course'];
 
-    protected $fillable = ['employee_id', 'fee_course_id', 'course_name', 'total_fee', 'discount', 'installments', 'starts_on', 'ends_on', 'status', 'notes', 'created_by'];
+    protected $fillable = ['employee_id', 'fee_course_id', 'training_course_id', 'course_name', 'total_fee', 'discount', 'installments', 'starts_on', 'ends_on', 'status', 'notes', 'created_by'];
     protected $casts = ['total_fee' => 'decimal:2', 'discount' => 'decimal:2', 'starts_on' => 'date', 'ends_on' => 'date'];
 
     public function employee()
@@ -17,9 +17,10 @@ class TrainingEnrollment extends Model
         return $this->belongsTo(AttendanceEmployee::class);
     }
 
+    /** The course from the one course list (Training > Courses). */
     public function course()
     {
-        return $this->belongsTo(TrainingFeeCourse::class, 'fee_course_id');
+        return $this->belongsTo(TrainingCourse::class, 'training_course_id');
     }
 
     public function payments()

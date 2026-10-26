@@ -23,6 +23,10 @@ class Courses extends Component
     public string $category = '';
     public string $provider = '';
     public string $durationHours = '';
+    /** Paid course (trainees): fee, duration as said to them, discount when paid at once. */
+    public string $fee = '';
+    public string $oneTimeDiscount = '';
+    public string $durationLabel = '';
     public string $materialUrl = '';
     public bool $isMandatory = false;
     public bool $isActive = true;
@@ -53,7 +57,8 @@ class Courses extends Component
         abort_unless($this->canManage(), 403);
         $c = $id ? TrainingCourse::findOrFail($id) : null;
         $this->fill(['editingId' => $c?->id, 'title' => $c?->title ?? '', 'description' => (string) $c?->description, 'category' => (string) $c?->category, 'provider' => (string) $c?->provider,
-            'durationHours' => $c?->duration_hours !== null ? (string) (float) $c?->duration_hours : '', 'materialUrl' => (string) $c?->material_url, 'isMandatory' => (bool) $c?->is_mandatory, 'isActive' => $c?->is_active ?? true]);
+            'durationHours' => $c?->duration_hours !== null ? (string) (float) $c?->duration_hours : '',
+            'fee' => $c?->fee !== null ? (string) (float) $c->fee : '', 'oneTimeDiscount' => $c && (float) $c->one_time_discount > 0 ? (string) (float) $c->one_time_discount : '', 'durationLabel' => (string) $c?->duration_label, 'materialUrl' => (string) $c?->material_url, 'isMandatory' => (bool) $c?->is_mandatory, 'isActive' => $c?->is_active ?? true]);
         $this->resetValidation();
         $this->showForm = true;
     }
@@ -65,9 +70,11 @@ class Courses extends Component
             'title' => ['required', 'string', 'max:160'], 'description' => ['nullable', 'string', 'max:5000'],
             'category' => ['nullable', 'string', 'max:60'], 'provider' => ['nullable', 'string', 'max:120'],
             'durationHours' => ['nullable', 'numeric', 'min:0', 'max:1000'], 'materialUrl' => ['nullable', 'url:http,https', 'max:500'],
-        ], [], ['durationHours' => 'duration', 'materialUrl' => 'material link']);
+            'fee' => ['nullable', 'numeric', 'min:0', 'max:10000000'], 'oneTimeDiscount' => ['nullable', 'numeric', 'min:0', 'lte:'.((float) $this->fee ?: 0)], 'durationLabel' => ['nullable', 'string', 'max:60'],
+        ], ['oneTimeDiscount.lte' => 'The discount cannot be more than the fee.'], ['durationHours' => 'duration', 'materialUrl' => 'material link', 'oneTimeDiscount' => 'discount']);
         $course = TrainingCourse::updateOrCreate(['id' => $this->editingId], ['title' => $this->title, 'description' => $this->description ?: null, 'category' => $this->category ?: null, 'provider' => $this->provider ?: null,
-            'duration_hours' => $this->durationHours === '' ? null : $this->durationHours, 'material_url' => $this->materialUrl ?: null, 'is_mandatory' => $this->isMandatory, 'is_active' => $this->isActive]
+            'duration_hours' => $this->durationHours === '' ? null : $this->durationHours,
+            'fee' => $this->fee === '' ? null : $this->fee, 'one_time_discount' => $this->fee === '' ? 0 : ((float) $this->oneTimeDiscount ?: 0), 'duration_label' => $this->durationLabel ?: null, 'material_url' => $this->materialUrl ?: null, 'is_mandatory' => $this->isMandatory, 'is_active' => $this->isActive]
             + ($this->editingId ? [] : ['created_by' => auth()->id()]));
         $audit->record($this->editingId ? 'training.course_updated' : 'training.course_created', $course);
         $this->showForm = false;

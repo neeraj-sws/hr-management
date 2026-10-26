@@ -28,6 +28,7 @@ class PerformanceGoalsAndFeedbackTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['features.goals' => true]); // Goals are hidden in the app for now; these tests switch them on.
         $this->seed();
         Carbon::setTestNow('2026-10-23 10:00:00');
         $make = function (string $code, string $name, array $roles, ?int $managerId = null) {
@@ -127,5 +128,13 @@ class PerformanceGoalsAndFeedbackTest extends TestCase
         Livewire::actingAs($this->managerUser)->test(Reviews::class)->call('create')->set('employeeId', $this->employee->id)->set('mode', 'direct')->call('save')
             ->assertSet('completeId', PerformanceReview::latest('id')->value('id'))->set('rating', 5)->set('strengths', 'Great quarter')->call('complete')->assertHasNoErrors();
         $this->assertSame([5, 'submitted'], [PerformanceReview::latest('id')->first()->rating, PerformanceReview::latest('id')->first()->status]);
+    }
+
+    public function test_goals_are_hidden_when_switched_off(): void
+    {
+        config(['features.goals' => false]);
+        $admin = \App\Models\User::where('email', 'admin@example.com')->firstOrFail();
+        $this->actingAs($admin)->get(route('performance.goals'))->assertNotFound();
+        $this->actingAs($admin)->get(route('dashboard'))->assertDontSee('Goals (KRA / OKR)');
     }
 }

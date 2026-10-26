@@ -278,6 +278,24 @@
 
     @livewireScripts
     <script>
+        // A ⋮ menu inside a scrolling table floats above the page, so it is never cut off by the table edge;
+        // near the bottom of the screen it opens upwards.
+        document.addEventListener('toggle', (e) => {
+            const d = e.target;
+            if (!(d instanceof HTMLDetailsElement) || !d.classList.contains('menu')) return;
+            const panel = d.querySelector(':scope > .menu-panel');
+            if (!panel || !d.closest('.table-wrap, .ds-list, .tm-table-card, .docs-list')) return;
+            if (!d.open) { panel.style.cssText = ''; return; }
+            const r = d.querySelector('summary').getBoundingClientRect();
+            panel.style.position = 'fixed';
+            panel.style.right = 'auto';
+            const w = panel.offsetWidth, h = panel.offsetHeight;
+            panel.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
+            panel.style.top = (r.bottom + h + 8 > window.innerHeight && r.top - h - 8 > 0 ? r.top - h - 6 : r.bottom + 6) + 'px';
+            panel.style.bottom = 'auto';
+        }, true);
+        // Scrolling closes a floating menu (it would drift away from its button).
+        window.addEventListener('scroll', () => document.querySelectorAll('.table-wrap details.menu[open], .ds-list details.menu[open]').forEach((d) => d.removeAttribute('open')), { passive: true });
         // Header menus (bell, profile) close on a click outside or Esc, and Esc puts focus back on the button.
         document.addEventListener('click', (e) => document.querySelectorAll('details.menu[open]').forEach((d) => { if (! d.contains(e.target)) d.removeAttribute('open'); }));
         document.addEventListener('keydown', (e) => {

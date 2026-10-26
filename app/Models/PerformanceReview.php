@@ -28,6 +28,9 @@ class PerformanceReview extends Model
     /** The goals the review covers: the employee's goals overlapping the review period. */
     public function goals()
     {
+        // Goals (KRA / OKR) switched off (config/features.php): reviews show no goals section.
+        if (! config('features.goals')) return collect();
+
         return PerformanceGoal::where('employee_id', $this->employee_id)->forPeriod($this->period_starts_on->toDateString(), $this->period_ends_on->toDateString())->orderByDesc('weight')->orderBy('id')->get();
     }
 

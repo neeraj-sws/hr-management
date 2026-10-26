@@ -5,7 +5,7 @@ namespace App\Livewire\Training;
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\AttendanceEmployee;
 use App\Models\TrainingEnrollment;
-use App\Models\TrainingFeeCourse;
+use App\Models\TrainingCourse;
 use App\Models\TrainingFeePayment;
 use App\Services\EmployeeService;
 use App\Services\TrainingFeeService;
@@ -61,6 +61,7 @@ class Fees extends Component
     public string $cDuration = '';
     public string $cFee = '';
     public string $cDescription = '';
+    public string $cDiscount = '';
     public bool $cActive = true;
 
     public function mount(): void
@@ -74,21 +75,37 @@ class Fees extends Component
         if (in_array($name, ['search', 'courseFilter', 'statusFilter', 'from', 'to', 'methodFilter', 'tab'], true)) $this->resetPage();
     }
 
+    /** Picking a course fills its fee, and its discount when paid at once (one installment). */
     public function updatedFeeCourseId($id): void
     {
-        if ($course = TrainingFeeCourse::find($id)) {
-            $this->courseName = $course->name;
+        if (! $id) { $this->courseName = ''; return; } // "a course not in the list": type its name
+        if ($course = TrainingCourse::find($id)) {
+            $this->courseName = $course->title;
             $this->totalFee = (string) (float) $course->fee;
+            $this->applyDiscountRule();
         }
     }
 
-    public function enroll(?int $id = null): void
+    /** Paid at once: the course's discount; in installments: no discount. */
+    public function updatedInstallments(): void
+    {
+        $this->applyDiscountRule();
+    }
+
+    private function applyDiscountRule(): void
+    {
+        $course = $this->feeCourseId ? TrainingCourse::find($this->feeCourseId) : null;
+        if (! $course) return;
+        $this->discount = (int) $this->installments === 1 ? (string) (float) $course->one_time_discount : '0';
+    }
+
+    public function enroll(?int $id = null, ?int $traineeId = null): void
     {
         $this->resetValidation();
         $e = $id ? TrainingEnrollment::findOrFail($id) : null;
         $this->enrollmentId = $e?->id;
-        $this->employeeId = $e?->employee_id;
-        $this->feeCourseId = $e?->fee_course_id;
+        $this->employeeId = $e?->employee_id ?? $traineeId;
+        $this->feeCourseId = $e?->training_course_id;
         $this->courseName = (string) $e?->course_name;
         $this->totalFee = $e ? (string) (float) $e->total_fee : '';
         $this->discount = $e ? (string) (float) $e->discount : '0';
@@ -104,8 +121,8 @@ class Fees extends Component
     {
         $data = $this->validate([
             'employeeId' => [$this->enrollmentId ? 'nullable' : 'required', 'exists:attendance_employees,id'],
-            'feeCourseId' => ['nullable', 'exists:training_fee_courses,id'],
-            'courseName' => ['required', 'string', 'max:255'],
+            'feeCourseId' => ['nullable', 'integer', function ($attr, $value, $fail) { if ($value && ! TrainingCourse::whereKey($value)->exists()) $fail('Choose a course from the list.'); }],
+            'courseName' => [$this->feeCourseId ? 'nullable' : 'required', 'string', 'max:255'],
             'totalFee' => ['required', 'numeric', 'min:0', 'max:10000000'],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'installments' => ['required', 'integer', 'min:1', 'max:36'],
@@ -114,7 +131,8 @@ class Fees extends Component
             'enrollStatus' => ['required', Rule::in(array_keys(TrainingEnrollment::STATUSES))],
             'notes' => ['nullable', 'string', 'max:2000'],
         ], [], ['employeeId' => 'trainee', 'courseName' => 'course', 'totalFee' => 'fee', 'endsOn' => 'end date']);
-        $values = ['fee_course_id' => $data['feeCourseId'] ?: null, 'course_name' => $data['courseName'], 'total_fee' => $data['totalFee'], 'discount' => $data['discount'] ?: 0,
+        $course = $data['feeCourseId'] ? TrainingCourse::find($data['feeCourseId']) : null;
+        $values = ['training_course_id' => $course?->id, 'course_name' => $course?->title ?? $data['courseName'], 'total_fee' => $data['totalFee'], 'discount' => $data['discount'] ?: 0,
             'installments' => (int) $data['installments'], 'starts_on' => $data['startsOn'] ?: null, 'ends_on' => $data['endsOn'] ?: null, 'notes' => $data['notes'] ?: null];
         if ($this->enrollmentId) {
             $fees->updateEnrollment(TrainingEnrollment::findOrFail($this->enrollmentId), [...$values, 'status' => $data['enrollStatus']]);
@@ -161,10 +179,11 @@ class Fees extends Component
     public function editCourse(?int $id = null): void
     {
         $this->resetValidation();
-        $c = $id ? TrainingFeeCourse::findOrFail($id) : null;
+        $c = $id ? TrainingCourse::findOrFail($id) : null;
         $this->courseId = $c?->id;
-        $this->cName = (string) $c?->name;
-        $this->cDuration = (string) $c?->duration;
+        $this->cName = (string) $c?->title;
+        $this->cDuration = (string) $c?->duration_label;
+        $this->cDiscount = $c && (float) $c->one_time_discount > 0 ? (string) (float) $c->one_time_discount : '';
         $this->cFee = $c ? (string) (float) $c->fee : '';
         $this->cDescription = (string) $c?->description;
         $this->cActive = $c?->is_active ?? true;
@@ -173,9 +192,12 @@ class Fees extends Component
 
     public function saveCourse(TrainingFeeService $fees): void
     {
-        $data = $this->validate(['cName' => ['required', 'string', 'max:255'], 'cDuration' => ['nullable', 'string', 'max:60'], 'cFee' => ['required', 'numeric', 'min:0', 'max:10000000'], 'cDescription' => ['nullable', 'string', 'max:2000']],
-            [], ['cName' => 'course name', 'cDuration' => 'duration', 'cFee' => 'fee']);
-        $fees->saveCourse($this->courseId ? TrainingFeeCourse::findOrFail($this->courseId) : null, ['name' => $data['cName'], 'duration' => $data['cDuration'] ?: null, 'fee' => $data['cFee'], 'description' => $data['cDescription'] ?: null, 'is_active' => $this->cActive]);
+        $data = $this->validate(['cName' => ['required', 'string', 'max:160'], 'cDuration' => ['nullable', 'string', 'max:60'], 'cFee' => ['required', 'numeric', 'min:0', 'max:10000000'], 'cDiscount' => ['nullable', 'numeric', 'min:0', 'lte:'.((float) $this->cFee ?: 0)], 'cDescription' => ['nullable', 'string', 'max:2000']],
+            ['cDiscount.lte' => 'The discount cannot be more than the fee.'], ['cName' => 'course name', 'cDuration' => 'duration', 'cFee' => 'fee', 'cDiscount' => 'discount']);
+        // The one course list (also shown under Training > Courses).
+        $course = TrainingCourse::updateOrCreate(['id' => $this->courseId], ['title' => $data['cName'], 'duration_label' => $data['cDuration'] ?: null, 'fee' => $data['cFee'], 'one_time_discount' => (float) ($data['cDiscount'] ?: 0),
+            'description' => $data['cDescription'] ?: null, 'is_active' => $this->cActive] + ($this->courseId ? [] : ['created_by' => auth()->id(), 'category' => 'Course']));
+        app(\App\Services\AuditLogger::class)->record($this->courseId ? 'training.course_updated' : 'training.course_created', $course, ['fee' => (float) $course->fee]);
         $this->showCourse = false;
         $this->toast('Course saved.');
     }
@@ -231,7 +253,10 @@ class Fees extends Component
             ],
             'payments' => $this->tab === 'payments' ? $this->paymentsQuery()->orderByDesc('paid_on')->orderByDesc('id')->paginate(25) : null,
             'paymentsTotal' => $this->tab === 'payments' ? (float) $this->paymentsQuery()->sum('amount') : 0,
-            'courses' => TrainingFeeCourse::withCount('enrollments')->orderByDesc('is_active')->orderBy('name')->get(),
+            'courses' => TrainingCourse::withCount('enrollments')->orderByDesc('is_active')->orderBy('title')->get(),
+            // Trainees not in a course yet: shown with an "Enrol" button.
+            'unenrolled' => $this->tab === 'trainees' ? AttendanceEmployee::where('is_active', true)->where('employment_type', EmployeeService::TRAINEE)
+                ->whereDoesntHave('trainingEnrollments', fn ($q) => $q->whereIn('status', ['active', 'completed']))->inCodeOrder()->get(['id', 'name', 'employee_code', 'joined_at']) : collect(),
             'courseNames' => TrainingEnrollment::distinct()->orderBy('course_name')->pluck('course_name'),
             'trainees' => $this->showEnroll ? AttendanceEmployee::where('is_active', true)->where('employment_type', EmployeeService::TRAINEE)->inCodeOrder()->get(['id', 'name', 'employee_code']) : collect(),
             'paying' => $this->payingId ? TrainingEnrollment::with(['employee', 'payments'])->find($this->payingId) : null,

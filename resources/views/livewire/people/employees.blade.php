@@ -134,7 +134,8 @@
                         <x-field label="Daily work hours" name="dailyHours" hint="used by attendance and payroll"><input type="number" step="0.25" min="0.25" max="24" wire:model="dailyHours"></x-field>
                         <x-field label="Work start" name="workStart"><input type="time" wire:model="workStart"></x-field>
                         <x-field label="Work end" name="workEnd"><input type="time" wire:model="workEnd"></x-field>
-                        @unless($editingId)
+                        {{-- Trainees pay a course fee (Training > Course fees) and get no salary: no salary fields. --}}
+                        @unless($editingId || $employmentType === \App\Services\EmployeeService::TRAINEE)
                             <x-field label="Salary type" name="payBasis"><select wire:model.live="payBasis">@foreach(\App\Models\SalaryProfile::PAY_BASES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
                             @if($payBasis === 'daily')
                                 <x-field label="Salary per day" name="dailyRate" hint="paid for each working day attended, e.g. 130"><input type="number" step="0.01" min="0" wire:model="dailyRate" placeholder="130"></x-field>

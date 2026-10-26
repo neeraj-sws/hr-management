@@ -5,13 +5,14 @@
     </div>
     <section class="card">
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Course</th><th>Category</th><th class="num">Hours</th><th>Completion</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Course</th><th>Category</th><th class="num">Hours</th><th class="num">Fee</th><th>Completion</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @forelse($courses as $c)
                 @php($pct = $c->assignments_count ? (int) round($c->completed_count * 100 / $c->assignments_count) : 0)
                 <tr wire:key="course-{{ $c->id }}">
                     <td><strong>{{ $c->title }}</strong>@if($c->is_mandatory) <x-badge tone="red">Mandatory</x-badge>@endif<small>{{ $c->provider ?: '—' }}</small></td>
-                    <td>{{ $c->category ?: '—' }}</td><td class="num">{{ $c->duration_hours !== null ? \App\Support\Duration::fromHours($c->duration_hours) : '—' }}</td>
+                    <td>{{ $c->category ?: '—' }}</td><td class="num">{{ $c->duration_hours !== null ? \App\Support\Duration::fromHours($c->duration_hours) : ($c->duration_label ?: '—') }}</td>
+                    <td class="num">@if($c->fee !== null){{ number_format((float) $c->fee, 2) }}@if((float) $c->one_time_discount > 0)<small>−{{ number_format((float) $c->one_time_discount, 2) }} if paid at once</small>@endif @else <span class="muted">Free</span>@endif</td>
                     <td style="min-width:160px">@if($c->assignments_count)<div class="progress" title="{{ $pct }}%"><span style="width:{{ $pct }}%"></span></div><small>{{ $c->completed_count }} of {{ $c->assignments_count }} completed</small>@else<span class="muted small">Not assigned yet</span>@endif</td>
                     <td><x-badge :status="$c->is_active ? 'active' : 'inactive'" /></td>
                     <td><div class="row-actions">
@@ -35,6 +36,9 @@
                 <x-field label="Category" name="category"><input wire:model="category" placeholder="Compliance, Technical, Soft skills…"></x-field>
                 <x-field label="Provider / trainer" name="provider"><input wire:model="provider"></x-field>
                 <x-field label="Duration (hours)" name="durationHours"><input type="number" step="0.5" min="0" wire:model="durationHours"></x-field>
+                <x-field label="Duration (as told to trainees)" name="durationLabel" hint="optional, e.g. 6 months"><input wire:model="durationLabel" placeholder="e.g. 6 months"></x-field>
+                <x-field label="Fee" name="fee" hint="for trainees; leave empty for free staff training"><input type="number" step="0.01" min="0" wire:model.live.debounce.400ms="fee"></x-field>
+                @if($fee !== '')<x-field label="Discount if paid at once" name="oneTimeDiscount" hint="taken off when the whole fee is paid in one go; none for installments"><input type="number" step="0.01" min="0" wire:model="oneTimeDiscount" placeholder="e.g. 3000"></x-field>@endif
                 <x-field label="Material link" name="materialUrl" hint="video, document or course page"><input type="url" wire:model="materialUrl" placeholder="https://"></x-field>
                 <x-field label="Description" name="description" full><textarea wire:model="description"></textarea></x-field>
                 <label class="check"><input type="checkbox" wire:model="isMandatory"> Mandatory</label>
