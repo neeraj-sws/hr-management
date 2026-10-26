@@ -22,8 +22,8 @@ class EmployeeProfile extends Component
     public string $attendanceMonth = '';
     public string $complianceType = '';
 
-    /** Leave tab: the leave year shown (0 = this one). */
-    public int $leaveYearShown = 0;
+    /** Leave tab: the month shown (Y-m; empty = this month). */
+    public string $leaveMonth = '';
     /** "Record as leave" for a day absent with no leave (HR). */
     public bool $showRecordLeave = false;
     public string $recordDate = '';
@@ -79,6 +79,7 @@ class EmployeeProfile extends Component
     {
         abort_unless($this->user()->can('view', $employee), 403);
         $this->employee = $employee;
+        $this->leaveMonth = now()->format('Y-m');
     }
 
     public function confirmEmployment(\App\Services\EmployeeService $employees): void
@@ -200,8 +201,7 @@ class EmployeeProfile extends Component
             'training' => $employee->trainingAssignments()->with('course')->latest()->limit(10)->get(),
             'recentLeave' => $employee->leaveRequests()->with('leaveType')->latest('starts_on')->limit(10)->get(),
             // Leave tab: totals, every request and the days absent with no leave for the chosen leave year.
-            'leaveHistory' => \App\Support\LeaveHistory::for($employee, $this->leaveYearShown ?: \App\Support\LeaveYear::current()),
-            'leaveYears' => range(\App\Support\LeaveYear::current(), max(\App\Support\LeaveYear::current() - 3, \App\Support\LeaveYear::of($employee->joined_at ?? today()))),
+            'leaveHistory' => \App\Support\LeaveHistory::month($employee, preg_match('/^\d{4}-\d{2}$/', $this->leaveMonth) ? $this->leaveMonth : now()->format('Y-m')),
             'recordTypes' => $this->showRecordLeave ? LeaveType::where('is_active', true)->orderByDesc('paid')->orderBy('name')->get() : collect(),
             'canRecordLeave' => $user->canAny(['leave.manage', 'hr.manage']),
 

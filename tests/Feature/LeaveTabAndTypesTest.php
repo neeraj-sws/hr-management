@@ -56,20 +56,23 @@ class LeaveTabAndTypesTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'leave_type.deleted']);
     }
 
-    public function test_leave_tab_lists_leave_with_full_or_half_day_and_absent_days(): void
+    public function test_leave_tab_shows_the_months_full_and_half_days(): void
     {
         $casual = LeaveType::create(['name' => 'Casual Leave', 'annual_allowance' => 12, 'paid' => true, 'is_active' => true]);
+        $sick = LeaveType::create(['name' => 'Sick Leave', 'annual_allowance' => 0, 'paid' => false, 'is_active' => true]);
+        // 19 Oct worked; 20 Oct half day (left at 1 PM); 21 Oct half-day leave + worked; 22 Oct absent; 23 Oct full-day leave.
+        AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-19', 'check_in' => '2026-10-19 10:00:00', 'check_out' => '2026-10-19 18:30:00', 'status' => 'completed']);
+        AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-20', 'check_in' => '2026-10-20 10:00:00', 'check_out' => '2026-10-20 13:00:00', 'status' => 'completed']);
+        AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-21', 'check_in' => '2026-10-21 14:00:00', 'check_out' => '2026-10-21 18:30:00', 'status' => 'completed']);
         LeaveRequest::create(['employee_id' => $this->employee->id, 'leave_type_id' => $casual->id, 'starts_on' => '2026-10-21', 'ends_on' => '2026-10-21', 'duration' => 'half', 'days' => 0.5, 'reason' => 'Doctor visit', 'status' => 'approved', 'decided_by' => $this->admin->id, 'decided_at' => now()]);
-        // 19, 20 Oct worked; 21 Oct half-day leave + worked; 22, 23 Oct absent with no leave.
-        foreach (['2026-10-19', '2026-10-20', '2026-10-21'] as $d) AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => $d, 'check_in' => "$d 10:00:00", 'check_out' => "$d 18:30:00", 'status' => 'completed']);
+        LeaveRequest::create(['employee_id' => $this->employee->id, 'leave_type_id' => $sick->id, 'starts_on' => '2026-10-23', 'ends_on' => '2026-10-23', 'duration' => 'full', 'days' => 1, 'reason' => 'Fever', 'status' => 'approved', 'decided_by' => $this->admin->id, 'decided_at' => now()]);
 
         $page = Livewire::actingAs($this->admin)->test(EmployeeProfile::class, ['employee' => $this->employee])
-            ->assertSee('Leave taken')->assertSee('Half day')->assertSee('Doctor visit')->assertSee('Approved by SWS Admin')
-            ->assertSee('Absent without leave · 2 days')->assertSee('Thu, 22 Oct 2026')->assertSee('Record as leave');
-        $history = $page->viewData('leaveHistory');
-        $this->assertSame(0.5, (float) $history['summary']['total']);
-        $this->assertSame(1, $history['summary']['half']);
-        $this->assertSame(['2026-10-23', '2026-10-22'], $history['absent']->all());
+            ->assertSee('Leave · October 2026')->assertSee('Full day leave')->assertSee('Half day leave')->assertSee('Doctor visit · approved by SWS Admin')
+            ->assertSee('at work 03:00:00')->assertSee('Absent, no leave')->assertSee('Record as leave');
+        $m = $page->viewData('leaveHistory');
+        $this->assertSame(['2026-10-20' => 'half_day', '2026-10-21' => 'half', '2026-10-22' => 'absent', '2026-10-23' => 'full'], $m['days']->mapWithKeys(fn ($d) => [$d['date'] => $d['kind']])->all());
+        $this->assertSame([1.0, 1, 1, 1], [$m['summary']['full'], $m['summary']['half'], $m['summary']['half_day'], $m['summary']['absent']]);
 
         // HR records 22 Oct as paid leave: approved at once, the day is on leave, no "needs review" message.
         $page->call('openRecordLeave', '2026-10-22')->set('recordTypeId', $casual->id)->set('recordDuration', 'full')->set('recordNote', 'Informed HR on phone: fever')->call('recordLeave')->assertHasNoErrors();
@@ -77,7 +80,10 @@ class LeaveTabAndTypesTest extends TestCase
         $this->assertSame('approved', $leave->status);
         $this->assertSame('on_leave', app(AttendanceService::class)->days($this->employee, Carbon::parse('2026-10-22'), Carbon::parse('2026-10-22'))->first()['status']);
         $this->assertFalse(\Illuminate\Notifications\DatabaseNotification::where('data->kind', 'LeaveRequest')->where('data->record_id', $leave->id)->where('data->message', 'like', '%needs review%')->exists());
-        $this->assertSame(['2026-10-23'], $page->viewData('leaveHistory')['absent']->all());
+        $this->assertSame('full', $page->viewData('leaveHistory')['days']->firstWhere('date', '2026-10-22')['kind']);
+
+        // Another month: September (before joining here) is empty.
+        $page->set('leaveMonth', '2026-09')->assertSee('No leave or half days in September 2026');
     }
 
     public function test_only_hr_can_record_leave(): void

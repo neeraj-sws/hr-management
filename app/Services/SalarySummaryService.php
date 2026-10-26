@@ -73,10 +73,13 @@ class SalarySummaryService
         $halfDays = array_values((array) ($b['half_days'] ?? []));
         $halfNote = $halfDays ? ' ('.count($halfDays).' half '.(count($halfDays) === 1 ? 'day' : 'days').': '.collect($halfDays)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ').', paid half)' : '';
         $halfHolidays = ($data['pay_basis'] ?? 'monthly') === 'daily' ? [] : array_values((array) ($b['half_holiday_paid'] ?? []));
-        $daysPaid = (float) $days['present'] - 0.5 * count($halfDays) + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0) + 0.5 * count($halfHolidays);
+        $byHours = (array) ($b['hours_paid_days'] ?? []);
+        $byHoursCut = array_sum(array_map(fn ($d) => 1 - (float) ($d['share'] ?? 1), $byHours));
+        if ($byHours) $halfNote .= ' ('.count($byHours).' '.(count($byHours) === 1 ? 'day' : 'days').' checked in late, paid by hours at work: '.collect($byHours)->map(fn ($d, $date) => \Illuminate\Support\Carbon::parse($date)->format('d M').' '.Duration::hms((int) ($d['seconds'] ?? 0)).' = '.rtrim(rtrim(number_format((float) ($d['share'] ?? 0), 2), '0'), '.').' day')->join(', ').')';
+        $daysPaid = (float) $days['present'] - 0.5 * count($halfDays) - $byHoursCut + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0) + 0.5 * count($halfHolidays);
         $earnings = [];
         $earnings[] = ['Salary for days worked', $money($b['base_salary'] ?? 0), ($data['pay_basis'] ?? 'monthly') === 'daily'
-            ? number_format((float) ($data['daily_rate'] ?? 0), 2).' × '.((float) $days['present'] - 0.5 * count($halfDays)).' days present'.$halfNote
+            ? number_format((float) ($data['daily_rate'] ?? 0), 2).' × '.round((float) $days['present'] - 0.5 * count($halfDays) - $byHoursCut, 2).' days present'.$halfNote
             : $days['present'].' present'.$halfNote.($days['paid_leave'] ? ' + '.$days['paid_leave'].' paid leave' : '').(($b['paid_holiday_days'] ?? 0) ? ' + '.$b['paid_holiday_days'].' paid holiday' : '').($halfHolidays ? ' + ½ day for '.count($halfHolidays).' half-day holiday not at work ('.collect($halfHolidays)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ').')' : '').' of '.$days['working'].' working days'];
         if ((float) ($b['extra_work']['amount'] ?? 0) > 0) $earnings[] = ['Extra working (off days)', $money($b['extra_work']['amount']), ($b['extra_work']['days'] ?? 0).' days · '.Duration::hms((int) ($b['extra_work']['seconds'] ?? 0))];
         if ((float) ($b['overtime_amount'] ?? 0) > 0) $earnings[] = ['Overtime', $money($b['overtime_amount']), null];

@@ -248,7 +248,7 @@ class HrWorkflowService
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
                     'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
-                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
+                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'hours_paid_days'=>$hoursPaidSet,'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
                 foreach ($claims as $claim) $claim->update(['payroll_item_id'=>$item->id]);
@@ -365,16 +365,36 @@ class HrWorkflowService
         $halfDayPay = (bool) ($payrollPolicy['half_day_pay'] ?? true);
         $halfDayFrom = (string) ($payrollPolicy['half_day_pay_from'] ?? self::HALF_DAY_PAY_FROM);
         $halfDaySet = [];
-        if ($halfDayPay && $presentSet) {
+        // Check-in after the cut-off (Settings > Payroll, default 12:00): that day is paid by the hours at work —
+        // net hours (check-out − check-in − breaks taken; idle not taken off) ÷ the working day, at most one day —
+        // instead of a full or half day. Attendance still shows Late / Half day as usual (pay and status are
+        // separate). Not for people whose own day starts after the cut-off (afternoon / night shift), not on a
+        // half-day holiday, and not when an approved paid half-day / short leave covers the day.
+        $lateHoursPay = (bool) ($payrollPolicy['late_checkin_hours_pay'] ?? true);
+        $lateAfter = preg_match('/^\d{2}:\d{2}$/', (string) ($payrollPolicy['late_checkin_after'] ?? '')) ? (string) $payrollPolicy['late_checkin_after'] : '12:00';
+        $hoursPaidSet = [];
+        if (($halfDayPay || $lateHoursPay) && $presentSet) {
             $halfRules = app(AttendanceService::class);
             $halfSessions = AttendanceSession::with('employee')->where('employee_id', $employee->id)->whereDate('work_date', '>=', max($start, $halfDayFrom))->whereDate('work_date', '<=', $end)->get()->keyBy(fn ($s) => $s->work_date->toDateString());
             $paidPartLeave = $leaveRequests->filter(fn ($l) => in_array($l->duration, ['half', 'short'], true) && $l->leaveType?->paid)->mapWithKeys(fn ($l) => [$l->starts_on->toDateString() => true])->all();
             foreach (array_keys($presentSet) as $date) {
                 if ($date < $halfDayFrom || isset($paidPartLeave[$date])) continue;
                 $daySession = $halfSessions->get($date);
-                if ($daySession && $halfRules->isHalfDay($daySession)) $halfDaySet[$date] = true;
+                if (! $daySession) continue;
+                if ($lateHoursPay && $daySession->check_in && $daySession->check_out && $daySession->check_in->format('H:i') > $lateAfter
+                    && ! \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) {
+                    $ownStart = $halfRules->rules($employee, $date)['work_start'] ?? null;
+                    if (! $ownStart || substr((string) $ownStart, 0, 5) < $lateAfter) {
+                        $net = (int) $halfRules->officeSeconds($daySession);
+                        $standard = max(1, (int) round($halfRules->dailyHours($employee, $date) * 3600));
+                        $hoursPaidSet[$date] = ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'check_in' => $daySession->check_in->format('H:i')];
+                        continue; // paid by hours, not as a half day
+                    }
+                }
+                if ($halfDayPay && $halfRules->isHalfDay($daySession)) $halfDaySet[$date] = true;
             }
             ksort($halfDaySet);
+            ksort($hoursPaidSet);
         }
         $months = [];
         for ($month = $startDate->copy()->startOfMonth(); $month->lte($endDate); $month->addMonth()) $months[] = $month->format('Y-m');
@@ -414,7 +434,7 @@ class HrWorkflowService
                     unset($segment); continue;
                 }
                 $segment['scheduled']++;
-                $dayShare = isset($halfDaySet[$date]) ? 0.5 : 1; // a half day counts half
+                $dayShare = isset($hoursPaidSet[$date]) ? $hoursPaidSet[$date]['share'] : (isset($halfDaySet[$date]) ? 0.5 : 1); // by hours after a late check-in; a half day counts half
                 if (isset($presentSet[$date])) $segment['present'] += $dayShare;
                 if (isset($presentSet[$date])) $segment['eligible'] += $dayShare;
                 elseif ($includePaidLeave && isset($paidLeaveSet[$date])) $segment['eligible']++;
@@ -518,7 +538,7 @@ class HrWorkflowService
             $attendanceService = app(AttendanceService::class);
             $missing = 0;
             foreach (array_keys($presentSet) as $date) {
-                if (isset($halfDaySet[$date]) || \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) continue; // never cut twice / office closed early
+                if (isset($halfDaySet[$date]) || isset($hoursPaidSet[$date]) || \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) continue; // never cut twice / office closed early
                 $daySession = $daySessions->get($date);
                 // Only finished days: a day still in progress (not checked out yet) is not short.
                 if (! $daySession || ! $daySession->check_out) continue;
@@ -582,7 +602,7 @@ class HrWorkflowService
             'paid_leave_days' => (float) $f['paidLeaveDays'], 'unpaid_leave_days' => (float) $f['unpaidLeaveDays'],
             'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
             'breakdown' => [
-                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
+                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
                 'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],
                 'penalties' => (float) $f['penalties'], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
             ],

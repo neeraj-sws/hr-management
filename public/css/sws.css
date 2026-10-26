@@ -1228,3 +1228,7 @@ div.tm-card{cursor:default}
 .ma-ev-now::before{background:#2EAD5B;box-shadow:0 0 0 3px #fff,0 0 0 6px rgba(46,173,91,.25)}
 .ma-ev-now b,.ma-ev-now span{color:#085041}
 .ma-tl-note{margin:12px 0 0}
+
+.lv-kind{display:inline-block;border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700;white-space:nowrap}
+.lv-kind-full{background:#EEEDFE;color:#3C3489}.lv-kind-half,.lv-kind-short{background:#E6F1FB;color:#185FA5}
+.lv-kind-half_day{background:#FAEEDA;color:#854F0B}.lv-kind-absent{background:#FCEBEB;color:#A32D2D}

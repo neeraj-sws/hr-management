@@ -94,44 +94,34 @@
     {{-- LEAVE & OT --}}
     <div x-show="tab === 'leave'" x-cloak class="grid grid-2">
         @php($lh = $leaveHistory)
+        {{-- One month, day by day: full-day and half-day leave, half days from attendance, absent with no leave. --}}
         <section class="card lv-card">
-            <div class="card-head"><div><h2>Leave taken · {{ $lh['label'] }}</h2><p>Every leave request with full / half day, paid or not, and who decided</p></div>
-                @if(count($leaveYears) > 1)<label class="field"><span class="sr-only">Leave year</span><select wire:model.live="leaveYearShown">@foreach($leaveYears as $y)<option value="{{ $y === \App\Support\LeaveYear::current() ? 0 : $y }}">{{ \App\Support\LeaveYear::label($y) }}</option>@endforeach</select></label>@endif</div>
+            <div class="card-head"><div><h2>Leave · {{ $lh['month']->format('F Y') }}</h2><p>Full-day and half-day leave this month, day by day, with half days from attendance</p></div>
+                <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="leaveMonth" max="{{ now()->addMonths(3)->format('Y-m') }}"></label></div>
             <div class="lv-summary">
-                <div><span>Leave taken</span><strong>{{ $lh['summary']['total'] }} {{ $lh['summary']['total'] == 1 ? 'day' : 'days' }}</strong><small>{{ $lh['summary']['full'] }} full · {{ $lh['summary']['half'] }} half{{ $lh['summary']['short'] ? ' · '.$lh['summary']['short'].' short' : '' }}</small></div>
-                <div><span>Paid / unpaid</span><strong>{{ $lh['summary']['paid'] }} / {{ $lh['summary']['unpaid'] }}</strong><small>days</small></div>
-                <div><span>Pending</span><strong>{{ $lh['summary']['pending'] }}</strong><small>{{ $lh['summary']['pending'] == 1 ? 'request' : 'requests' }}</small></div>
-                <div @class(['lv-warn' => $lh['summary']['absent'] > 0])><span>Absent without leave</span><strong>{{ $lh['summary']['absent'] }}</strong><small>{{ $lh['summary']['absent'] == 1 ? 'day' : 'days' }}, not paid</small></div>
+                <div><span>Full-day leave</span><strong>{{ $lh['summary']['full'] + 0 }}</strong><small>{{ $lh['summary']['full'] == 1 ? 'day' : 'days' }}</small></div>
+                <div><span>Half-day leave</span><strong>{{ $lh['summary']['half'] + $lh['summary']['short'] }}</strong><small>{{ $lh['summary']['short'] ? $lh['summary']['short'].' short leave' : 'days' }}</small></div>
+                <div><span>Half days (attendance)</span><strong>{{ $lh['summary']['half_day'] }}</strong><small>at work under the half-day limit</small></div>
+                <div @class(['lv-warn' => $lh['summary']['absent'] > 0])><span>Absent, no leave</span><strong>{{ $lh['summary']['absent'] }}</strong><small>{{ $lh['summary']['absent'] == 1 ? 'day' : 'days' }}, not paid</small></div>
             </div>
             <div class="table-wrap"><table class="table lv-table" data-no-sort>
-                <thead><tr><th>Date</th><th>Type</th><th>Full / half</th><th class="num">Days</th><th>Status</th><th>Reason · decided by</th></tr></thead>
+                <thead><tr><th>Date</th><th>Full / half</th><th>Leave type</th><th>Status</th><th>Details</th><th></th></tr></thead>
                 <tbody>
-                @forelse($lh['requests'] as $lr)
-                    <tr @class(['lv-muted' => in_array($lr->status, ['rejected', 'cancelled'], true)])>
-                        <td class="nowrap">{{ $lr->starts_on->isSameDay($lr->ends_on) ? $lr->starts_on->format('D, d M Y') : $lr->starts_on->format('d M').' – '.$lr->ends_on->format('d M Y') }}</td>
-                        <td><strong>{{ $lr->leaveType?->name ?? 'Leave' }}</strong><small>{{ $lr->leaveType?->paid ? 'Paid' : 'Unpaid' }}</small></td>
-                        <td>{{ \App\Support\LeaveHistory::DURATIONS[$lr->duration] ?? ucfirst((string) $lr->duration) }}</td>
-                        <td class="num">{{ (float) $lr->days }}</td>
-                        <td><x-badge :status="$lr->status" /></td>
-                        <td class="lv-reason">{{ \Illuminate\Support\Str::limit((string) $lr->reason, 80) ?: '—' }}@if($lr->decider)<small>{{ $lr->status === 'approved' ? 'Approved' : ucfirst($lr->status) }} by {{ $lr->decider->name }}{{ $lr->decided_at ? ' · '.$lr->decided_at->format('d M') : '' }}</small>@endif @if($lr->decision_note)<small>“{{ \Illuminate\Support\Str::limit($lr->decision_note, 80) }}”</small>@endif</td>
+                @forelse($lh['days'] as $row)
+                    <tr class="lv-row lv-{{ $row['kind'] }}">
+                        <td class="nowrap">{{ \Illuminate\Support\Carbon::parse($row['date'])->format('D, d M') }}</td>
+                        <td><span class="lv-kind lv-kind-{{ $row['kind'] }}">{{ $row['what'] }}</span></td>
+                        <td>@if($row['type'])<strong>{{ $row['type'] }}</strong><small>{{ $row['paid'] ? 'Paid' : 'Unpaid' }}</small>@else<span class="muted">—</span>@endif</td>
+                        <td>@if($row['kind'] === 'half_day')<x-badge status="half_day" />@elseif($row['kind'] === 'absent')<x-badge status="absent" />@else<x-badge :status="$row['status']" />@endif</td>
+                        <td class="lv-reason">{{ $row['detail'] ?? '—' }}</td>
+                        <td class="nowrap">@if($row['kind'] === 'absent' && $canRecordLeave && $row['date'] <= today()->toDateString())<button type="button" class="btn btn-sm" wire:click="openRecordLeave('{{ $row['date'] }}')">Record as leave</button>@endif</td>
                     </tr>
                 @empty
-                    <tr><td colspan="6"><x-empty title="No leave in {{ $lh['label'] }}" icon="calendar" /></td></tr>
+                    <tr><td colspan="6"><x-empty title="No leave or half days in {{ $lh['month']->format('F Y') }}" icon="calendar" /></td></tr>
                 @endforelse
                 </tbody>
             </table></div>
         </section>
-        @if($lh['absent']->isNotEmpty())
-        <section class="card lv-absent">
-            <div class="card-head"><div><h2>Absent without leave · {{ $lh['absent']->count() }} {{ $lh['absent']->count() === 1 ? 'day' : 'days' }}</h2><p>Working days with no check-in and no leave: not paid.@if($canRecordLeave) If the person told you (phone, message), record the day as leave.@endif</p></div></div>
-            <div class="lv-days" x-data="{ all: false }">
-                @foreach($lh['absent'] as $d)
-                    <div class="lv-day" @if($loop->index >= 12) x-show="all" x-cloak @endif><span>{{ \Illuminate\Support\Carbon::parse($d)->format('D, d M Y') }}</span>@if($canRecordLeave)<button type="button" class="btn btn-sm" wire:click="openRecordLeave('{{ $d }}')">Record as leave</button>@endif</div>
-                @endforeach
-                @if($lh['absent']->count() > 12)<button type="button" class="ma-more" x-on:click="all = ! all" x-text="all ? 'Show less' : 'Show all {{ $lh['absent']->count() }}'">Show all {{ $lh['absent']->count() }}</button>@endif
-            </div>
-        </section>
-        @endif
         <section class="card"><div class="card-head"><h2>Leave balance {{ today()->year }}</h2><a class="link-sm" href="{{ route('reports.show', ['type' => 'leave', 'employee' => $employee->id]) }}">Full report →</a></div>
             <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th class="num">Entitled + accrued</th><th class="num">Carried</th><th class="num">Used</th><th class="num">Pending</th><th class="num">Remaining</th></tr></thead><tbody>
                 @foreach($balances as $b)<tr><td><strong>{{ $b['type']->name }}</strong><small>{{ $b['type']->paid ? 'Paid' : 'Unpaid' }}</small></td><td class="num">{{ $b['entitled'] + $b['accrued'] }}</td><td class="num">{{ $b['carried'] }}</td><td class="num">{{ $b['used'] }}</td><td class="num">{{ $b['booked'] }}</td><td class="num"><strong>{{ round($b['remaining'], 2) }}</strong></td></tr>@endforeach

@@ -111,7 +111,7 @@
                 {{-- The person's own monthly (basic) salary first, then how this month's pay is worked out from it. --}}
                 @if(($cd['pay_basis'] ?? 'monthly') === 'daily')
                 <tr style="background:var(--canvas)"><td><strong>Daily wage</strong><small>paid per working day attended</small></td><td class="num"><strong>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} / day</strong></td></tr>
-                @php($dailyDays = (float) $breakdown->present_days - 0.5 * count((array) ($breakdown->calculation_breakdown['half_days'] ?? [])))
+                @php($dailyDays = round((float) $breakdown->present_days - 0.5 * count((array) ($breakdown->calculation_breakdown['half_days'] ?? [])) - collect((array) ($breakdown->calculation_breakdown['hours_paid_days'] ?? []))->sum(fn ($d) => 1 - (float) ($d['share'] ?? 1)), 2))
                 <tr><td>Days present<small>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} × {{ $dailyDays }} days</small></td><td class="num">{{ number_format((float) ($cd['daily_rate'] ?? 0) * $dailyDays, 2) }}</td></tr>
                 @else
                 <tr style="background:var(--canvas)"><td><strong>Monthly basic salary</strong><small>from the salary profile</small></td><td class="num"><strong>{{ number_format($monthly, 2) }}</strong></td></tr>
@@ -123,6 +123,7 @@
                     @continue(in_array($label, $otKeys, true) && ! $hasOt)
                     @if(is_scalar($value))<tr><td>{{ ['base_salary' => 'Salary earned (per-day rate × days paid)'][$label] ?? str($label)->replace('_', ' ')->title() }}</td><td class="num">{{ is_numeric($value) ? (fmod((float) $value, 1) ? number_format((float) $value, 2) : $value) : $value }}</td></tr>@endif
                     @if($label === 'half_days' && is_array($value) && $value)<tr><td>Half days<small>paid ½ day each: {{ collect($value)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ') }}</small></td><td class="num">{{ count($value) }} × ½</td></tr>@endif
+                    @if($label === 'hours_paid_days' && is_array($value) && $value)<tr><td>Checked in late, paid by hours<small>{{ collect($value)->map(fn ($h, $d) => \Illuminate\Support\Carbon::parse($d)->format('d M').': in '.($h['check_in'] ?? '').', at work '.\App\Support\Duration::hms((int) ($h['seconds'] ?? 0)).' = '.rtrim(rtrim(number_format((float) ($h['share'] ?? 0), 2), '0'), '.').' day')->join(' · ') }}</small></td><td class="num">{{ count($value) }} {{ count($value) === 1 ? 'day' : 'days' }}</td></tr>@endif
                     @if($label === 'statutory_components' && is_array($value))@foreach($value as $c)<tr><td>{{ $c['name'] ?? $c['key'] }} ({{ $c['type'] ?? '' }})</td><td class="num">{{ number_format((float) ($c['amount'] ?? 0), 2) }}</td></tr>@endforeach @endif
                 @endforeach
             </tbody></table></div>
