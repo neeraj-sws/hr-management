@@ -1,4 +1,4 @@
-<div @if($session && !$session->check_out) wire:poll.30s @endif>
+<div class="ma-page" @if($session && !$session->check_out) wire:poll.30s @endif>
     <div class="page-head"><div><h1>My Attendance</h1><p>{{ today()->format('l, d F Y') }} · @if($rules['shift']){{ $rules['shift'] }} shift, starts @else Scheduled @endif{{ $rules['work_start'] ? substr($rules['work_start'], 0, 5) : 'flexible' }}@if($rules['grace_minutes']) (+{{ $rules['grace_minutes'] }} min grace)@endif</p></div><a class="btn btn-sm" href="{{ route('attendance.corrections') }}"><x-icon name="edit" class="icon-sm" />Corrections</a></div>
     <x-errors />
     @if($session && $session->wasForcedOut())
@@ -8,7 +8,9 @@
     <section class="card card-body mb" wire:key="today-{{ now()->timestamp }}" @if($live) x-data="swsLive(@js($live))" @endif>
         <div class="clock-card">
             <div>
-                <p class="eyebrow">Worked today</p>
+                <p class="eyebrow">Worked today
+                    @if($session && ! $session->check_out)<span class="ta-pill {{ $session->status === 'on_break' ? 'ta-pill-break' : 'ta-pill-work' }}"><i></i>{{ $session->status === 'on_break' ? 'On break' : 'Working' }}</span>
+                    @elseif($session)<span class="ta-pill ta-pill-done"><i></i>Day done</span>@endif</p>
                 <div class="timer-display"><span x-text="hms(v.worked)">@hms($live['worked'] ?? 0)</span></div>
                 <div class="pill-row mt">
                     @if($session)
@@ -67,7 +69,7 @@
         @if($session && $session->events->isNotEmpty())
             <div class="divider"></div>
             <p class="eyebrow">Today's timeline</p>
-            <div class="pill-row">@foreach($session->events->sortBy('event_time') as $event)<span class="pill"><b>{{ $event->event_time->format('h:i A') }}</b>{{ str($event->event_type)->replace('_', ' ')->title() }}@if($event->duration_seconds) (@hms($event->duration_seconds))@endif@if($event->metadata['note'] ?? null) · {{ $event->metadata['note'] }}@endif</span>@endforeach</div>
+            <ol class="ma-timeline">@foreach($session->events->sortBy('event_time') as $event)<li class="ma-ev ma-ev-{{ \Illuminate\Support\Str::before($event->event_type, '_') }}"><b>{{ $event->event_time->format('h:i A') }}</b><span>{{ str($event->event_type)->replace('_', ' ')->ucfirst() }}@if($event->duration_seconds) · @hms($event->duration_seconds)@endif</span>@if($event->metadata['note'] ?? null)<small>{{ $event->metadata['note'] }}</small>@endif</li>@endforeach</ol>
         @endif
     </section>
 
@@ -80,10 +82,20 @@
                 <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="month" max="{{ now()->format('Y-m') }}"></label>
             </div>
         </div>
+        @php($presentDays = ($summary['present'] ?? 0) + ($summary['late'] ?? 0) + ($summary['half_day'] ?? 0))
+        <div class="ma-tiles">
+            @foreach([['Present', $presentDays, 'ta-green'], ['Late', $summary['late'] ?? 0, 'ta-amber'], ['Half-day', $summary['half_day'] ?? 0, 'ta-yellow'], ['On leave', $summary['on_leave'] ?? 0, 'ta-violet'], ['Absent', $summary['absent'] ?? 0, 'ta-red']] as [$label, $count, $tone])
+                <div class="ma-tile {{ $tone }}"><span>{{ $label }}</span><strong>{{ $count }}</strong></div>
+            @endforeach
+            @if($time['days'])
+                <div class="ma-tile ma-tile-wide"><span>Worked this month</span><strong>@hms($time['worked'])</strong><small>of @hms($time['required']) required</small>
+                    <div class="docs-progress"><span style="width:{{ min(100, round($time['worked'] * 100 / max(1, $time['required']))) }}%;{{ $time['worked'] < $time['required'] ? 'background:#EF9F27' : '' }}"></span></div></div>
+            @endif
+        </div>
         @if($view === 'calendar')
             <x-attendance-calendar :days="$days" :month="$monthStart" />
         @else
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table ma-table" data-no-sort>
             <thead><tr><th>Date</th><th>Shift</th><th>Check in</th><th>Check out</th><th class="num" title="Check-out minus check-in">In–out</th><th class="num">Break</th><th class="num">Idle</th><th class="num" title="In–out minus break minus idle">Worked</th><th title="From the SWS HR desktop app">Screen time</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @foreach($days->reverse() as $day)

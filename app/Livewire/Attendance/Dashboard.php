@@ -108,17 +108,24 @@ class Dashboard extends Component
                 default => $isPast || $this->date === today()->toDateString() ? 'absent' : 'upcoming',
             };
 
-            return (object) ['employee' => $employee, 'session' => $session, 'state' => $state, 'leave' => $onLeave->get($employee->id), 'worked' => $session ? $attendance->workedSeconds($session) : 0, 'live' => $session ? $attendance->liveFigures($session) : null];
+            return (object) ['employee' => $employee, 'session' => $session, 'state' => $state, 'leave' => $onLeave->get($employee->id), 'worked' => $session ? $attendance->workedSeconds($session) : 0, 'live' => $session ? $attendance->liveFigures($session) : null,
+                'lateMinutes' => $session ? $attendance->lateMinutes($session) : 0];
         });
 
         $counts = ['present' => $rows->whereIn('state', ['present', 'late', 'half_day'])->count(), 'late' => $rows->where('state', 'late')->count(), 'half_day' => $rows->where('state', 'half_day')->count(), 'on_leave' => $rows->where('state', 'on_leave')->count(), 'absent' => $rows->where('state', 'absent')->count(), 'working' => $sessions->where('status', 'working')->count(), 'on_break' => $sessions->where('status', 'on_break')->count(), 'completed' => $sessions->where('status', 'completed')->count()];
-        if ($this->show !== 'all') $rows = $rows->filter(fn ($row) => $this->show === 'present' ? in_array($row->state, ['present', 'late', 'half_day'], true) : $row->state === $this->show);
+        if ($this->show !== 'all') $rows = $rows->filter(fn ($row) => match ($this->show) {
+            'present' => in_array($row->state, ['present', 'late', 'half_day'], true),
+            'working', 'on_break' => $row->session?->status === $this->show && ! $row->session->check_out,
+            default => $row->state === $this->show,
+        });
 
         return $this->page('livewire.attendance.dashboard', [
             'rows' => $this->paginateCollection($rows->values(), 25),
             'counts' => $counts,
             'total' => $employees->count(),
             'departments' => Department::orderBy('name')->get(),
+            'canClose' => $this->canClose(),
+            'canMonitor' => app(\App\Services\TeamMonitoringService::class)->canUse($user),
         ], 'Team Attendance');
     }
 }
