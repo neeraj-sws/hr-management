@@ -112,7 +112,7 @@ class HrWorkflowService
         return $completed;
     }
 
-    public function requestLeave(AttendanceEmployee $employee, array $data): LeaveRequest
+    public function requestLeave(AttendanceEmployee $employee, array $data, bool $notify = true): LeaveRequest
     {
         $duration = $data['duration'] ?? 'full';
         if (! isset(LeaveRequest::DURATION_DAYS[$duration])) throw ValidationException::withMessages(['duration' => 'Choose a valid leave duration.']);
@@ -136,7 +136,7 @@ class HrWorkflowService
             }
         }
         $year = LeaveYear::of($data['starts_on']);
-        return DB::transaction(function () use ($employee, $data, $days, $year) {
+        return DB::transaction(function () use ($employee, $data, $days, $year, $notify) {
             AttendanceEmployee::whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $overlap = LeaveRequest::where('employee_id', $employee->id)
                 ->whereIn('status', ['pending', 'approved'])
@@ -164,9 +164,9 @@ class HrWorkflowService
             // A missing permission or channel failure must not sink the request.
             $type = LeaveType::find($data['leave_type_id']);
             $range = $data['starts_on']->isSameDay($data['ends_on']) ? $data['starts_on']->format('d M Y') : $data['starts_on']->format('d M').' – '.$data['ends_on']->format('d M Y');
-            Notifier::send(Notifier::withPermission('leave.manage')->push($approverId ? \App\Models\User::find($approverId) : null), 'LeaveRequest', $leave->id, "A leave request from {$employee->name} needs review: {$type?->name}, {$range} ({$days} day/s).", route('leave.requests', ['tab' => 'approvals'], false), $employee->user_id);
+            if ($notify) Notifier::send(Notifier::withPermission('leave.manage')->push($approverId ? \App\Models\User::find($approverId) : null), 'LeaveRequest', $leave->id, "A leave request from {$employee->name} needs review: {$type?->name}, {$range} ({$days} day/s).", route('leave.requests', ['tab' => 'approvals'], false), $employee->user_id);
             $this->audit->record('leave.requested', $leave, ['days' => $days]);
-            app(\App\Services\WhatsAppNotifier::class)->leaveApplied($leave->load(['employee.manager', 'leaveType']));
+            if ($notify) app(\App\Services\WhatsAppNotifier::class)->leaveApplied($leave->load(['employee.manager', 'leaveType']));
             return $leave;
         });
     }

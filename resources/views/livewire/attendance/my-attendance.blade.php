@@ -68,7 +68,8 @@
         </div>
     </section>
 
-    @php($evs = $session ? $session->events->sortBy('event_time')->values() : collect())
+    {{-- Timeline in plain words; screen changes are recorded only when the state changes, so "Now" closes it. --}}
+    @php($evs = $session ? collect(\App\Support\DayTimeline::for($session)) : collect())
     <div class="tabs ma-tabs" role="tablist">
         <button type="button" role="tab" @class(['tab', 'active' => $tab !== 'today']) wire:click="$set('tab', 'month')">{{ $monthStart->format('F Y') }}</button>
         <button type="button" role="tab" @class(['tab', 'active' => $tab === 'today']) wire:click="$set('tab', 'today')">Today's timeline @if($evs->count())<span class="ma-tab-count">{{ $evs->count() }}</span>@endif</button>
@@ -78,7 +79,8 @@
     <section class="card card-body">
         @if($evs->isNotEmpty())
             <p class="eyebrow">Today's timeline · {{ today()->format('d M Y') }}</p>
-            <ol class="ma-timeline">@foreach($evs as $event)<li class="ma-ev ma-ev-{{ \Illuminate\Support\Str::before($event->event_type, '_') }}"><b>{{ $event->event_time->format('h:i A') }}</b><span>{{ str($event->event_type)->replace('_', ' ')->ucfirst() }}@if($event->duration_seconds) · @hms($event->duration_seconds)@endif</span>@if($event->metadata['note'] ?? null)<small>{{ $event->metadata['note'] }}</small>@endif</li>@endforeach</ol>
+            <ol class="ma-timeline">@foreach($evs as $row)<li class="ma-ev ma-ev-{{ $row['kind'] }}"><b>{{ $row['kind'] === 'now' ? 'Now' : $row['time']->format('h:i A') }}</b><span>{{ $row['kind'] === 'now' ? \Illuminate\Support\Str::after($row['label'], 'Now · ') : $row['label'] }}</span>@if($row['detail'])<small>{{ $row['detail'] }}</small>@endif</li>@endforeach</ol>
+            <p class="small muted ma-tl-note">The desktop app adds a row only when something changes (break, idle, meeting, back on the computer). A long stretch of steady work has no rows in between.</p>
         @else
             <x-empty title="{{ $session ? 'Nothing recorded yet today' : 'Not checked in yet today' }}" icon="clock" />
         @endif
@@ -130,7 +132,7 @@
                         <td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}@if($dayShift)<small>{{ $dayShift->name }} · {{ $dayShift->hours() }}</small>@endif</td>
                         <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td>
                         <td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}@if($day['session']?->autoCheckedOut())<small>auto check-out (left the computer)</small>@endif</td>
-                        <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}"><span x-text="hms(v.worked)">@hms($worked)</span></strong>@if($day['session']->check_out && $worked < $required)<small class="ma-short">@hms($required - $worked) short</small>@elseif($day['session']->check_out && $worked > $required)<small class="ma-extra">+@hms($worked - $required)</small>@endif @else — @endif</td>
+                        <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}"><span x-text="hms(v.worked)">@hms($worked)</span></strong>@if($day['session']->check_out && $worked < $required)<small class="ma-short">@hms($required - $worked) short</small>@elseif($day['session']->check_out && $worked > $required)<small class="ma-extra">+@hms($worked - $required)</small>@endif @if($day['session']->check_out)<small class="att-atwork" title="At work = check-in to check-out less breaks (idle and meetings are not taken off). Under the half-day limit it is a half day.">at work @hms(app(\App\Services\AttendanceService::class)->officeSeconds($day['session']))</small>@endif @else — @endif</td>
                         <td>{!! $statusCell !!}</td>
                         <td class="ma-act">@if($overtimeOn && empty($day['extra']) && $worked !== null && $day['session']->check_out && $worked > $required + 1800)<a class="btn btn-sm" href="{{ route('leave.overtime', ['date' => $day['date'], 'minutes' => intdiv($worked - $required, 60)]) }}" title="Extra time on a working day is paid only after your overtime request is approved">Request overtime</a>@endif @if(in_array($day['status'], ['present', 'late', 'half_day', 'absent'], true) && (! $day['session'] || ! $day['session']->check_out || $day['status'] !== 'present'))<a class="btn btn-sm" href="{{ route('attendance.corrections', ['date' => $day['date']]) }}" title="Ask your manager to correct this day">Correct</a>@endif</td>
                         <td class="ma-chev">@if($day['session'])<x-icon name="chevron-down" class="icon-sm" />@endif</td>
@@ -143,6 +145,7 @@
                                 <div><span>Break</span><b><span x-text="'− ' + hms(v.brk)">− @hms($f['break'])</span></b></div>
                                 <div><span>Idle</span><b><span x-text="'− ' + hms(v.idle)">− @hms($idle)</span></b></div>
                                 <div><span>Worked</span><b><span x-text="hms(v.worked)">@hms($worked)</span> <small>of @hms($required)</small></b></div>
+                                @if($day['session']->check_out)<div title="At work = check-in to check-out less breaks (idle and meetings are not taken off). Under the half-day limit it is a half day."><span>At work (half-day check)</span><b>@hms(app(\App\Services\AttendanceService::class)->officeSeconds($day['session']))</b></div>@endif
                                 <div><span>Shift</span><b>{{ $dayShift ? $dayShift->name.' · '.$dayShift->hours() : 'default' }}</b></div>
                             </div>
                             <div class="small ma-screen"><b>Screen time</b> @include('livewire.attendance.partials.screen-time', ['s' => $day['session'], 'f' => $f])</div>

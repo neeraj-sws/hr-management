@@ -93,6 +93,33 @@ class HalfDayPayTest extends TestCase
         $this->assertTrue(app(AttendanceService::class)->isHalfDay($short));
     }
 
+    public function test_calendar_and_lists_show_the_time_at_work_that_decides_a_half_day(): void
+    {
+        // 16:25–21:09 with 21 min idle: worked 4:22:33, at work 4:44 (limit 4 h): not a half day.
+        $this->day('2026-10-14', '16:25', '21:09', null, 0)->update(['active_seconds' => 4 * 3600 + 22 * 60 + 33]);
+        Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $this->employee])
+            ->assertSee('at work 04:44:00');
+        Livewire::actingAs($this->employee->user)->test(\App\Livewire\Attendance\MyAttendance::class)
+            ->assertSee('at work 04:44:00')->assertSee('At work (half-day check)');
+        Livewire::actingAs($this->admin)->test(\App\Livewire\System\Settings::class)->set('tab', 'hours')->assertSee('Half day if time at work is less than (hours)');
+    }
+
+    public function test_todays_timeline_says_what_happened_and_ends_with_now(): void
+    {
+        Carbon::setTestNow('2026-10-26 15:47:00');
+        $s = AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-26', 'check_in' => '2026-10-26 10:10:00', 'status' => 'working']);
+        foreach ([['check_in', '10:10:00', null], ['screen_state', '10:10:05', 'active'], ['screen_state', '12:58:00', 'idle'], ['screen_state', '12:58:30', 'active'],
+            ['screen_state', '13:00:00', 'idle'], ['screen_state', '13:15:00', 'active']] as [$type, $time, $state]) {
+            \App\Models\AttendanceActivityEvent::create(['attendance_session_id' => $s->id, 'event_type' => $type, 'event_time' => "2026-10-26 {$time}", 'duration_seconds' => 0, 'metadata' => $state ? ['state' => $state] : []]);
+        }
+        $rows = collect(\App\Support\DayTimeline::for($s->fresh('events')));
+        $this->assertSame(['Check in', 'Idle started (no keyboard or mouse)', 'Back on the computer', 'Now · Working on the computer'], $rows->pluck('label')->all(), 'A 30-second blip is not shown');
+        $this->assertSame('idle 00:15:00', $rows[2]['detail']);
+        $this->assertSame('since 01:15 PM (02:32:00)', $rows[3]['detail']);
+        Livewire::actingAs($this->employee->user)->test(\App\Livewire\Attendance\MyAttendance::class)->set('tab', 'today')
+            ->assertSee('Back on the computer')->assertSee('Working on the computer')->assertDontSee('Screen state');
+    }
+
     public function test_paid_half_day_leave_keeps_it_a_full_day_and_unpaid_does_not(): void
     {
         $paid = LeaveType::create(['name' => 'Casual', 'annual_allowance' => 12, 'paid' => true, 'is_active' => true]);

@@ -85,8 +85,13 @@ class Oct21BatchDTest extends TestCase
         $this->assertStringContainsString('Designation: Developer → Web Designer', $updated['detail']);
         $this->assertSame('Screen capture turned on', AuditLog::where('action', 'screen_capture.enabled_for_employee')->latest('id')->first()->describe()['title']);
 
+        // The profile shows the employment story; monitoring switches are in the full change log (Security > Audit log).
         Livewire::actingAs($this->admin)->test(EmployeeProfile::class, ['employee' => $e])
-            ->assertSee('Designation: Developer → Web Designer')->assertSee('Screen capture turned on');
+            ->assertSee('Employment history')->assertSee('Designation changed')->assertSee('Developer → Web Designer')
+            ->assertSee('Work hours changed')->assertDontSee('Screen capture turned on')->assertSee('Full change log');
+        $logs = Livewire::actingAs($this->admin)->test(\App\Livewire\Security\AuditLogs::class)->set('employee', $e->id)->viewData('logs');
+        $this->assertContains('screen_capture.enabled_for_employee', collect($logs->items())->pluck('action')->all());
+        $this->assertTrue(collect($logs->items())->every(fn ($l) => $l->subject_id === $e->id));
     }
 
     public function test_compliance_history_filters_by_month_and_type(): void

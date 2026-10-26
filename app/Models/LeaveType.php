@@ -11,6 +11,17 @@ class LeaveType extends Model
     protected $casts = ['annual_allowance' => 'decimal:2', 'carry_forward_limit' => 'decimal:2', 'monthly_accrual' => 'decimal:3', 'carry_forward' => 'boolean', 'paid' => 'boolean', 'is_active' => 'boolean', 'allow_advance' => 'boolean'];
     public function requests(): HasMany { return $this->hasMany(LeaveRequest::class); }
 
+    /**
+     * Used = someone applied for it, or a person's balance was changed by hand / by a leave taken. A type only
+     * granted automatically (opening, monthly accrual, expiry) and never used can be deleted; a used one is
+     * made inactive instead, so leave history, salary and reports stay correct.
+     */
+    public function isUsed(): bool
+    {
+        return LeaveRequest::where('leave_type_id', $this->id)->exists()
+            || LeaveLedgerEntry::where('leave_type_id', $this->id)->whereIn('entry_type', ['used', 'adjustment', 'reversal', 'carry_forward'])->exists();
+    }
+
     /** Plain-language rules of this leave type, shown wherever leave is requested or configured. */
     public function describe(): string
     {

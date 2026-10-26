@@ -26,7 +26,7 @@
             <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" />
         @else
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th><th>Employee</th><th>In</th><th>Out</th><th class="num" title="In–out time less break and idle">Worked</th><th class="num">Idle</th><th class="num">Break</th><th>Screen time</th><th class="num">Late by</th><th>Source</th><th>Status</th></tr></thead>
+            <thead><tr><th>Date</th><th>Employee</th><th>In</th><th>Out</th><th class="num" title="Worked: in–out time less break and idle · at work: in–out less break only (decides a half day)">Worked</th><th class="num">Idle</th><th class="num">Break</th><th>Screen time</th><th class="num">Late by</th><th>Source</th><th>Status</th></tr></thead>
             <tbody>
             @if($dayRows)
                 {{-- One employee: every day of the range, incl. leave, weekly off / 3rd Saturday and absent days. --}}

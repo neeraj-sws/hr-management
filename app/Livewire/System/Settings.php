@@ -231,6 +231,23 @@ class Settings extends Component
         $this->toast('Leave type saved.');
     }
 
+    /** Deletes a leave type made by mistake; a type already used is made inactive instead (history stays). */
+    public function deleteType(int $id, AuditLogger $audit): void
+    {
+        $this->authorizeSettings();
+        $type = LeaveType::findOrFail($id);
+        if ($type->isUsed()) {
+            $type->update(['is_active' => false]);
+            $audit->record('leave_type.deactivated', $type, ['name' => $type->name]);
+            $this->toast("{$type->name} is already used in leave history, so it was made inactive: nobody can apply for it, and past leave stays as it is.");
+
+            return;
+        }
+        $audit->record('leave_type.deleted', $type, ['name' => $type->name]);
+        $type->delete(); // its automatic balances and ledger rows go with it
+        $this->toast("{$type->name} deleted.");
+    }
+
     /** Holidays as a sorted list, for the date-picker list on the calendar tab. */
     public function holidayList(): array
     {
@@ -688,7 +705,7 @@ class Settings extends Component
             : collect();
 
         return $this->page('livewire.system.settings', [
-            'leaveTypes' => LeaveType::orderBy('name')->get(), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
+            'leaveTypes' => LeaveType::orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed())), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
             'allEmployees' => $this->tab === 'calendar' ? \App\Models\AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']) : collect(),
             'calendarOverrides' => $calendarOverrides,
             'security' => $this->tab === 'security' ? $this->securityData() : null,

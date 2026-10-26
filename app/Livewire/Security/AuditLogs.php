@@ -20,6 +20,8 @@ class AuditLogs extends Component
     #[Url] public string $search = '';
     #[Url] public ?int $actor = null;
     #[Url] public string $record = '';
+    /** From an employee's profile: every change recorded about that person. */
+    #[Url] public ?int $employee = null;
     #[Url] public string $from = '';
     #[Url] public string $to = '';
     #[Url] public string $sort = 'newest';
@@ -39,7 +41,7 @@ class AuditLogs extends Component
 
     public function resetFilters(): void
     {
-        $this->reset('category', 'search', 'actor', 'record', 'from', 'to', 'sort', 'perPage');
+        $this->reset('category', 'search', 'actor', 'record', 'employee', 'from', 'to', 'sort', 'perPage');
         $this->resetPage();
     }
 
@@ -62,6 +64,7 @@ class AuditLogs extends Component
                 ->orWhereHas('actor', fn ($a) => $a->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%"))))
             ->when($this->actor, fn ($q, $id) => $q->where('actor_id', $id))
             ->when($this->record !== '', fn ($q) => $q->where('subject_type', 'like', '%\\'.$this->record))
+            ->when($this->employee, fn ($q, $id) => $q->where('subject_type', \App\Models\AttendanceEmployee::class)->where('subject_id', $id))
             ->when(strtotime($this->from), fn ($q) => $q->where('created_at', '>=', $this->from.' 00:00:00'))
             ->when(strtotime($this->to), fn ($q) => $q->where('created_at', '<=', $this->to.' 23:59:59'));
     }
@@ -86,6 +89,7 @@ class AuditLogs extends Component
             'categories' => AuditLog::CATEGORIES,
             'actors' => User::whereIn('id', AuditLog::query()->select('actor_id')->distinct())->orderBy('name')->get(['id', 'name']),
             'records' => AuditLog::query()->whereNotNull('subject_type')->distinct()->pluck('subject_type')->map(fn ($type) => class_basename($type))->unique()->sort()->values(),
+            'employeeName' => $this->employee ? \App\Models\AttendanceEmployee::whereKey($this->employee)->value('name') : null,
             'viewing' => $this->viewingId ? AuditLog::with('actor')->find($this->viewingId) : null,
         ], 'Audit Logs');
     }

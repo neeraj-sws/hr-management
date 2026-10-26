@@ -22,6 +22,36 @@ class EmployeeProfile extends Component
     public string $attendanceMonth = '';
     public string $complianceType = '';
 
+    /** Leave tab: the leave year shown (0 = this one). */
+    public int $leaveYearShown = 0;
+    /** "Record as leave" for a day absent with no leave (HR). */
+    public bool $showRecordLeave = false;
+    public string $recordDate = '';
+    public ?int $recordTypeId = null;
+    public string $recordDuration = 'full';
+    public string $recordNote = '';
+
+    public function openRecordLeave(string $date): void
+    {
+        abort_unless($this->user()->canAny(['leave.manage', 'hr.manage']), 403);
+        $this->fill(['recordDate' => $date, 'recordTypeId' => LeaveType::where('is_active', true)->orderByDesc('paid')->orderBy('name')->value('id'), 'recordDuration' => 'full', 'recordNote' => '', 'showRecordLeave' => true]);
+        $this->resetValidation();
+    }
+
+    /** Records an approved leave for a day the person was absent (e.g. they told HR but did not apply). */
+    public function recordLeave(\App\Services\HrWorkflowService $workflow): void
+    {
+        abort_unless($this->user()->canAny(['leave.manage', 'hr.manage']), 403);
+        \App\Services\ImpersonationService::block();
+        $this->validate(['recordDate' => ['required', 'date', 'before_or_equal:today'], 'recordTypeId' => ['required', \Illuminate\Validation\Rule::exists('leave_types', 'id')->where('is_active', true)], 'recordDuration' => ['required', 'in:full,half,short'], 'recordNote' => ['required', 'string', 'min:3', 'max:500']],
+            ['recordNote.required' => 'Write why, e.g. "Informed HR on phone: fever".'], ['recordDate' => 'date', 'recordTypeId' => 'leave type', 'recordDuration' => 'duration', 'recordNote' => 'reason']);
+        $day = \Illuminate\Support\Carbon::parse($this->recordDate)->startOfDay();
+        $leave = $workflow->requestLeave($this->employee, ['leave_type_id' => $this->recordTypeId, 'starts_on' => $day, 'ends_on' => $day->copy(), 'duration' => $this->recordDuration, 'reason' => trim($this->recordNote)], false);
+        $workflow->decideLeave($leave, $this->user()->id, true, 'Recorded by HR: '.trim($this->recordNote));
+        $this->showRecordLeave = false;
+        $this->toast('Leave recorded for '.$day->format('d M Y').'.');
+    }
+
     /** New photo being uploaded (saved as soon as it is chosen). */
     public $photo = null;
 
@@ -159,6 +189,8 @@ class EmployeeProfile extends Component
             'teamHistory' => \App\Models\EmployeeTeamHistory::with('team')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'managerHistory' => \App\Models\EmployeeManagerHistory::with('manager')->where('employee_id', $employee->id)->orderByDesc('starts_on')->get(),
             'history' => $user->canAny(['employees.manage', 'hr.manage', 'audit.view']) ? \App\Models\AuditLog::with('actor')->where('subject_type', $employee::class)->where('subject_id', $employee->id)->latest('id')->limit(30)->get() : collect(),
+            // History tab: the employment story (what matters to HR); the full change log is in Security > Audit log.
+            'journey' => \App\Support\EmploymentHistory::for($employee, $user, $showSalary),
             'overtime' => $employee->overtimeRequests()->latest('work_date')->limit(10)->get(),
             'overtimeOn' => app(\App\Services\PeopleOperationsService::class)->overtimeEnabled($employee),
             'expenses' => $employee->expenseClaims()->latest('spent_on')->limit(10)->get(),
@@ -167,6 +199,11 @@ class EmployeeProfile extends Component
             'reviews' => $employee->reviews()->with('reviewer')->latest('period_ends_on')->limit(6)->get(),
             'training' => $employee->trainingAssignments()->with('course')->latest()->limit(10)->get(),
             'recentLeave' => $employee->leaveRequests()->with('leaveType')->latest('starts_on')->limit(10)->get(),
+            // Leave tab: totals, every request and the days absent with no leave for the chosen leave year.
+            'leaveHistory' => \App\Support\LeaveHistory::for($employee, $this->leaveYearShown ?: \App\Support\LeaveYear::current()),
+            'leaveYears' => range(\App\Support\LeaveYear::current(), max(\App\Support\LeaveYear::current() - 3, \App\Support\LeaveYear::of($employee->joined_at ?? today()))),
+            'recordTypes' => $this->showRecordLeave ? LeaveType::where('is_active', true)->orderByDesc('paid')->orderBy('name')->get() : collect(),
+            'canRecordLeave' => $user->canAny(['leave.manage', 'hr.manage']),
 
         ], $employee->name);
     }

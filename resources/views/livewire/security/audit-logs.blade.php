@@ -2,6 +2,9 @@
     <div class="page-head"><div><h1>Audit Logs</h1><p>Append-only record of who did what, when and from where — grouped by area.</p></div>
         <a class="btn" href="{{ route('hr.reports.export', ['type' => 'audit', 'from' => $from ?: now()->startOfMonth()->toDateString(), 'to' => $to ?: today()->toDateString(), 'search' => $search ?: null]) }}"><x-icon name="download" class="icon-sm" />Export CSV</a></div>
 
+    @if($employee)
+        <div class="alert alert-info">Showing every change recorded for <strong>{{ $employeeName ?? 'employee #'.$employee }}</strong> (profile, photo, monitoring settings, shift, login). <a href="{{ route('people.employees.show', $employee) }}">Back to profile</a> · <button type="button" class="nf-link" wire:click="$set('employee', null)">Show everyone</button></div>
+    @endif
     <div class="tabs">
         <button class="tab {{ $category === '' ? 'active' : '' }}" wire:click="setCategory('')">All <span class="nav-count" style="margin-left:6px">{{ $total }}</span></button>
         @foreach($categories as $key => [$label])
