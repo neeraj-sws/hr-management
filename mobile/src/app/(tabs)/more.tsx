@@ -93,6 +93,7 @@ export default function More() {
       { label: 'Notifications', icon: '🔔', href: '/notifications', badge: me?.unread_notifications ?? 0, tone: 'red' },
       { label: 'Announcements', icon: '📢', href: '/announcements' },
       { label: 'Holidays', icon: '📅', href: '/holidays' },
+      { label: 'Instructions', icon: '📘', href: '/instructions' },
       { label: 'Offline sync', icon: '🔄', href: '/sync', badge: queue.queued + queue.problems, tone: queue.problems ? 'red' : 'amber' },
     ] },
   ];

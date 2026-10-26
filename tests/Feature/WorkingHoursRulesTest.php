@@ -139,6 +139,33 @@ class WorkingHoursRulesTest extends TestCase
         $this->assertEqualsWithDelta(1020, (float) $this->payroll()->get($e->id)->calculation_breakdown['base_salary'], 0.01, 'Cut-off 13:00: 12:30 is not late enough');
     }
 
+    public function test_why_less_than_full_salary_lists_every_cut_and_adds_up(): void
+    {
+        $e = $this->person('WH-6');
+        $this->day($e, '2026-10-05', '10:00', '19:30', 45);
+        $this->day($e, '2026-10-06', '10:00', '19:30', 45);
+        $this->day($e, '2026-10-07', '10:00', '14:00');            // half day
+        $this->day($e, '2026-10-08', '10:00', '19:30', 45);
+        $this->day($e, '2026-10-09', '12:30', '19:30', 30);        // after 12:00: 0.76 day
+        $item = $this->payroll()->get($e->id);                     // calculated on 26 Oct (mid-month)
+        $s = app(\App\Services\SalarySummaryService::class)->forItem($item)['shortfall'];
+
+        $this->assertSame(22.0, (float) $s['working']);
+        $this->assertEqualsWithDelta(22 * 1020, $s['full'], 0.01);
+        $labels = array_column($s['lines'], 'label');
+        $this->assertContains('09 Oct: checked in 12:30 PM (after the late check-in time)', $labels);
+        $this->assertContains('1 half day (07 Oct)', $labels);
+        $this->assertContains('Absent, no leave: 12 days (01–02 Oct, 12–16 Oct, 19–23 Oct)', $labels);
+        $this->assertContains('Days still to come: 5 (26–30 Oct)', $labels);
+        $this->assertEqualsWithDelta($s['full'] - array_sum(array_column($s['lines'], 'amount')), $s['earned'], 0.05, 'Full − cuts = salary for days worked');
+        $this->assertEqualsWithDelta((float) $item->calculation_breakdown['base_salary'], $s['earned'], 0.01);
+
+        // Shown in the payroll breakdown, on the payslip page and on the calendar ("paid 0.76 day").
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $item->payroll_run_id)->set('breakdownItemId', $item->id)
+            ->assertSee('Why the salary is less than full')->assertSee('Days still to come: 5 (26–30 Oct)');
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $e])->assertSee('paid 0.76 day');
+    }
+
     public function test_salary_page_and_payslip_explain_days_paid_by_hours(): void
     {
         $e = $this->person('WH-5');

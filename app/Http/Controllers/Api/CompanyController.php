@@ -30,6 +30,16 @@ class CompanyController extends ApiController
         ])->values()]);
     }
 
+    /** GET /api/instructions: the rules everyone must know, as on the website (Company > Instructions). */
+    public function instructions(Request $request): JsonResponse
+    {
+        $user = $this->apiUser($request);
+
+        return response()->json(['data' => collect(\App\Support\Instructions::sections($user->employeeProfile))->map(fn ($s) => [
+            'key' => $s['key'], 'title' => $s['title'], 'items' => collect($s['items'])->map(fn ($i) => ['title' => $i[0], 'text' => $i[1]])->values(),
+        ])->values()]);
+    }
+
     public function holidays(Request $request, CompanyService $company): JsonResponse
     {
         $user = $this->apiUser($request);

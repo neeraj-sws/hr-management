@@ -42,6 +42,7 @@ function RootNavigator() {
         <Stack.Screen name="expenses" options={{ title: 'Expense claims' }} />
         <Stack.Screen name="announcements" options={{ title: 'Announcements' }} />
         <Stack.Screen name="holidays" options={{ title: 'Holidays' }} />
+        <Stack.Screen name="instructions" options={{ title: 'Instructions' }} />
         <Stack.Screen name="training" options={{ title: 'My training' }} />
         <Stack.Screen name="daily-status" options={{ title: 'Daily status' }} />
         <Stack.Screen name="documents" options={{ title: 'Documents & assets' }} />

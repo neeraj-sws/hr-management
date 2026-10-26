@@ -109,6 +109,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Company
     Route::get('/company/announcements', Livewire\Company\Announcements::class)->middleware('access:any')->name('company.announcements');
     Route::get('/company/holidays', Livewire\Company\Holidays::class)->middleware('access:any')->name('company.holidays');
+    Route::get('/company/instructions', Livewire\Company\Instructions::class)->middleware('access:any')->name('company.instructions');
     Route::get('/company/celebrations', Livewire\Company\Celebrations::class)->middleware('access:any')->name('company.celebrations');
     Route::get('/company/org-chart', Livewire\Company\OrgChart::class)->middleware('access:any')->name('company.org-chart');
 

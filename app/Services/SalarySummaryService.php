@@ -30,7 +30,7 @@ class SalarySummaryService
         $estimate = $this->payroll->payEstimate($employee, $start->toDateString(), $today->toDateString());
         if (! $estimate) return null;
 
-        $month = $this->fromBreakdown($start->format('Y-m'), 'estimate', 'so far', $estimate['breakdown'], $estimate['gross'], $estimate['net'], 0.0, [
+        $month = $this->fromBreakdown($start->format('Y-m'), 'estimate', 'so far', [...$estimate['breakdown'], '_days' => $this->dayList($employee, $start, $today)], $estimate['gross'], $estimate['net'], 0.0, [
             'working' => $estimate['working_days'], 'present' => $estimate['present_days'], 'paid_leave' => $estimate['paid_leave_days'], 'unpaid_leave' => $estimate['unpaid_leave_days'],
         ], $estimate);
         $month['up_to'] = $today->toDateString();
@@ -57,9 +57,16 @@ class SalarySummaryService
         })->values()->all();
     }
 
+    /** One payroll row as the employee sees it (payslip, payroll breakdown), with "why less than full salary". */
+    public function forItem(PayrollItem $item): array
+    {
+        return $this->fromItem($item->loadMissing(['run', 'payments', 'payslip', 'employee']));
+    }
+
     private function fromItem(PayrollItem $item): array
     {
         $b = (array) $item->calculation_breakdown;
+        if ($item->employee && empty($b['old_sheet'])) $b['_days'] = $this->dayList($item->employee, $item->run->period_starts_on->copy(), $item->run->period_ends_on->copy());
         $paid = round((float) $item->payments->sum('amount') + (float) ($b['old_sheet']['paid'] ?? 0), 2);
 
         return [...$this->fromBreakdown($item->run->period_starts_on->format('Y-m'), 'payroll', $item->run->status, $b, (float) $item->gross_amount, (float) $item->net_amount, $paid, [
@@ -74,6 +81,7 @@ class SalarySummaryService
         $halfNote = $halfDays ? ' ('.count($halfDays).' half '.(count($halfDays) === 1 ? 'day' : 'days').': '.collect($halfDays)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ').', paid half)' : '';
         $halfHolidays = ($data['pay_basis'] ?? 'monthly') === 'daily' ? [] : array_values((array) ($b['half_holiday_paid'] ?? []));
         $byHours = (array) ($b['hours_paid_days'] ?? []);
+        $shortfall = $this->shortfall($month, $source, $b, $days, $data);
         $byHoursCut = array_sum(array_map(fn ($d) => 1 - (float) ($d['share'] ?? 1), $byHours));
         if ($byHours) $halfNote .= ' ('.count($byHours).' '.(count($byHours) === 1 ? 'day' : 'days').' checked in late, paid by hours at work: '.collect($byHours)->map(fn ($d, $date) => \Illuminate\Support\Carbon::parse($date)->format('d M').' '.Duration::hms((int) ($d['seconds'] ?? 0)).' = '.rtrim(rtrim(number_format((float) ($d['share'] ?? 0), 2), '0'), '.').' day')->join(', ').')';
         $daysPaid = (float) $days['present'] - 0.5 * count($halfDays) - $byHoursCut + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0) + 0.5 * count($halfHolidays);
@@ -103,11 +111,97 @@ class SalarySummaryService
         return ['month' => $month, 'label' => Carbon::parse($month.'-01')->format('F Y'), 'source' => $source, 'status' => $status, 'days' => $days,
             'monthly_salary' => $money($data['monthly_salary'] ?? 0),
             // Pay for one day: the daily rate, or what was paid for the days worked divided by those days.
-            'per_day_rate' => $money((float) ($data['daily_rate'] ?? 0) ?: ($daysPaid > 0 ? (float) ($b['base_salary'] ?? 0) / $daysPaid : 0)),
-            'days_paid' => $daysPaid,
+            'per_day_rate' => $money((float) ($data['daily_rate'] ?? 0) ?: ($shortfall['rate'] ?? ($daysPaid > 0 ? (float) ($b['base_salary'] ?? 0) / $daysPaid : 0))),
+            // Days paid = salary for days worked ÷ the day's rate (a paid holiday inside the month's working days is not added twice).
+            'days_paid' => $shortfall ? $shortfall['days_paid'] : $daysPaid,
+            'shortfall' => $shortfall,
             'earnings' => $earnings, 'deductions' => $deductions,
             'gross' => $money($gross), 'deductions_total' => $money(array_sum(array_column($deductions, 1))), 'net' => $money($net),
             'paid' => $money($paid), 'remaining' => $money(max(0, $net - $paid)), 'payslip_id' => null];
+    }
+
+    /** Past working days absent with no leave, and working days still to come, in a period (for the reasons). */
+    private function dayList(AttendanceEmployee $employee, Carbon $from, Carbon $to): array
+    {
+        if ($employee->joined_at && Carbon::parse($employee->joined_at)->gt($from)) $from = Carbon::parse($employee->joined_at)->startOfDay();
+        if ($from->gt($to)) return ['absent' => [], 'upcoming' => []];
+        $days = app(AttendanceService::class)->days($employee, $from, $to);
+
+        return ['absent' => $days->where('status', 'absent')->pluck('date')->values()->all(), 'upcoming' => $days->where('status', 'upcoming')->pluck('date')->values()->all()];
+    }
+
+    /**
+     * "Why your salary is less than full": the month's working days at the day's rate, then each cut with its
+     * dates — days not present, half days, late check-ins paid by hours, half-day holidays not at work,
+     * unpaid leave — down to the salary for days worked. Null for daily wage and when it cannot be shown exactly.
+     *
+     * @return array{rate: float, days_paid: float, working: float, full: float, full_label: string, lines: array, earned: float, estimate: bool}|null
+     */
+    private function shortfall(string $month, string $source, array $b, array $days, array $data): ?array
+    {
+        if (($data['pay_basis'] ?? 'monthly') === 'daily' || ! empty($b['old_sheet'])) return null;
+        $monthly = (float) ($data['monthly_salary'] ?? 0);
+        $divisor = (float) ($data['month_divisors'][$month] ?? 0) ?: (float) ($data['working_days_per_month'] ?? 0);
+        $working = (float) ($days['working'] ?? 0);
+        $earned = round((float) ($b['base_salary'] ?? 0), 2);
+        if ($monthly <= 0 || $divisor <= 0 || $working <= 0) return null;
+        $rate = $monthly / $divisor;
+        $paidDays = round($earned / $rate, 4);
+        $cutDays = round($working - $paidDays, 4);
+        $fmtDate = fn ($d) => Carbon::parse($d)->format('d M');
+        $dates = fn (array $list) => self::ranges($list);
+        $num = fn (float $v) => rtrim(rtrim(number_format($v, 2), '0'), '.');
+        $lines = [];
+        $left = $cutDays;
+        $add = function (string $label, ?string $detail, float $d) use (&$lines, &$left, $rate) {
+            if ($d <= 0) return;
+            $lines[] = ['label' => $label, 'detail' => $detail, 'days' => round($d, 4), 'amount' => round($d * $rate, 2)];
+            $left -= $d;
+        };
+        foreach ((array) ($b['hours_paid_days'] ?? []) as $d => $h) {
+            $add($fmtDate($d).': checked in '.Carbon::parse($h['check_in'] ?? '00:00')->format('g:i A').' (after the late check-in time)',
+                'paid by hours at work: '.Duration::hms((int) ($h['seconds'] ?? 0)).' = '.$num((float) ($h['share'] ?? 0)).' day', 1 - (float) ($h['share'] ?? 1));
+        }
+        $half = (array) ($b['half_days'] ?? []);
+        if ($half) $add(count($half).' half '.(count($half) === 1 ? 'day' : 'days').' ('.$dates($half).')', 'at work under the half-day limit: paid ½ day each', 0.5 * count($half));
+        $halfHoliday = (array) ($b['half_holiday_paid'] ?? []);
+        if ($halfHoliday) $add('Half-day holiday, not at work ('.$dates($halfHoliday).')', 'the holiday half is paid', 0.5 * count($halfHoliday));
+        $unpaid = (float) ($days['unpaid_leave'] ?? 0);
+        if ($unpaid > 0) $add('Unpaid leave: '.$num($unpaid).' '.($unpaid == 1 ? 'day' : 'days'), null, min($unpaid, max(0, $left)));
+        if ($left > 0.005) {
+            $absent = (array) ($b['_days']['absent'] ?? []);
+            $upcoming = (array) ($b['_days']['upcoming'] ?? []);
+            $known = count($absent) + count($upcoming);
+            if ($upcoming && abs($known - $left) < 0.01) {
+                if ($absent) $add('Absent, no leave: '.count($absent).' '.(count($absent) === 1 ? 'day' : 'days').' ('.$dates($absent).')', null, (float) count($absent));
+                $add('Days still to come: '.count($upcoming).' ('.$dates($upcoming).')', 'not worked yet: paid after the payroll is recalculated at month end', (float) count($upcoming));
+            } else {
+                $add('Absent, no leave: '.$num($left).' '.(abs($left - 1) < 0.01 ? 'day' : 'days').(count($absent) && abs(count($absent) - $left) < 0.01 ? ' ('.$dates($absent).')' : ''), null, $left);
+            }
+        }
+        $estimate = $source === 'estimate';
+
+        return ['rate' => round($rate, 2), 'days_paid' => $paidDays, 'working' => $working, 'estimate' => $estimate,
+            'full' => round($working * $rate, 2),
+            'full_label' => ($estimate ? 'Salary for the '.$num($working).' working days so far' : 'Full salary: '.$num($working).' working days').' × ₹'.number_format($rate, 2),
+            'lines' => $lines, 'earned' => $earned];
+    }
+
+    /** "05–09 Oct, 12 Oct" from a list of dates. */
+    private static function ranges(array $dates): string
+    {
+        sort($dates);
+        $out = [];
+        $start = $prev = null;
+        foreach ($dates as $d) {
+            $c = Carbon::parse($d);
+            if ($prev && $c->copy()->subDay()->isSameDay($prev)) { $prev = $c; continue; }
+            if ($start) $out[] = $start->isSameDay($prev) ? $start->format('d M') : $start->format('d').'–'.$prev->format('d M');
+            $start = $prev = $c;
+        }
+        if ($start) $out[] = $start->isSameDay($prev) ? $start->format('d M') : $start->format('d').'–'.$prev->format('d M');
+
+        return implode(', ', $out);
     }
 
     private function fromSheet(LegacySalaryRecord $s, ?PayrollItem $item): array

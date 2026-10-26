@@ -27,6 +27,7 @@
     </summary>
     <div class="sm-body">
         <div class="sm-att">
+            <x-salary-shortfall :s="$m['shortfall'] ?? null" />
             <div class="sm-att-head"><span>Attendance</span><span>{{ rtrim(rtrim(number_format($daysPaid, 2), '0'), '.') }}/{{ rtrim(rtrim(number_format((float) $m['days']['working'], 1), '0'), '.') }} days paid</span></div>
             <div class="sm-att-bar"><span class="sm-att-present" style="width:{{ min(100, $m['days']['present'] * 100 / $working) }}%"></span>@if($m['days']['paid_leave'])<span class="sm-att-leave" style="width:{{ min(100, $m['days']['paid_leave'] * 100 / $working) }}%"></span>@endif @if($m['days']['unpaid_leave'])<span class="sm-att-unpaid" style="width:{{ min(100, $m['days']['unpaid_leave'] * 100 / $working) }}%"></span>@endif</div>
             <div class="sm-legend"><span><i class="sm-att-present"></i>Present {{ (float) $m['days']['present'] }}</span>@if($m['days']['paid_leave'])<span><i class="sm-att-leave"></i>Paid leave {{ (float) $m['days']['paid_leave'] }}</span>@endif @if($m['days']['unpaid_leave'])<span><i class="sm-att-unpaid"></i>Unpaid leave {{ (float) $m['days']['unpaid_leave'] }}</span>@endif</div>

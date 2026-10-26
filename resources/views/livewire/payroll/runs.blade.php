@@ -107,7 +107,7 @@
                     </tbody></table>
                 </div>
             @else
-            <div class="modal-body"><table class="table"><tbody>
+            <div class="modal-body"><x-salary-shortfall :s="app(\App\Services\SalarySummaryService::class)->forItem($breakdown)['shortfall'] ?? null" /><table class="table"><tbody>
                 {{-- The person's own monthly (basic) salary first, then how this month's pay is worked out from it. --}}
                 @if(($cd['pay_basis'] ?? 'monthly') === 'daily')
                 <tr style="background:var(--canvas)"><td><strong>Daily wage</strong><small>paid per working day attended</small></td><td class="num"><strong>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} / day</strong></td></tr>

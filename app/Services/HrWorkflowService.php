@@ -29,6 +29,34 @@ use Illuminate\Validation\ValidationException;
 
 class HrWorkflowService
 {
+    /**
+     * A finished day checked in after the cut-off: paid as net hours at work ÷ the working day (at most one day).
+     * Null when the rule does not apply (in before the cut-off, still checked in, a shift that starts after the
+     * cut-off, a half-day holiday). The calendar uses the same answer for its "paid 0.76 day" note.
+     *
+     * @return array{share: float, seconds: int, check_in: string}|null
+     */
+    public function lateCheckInPay(AttendanceEmployee $employee, AttendanceSession $session, ?string $after = null, ?array $calendar = null): ?array
+    {
+        if (! $session->check_in || ! $session->check_out) return null;
+        $date = $session->work_date->toDateString();
+        if ($after === null) {
+            $policy = app(PolicyConfigurationService::class)->forEmployee($employee, 'payroll.calculation', $date, []);
+            if (! ($policy['late_checkin_hours_pay'] ?? true) || $date < (string) ($policy['half_day_pay_from'] ?? self::HALF_DAY_PAY_FROM)) return null;
+            $after = preg_match('/^\d{2}:\d{2}$/', (string) ($policy['late_checkin_after'] ?? '')) ? (string) $policy['late_checkin_after'] : '12:00';
+        }
+        if ($session->check_in->format('H:i') <= $after) return null;
+        $calendar ??= $this->policyConfiguration($employee, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+        if (\App\Support\WorkCalendar::halfDayHoliday($calendar, $date) || ! $this->isConfiguredWorkday($date, $calendar)) return null;
+        $attendance = app(AttendanceService::class);
+        $ownStart = $attendance->rules($employee, $date)['work_start'] ?? null;
+        if ($ownStart && substr((string) $ownStart, 0, 5) >= $after) return null; // afternoon / night shift
+        $net = (int) $attendance->officeSeconds($session);
+        $standard = max(1, (int) round($attendance->dailyHours($employee, $date) * 3600));
+
+        return ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'check_in' => $session->check_in->format('H:i')];
+    }
+
     /** Half day pays half a day for days from this date (Settings > Payroll can change it or switch it off). */
     public const HALF_DAY_PAY_FROM = '2026-10-01';
 
@@ -381,15 +409,9 @@ class HrWorkflowService
                 if ($date < $halfDayFrom || isset($paidPartLeave[$date])) continue;
                 $daySession = $halfSessions->get($date);
                 if (! $daySession) continue;
-                if ($lateHoursPay && $daySession->check_in && $daySession->check_out && $daySession->check_in->format('H:i') > $lateAfter
-                    && ! \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) {
-                    $ownStart = $halfRules->rules($employee, $date)['work_start'] ?? null;
-                    if (! $ownStart || substr((string) $ownStart, 0, 5) < $lateAfter) {
-                        $net = (int) $halfRules->officeSeconds($daySession);
-                        $standard = max(1, (int) round($halfRules->dailyHours($employee, $date) * 3600));
-                        $hoursPaidSet[$date] = ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'check_in' => $daySession->check_in->format('H:i')];
-                        continue; // paid by hours, not as a half day
-                    }
+                if ($lateHoursPay && ($late = $this->lateCheckInPay($employee, $daySession, $lateAfter, $calendar))) {
+                    $hoursPaidSet[$date] = $late;
+                    continue; // paid by hours, not as a half day
                 }
                 if ($halfDayPay && $halfRules->isHalfDay($daySession)) $halfDaySet[$date] = true;
             }
@@ -601,6 +623,7 @@ class HrWorkflowService
             'gross' => (float) $f['gross'], 'net' => (float) $f['net'], 'working_days' => (int) $f['scheduledTotal'], 'present_days' => (float) $f['presentDays'],
             'paid_leave_days' => (float) $f['paidLeaveDays'], 'unpaid_leave_days' => (float) $f['unpaidLeaveDays'],
             'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
+            'month_divisors' => $f['monthDivisors'], 'working_days_per_month' => $f['workingDaysPerMonth'],
             'breakdown' => [
                 'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
                 'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],

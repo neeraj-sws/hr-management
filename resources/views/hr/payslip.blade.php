@@ -79,6 +79,7 @@
             @if(! empty($b['paid_holiday_days']))<div><span>Paid holidays</span><strong>{{ $b['paid_holiday_days'] }}</strong></div>@endif
             @if(! empty($b['short_hours']['enabled']))<div><span>Hours worked / required</span><strong style="font-size:14px">{{ \App\Support\Duration::hms($b['short_hours']['actual_seconds']) }} / {{ \App\Support\Duration::hms($b['short_hours']['required_seconds']) }}</strong></div>@endif
         </div>
+        <x-salary-shortfall :s="app(\App\Services\SalarySummaryService::class)->forItem($item)['shortfall'] ?? null" />
         <div class="slip-cols">
             <table class="slip-table"><thead><tr><th>Earnings</th><th class="amt">Amount (₹)</th></tr></thead><tbody>
                 @for($i = 0; $i < $rows; $i++)<tr><td>{{ $earnings[$i][0] ?? '' }}</td><td class="amt">{{ isset($earnings[$i]) ? number_format($earnings[$i][1], 2) : '' }}</td></tr>@endfor

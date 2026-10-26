@@ -1232,3 +1232,36 @@ div.tm-card{cursor:default}
 .lv-kind{display:inline-block;border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700;white-space:nowrap}
 .lv-kind-full{background:#EEEDFE;color:#3C3489}.lv-kind-half,.lv-kind-short{background:#E6F1FB;color:#185FA5}
 .lv-kind-half_day{background:#FAEEDA;color:#854F0B}.lv-kind-absent{background:#FCEBEB;color:#A32D2D}
+
+/* ---------- Why the salary is less than full ---------- */
+.why-less{border:1px solid #F0D7A8;background:#FFFBF2;border-radius:12px;padding:10px 14px;margin:0 0 12px}
+.why-less-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.why-less-head strong{color:#854F0B;font-size:14px}.why-less-head small{color:#8a96aa}
+.why-less table{width:100%;border-collapse:collapse;font-size:13px}
+.why-less td{padding:5px 0;border-top:1px dashed #F0E1C4;vertical-align:top;text-align:left;color:#334258}
+.why-less tr:first-child td{border-top:0}
+.why-less td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.why-less td small{display:block;color:#8a96aa;font-size:11.5px}
+.why-less .why-cut td.num{color:#A32D2D}
+.why-less .why-total td{border-top:1px solid #E9C98F;font-weight:700;color:#13254F}
+.why-note{margin:6px 0 0;color:#8a96aa;font-size:11.5px}
+.att-cal-paid{display:block;font-size:11px;font-weight:700;color:#854F0B}
+
+/* ---------- Instructions ---------- */
+.ins-search{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:10px;padding:8px 12px;margin-bottom:10px;max-width:520px}
+.ins-search input{border:0;outline:0;flex:1;font-size:14px;background:transparent}
+.ins-index{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.ins-index a{font-size:12.5px;padding:4px 10px;border-radius:99px;background:#E6F1FB;color:#185FA5;text-decoration:none;font-weight:600}
+.ins-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ins-card{padding:14px 18px;scroll-margin-top:80px}
+.ins-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.ins-head h2{margin:0;font-size:16px;color:#13254F}
+.ins-icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:#E6F1FB;color:#185FA5}
+.ins-list{margin:0;display:grid;gap:8px}
+.ins-list > div{border-top:1px dashed #EEF1F5;padding-top:8px}
+.ins-list > div:first-child{border-top:0;padding-top:0}
+.ins-list dt{font-weight:700;color:#13254F;font-size:13.5px}
+.ins-list dd{margin:2px 0 0;color:#334258;font-size:13.5px;line-height:1.5}
+.ins-foot{margin-top:14px}
+@media (max-width:900px){.ins-grid{grid-template-columns:1fr}}
+@media print{.sidebar,.topbar,.ins-search,.ins-index,.page-head .btn{display:none!important}.ins-grid{grid-template-columns:1fr}}

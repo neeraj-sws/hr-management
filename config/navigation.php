@@ -14,6 +14,7 @@ return [
     ['heading' => 'Company', 'items' => [
         ['label' => 'Announcements', 'route' => 'company.announcements', 'icon' => 'bell'],
         ['label' => 'Holidays', 'route' => 'company.holidays', 'icon' => 'calendar'],
+        ['label' => 'Instructions', 'route' => 'company.instructions', 'icon' => 'shield'],
         ['label' => 'Celebrations', 'route' => 'company.celebrations', 'icon' => 'star'],
         ['label' => 'Org Chart', 'route' => 'company.org-chart', 'icon' => 'team'],
     ]],
