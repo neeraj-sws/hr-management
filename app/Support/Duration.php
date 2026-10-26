@@ -33,10 +33,10 @@ class Duration
         return $m === 0 ? "{$h} h" : "{$h} h {$m} min";
     }
 
-    /** Hours and minutes for people: "3h 00m", "8h 30m". */
+    /** Hours and minutes for people: "3h 00m", "7h 59m" (whole minutes only: 7:59:33 is 7h 59m, never shown as 8h). */
     public static function hm(int|float|string|null $seconds): string
     {
-        $minutes = max(0, (int) round((float) $seconds / 60));
+        $minutes = max(0, intdiv((int) round((float) $seconds), 60));
 
         return sprintf('%dh %02dm', intdiv($minutes, 60), $minutes % 60);
     }
