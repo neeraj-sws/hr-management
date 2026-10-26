@@ -17,7 +17,7 @@
             @php($days = (int) today()->diffInDays($next['date']))
             <section class="hol-next">
                 <div class="hol-next-date"><span>{{ $next['date']->format('M') }}</span><strong>{{ $next['date']->format('d') }}</strong><small>{{ $next['date']->format('D') }}</small></div>
-                <div class="hol-next-text"><span class="eyebrow">Next holiday</span><h2>{{ $next['name'] }}</h2><p>{{ $next['date']->format('l, d F Y') }}</p></div>
+                <div class="hol-next-text"><span class="eyebrow">Next holiday</span><h2>{{ $next['name'] }}</h2><p>{{ $next['date']->format('l, d F Y') }}@if(! empty($next['closes_at'])) · half day, office closes {{ \Illuminate\Support\Carbon::parse($next['closes_at'])->format('g:i A') }}@endif</p></div>
                 <div class="hol-count"><strong>{{ $next['date']->isToday() ? 'Today' : $days }}</strong>@unless($next['date']->isToday())<span>{{ str('day')->plural($days) }} to go</span>@endunless</div>
             </section>
         @endif
@@ -41,6 +41,7 @@
                             <div class="hol-tags">
                                 <span @class(['hol-tag', 'hol-tag-opt' => $h['category'] === 'optional'])>{{ $h['category_label'] }}</span>
                                 <span class="hol-tag hol-tag-pay">{{ $h['paid'] ? 'Paid' : 'Unpaid' }}</span>
+                                @if(! empty($h['closes_at']))<span class="hol-tag hol-tag-half" title="The office is open until then: coming in counts as a full day">Half day · closes {{ \Illuminate\Support\Carbon::parse($h['closes_at'])->format('g:i A') }}</span>@endif
                                 @if($h['date']->isToday())<span class="hol-tag hol-tag-today">Today</span>@elseif($h['date']->lt(today()))<span class="hol-past">past</span>@endif
                             </div>
                         </li>

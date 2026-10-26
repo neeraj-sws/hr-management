@@ -74,6 +74,7 @@
             <div><span>Present</span><strong>{{ (float) $item->present_days }}</strong></div>
             <div><span>Paid leave</span><strong>{{ (float) $item->paid_leave_days }}</strong></div>
             <div><span>Unpaid leave</span><strong>{{ (float) $item->unpaid_leave_days }}</strong></div>
+            @if(! empty($b['half_days']))<div title="Paid half a day each: {{ collect($b['half_days'])->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ') }}"><span>Half days (½ paid)</span><strong>{{ count($b['half_days']) }}</strong></div>@endif
             @if(! empty($b['paid_holiday_days']))<div><span>Paid holidays</span><strong>{{ $b['paid_holiday_days'] }}</strong></div>@endif
             @if(! empty($b['short_hours']['enabled']))<div><span>Hours worked / required</span><strong style="font-size:14px">{{ \App\Support\Duration::hms($b['short_hours']['actual_seconds']) }} / {{ \App\Support\Duration::hms($b['short_hours']['required_seconds']) }}</strong></div>@endif
         </div>

@@ -18,6 +18,8 @@ class MyAttendance extends Component
     #[Url] public string $month = '';
     /** list | calendar */
     #[Url] public string $view = 'list';
+    /** Tab under today's card: the month list, or today's timeline. */
+    #[Url] public string $tab = 'month';
 
     public function mount(): void
     {

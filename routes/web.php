@@ -163,6 +163,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
 
     // System
     Route::get('/notifications', Livewire\System\Notifications::class)->name('system.notifications');
+    Route::get('/notifications/live', [NotificationController::class, 'live'])->name('system.notifications.live');
     Route::get('/notifications/{id}/open', [NotificationController::class, 'open'])->name('system.notifications.open');
     Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->name('system.notifications.read-all');
     Route::get('/system/roles', Livewire\System\Roles::class)->middleware('access:roles.manage')->name('system.roles');

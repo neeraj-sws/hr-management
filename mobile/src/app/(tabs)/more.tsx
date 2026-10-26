@@ -19,24 +19,30 @@ export default function More() {
   // Profile picture: its own button here (a photo uploaded under Documents is a document, not the picture).
   const changePhoto = async (source: 'library' | 'camera') => {
     if (source === 'camera' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) { setPhotoNote({ tone: 'error', text: 'Allow camera access to take a photo.' }); return; }
-    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.6, allowsEditing: true, aspect: [1, 1], exif: false };
+    // base64: the photo is sent as text in a normal request (a file upload from the phone could be dropped).
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.5, allowsEditing: true, aspect: [1, 1], exif: false, base64: true };
     const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
     if (result.canceled || !result.assets.length) return;
     const asset = result.assets[0];
-    if (asset.fileSize && asset.fileSize > 3 * 1024 * 1024) { setPhotoNote({ tone: 'error', text: 'The photo is larger than 3 MB. Choose a smaller one.' }); return; }
+    const tooBig = asset.base64 ? asset.base64.length * 0.75 > 3 * 1024 * 1024 : !!asset.fileSize && asset.fileSize > 3 * 1024 * 1024;
+    if (tooBig) { setPhotoNote({ tone: 'error', text: 'The photo is larger than 3 MB. Choose a smaller one, or crop it closer.' }); return; }
     setPhotoBusy(true);
     setPhotoNote(null);
     try {
-      const form = new FormData();
-      const type = asset.mimeType ?? 'image/jpeg';
-      const file = (asset as { file?: File }).file;
-      if (file) form.append('photo', file, file.name);
-      else form.append('photo', { uri: asset.uri, name: `profile.${type.split('/')[1] ?? 'jpg'}`, type } as unknown as Blob);
-      await upload('/me/photo', form);
+      if (asset.base64) {
+        await api('POST', '/me/photo', { photo_base64: asset.base64 }, 90000);
+      } else {
+        const form = new FormData();
+        const type = asset.mimeType ?? 'image/jpeg';
+        const file = (asset as { file?: File }).file;
+        if (file) form.append('photo', file, file.name);
+        else form.append('photo', { uri: asset.uri, name: `profile.${type.split('/')[1] ?? 'jpg'}`, type } as unknown as Blob);
+        await upload('/me/photo', form);
+      }
       await refreshMe();
       setPhotoNote({ tone: 'success', text: 'Profile picture updated.' });
     } catch (e) {
-      setPhotoNote({ tone: 'error', text: e instanceof ApiError ? (e.isNetwork ? 'The photo did not reach the server. Check the internet and try again.' : e.firstMessage) : 'Could not update the photo.' });
+      setPhotoNote({ tone: 'error', text: e instanceof ApiError ? (e.isNetwork ? `The photo did not reach the server${typeof e.body === 'string' && e.body ? ` (${e.body})` : ''}. Check the internet and try again.` : e.firstMessage) : 'Could not update the photo.' });
     } finally {
       setPhotoBusy(false);
     }

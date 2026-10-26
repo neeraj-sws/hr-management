@@ -659,8 +659,22 @@ class AttendanceService
         return $session->check_in->gt($expected) ? (int) $expected->diffInMinutes($session->check_in) : 0;
     }
 
-    /** Scheduled end of the working day: shift end (next day for night shifts), else the employee's or company end time. */
+    /**
+     * Scheduled end of the working day: shift end (next day for night shifts), else the employee's or company end time.
+     * On a half-day holiday the office closes earlier: that closing time.
+     */
     public function expectedEnd(AttendanceEmployee $employee, string $date): ?Carbon
+    {
+        $end = $this->regularEnd($employee, $date);
+        if ($half = $this->halfDayHoliday($employee, $date)) {
+            $closes = Carbon::parse($date.' '.$half['closes_at']);
+            if (! $end || $closes->lt($end)) return $closes;
+        }
+
+        return $end;
+    }
+
+    private function regularEnd(AttendanceEmployee $employee, string $date): ?Carbon
     {
         $shift = $this->shifts->shiftFor($employee, $date);
         if ($shift) {
@@ -671,6 +685,12 @@ class AttendanceService
         $time = $employee->work_end ?: ($this->policies->forEmployee($employee, 'work.hours', $date, [])['end_time'] ?? null);
 
         return $time ? Carbon::parse($date.' '.substr((string) $time, 0, 5)) : null;
+    }
+
+    /** The half-day holiday (name, closing time, paid) on this date for this employee, if any. */
+    public function halfDayHoliday(AttendanceEmployee $employee, string $date): ?array
+    {
+        return \App\Support\WorkCalendar::halfDayHoliday($this->policies->forEmployee($employee, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]), $date);
     }
 
     /** Minutes checked out before the scheduled end (0 when on time, unknown, or still checked in). */
@@ -687,9 +707,22 @@ class AttendanceService
     {
         if (! $session->check_out || ! $session->employee) return false;
         if (! $this->isScheduledDay($session->employee, $session->work_date->toDateString())) return false;
+        // A half-day holiday (office closes early): coming in counts as a full day.
+        if ($this->halfDayHoliday($session->employee, $session->work_date->toDateString())) return false;
         $rules ??= $this->rules($session->employee, $session->work_date->toDateString());
 
-        return (int) $session->active_seconds < $rules['half_day_seconds'];
+        return $this->officeSeconds($session) < $rules['half_day_seconds'];
+    }
+
+    /**
+     * Time at work for the half-day rule: check-in to check-out less breaks. Idle time and meetings are
+     * not taken off, so a full day in the office is never a half day. Null while still checked in.
+     */
+    public function officeSeconds(AttendanceSession $session): ?int
+    {
+        if (! $session->check_in || ! $session->check_out) return null;
+
+        return (int) max($session->check_in->diffInSeconds($session->check_out) - (int) $session->break_seconds, 0);
     }
 
     /**
@@ -738,8 +771,10 @@ class AttendanceService
                 $joined && $day->lt($joined) => 'not_joined',
                 default => 'absent',
             };
+            $halfHoliday = $workday ? \App\Support\WorkCalendar::halfDayHoliday($calendar, $date) : null;
             $label = match (true) {
                 $mark !== null => $mark->label,
+                $halfHoliday !== null && in_array($status, ['present', 'late', 'absent', 'upcoming'], true) => 'Half-day holiday ('.$halfHoliday['name'].') · closes '.Carbon::parse($halfHoliday['closes_at'])->format('g:i A'),
                 $status === 'on_leave' => $leaveToday?->leaveType?->name,
                 $status === 'weekend' => \App\Support\WorkCalendar::specialOffReason($date, $calendar),
                 default => null,

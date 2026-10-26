@@ -37,7 +37,7 @@ class CompanyController extends ApiController
         $names = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
 
         return response()->json([
-            'data' => $company->holidays($user->employeeProfile, $year)->map(fn ($h) => ['date' => $h['date']->toDateString(), 'name' => $h['name'], 'category' => $h['category'], 'paid' => $h['paid']])->values(),
+            'data' => $company->holidays($user->employeeProfile, $year)->map(fn ($h) => ['date' => $h['date']->toDateString(), 'name' => $h['name'].($h['closes_at'] ? ' · half day, office closes '.\Illuminate\Support\Carbon::parse($h['closes_at'])->format('g:i A') : ''), 'category' => $h['category'], 'paid' => $h['paid'], 'closes_at' => $h['closes_at']])->values(),
             'weekly_off' => collect($names)->except($company->workingDays($user->employeeProfile))->values(),
             'year' => $year,
         ]);

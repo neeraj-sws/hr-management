@@ -127,7 +127,7 @@ class CompanyService
             ->map(function ($date) use ($names, $calendar) {
                 $type = \App\Support\WorkCalendar::holidayTypeOf($calendar, (string) $date);
 
-                return ['date' => Carbon::parse($date), 'name' => (string) ($names[$date] ?? 'Holiday'), 'category' => $type['category'], 'category_label' => \App\Support\WorkCalendar::HOLIDAY_CATEGORIES[$type['category']], 'paid' => $type['paid']];
+                return ['date' => Carbon::parse($date), 'name' => (string) ($names[$date] ?? 'Holiday'), 'category' => $type['category'], 'category_label' => \App\Support\WorkCalendar::HOLIDAY_CATEGORIES[$type['category']], 'paid' => $type['paid'], 'closes_at' => $type['closes_at'] ?? null];
             });
     }
 

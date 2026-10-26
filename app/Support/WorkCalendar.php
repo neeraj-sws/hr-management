@@ -30,19 +30,43 @@ class WorkCalendar
     public const OCCURRENCES = [1 => '1st', 2 => '2nd', 3 => '3rd', 4 => '4th', 5 => '5th', -1 => 'Last'];
     public const HOLIDAY_CATEGORIES = ['public' => 'Public holiday', 'national' => 'National holiday', 'festival' => 'Festival', 'company' => 'Company holiday', 'optional' => 'Optional holiday'];
 
-    /** Category and paid flag of a listed holiday; a holiday without a type is a paid public holiday. */
+    /**
+     * Category and paid flag of a listed holiday; a holiday without a type is a paid public holiday.
+     * closes_at (HH:MM) makes it a half-day holiday: the office is open until that time.
+     */
     public static function holidayTypeOf(array $calendar, string $date): array
     {
         $type = (array) ($calendar['holiday_types'][$date] ?? []);
         $category = isset(self::HOLIDAY_CATEGORIES[$type['category'] ?? '']) ? $type['category'] : 'public';
+        $closesAt = preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', substr((string) ($type['closes_at'] ?? ''), 0, 5)) ? substr((string) $type['closes_at'], 0, 5) : null;
 
-        return ['category' => $category, 'paid' => (bool) ($type['paid'] ?? true)];
+        return ['category' => $category, 'paid' => (bool) ($type['paid'] ?? true), ...($closesAt && $category !== 'optional' ? ['closes_at' => $closesAt] : [])];
     }
 
-    /** Holidays that close the office (every listed holiday except optional ones). */
+    /** Holidays that close the office for the whole day (every listed holiday except optional and half-day ones). */
     public static function offHolidays(array $calendar): array
     {
-        return array_values(array_filter((array) ($calendar['holidays'] ?? []), fn ($date) => self::holidayTypeOf($calendar, (string) $date)['category'] !== 'optional'));
+        return array_values(array_filter((array) ($calendar['holidays'] ?? []), function ($date) use ($calendar) {
+            $type = self::holidayTypeOf($calendar, (string) $date);
+
+            return $type['category'] !== 'optional' && empty($type['closes_at']);
+        }));
+    }
+
+    /**
+     * A half-day holiday on a working day: the office closes at closes_at. Whoever comes in is paid a full
+     * day (never a "half day"); whoever does not is paid half a day when the holiday is paid. Null otherwise.
+     *
+     * @return array{name: string, closes_at: string, paid: bool}|null
+     */
+    public static function halfDayHoliday(array $calendar, string $date): ?array
+    {
+        $ymd = Carbon::parse($date)->toDateString();
+        if (! in_array($ymd, (array) ($calendar['holidays'] ?? []), true)) return null;
+        $type = self::holidayTypeOf($calendar, $ymd);
+        if (empty($type['closes_at']) || ! self::isWorkday($ymd, $calendar)) return null;
+
+        return ['name' => (string) ($calendar['holiday_names'][$ymd] ?? 'Holiday'), 'closes_at' => $type['closes_at'], 'paid' => $type['paid']];
     }
 
     /** True when the date is a listed, non-optional holiday that is paid, and would otherwise be a working day. */

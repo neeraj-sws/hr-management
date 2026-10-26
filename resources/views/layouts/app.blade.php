@@ -23,6 +23,49 @@
     <script>
         /* Live attendance figures: the server's numbers (AttendanceService::liveFigures) counted on each second
            by the same rule as the desktop and phone apps. Use: x-data="swsLive(...figures as JSON...)" and x-text="hms(v.worked)". */
+        /* Live bell: asks the server every 30 seconds (only while the tab is visible) for anything new.
+           The sound is made in the browser (no file); browsers allow it only after the first click on the page. */
+        window.swsBell = function (c) {
+            let audio = null;
+            const unlock = () => { try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); } catch (e) {} };
+            const ding = () => {
+                try {
+                    unlock(); if (! audio || audio.state !== 'running') return;
+                    const t = audio.currentTime;
+                    [[880, 0], [1320, 0.12]].forEach(([f, d]) => {
+                        const o = audio.createOscillator(), g = audio.createGain();
+                        o.type = 'sine'; o.frequency.value = f;
+                        g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.18, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.45);
+                        o.connect(g).connect(audio.destination); o.start(t + d); o.stop(t + d + 0.5);
+                    });
+                } catch (e) {}
+            };
+            return {
+                count: c.count, since: c.since, sound: c.sound, busy: false,
+                init() {
+                    ['pointerdown', 'keydown'].forEach((e) => window.addEventListener(e, unlock, { once: true }));
+                    setInterval(() => this.check(), 30000);
+                    document.addEventListener('visibilitychange', () => { if (! document.hidden) this.check(); });
+                },
+                async check() {
+                    if (document.hidden || this.busy) return;
+                    this.busy = true;
+                    try {
+                        const r = await fetch(c.url + (this.since ? '?since=' + encodeURIComponent(this.since) : ''), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
+                        if (! r.ok) return;
+                        const d = await r.json();
+                        this.count = d.count; this.sound = d.sound;
+                        if (d.since) this.since = d.since;
+                        if (d.panel && this.$refs.panel) this.$refs.panel.innerHTML = d.panel;
+                        if (d.new && d.new.length) {
+                            if (this.sound) ding();
+                            const message = d.new.length === 1 ? d.new[0] : d.new.length + ' new notifications';
+                            window.dispatchEvent(new CustomEvent('toast', { detail: { message, type: 'info' } }));
+                        }
+                    } catch (e) {} finally { this.busy = false; }
+                },
+            };
+        };
         window.swsLive = function (c) {
             return {
                 t0: Date.now(), now: Date.now(), timer: null,
@@ -226,27 +269,11 @@
             @include('partials.global-search')
             <div class="top-actions">
                 {{-- Bell: the 6 latest, newest first. No tabs or approve buttons here; the page has those. --}}
-                <details class="menu nf-bell">
-                    <summary class="icon-btn" aria-label="Notifications{{ $unreadCount ? ', '.$unreadCount.' unread' : '' }}"><x-icon name="bell" />@if($unreadCount)<span class="icon-count">{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span>@endif</summary>
+                {{-- Live: checks every 30 seconds; new ones update the count and list, show a popup and (if on) play a short sound. --}}
+                <details class="menu nf-bell" x-data="swsBell(@js(['count' => $unreadCount, 'since' => optional($user->notifications()->latest()->value('created_at'))->toIso8601String(), 'sound' => (bool) (($user->notification_preferences ?? [])['web_sound'] ?? true), 'url' => route('system.notifications.live', [], false)]))">
+                    <summary class="icon-btn" aria-label="Notifications{{ $unreadCount ? ', '.$unreadCount.' unread' : '' }}" :aria-label="'Notifications' + (count ? ', ' + count + ' unread' : '')"><x-icon name="bell" /><span class="icon-count" x-show="count > 0" x-text="count > 99 ? '99+' : count" @unless($unreadCount) style="display:none" @endunless>{{ $unreadCount > 99 ? '99+' : $unreadCount }}</span></summary>
                     <div class="menu-panel nf-panel">
-                        <div class="nf-panel-head">
-                            <span><strong>Notifications</strong> <span class="muted">· {{ $unreadCount }} unread</span></span>
-                            @if($unreadCount)<form method="POST" action="{{ route('system.notifications.read-all') }}">@csrf<button type="submit" class="nf-link">Mark all read</button></form>@endif
-                        </div>
-                        <div class="nf-panel-list">
-                            @forelse($bellItems as $item)
-                                <a @class(['nf-bell-item', 'is-unread' => $item['unread']]) href="{{ $item['open_url'] }}">
-                                    <x-notif-icon :item="$item" />
-                                    <span class="nf-body">
-                                        <x-notif-title :item="$item" class="nf-clamp" />
-                                        <span class="nf-meta">{{ $item['needs_action'] ? 'Needs review · ' : '' }}{{ $item['time'] }}</span>
-                                    </span>
-                                    @if($item['unread'])<span class="nf-dot" aria-label="Unread"></span>@endif
-                                </a>
-                            @empty
-                                <p class="nf-panel-empty"><x-icon name="check" class="icon-sm" /> You're all caught up</p>
-                            @endforelse
-                        </div>
+                        <div class="nf-live" x-ref="panel">@include('partials.bell-panel')</div>
                         <a class="nf-panel-foot" href="{{ route('system.notifications') }}">View all notifications <x-icon name="arrow-right" class="icon-sm" /></a>
                     </div>
                 </details>

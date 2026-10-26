@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { getBaseUrl, getToken } from '../lib/api';
 import { colors } from './ui';
@@ -17,6 +17,8 @@ export function Avatar({ name, photoUrl, size = 46, light = false }: { name?: st
   const token = getToken();
   const round = { width: size, height: size, borderRadius: size / 2 };
   const uri = photoUrl && photoUrl.startsWith('/') ? `${getBaseUrl()}${photoUrl}` : photoUrl;
+  // A new photo (set here or on the website) has a new address: try it, even if an older one failed to load.
+  useEffect(() => { setFailed(false); }, [uri]);
   // A browser <img> cannot send the sign-in token, so the web preview shows initials.
   if (uri && token && !failed && Platform.OS !== 'web') {
     return <Image source={{ uri, headers: { Authorization: `Bearer ${token}`, Accept: 'image/*' } }} style={[round, styles.photo]} onError={() => setFailed(true)} accessibilityLabel={name} />;

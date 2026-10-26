@@ -29,6 +29,9 @@ use Illuminate\Validation\ValidationException;
 
 class HrWorkflowService
 {
+    /** Half day pays half a day for days from this date (Settings > Payroll can change it or switch it off). */
+    public const HALF_DAY_PAY_FROM = '2026-10-01';
+
     /** Old salary sheet working days per month, looked up once per request. */
     private array $sheetDaysCache = [];
 
@@ -206,6 +209,9 @@ class HrWorkflowService
         if ($end < $start) throw ValidationException::withMessages(['period' => 'The end date must be on or after the start date.']);
         return DB::transaction(function () use ($start, $end, $userId) {
             $run=PayrollRun::whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->lockForUpdate()->first();
+            if(!$run && ($clash = PayrollRun::whereDate('period_starts_on','<=',$end)->whereDate('period_ends_on','>=',$start)->orderBy('period_starts_on')->first())){
+                throw ValidationException::withMessages(['period' => 'These dates overlap the payroll for '.$clash->period_starts_on->format('d M').' – '.$clash->period_ends_on->format('d M Y').' ('.$clash->status.'). Recalculate that one'.($clash->status === 'draft' ? ', or delete it first' : '').', so nobody is paid twice for the same days.']);
+            }
             if(!$run){
                 try{$run=PayrollRun::create(['period_starts_on'=>$start,'period_ends_on'=>$end,'created_by'=>$userId,'status'=>'draft']);}
                 catch(QueryException $exception){$run=PayrollRun::whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->first();if(!$run)throw $exception;}
@@ -242,7 +248,7 @@ class HrWorkflowService
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
                     'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
-                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
+                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
                 foreach ($claims as $claim) $claim->update(['payroll_item_id'=>$item->id]);
@@ -353,6 +359,23 @@ class HrWorkflowService
             $date = now()->parse($workDate)->toDateString();
             if (! $this->isConfiguredWorkday($date, $calendar)) $extraDates[$date] = 'off';
         }
+        // Half day (Settings > Payroll, from a start date): a finished working day under the half-day limit
+        // (check-in to check-out less breaks; idle and meetings are not taken off) pays half a day, unless an
+        // approved paid half-day or short leave covers that day. The same rule marks the day "Half day" in attendance.
+        $halfDayPay = (bool) ($payrollPolicy['half_day_pay'] ?? true);
+        $halfDayFrom = (string) ($payrollPolicy['half_day_pay_from'] ?? self::HALF_DAY_PAY_FROM);
+        $halfDaySet = [];
+        if ($halfDayPay && $presentSet) {
+            $halfRules = app(AttendanceService::class);
+            $halfSessions = AttendanceSession::with('employee')->where('employee_id', $employee->id)->whereDate('work_date', '>=', max($start, $halfDayFrom))->whereDate('work_date', '<=', $end)->get()->keyBy(fn ($s) => $s->work_date->toDateString());
+            $paidPartLeave = $leaveRequests->filter(fn ($l) => in_array($l->duration, ['half', 'short'], true) && $l->leaveType?->paid)->mapWithKeys(fn ($l) => [$l->starts_on->toDateString() => true])->all();
+            foreach (array_keys($presentSet) as $date) {
+                if ($date < $halfDayFrom || isset($paidPartLeave[$date])) continue;
+                $daySession = $halfSessions->get($date);
+                if ($daySession && $halfRules->isHalfDay($daySession)) $halfDaySet[$date] = true;
+            }
+            ksort($halfDaySet);
+        }
         $months = [];
         for ($month = $startDate->copy()->startOfMonth(); $month->lte($endDate); $month->addMonth()) $months[] = $month->format('Y-m');
         $basePay = 0.0;
@@ -363,6 +386,7 @@ class HrWorkflowService
             return $profiles->filter(fn ($p) => $p->effective_from->toDateString() <= $date)->last() ?? $profiles->first();
         };
         $salarySegments = [];
+        $halfHolidayAbsent = [];
         $paidHolidaySet = [];
         $unpaidHolidaySet = [];
         $structure = app(SalaryStructureService::class);
@@ -390,8 +414,15 @@ class HrWorkflowService
                     unset($segment); continue;
                 }
                 $segment['scheduled']++;
-                if (isset($presentSet[$date])) $segment['present']++;
-                if (isset($presentSet[$date]) ||($includePaidLeave && isset($paidLeaveSet[$date]))) $segment['eligible']++;
+                $dayShare = isset($halfDaySet[$date]) ? 0.5 : 1; // a half day counts half
+                if (isset($presentSet[$date])) $segment['present'] += $dayShare;
+                if (isset($presentSet[$date])) $segment['eligible'] += $dayShare;
+                elseif ($includePaidLeave && isset($paidLeaveSet[$date])) $segment['eligible']++;
+                elseif (($halfHoliday = \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) && $halfHoliday['paid']) {
+                    // Half-day holiday, not at work: the holiday half is paid.
+                    $segment['eligible'] += 0.5;
+                    $halfHolidayAbsent[$date] = true;
+                }
                 unset($segment);
             }
             $scheduledMonth = array_sum(array_column($segments, 'scheduled'));
@@ -401,7 +432,9 @@ class HrWorkflowService
             $sheetDays = $this->sheetWorkingDays($monthKey);
             $monthDivisor = $sheetDays ?: ($calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth);
             $monthDivisors[$monthKey] = $monthDivisor;
-            $topUp = min($monthPaidHolidays, max(0, $monthDivisor - $scheduledMonth));
+            // Judged on the whole month's working days (not only the days counted so far), so the "so far" estimate
+            // in the middle of a month pays a holiday exactly as the month's payroll will.
+            $topUp = min($monthPaidHolidays, max(0, $monthDivisor - max($scheduledMonth, $this->calendarDaysInMonth($monthStart, $calendar))));
             foreach ($segments as &$seg) {
                 $take = min($seg['holidays'], $topUp);
                 $seg['scheduled'] += $take;
@@ -485,6 +518,7 @@ class HrWorkflowService
             $attendanceService = app(AttendanceService::class);
             $missing = 0;
             foreach (array_keys($presentSet) as $date) {
+                if (isset($halfDaySet[$date]) || \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) continue; // never cut twice / office closed early
                 $daySession = $daySessions->get($date);
                 // Only finished days: a day still in progress (not checked out yet) is not short.
                 if (! $daySession || ! $daySession->check_out) continue;
@@ -499,10 +533,14 @@ class HrWorkflowService
             $short['amount'] = round($hourly * $short['short_seconds'] / 3600, 2);
         }
         $shortAmount = (float) $short['amount'];
-        $penalties = (float)EmployeePenalty::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->whereNull('payroll_item_id')->sum('amount');
+        // For an estimate ("so far"), items a draft payroll has taken still belong to this month: count them, so the
+        // estimate and the draft show the same amount. A real calculation frees them first (the draft's rows are replaced).
+        $draftItemIds = $forUpdate ? [] : PayrollItem::where('employee_id', $employee->id)->whereHas('run', fn ($q) => $q->where('status', 'draft'))->pluck('id')->all();
+        $unclaimed = fn ($q) => $q->where(fn ($q) => $q->whereNull('payroll_item_id')->when($draftItemIds, fn ($q) => $q->orWhereIn('payroll_item_id', $draftItemIds)));
+        $penalties = (float)EmployeePenalty::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->where($unclaimed)->sum('amount');
         // One-off adjustments in the period are claimed by this run; recurring ones apply in every month
         // they cover (never claimed). Increments are not paid here: they already raised the salary.
-        $adjustments = SalaryAdjustment::where('employee_id',$employee->id)->where('status','approved')->where('is_recurring',false)->where('kind','!=','increment')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->whereNull('payroll_item_id')->get();
+        $adjustments = SalaryAdjustment::where('employee_id',$employee->id)->where('status','approved')->where('is_recurring',false)->where('kind','!=','increment')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->where($unclaimed)->get();
         $recurringAdjustments = SalaryAdjustment::where('employee_id',$employee->id)->where('status','approved')->where('is_recurring',true)->whereDate('effective_on','<=',$end)
             ->where(fn ($q) => $q->whereNull('recurring_until')->orWhereDate('recurring_until','>=',now()->parse($start)->startOfMonth()->toDateString()))->get();
         $adjustmentLines = $adjustments->toBase()->map(fn ($a) => ['id'=>$a->id,'kind'=>$a->kind,'label'=>$a->label(),'reason'=>$a->reason,'recurring'=>false,'months'=>1,'amount'=>$a->signedAmount()])
@@ -513,7 +551,9 @@ class HrWorkflowService
         $adjustmentTotal = round($adjustmentEarnings - $adjustmentDeductions,2);
         $advanceRecovery = 0.0;
         $advanceRows = SalaryAdvance::where('employee_id',$employee->id)->whereIn('status',['approved','disbursed'])->whereColumn('disbursed_amount','>','recovered_amount')->when($forUpdate, fn ($q) => $q->lockForUpdate())->get();
-        foreach ($advanceRows as $advance) $advanceRecovery += min((float)$advance->installment_amount,max(0,(float)$advance->disbursed_amount-(float)$advance->recovered_amount));
+        $draftRepaid = $draftItemIds ? SalaryAdvanceRepayment::whereIn('payroll_item_id', $draftItemIds)->get()->groupBy('salary_advance_id')->map(fn ($r) => (float) $r->sum('amount')) : collect();
+        if ($draftRepaid->isNotEmpty()) $advanceRows = $advanceRows->merge(SalaryAdvance::whereIn('id', $draftRepaid->keys())->whereNotIn('id', $advanceRows->pluck('id'))->get());
+        foreach ($advanceRows as $advance) $advanceRecovery += min((float)$advance->installment_amount,max(0,(float)$advance->disbursed_amount-(float)$advance->recovered_amount+(float)($draftRepaid[$advance->id] ?? 0)));
         $preStatutoryGross = round($basePay+$overtimeAmount+$extraWork['amount']+$adjustmentEarnings,2);
         // Fixed monthly deductions from the structure in effect at the end of the period (not prorated).
         $fixedDeductions = array_values(array_filter($structure->components($profileOn($endDate->toDateString()) ?? $profile, $employee, $end), fn ($c) => $c['type'] === 'deduction' && $c['amount'] > 0));
@@ -522,7 +562,7 @@ class HrWorkflowService
         $statutory = $this->statutoryComponents($employee, $endDate->toDateString(), $basicEarned > 0 ? $basicEarned : $basePay, $preStatutoryGross);
         $gross = round($preStatutoryGross + $statutory['earnings'], 2);
         // Approved expense claims are reimbursed on top of pay (not part of gross, never reduced by deductions).
-        $claims = \App\Models\ExpenseClaim::where('employee_id',$employee->id)->where('status','approved')->whereNull('payroll_item_id')->whereDate('spent_on','<=',$end)->when($forUpdate, fn ($q) => $q->lockForUpdate())->get();
+        $claims = \App\Models\ExpenseClaim::where('employee_id',$employee->id)->where('status','approved')->where($unclaimed)->whereDate('spent_on','<=',$end)->when($forUpdate, fn ($q) => $q->lockForUpdate())->get();
         $reimbursements = round((float)$claims->sum('amount'),2);
         $net = round(max(0,round($gross-$adjustmentDeductions-$penalties-$shortAmount-$advanceRecovery-$statutory['deductions']-$fixedDeductionTotal,2))+$reimbursements,2);
         return get_defined_vars();
@@ -542,7 +582,7 @@ class HrWorkflowService
             'paid_leave_days' => (float) $f['paidLeaveDays'], 'unpaid_leave_days' => (float) $f['unpaidLeaveDays'],
             'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
             'breakdown' => [
-                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
+                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
                 'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],
                 'penalties' => (float) $f['penalties'], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
             ],
@@ -627,6 +667,36 @@ class HrWorkflowService
      * mistake before the month ended) so attendance and leave can be corrected
      * and the run recalculated. Not possible once a salary payment is recorded.
      */
+    /**
+     * Deletes a draft payroll run (e.g. one made for the wrong dates). Approved, locked or paid runs cannot be
+     * deleted. What the run had taken is given back for the right run to pick up: adjustments, expense claims,
+     * penalties and advance recoveries.
+     */
+    public function deleteDraftPayroll(PayrollRun $run, \App\Models\User $actor, string $reason): void
+    {
+        abort_unless($actor->can('payroll.manage'), 403);
+        if (mb_strlen(trim($reason)) < 5) throw ValidationException::withMessages(['deleteReason' => 'Say why this payroll is being deleted.']);
+        DB::transaction(function () use ($run, $actor, $reason) {
+            $run = PayrollRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
+            if ($run->status !== 'draft') throw ValidationException::withMessages(['payroll' => 'Only a draft payroll can be deleted. Approved or locked payroll stays as it is (an administrator can reopen it).']);
+            $itemIds = $run->items()->pluck('id');
+            if (SalaryPayment::whereIn('payroll_item_id', $itemIds)->exists()) throw ValidationException::withMessages(['payroll' => 'A salary payment is recorded in this payroll, so it cannot be deleted.']);
+            foreach (SalaryAdvanceRepayment::whereIn('payroll_item_id', $itemIds)->get() as $repayment) {
+                SalaryAdvance::whereKey($repayment->salary_advance_id)->decrement('recovered_amount', $repayment->amount);
+                SalaryAdvance::whereKey($repayment->salary_advance_id)->where('status', 'recovered')->update(['status' => 'disbursed']);
+                $repayment->delete();
+            }
+            SalaryAdjustment::whereIn('payroll_item_id', $itemIds)->update(['payroll_item_id' => null]);
+            \App\Models\ExpenseClaim::whereIn('payroll_item_id', $itemIds)->update(['payroll_item_id' => null]);
+            EmployeePenalty::whereIn('payroll_item_id', $itemIds)->update(['payroll_item_id' => null]);
+            ApprovalRequest::where('approvable_type', PayrollRun::class)->where('approvable_id', $run->id)->delete();
+            $period = $run->period_starts_on->format('d M').' – '.$run->period_ends_on->format('d M Y');
+            $this->audit->record('payroll.deleted', $run, ['period' => $period, 'employees' => $itemIds->count(), 'net' => (float) $run->items()->sum('net_amount'), 'by' => $actor->name, 'reason' => $reason]);
+            $run->items()->delete();
+            $run->delete();
+        });
+    }
+
     public function reopenPayroll(PayrollRun $run, \App\Models\User $actor, string $reason): PayrollRun
     {
         abort_unless(\App\Support\Access::isAdmin($actor), 403, 'Only an administrator can reopen a payroll run.');

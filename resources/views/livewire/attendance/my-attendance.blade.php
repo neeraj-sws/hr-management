@@ -66,13 +66,24 @@
                 <a class="btn btn-lg" href="{{ route('work.daily-status') }}"><x-icon name="edit" />Daily status</a>
             </div>
         </div>
-        @if($session && $session->events->isNotEmpty())
-            <div class="divider"></div>
-            <p class="eyebrow">Today's timeline</p>
-            <ol class="ma-timeline">@foreach($session->events->sortBy('event_time') as $event)<li class="ma-ev ma-ev-{{ \Illuminate\Support\Str::before($event->event_type, '_') }}"><b>{{ $event->event_time->format('h:i A') }}</b><span>{{ str($event->event_type)->replace('_', ' ')->ucfirst() }}@if($event->duration_seconds) · @hms($event->duration_seconds)@endif</span>@if($event->metadata['note'] ?? null)<small>{{ $event->metadata['note'] }}</small>@endif</li>@endforeach</ol>
-        @endif
     </section>
 
+    @php($evs = $session ? $session->events->sortBy('event_time')->values() : collect())
+    <div class="tabs ma-tabs" role="tablist">
+        <button type="button" role="tab" @class(['tab', 'active' => $tab !== 'today']) wire:click="$set('tab', 'month')">{{ $monthStart->format('F Y') }}</button>
+        <button type="button" role="tab" @class(['tab', 'active' => $tab === 'today']) wire:click="$set('tab', 'today')">Today's timeline @if($evs->count())<span class="ma-tab-count">{{ $evs->count() }}</span>@endif</button>
+    </div>
+
+    @if($tab === 'today')
+    <section class="card card-body">
+        @if($evs->isNotEmpty())
+            <p class="eyebrow">Today's timeline · {{ today()->format('d M Y') }}</p>
+            <ol class="ma-timeline">@foreach($evs as $event)<li class="ma-ev ma-ev-{{ \Illuminate\Support\Str::before($event->event_type, '_') }}"><b>{{ $event->event_time->format('h:i A') }}</b><span>{{ str($event->event_type)->replace('_', ' ')->ucfirst() }}@if($event->duration_seconds) · @hms($event->duration_seconds)@endif</span>@if($event->metadata['note'] ?? null)<small>{{ $event->metadata['note'] }}</small>@endif</li>@endforeach</ol>
+        @else
+            <x-empty title="{{ $session ? 'Nothing recorded yet today' : 'Not checked in yet today' }}" icon="clock" />
+        @endif
+    </section>
+    @else
     <section class="card">
         <div class="card-head">
             <div><h2>{{ $monthStart->format('F Y') }}</h2><p>{{ ($summary['present'] ?? 0) + ($summary['late'] ?? 0) + ($summary['half_day'] ?? 0) }} present · {{ $summary['late'] ?? 0 }} late · {{ $summary['half_day'] ?? 0 }} half-day · {{ $summary['on_leave'] ?? 0 }} leave @if($summary['extra_work'] ?? 0)· {{ $summary['extra_work'] }} extra work @endif · {{ $summary['absent'] ?? 0 }} absent</p>
@@ -95,30 +106,55 @@
         @if($view === 'calendar')
             <x-attendance-calendar :days="$days" :month="$monthStart" />
         @else
-        <div class="table-wrap"><table class="table ma-table" data-no-sort>
-            <thead><tr><th>Date</th><th>Shift</th><th>Check in</th><th>Check out</th><th class="num" title="Check-out minus check-in">In–out</th><th class="num">Break</th><th class="num">Idle</th><th class="num" title="In–out minus break minus idle">Worked</th><th title="From the SWS HR desktop app">Screen time</th><th>Status</th><th></th></tr></thead>
-            <tbody>
+        <div x-data="{ hideOff: false }">
+        <div class="ma-listbar"><span class="small muted">Click a day for in–out, break, idle and screen time</span><button type="button" class="docs-chip" :class="hideOff && 'is-active'" x-on:click="hideOff = ! hideOff" :aria-pressed="hideOff ? 'true' : 'false'">Hide off days</button></div>
+        <div class="table-wrap"><table class="table ma-table ma-compact" data-no-sort>
+            <thead><tr><th>Date</th><th>Check in</th><th>Check out</th><th class="num" title="In–out minus break minus idle">Worked</th><th>Status</th><th></th><th></th></tr></thead>
             @foreach($days->reverse() as $day)
                 @php($dayShift = app(\App\Services\ShiftService::class)->shiftFor($employee, $day['date']))
                 @php($required = (int) round(app(\App\Services\AttendanceService::class)->dailyHours($employee, $day['date']) * 3600))
                 {{-- The same figures as the admin list, reports and the apps; today's open day counts on each second. --}}
                 @php($f = $day['session'] ? app(\App\Services\AttendanceService::class)->liveFigures($day['session']) : null)
-                <tr wire:key="day-{{ $day['date'] }}-{{ now()->timestamp }}" @if($f) x-data="swsLive(@js($f))" @endif><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}</td>
-                    <td class="nowrap">@if($dayShift){{ $dayShift->name }}<small>{{ $dayShift->hours() }}</small>@else<span class="muted small">default</span>@endif</td>
-                    <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td><td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}@if($day['session']?->autoCheckedOut())<small>auto check-out (left the computer)</small>@endif</td>
-                    @php($worked = $f['worked'] ?? null)
-                    @php($idle = $f['idle'] ?? null)
-                    @php($span = $day['session']?->check_in ? $f['in_out'] : null)
-                    <td class="num">@if($span !== null)<span x-text="hms(v.inOut)">@hms($span)</span>@else — @endif</td>
-                    <td class="num">@if($day['session'])<span x-text="'− ' + hms(v.brk)">− @hms($f['break'])</span>@else — @endif</td>
-                    <td class="num">@if($day['session'])<span x-text="'− ' + hms(v.idle)">− @hms($idle)</span>@else — @endif</td>
-                    <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}"><span x-text="hms(v.worked)">@hms($worked)</span></strong><small>of @hms($required)@if($day['session']->check_out && $worked < $required) · @hms($required - $worked) short @elseif($day['session']->check_out && $worked > $required) · +@hms($worked - $required) @endif</small>@else — @endif</td>
-                    <td class="nowrap small">@if($day['session'])@include('livewire.attendance.partials.screen-time', ['s' => $day['session'], 'f' => $f])@else — @endif</td>
-                    <td>@if(! empty($day['extra']))<x-badge tone="green">Extra working</x-badge><small>{{ $day['extra_reason'] }} · paid on top</small>@elseif($day['status'] === 'weekend' && ($offReason = $day['label'] ?? null))<x-badge tone="violet">Weekly off</x-badge><small>{{ $offReason }}</small>@elseif($day['status'] === 'weekend')<x-badge status="weekend">Weekly off</x-badge>@else<x-badge :status="$day['status']" />@if(! empty($day['label']))<small>{{ $day['label'] }}</small>@endif @endif</td>
-                    <td>@if($overtimeOn && empty($day['extra']) && $worked !== null && $day['session']->check_out && $worked > $required + 1800)<a class="btn btn-sm" href="{{ route('leave.overtime', ['date' => $day['date'], 'minutes' => intdiv($worked - $required, 60)]) }}" title="Extra time on a working day is paid only after your overtime request is approved">Request overtime</a>@endif @if(in_array($day['status'], ['present', 'late', 'half_day', 'absent'], true) && (! $day['session'] || ! $day['session']->check_out || $day['status'] !== 'present'))<a class="btn btn-sm" href="{{ route('attendance.corrections', ['date' => $day['date']]) }}" title="Ask your manager to correct this day">Correct</a>@endif</td></tr>
+                @php($worked = $f['worked'] ?? null)
+                @php($idle = $f['idle'] ?? null)
+                @php($span = $day['session']?->check_in ? $f['in_out'] : null)
+                @php($isOff = ! $day['session'] && in_array($day['status'], ['weekend', 'holiday'], true))
+                @php($statusCell = view('livewire.attendance.partials.my-day-status', ['day' => $day])->render())
+                @if($isOff)
+                <tbody class="ma-off" wire:key="day-{{ $day['date'] }}-{{ now()->timestamp }}" x-show="! hideOff">
+                    <tr><td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}</td><td colspan="6">{!! $statusCell !!}</td></tr>
+                </tbody>
+                @else
+                <tbody class="ma-day" wire:key="day-{{ $day['date'] }}-{{ now()->timestamp }}" x-data="{ open: false }" :class="open && 'is-open'">
+                    <tr class="ma-main" x-on:click="if (! $event.target.closest('a,button')) open = ! open" @if($f) x-data="swsLive(@js($f))" @endif>
+                        <td class="nowrap">{{ \Illuminate\Support\Carbon::parse($day['date'])->format('D, d M') }}@if($dayShift)<small>{{ $dayShift->name }} · {{ $dayShift->hours() }}</small>@endif</td>
+                        <td>{{ $day['session']?->check_in?->format('h:i A') ?? '—' }}</td>
+                        <td>{{ $day['session']?->check_out?->format('h:i A') ?? '—' }}@if($day['session']?->autoCheckedOut())<small>auto check-out (left the computer)</small>@endif</td>
+                        <td class="num nowrap">@if($worked !== null)<strong style="color:{{ $day['session']->check_out && $worked < $required ? 'var(--amber)' : 'var(--green)' }}"><span x-text="hms(v.worked)">@hms($worked)</span></strong>@if($day['session']->check_out && $worked < $required)<small class="ma-short">@hms($required - $worked) short</small>@elseif($day['session']->check_out && $worked > $required)<small class="ma-extra">+@hms($worked - $required)</small>@endif @else — @endif</td>
+                        <td>{!! $statusCell !!}</td>
+                        <td class="ma-act">@if($overtimeOn && empty($day['extra']) && $worked !== null && $day['session']->check_out && $worked > $required + 1800)<a class="btn btn-sm" href="{{ route('leave.overtime', ['date' => $day['date'], 'minutes' => intdiv($worked - $required, 60)]) }}" title="Extra time on a working day is paid only after your overtime request is approved">Request overtime</a>@endif @if(in_array($day['status'], ['present', 'late', 'half_day', 'absent'], true) && (! $day['session'] || ! $day['session']->check_out || $day['status'] !== 'present'))<a class="btn btn-sm" href="{{ route('attendance.corrections', ['date' => $day['date']]) }}" title="Ask your manager to correct this day">Correct</a>@endif</td>
+                        <td class="ma-chev">@if($day['session'])<x-icon name="chevron-down" class="icon-sm" />@endif</td>
+                    </tr>
+                    @if($day['session'])
+                    <tr class="ma-detail" x-show="open" x-cloak @if($f) x-data="swsLive(@js($f))" @endif>
+                        <td colspan="7">
+                            <div class="ma-detail-grid">
+                                <div><span>In–out</span><b>@if($span !== null)<span x-text="hms(v.inOut)">@hms($span)</span>@else — @endif</b></div>
+                                <div><span>Break</span><b><span x-text="'− ' + hms(v.brk)">− @hms($f['break'])</span></b></div>
+                                <div><span>Idle</span><b><span x-text="'− ' + hms(v.idle)">− @hms($idle)</span></b></div>
+                                <div><span>Worked</span><b><span x-text="hms(v.worked)">@hms($worked)</span> <small>of @hms($required)</small></b></div>
+                                <div><span>Shift</span><b>{{ $dayShift ? $dayShift->name.' · '.$dayShift->hours() : 'default' }}</b></div>
+                            </div>
+                            <div class="small ma-screen"><b>Screen time</b> @include('livewire.attendance.partials.screen-time', ['s' => $day['session'], 'f' => $f])</div>
+                        </td>
+                    </tr>
+                    @endif
+                </tbody>
+                @endif
             @endforeach
-            </tbody>
         </table></div>
+        </div>
         @endif
     </section>
+    @endif
 </div>

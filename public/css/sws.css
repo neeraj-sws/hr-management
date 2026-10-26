@@ -1153,3 +1153,34 @@ div.tm-card{cursor:default}
 .sm-actions{display:flex;justify-content:flex-end;margin-top:10px}
 @media (max-width:1000px){.sp-summary{grid-template-columns:1fr 1fr}}
 @media (max-width:700px){.sp-summary{grid-template-columns:1fr}.sm-card > summary{flex-wrap:wrap}.sm-card .salary-month-figures{width:100%;justify-content:space-between;order:5}}
+
+/* ---------- My Attendance: compact month list ---------- */
+.ma-more{margin:4px 0 0 18px;border:0;background:none;color:var(--blue,#185FA5);font-weight:600;font-size:13px;cursor:pointer;padding:0}
+.ma-listbar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap}
+.ma-compact td{vertical-align:middle}
+.ma-compact td small{display:block;font-size:11.5px;color:#6b7a90}
+.ma-compact .ma-short{color:var(--amber,#854F0B)}.ma-compact .ma-extra{color:var(--green,#1E7A41)}
+.ma-day .ma-main{cursor:pointer}
+.ma-day .ma-main:hover td{background:#F6F8FB}
+.ma-day.is-open .ma-main td{background:#F3F7FC}
+.ma-chev{width:28px;color:#8a96aa}
+.ma-chev svg{transition:transform .15s}
+.ma-day.is-open .ma-chev svg{transform:rotate(180deg)}
+.ma-act{white-space:nowrap;text-align:right}
+.ma-off td{padding-top:5px!important;padding-bottom:5px!important;color:#8a96aa;font-size:12.5px;background:#FAFBFC}
+.ma-off td small{display:inline;margin-left:6px}
+.ma-detail td{background:#F8FAFC;padding:10px 16px 12px!important}
+.ma-detail-grid{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:6px}
+.ma-detail-grid > div > span{display:block;font-size:11px;color:#8a96aa;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.ma-detail-grid b{font-variant-numeric:tabular-nums;color:#13254F;font-size:13px}
+.ma-detail-grid b small{color:#8a96aa;font-weight:500}
+.ma-screen{color:#334258}
+
+.ma-tabs{margin:4px 0 12px;overflow-y:hidden}
+.ma-tab-count{display:inline-block;margin-left:6px;border-radius:99px;background:#E6F1FB;color:#185FA5;font-size:11px;font-weight:700;padding:0 7px}
+
+.nf-live{display:contents}
+.nf-sound-pref{display:flex;gap:8px;align-items:flex-start;margin:14px 0 4px;font-size:13.5px;color:#334258}
+.nf-sound-pref input{margin-top:3px}
+
+.hol-tag-half{background:#FAEEDA;color:#854F0B}

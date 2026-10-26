@@ -46,7 +46,7 @@
                         <td>
                             <div class="emp-person">
                                 <x-avatar :employee="$employee" />
-                                <div class="emp-person-text"><a href="{{ route('people.employees.show', $employee) }}"><strong>{{ $employee->name }}</strong></a><small>{{ $employee->employee_code }}@if($employee->designation) · {{ $employee->designation }}@endif</small></div>
+                                <div class="emp-person-text"><a href="{{ route('people.employees.show', $employee) }}"><strong>{{ $employee->name }}</strong></a>@if($employee->isTrainee() !== $traineesOnly) <span class="badge">{{ $employee->isTrainee() ? 'Trainee' : 'Employee' }}</span>@endif<small>{{ $employee->employee_code }}@if($employee->designation) · {{ $employee->designation }}@endif</small></div>
                             </div>
                         </td>
                         <td class="emp-email">@if($mail = ($employee->email ?? $employee->user?->email))<a href="mailto:{{ $mail }}">{{ $mail }}</a><button type="button" class="emp-copy" title="Copy email" aria-label="Copy email {{ $mail }}" x-data="{ copied: false }" x-on:click="navigator.clipboard.writeText(@js($mail)); copied = true; setTimeout(() => copied = false, 1500)"><x-icon name="clipboard" class="icon-sm" x-show="! copied" /><x-icon name="check" class="icon-sm" x-show="copied" x-cloak /></button>@else — @endif</td>
@@ -83,7 +83,7 @@
             <span class="muted small">@if($employees->total())Showing {{ $employees->firstItem() }} to {{ $employees->lastItem() }} of {{ $employees->total() }} {{ $traineesOnly ? str('trainee')->plural($employees->total()) : str('employee')->plural($employees->total()) }}@else No results @endif</span>
             <div class="emp-foot-right">
                 {{ $employees->onEachSide(1)->links('components.pager') }}
-                <label class="emp-per-page"><span class="sr-only">Rows per page</span><select wire:model.live="perPage">@foreach([10, 15, 25, 50] as $n)<option value="{{ $n }}">{{ $n }} per page</option>@endforeach</select></label>
+                @if($employees->total() > 10)<label class="emp-per-page"><span class="sr-only">Rows per page</span><select wire:model.live="perPage">@foreach([10, 15, 25, 50] as $n)<option value="{{ $n }}">{{ $n }} per page</option>@endforeach</select></label>@endif
             </div>
         </div>
     </section>

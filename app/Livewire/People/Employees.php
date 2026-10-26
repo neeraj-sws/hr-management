@@ -252,7 +252,8 @@ class Employees extends Component
     public function render()
     {
         $term = trim($this->search);
-        $kind = fn ($q) => $this->traineesOnly ? $q->where('employment_type', EmployeeService::TRAINEE) : $q->onPayroll();
+        // A chosen department lists everyone in it (employees and trainees); otherwise each page keeps its own kind.
+        $kind = fn ($q) => $this->department ? $q : ($this->traineesOnly ? $q->where('employment_type', EmployeeService::TRAINEE) : $q->onPayroll());
         $employees = AttendanceEmployee::with(['department', 'manager', 'user.roles', 'teams'])
             ->where($kind)
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('designation', 'like', "%{$term}%")))

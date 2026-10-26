@@ -55,6 +55,7 @@
                             <td><input type="checkbox" wire:model="prefs.{{ $group }}.email" aria-label="{{ $label }} by e-mail"></td></tr>
                     @endforeach
                 </tbody></table></div>
+                <label class="check nf-sound-pref"><input type="checkbox" wire:model="webSound"> <span><strong>Sound on the website</strong> · play a short sound when a new notification arrives (the bell updates by itself every 30 seconds)</span></label>
                 <div class="form-actions"><button class="btn btn-primary" wire:loading.attr="disabled">Save preferences</button></div>
             </form>
         </section>

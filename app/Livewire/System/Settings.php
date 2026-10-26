@@ -37,6 +37,8 @@ class Settings extends Component
     public array $holidayTypes = [];
     public string $newHolidayCategory = 'public';
     public bool $newHolidayPaid = true;
+    /** Half-day holiday: the office closes at this time (blank = closed all day). */
+    public string $newHolidayClosesAt = '';
     public string $leaveYearStart = '4';
     public string $idleMinutes = '10';
     public bool $autoCheckout = true;
@@ -114,6 +116,9 @@ class Settings extends Component
     public bool $attendanceProration = true;
     public bool $includePaidLeave = true;
     public bool $shortHoursDeduction = false;
+    /** A half day (attendance) pays half a day, for days from $halfDayPayFrom. */
+    public bool $halfDayPay = true;
+    public string $halfDayPayFrom = \App\Services\HrWorkflowService::HALF_DAY_PAY_FROM;
     /** Work on a weekly off / 3rd Saturday / holiday / full-day leave is paid as extra working, automatically. */
     public bool $extraWorkAuto = true;
     /** fixed = salary ÷ "working days per month"; calendar = salary ÷ that month's working days from the calendar. */
@@ -187,7 +192,7 @@ class Settings extends Component
             'graceMinutes' => (string) ($rules['grace_minutes'] ?? 0), 'halfDayHours' => (string) ($rules['half_day_hours'] ?? 4),
             'otEnabled' => (bool) ($ot['enabled'] ?? true), 'otMultiplier' => (string) ($ot['multiplier'] ?? ''), 'otMaxPerDay' => (string) ($ot['max_minutes_per_day'] ?? ''), 'otHolidayMultiplier' => (string) ($ot['holiday_multiplier'] ?? ''), 'otMaxPerMonthHours' => isset($ot['max_minutes_per_month']) ? (string) round($ot['max_minutes_per_month'] / 60, 2) : '',
             'workingDaysPerMonth' => (string) ($payroll['working_days_per_month'] ?? 22),
-            'attendanceProration' => (bool) ($payroll['attendance_proration'] ?? true), 'includePaidLeave' => (bool) ($payroll['include_paid_leave'] ?? true), 'shortHoursDeduction' => (bool) ($payroll['short_hours_deduction'] ?? false), 'extraWorkAuto' => (bool) ($payroll['extra_work_auto'] ?? true), 'salaryDivisor' => ($payroll['divisor'] ?? 'fixed') === 'calendar' ? 'calendar' : 'fixed', 'shortHoursGrace' => (string) ($payroll['short_hours_grace'] ?? 0), 'hourlyRateHours' => isset($payroll['hourly_rate_hours']) ? (string) (float) $payroll['hourly_rate_hours'] : '',
+            'attendanceProration' => (bool) ($payroll['attendance_proration'] ?? true), 'includePaidLeave' => (bool) ($payroll['include_paid_leave'] ?? true), 'shortHoursDeduction' => (bool) ($payroll['short_hours_deduction'] ?? false), 'halfDayPay' => (bool) ($payroll['half_day_pay'] ?? true), 'halfDayPayFrom' => (string) ($payroll['half_day_pay_from'] ?? \App\Services\HrWorkflowService::HALF_DAY_PAY_FROM), 'extraWorkAuto' => (bool) ($payroll['extra_work_auto'] ?? true), 'salaryDivisor' => ($payroll['divisor'] ?? 'fixed') === 'calendar' ? 'calendar' : 'fixed', 'shortHoursGrace' => (string) ($payroll['short_hours_grace'] ?? 0), 'hourlyRateHours' => isset($payroll['hourly_rate_hours']) ? (string) (float) $payroll['hourly_rate_hours'] : '',
             'advanceLeaveMax' => (string) ($advance['max_days'] ?? 5),
             'encashmentEnabled' => (bool) ($settlement['leave_encashment_enabled'] ?? false), 'encashmentRate' => (string) ($settlement['rate_per_day'] ?? 0),
             'statutoryJson' => json_encode($statutory['components'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
@@ -238,13 +243,14 @@ class Settings extends Component
         $this->validate(['newHoliday' => ['required', 'date_format:Y-m-d']], ['newHoliday.required' => 'Pick a date to add.'], ['newHoliday' => 'holiday']);
         $this->validate(['newHolidayName' => ['nullable', 'string', 'max:80']], [], ['newHolidayName' => 'holiday name']);
         $this->holidays = implode("\n", collect($this->holidayList())->push($this->newHoliday)->unique()->sort()->values()->all());
-        $this->validate(['newHolidayCategory' => ['required', Rule::in(array_keys(\App\Support\WorkCalendar::HOLIDAY_CATEGORIES))]], [], ['newHolidayCategory' => 'holiday type']);
+        $this->validate(['newHolidayCategory' => ['required', Rule::in(array_keys(\App\Support\WorkCalendar::HOLIDAY_CATEGORIES))], 'newHolidayClosesAt' => ['nullable', 'date_format:H:i']], [], ['newHolidayCategory' => 'holiday type', 'newHolidayClosesAt' => 'closing time']);
         if (trim($this->newHolidayName) !== '') $this->holidayNames[$this->newHoliday] = trim($this->newHolidayName);
-        $this->holidayTypes[$this->newHoliday] = ['category' => $this->newHolidayCategory, 'paid' => $this->newHolidayPaid];
+        $this->holidayTypes[$this->newHoliday] = ['category' => $this->newHolidayCategory, 'paid' => $this->newHolidayPaid, ...($this->newHolidayClosesAt !== '' && $this->newHolidayCategory !== 'optional' ? ['closes_at' => $this->newHolidayClosesAt] : [])];
         $this->newHoliday = '';
         $this->newHolidayName = '';
         $this->newHolidayCategory = 'public';
         $this->newHolidayPaid = true;
+        $this->newHolidayClosesAt = '';
     }
 
     public function removeHoliday(string $date): void
@@ -259,7 +265,7 @@ class Settings extends Component
     {
         $this->authorizeSettings();
         $type = \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $this->holidayTypes], $date);
-        $this->holidayTypes[$date] = ['category' => $type['category'], 'paid' => ! $type['paid']];
+        $this->holidayTypes[$date] = [...$type, 'paid' => ! $type['paid']];
     }
 
     public function saveLeaveYear(PeopleOperationsService $people): void
@@ -569,10 +575,10 @@ class Settings extends Component
     public function savePayroll(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0'], 'hourlyRateHours' => ['nullable', 'numeric', 'gt:0', 'max:24']]);
+        $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0'], 'hourlyRateHours' => ['nullable', 'numeric', 'gt:0', 'max:24'], 'halfDayPayFrom' => ['required', 'date']], [], ['halfDayPayFrom' => 'half-day pay start date']);
         $ot = array_filter(['multiplier' => $this->otMultiplier === '' ? null : (float) $this->otMultiplier, 'max_minutes_per_day' => $this->otMaxPerDay === '' ? null : (int) $this->otMaxPerDay, 'holiday_multiplier' => $this->otHolidayMultiplier === '' ? null : (float) $this->otHolidayMultiplier, 'max_minutes_per_month' => $this->otMaxPerMonthHours === '' ? null : (int) round((float) $this->otMaxPerMonthHours * 60)], fn ($v) => $v !== null);
         $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['enabled' => $this->otEnabled, ...$ot], null, auth()->id(), today()->toDateString());
-        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace, ...($this->hourlyRateHours !== '' ? ['hourly_rate_hours' => (float) $this->hourlyRateHours] : [])], null, auth()->id(), today()->toDateString());
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'half_day_pay' => $this->halfDayPay, 'half_day_pay_from' => \Illuminate\Support\Carbon::parse($this->halfDayPayFrom)->toDateString(), 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace, ...($this->hourlyRateHours !== '' ? ['hourly_rate_hours' => (float) $this->hourlyRateHours] : [])], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.advance_limit', 'leave', 'Advance leave limit', ['max_days' => (float) $this->advanceLeaveMax], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.final_settlement', 'leave', 'Final settlement leave encashment', ['leave_encashment_enabled' => $this->encashmentEnabled, 'rate_per_day' => (float) $this->encashmentRate], null, auth()->id(), today()->toDateString());
         $this->toast($this->otEnabled ? 'Payroll, overtime and leave policies saved.' : 'Payroll and leave policies saved.');

@@ -70,11 +70,14 @@ class SalarySummaryService
     private function fromBreakdown(string $month, string $source, string $status, array $b, float $gross, float $net, float $paid, array $days, array $data): array
     {
         $money = fn ($v) => round((float) $v, 2);
-        $daysPaid = (float) $days['present'] + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0);
+        $halfDays = array_values((array) ($b['half_days'] ?? []));
+        $halfNote = $halfDays ? ' ('.count($halfDays).' half '.(count($halfDays) === 1 ? 'day' : 'days').': '.collect($halfDays)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ').', paid half)' : '';
+        $halfHolidays = ($data['pay_basis'] ?? 'monthly') === 'daily' ? [] : array_values((array) ($b['half_holiday_paid'] ?? []));
+        $daysPaid = (float) $days['present'] - 0.5 * count($halfDays) + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0) + 0.5 * count($halfHolidays);
         $earnings = [];
         $earnings[] = ['Salary for days worked', $money($b['base_salary'] ?? 0), ($data['pay_basis'] ?? 'monthly') === 'daily'
-            ? number_format((float) ($data['daily_rate'] ?? 0), 2).' × '.$days['present'].' days present'
-            : $days['present'].' present'.($days['paid_leave'] ? ' + '.$days['paid_leave'].' paid leave' : '').(($b['paid_holiday_days'] ?? 0) ? ' + '.$b['paid_holiday_days'].' paid holiday' : '').' of '.$days['working'].' working days'];
+            ? number_format((float) ($data['daily_rate'] ?? 0), 2).' × '.((float) $days['present'] - 0.5 * count($halfDays)).' days present'.$halfNote
+            : $days['present'].' present'.$halfNote.($days['paid_leave'] ? ' + '.$days['paid_leave'].' paid leave' : '').(($b['paid_holiday_days'] ?? 0) ? ' + '.$b['paid_holiday_days'].' paid holiday' : '').($halfHolidays ? ' + ½ day for '.count($halfHolidays).' half-day holiday not at work ('.collect($halfHolidays)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ').')' : '').' of '.$days['working'].' working days'];
         if ((float) ($b['extra_work']['amount'] ?? 0) > 0) $earnings[] = ['Extra working (off days)', $money($b['extra_work']['amount']), ($b['extra_work']['days'] ?? 0).' days · '.Duration::hms((int) ($b['extra_work']['seconds'] ?? 0))];
         if ((float) ($b['overtime_amount'] ?? 0) > 0) $earnings[] = ['Overtime', $money($b['overtime_amount']), null];
         $deductions = [];

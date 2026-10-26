@@ -126,6 +126,25 @@ class EmployeeDocumentsSelfServiceTest extends TestCase
         $this->assertNull($e->fresh()->photo_path);
     }
 
+    public function test_app_can_send_the_profile_photo_as_base64(): void
+    {
+        $e = $this->employee();
+        Sanctum::actingAs($e->user, ['*']);
+        $png = base64_encode((string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+        $this->postJson('/api/me/photo', ['photo_base64' => 'data:image/png;base64,'.$png])->assertOk()->assertJsonPath('message', 'Profile picture updated.');
+        $first = $e->fresh()->photo_path;
+        $this->assertNotNull($first);
+        Storage::disk('local')->assertExists($first);
+        // A new photo gets a new address, so the phone shows it instead of the cached one.
+        $url = $this->getJson('/api/me')->json('data.photo_url') ?? $this->getJson('/api/me')->json('photo_url');
+        $this->postJson('/api/me/photo', ['photo_base64' => $png])->assertOk();
+        $this->assertNotSame($first, $e->fresh()->photo_path);
+        $this->assertNotSame($url, $this->getJson('/api/me')->json('data.photo_url') ?? $this->getJson('/api/me')->json('photo_url'));
+        // Not an image, or not base64: refused with a clear message.
+        $this->postJson('/api/me/photo', ['photo_base64' => base64_encode('%PDF-1.4 not a photo')])->assertUnprocessable()->assertJsonPath('errors.photo.0', 'Use a JPG, PNG or WebP photo.');
+        $this->postJson('/api/me/photo', ['photo_base64' => '***'])->assertUnprocessable();
+    }
+
     public function test_mobile_app_lists_the_checklist_and_uploads(): void
     {
         $e = $this->employee();

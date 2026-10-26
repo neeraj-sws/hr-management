@@ -21,6 +21,9 @@ class NotificationController extends ApiController
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => [, $mutable]) {
             $clean[$group] = ['in_app' => $mutable ? (bool) ($data['preferences'][$group]['in_app'] ?? true) : true, 'email' => (bool) ($data['preferences'][$group]['email'] ?? \App\Notifications\ApprovalRequested::EMAIL_DEFAULTS[$group]), 'push' => (bool) ($data['preferences'][$group]['push'] ?? true)];
         }
+        // The website's sound setting is not part of the app's list: keep it.
+        $saved = (array) ($request->user()->notification_preferences ?? []);
+        if (array_key_exists('web_sound', $saved)) $clean['web_sound'] = (bool) $saved['web_sound'];
         $request->user()->forceFill(['notification_preferences' => $clean])->save();
 
         return $this->preferences($request);

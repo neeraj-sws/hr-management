@@ -39,6 +39,8 @@ class Profile extends Component
     public string $dateOfBirth = '';
     public bool $shareBirthday = true;
     public array $prefs = [];
+    /** Website: play a short sound when a new notification arrives. */
+    public bool $webSound = true;
 
     public function mount(): void
     {
@@ -46,6 +48,7 @@ class Profile extends Component
         $this->dateOfBirth = (string) $this->ownEmployee()?->date_of_birth?->toDateString();
         $this->shareBirthday = (bool) ($this->ownEmployee()?->share_birthday ?? true);
         $saved = (array) ($this->user()->notification_preferences ?? []);
+        $this->webSound = (bool) ($saved['web_sound'] ?? true);
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => $definition) {
             $this->prefs[$group] = ['in_app' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'in_app'), 'email' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'email'), 'push' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'push')];
         }
@@ -68,7 +71,7 @@ class Profile extends Component
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => [, $mutable]) {
             $clean[$group] = ['in_app' => $mutable ? (bool) ($this->prefs[$group]['in_app'] ?? true) : true, 'email' => (bool) ($this->prefs[$group]['email'] ?? false), 'push' => (bool) ($this->prefs[$group]['push'] ?? true)];
         }
-        $this->user()->forceFill(['notification_preferences' => $clean])->save();
+        $this->user()->forceFill(['notification_preferences' => [...$clean, 'web_sound' => $this->webSound]])->save();
         $this->prefs = $clean;
         $audit->record('profile.notification_preferences_updated', $this->user(), $clean);
         $this->toast('Notification preferences saved.');

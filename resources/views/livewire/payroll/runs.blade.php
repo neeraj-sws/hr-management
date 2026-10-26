@@ -38,7 +38,7 @@
                     <div><h2>{{ $selected->period_starts_on->format('d M Y') }} – {{ $selected->period_ends_on->format('d M Y') }} <x-badge :status="$selected->status" />@if($selected->needs_recalculation) <x-badge tone="red">Inputs changed — recalculate</x-badge>@endif</h2>
                         <p>@if($approval)Approval: {{ $approval->status }}@if($approval->approver) by {{ $approval->approver->name }}@endif @if($approval->comment) — “{{ $approval->comment }}”@endif @endif @if($selected->locked_at)· locked {{ $selected->locked_at->format('d M Y H:i') }}@endif</p></div>
                     <div class="actions">
-                        @if($selected->status === 'draft' && auth()->user()->can('payroll.manage'))<button class="btn btn-sm" wire:click="recalculate" wire:loading.attr="disabled">Recalculate</button>@endif
+                        @if($selected->status === 'draft' && auth()->user()->can('payroll.manage'))<button class="btn btn-sm" wire:click="recalculate" wire:loading.attr="disabled">Recalculate</button><button class="btn btn-sm" wire:click="openCompare" title="This draft against a fresh calculation now: half days and salary for days worked. Nothing is saved.">Compare</button><button class="btn btn-sm btn-danger" wire:click="openDelete">Delete draft</button>@endif
                         @if($canDecide)<button class="btn btn-sm btn-success" wire:click="approve" wire:confirm="Approve this payroll run?">Approve</button>@endif
                         @if($selected->status === 'approved' && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="lock" wire:confirm="Lock this payroll? Locked payroll cannot be changed.">Lock payroll</button>@endif
                         @if(in_array($selected->status, ['approved', 'locked'], true) && \App\Support\Access::isAdmin(auth()->user()))<button class="btn btn-sm btn-danger" wire:click="openReopen">Reopen</button>@endif
@@ -56,13 +56,15 @@
                         {{-- A month from the old salary sheet: what the sheet says was paid counts as paid. --}}
                         @php($sheetPaid = (float) ($item->calculation_breakdown['old_sheet']['paid'] ?? 0))
                         @php($paid = (float) $item->payments->sum('amount') + $sheetPaid)
-                        @php($deductions = round((float) $item->gross_amount - (float) $item->net_amount, 2))
+                        {{-- Reimbursements (approved expense claims) are paid on top of net, so they are not a deduction. --}}
+                        @php($claimsPaid = (float) $item->reimbursements_amount)
+                        @php($deductions = round((float) $item->gross_amount - (float) $item->net_amount + $claimsPaid, 2))
                         <tr wire:key="pi-{{ $item->id }}">
                             <td><strong>{{ $item->employee?->name }}</strong><small>{{ $item->employee?->employee_code }}</small></td>
                             <td class="num nowrap">{{ $item->working_days }} / {{ (float) $item->present_days }} / {{ (float) $item->paid_leave_days }} / {{ (float) $item->unpaid_leave_days }}</td>
                             @if($runHasOt)<td class="num">{{ number_format((float) $item->overtime_amount, 2) }}<small>{{ (float) $item->overtime_hours }} h</small></td>@endif
                             <td class="num">{{ number_format((float) $item->gross_amount, 2) }}</td>
-                            <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
+                            <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if($claimsPaid > 0) · <span style="color:var(--green, #1E7A41)">+ claims {{ number_format($claimsPaid, 2) }} in net</span>@endif@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
                             <td class="num"><strong>{{ number_format((float) $item->net_amount, 2) }}</strong></td>
                             <td class="num">{{ number_format($paid, 2) }}@if($sheetPaid > 0)<small>old sheet{{ ! empty($item->calculation_breakdown['old_sheet']['payment_date']) ? ' · '.\Illuminate\Support\Carbon::parse($item->calculation_breakdown['old_sheet']['payment_date'])->format('d M Y') : '' }}</small>@elseif($paid > 0 && $paid < (float) $item->net_amount)<small>partial</small>@endif</td>
                             <td><div class="row-actions">
@@ -109,7 +111,8 @@
                 {{-- The person's own monthly (basic) salary first, then how this month's pay is worked out from it. --}}
                 @if(($cd['pay_basis'] ?? 'monthly') === 'daily')
                 <tr style="background:var(--canvas)"><td><strong>Daily wage</strong><small>paid per working day attended</small></td><td class="num"><strong>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} / day</strong></td></tr>
-                <tr><td>Days present<small>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} × {{ $breakdown->present_days }} days</small></td><td class="num">{{ number_format((float) ($cd['daily_rate'] ?? 0) * $breakdown->present_days, 2) }}</td></tr>
+                @php($dailyDays = (float) $breakdown->present_days - 0.5 * count((array) ($breakdown->calculation_breakdown['half_days'] ?? [])))
+                <tr><td>Days present<small>{{ number_format((float) ($cd['daily_rate'] ?? 0), 2) }} × {{ $dailyDays }} days</small></td><td class="num">{{ number_format((float) ($cd['daily_rate'] ?? 0) * $dailyDays, 2) }}</td></tr>
                 @else
                 <tr style="background:var(--canvas)"><td><strong>Monthly basic salary</strong><small>from the salary profile</small></td><td class="num"><strong>{{ number_format($monthly, 2) }}</strong></td></tr>
                 @endif
@@ -119,11 +122,43 @@
                 @foreach(($breakdown->calculation_breakdown ?? []) as $label => $value)
                     @continue(in_array($label, $otKeys, true) && ! $hasOt)
                     @if(is_scalar($value))<tr><td>{{ ['base_salary' => 'Salary earned (per-day rate × days paid)'][$label] ?? str($label)->replace('_', ' ')->title() }}</td><td class="num">{{ is_numeric($value) ? (fmod((float) $value, 1) ? number_format((float) $value, 2) : $value) : $value }}</td></tr>@endif
+                    @if($label === 'half_days' && is_array($value) && $value)<tr><td>Half days<small>paid ½ day each: {{ collect($value)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ') }}</small></td><td class="num">{{ count($value) }} × ½</td></tr>@endif
                     @if($label === 'statutory_components' && is_array($value))@foreach($value as $c)<tr><td>{{ $c['name'] ?? $c['key'] }} ({{ $c['type'] ?? '' }})</td><td class="num">{{ number_format((float) ($c['amount'] ?? 0), 2) }}</td></tr>@endforeach @endif
                 @endforeach
             </tbody></table></div>
             @endif
             <div class="modal-foot"><button class="btn" wire:click="closeModal">Close</button></div>
+        </x-modal>
+    @endif
+    @if($compare !== null && $selected)
+        <x-modal title="Compare · {{ $selected->period_starts_on->format('d M') }}–{{ $selected->period_ends_on->format('d M Y') }}">
+            <div class="modal-body">
+                <p class="small" style="margin-top:0">Salary for days worked: what this draft has now, against a fresh calculation with today's attendance and rules (half day = ½ day). <strong>Nothing is saved</strong> — click Recalculate to apply. Adjustments, reimbursements and deductions are added on top as usual.</p>
+                <div class="table-wrap"><table class="table">
+                    <thead><tr><th>Employee</th><th class="num">Present (draft → now)</th><th>Half days (½ paid)</th><th class="num">Draft</th><th class="num">Now</th><th class="num">Difference</th></tr></thead>
+                    <tbody>
+                    @forelse($compare as $r)
+                        <tr><td>{{ $r['name'] }}<small>{{ $r['code'] }}</small></td>
+                            <td class="num">{{ $r['present_before'] }} → {{ $r['present_after'] }}</td>
+                            <td>@if($r['half_days']){{ count($r['half_days']) }}<small>{{ collect($r['half_days'])->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ') }}</small>@else<span class="muted">—</span>@endif</td>
+                            <td class="num">{{ number_format($r['before'], 2) }}</td><td class="num">{{ number_format($r['after'], 2) }}</td>
+                            <td class="num" style="color:{{ $r['diff'] < 0 ? 'var(--red, #A32D2D)' : ($r['diff'] > 0 ? 'var(--green, #1E7A41)' : 'inherit') }}">{{ $r['diff'] > 0 ? '+' : '' }}{{ number_format($r['diff'], 2) }}</td></tr>
+                    @empty
+                        <tr><td colspan="6"><x-empty title="Nothing to compare" icon="wallet" /></td></tr>
+                    @endforelse
+                    </tbody>
+                    @if($compare)<tfoot><tr><th colspan="3">Total</th><th class="num">{{ number_format(collect($compare)->sum('before'), 2) }}</th><th class="num">{{ number_format(collect($compare)->sum('after'), 2) }}</th><th class="num">{{ number_format(collect($compare)->sum('diff'), 2) }}</th></tr></tfoot>@endif
+                </table></div>
+            </div>
+            <div class="modal-foot"><button class="btn" wire:click="closeModal">Close</button>@if(auth()->user()->can('payroll.manage'))<button class="btn btn-primary" wire:click="recalculate" wire:loading.attr="disabled" >Recalculate now</button>@endif</div>
+        </x-modal>
+    @endif
+    @if($showDelete && $selected)
+        <x-modal title="Delete draft payroll · {{ $selected->period_starts_on->format('d M') }}–{{ $selected->period_ends_on->format('d M Y') }}">
+            <form wire:submit="deleteRun"><div class="modal-body"><x-errors />
+                <p class="small" style="margin-top:0">This draft and its {{ $selected->items->count() }} salary rows are removed. Salary adjustments, expense claims, penalties and advance recoveries it had taken are given back, so the right payroll picks them up when it is calculated. Only a draft with no payment can be deleted. This is written to the audit log.</p>
+                <x-field label="Why is it being deleted?" name="deleteReason" full><textarea wire:model="deleteReason" rows="3" placeholder="e.g. Made for the wrong dates (01–13 Oct); the month is 01–31 Oct"></textarea></x-field>
+            </div><div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-danger" wire:loading.attr="disabled">Delete draft payroll</button></div></form>
         </x-modal>
     @endif
     @if($showReopen && $selected)

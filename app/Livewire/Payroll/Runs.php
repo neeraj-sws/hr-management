@@ -53,6 +53,7 @@ class Runs extends Component
         abort_unless($this->user()->can('payroll.manage'), 403);
         $run = PayrollRun::findOrFail($this->run);
         $workflow->calculatePayroll($run->period_starts_on->toDateString(), $run->period_ends_on->toDateString(), auth()->id());
+        $this->showCompare = false;
         $this->toast('Draft payroll recalculated from the latest data.');
     }
 
@@ -81,6 +82,54 @@ class Runs extends Component
 
     public string $reopenReason = '';
     public bool $showReopen = false;
+
+    /** "Compare": this draft's stored salary for days worked against a fresh calculation now (nothing is saved). */
+    public bool $showCompare = false;
+
+    public function openCompare(): void
+    {
+        abort_unless($this->user()->can('payroll.manage'), 403);
+        $this->showCompare = true;
+    }
+
+    private function compareRows(PayrollRun $run): array
+    {
+        $workflow = app(HrWorkflowService::class);
+        $rows = [];
+        foreach ($run->items as $item) {
+            $b = (array) $item->calculation_breakdown;
+            if (! empty($b['old_sheet']) || ! $item->employee) continue; // months from the old salary sheet do not change
+            $now = $workflow->payEstimate($item->employee, $run->period_starts_on->toDateString(), $run->period_ends_on->toDateString());
+            if (! $now) continue;
+            $before = (float) ($b['base_salary'] ?? 0);
+            $after = (float) $now['breakdown']['base_salary'];
+            $rows[] = ['name' => $item->employee->name, 'code' => $item->employee->employee_code,
+                'present_before' => (float) $item->present_days, 'present_after' => (float) $now['present_days'],
+                'half_days' => $now['breakdown']['half_days'] ?? [], 'before' => $before, 'after' => $after, 'diff' => round($after - $before, 2)];
+        }
+
+        return $rows;
+    }
+
+    public string $deleteReason = '';
+    public bool $showDelete = false;
+
+    public function openDelete(): void
+    {
+        abort_unless($this->user()->can('payroll.manage'), 403);
+        $this->fill(['deleteReason' => '', 'showDelete' => true]);
+        $this->resetValidation();
+    }
+
+    /** Deletes the selected draft run; its adjustments, claims, penalties and advances are free again. */
+    public function deleteRun(HrWorkflowService $workflow): void
+    {
+        $this->validate(['deleteReason' => ['required', 'string', 'min:5', 'max:500']], [], ['deleteReason' => 'reason']);
+        $workflow->deleteDraftPayroll(PayrollRun::findOrFail($this->run), $this->user(), $this->deleteReason);
+        $this->showDelete = false;
+        $this->run = null;
+        $this->toast('Draft payroll deleted. Its adjustments, claims and advance recoveries go into the right payroll on its next calculation.');
+    }
 
     public function openReopen(): void
     {
@@ -119,6 +168,8 @@ class Runs extends Component
         $this->payingItemId = null;
         $this->breakdownItemId = null;
         $this->showReopen = false;
+        $this->showDelete = false;
+        $this->showCompare = false;
     }
 
     public function render(ApprovalInbox $inbox)
@@ -136,6 +187,7 @@ class Runs extends Component
             'canDecide' => $approval && $approval->status === 'pending' && $inbox->canDecide($this->user(), $approval->load('approvable')),
             'paying' => $this->payingItemId ? PayrollItem::with(['employee', 'payments'])->find($this->payingItemId) : null,
             'breakdown' => $this->breakdownItemId ? PayrollItem::with('employee')->find($this->breakdownItemId) : null,
+            'compare' => $this->showCompare && $selected && $selected->status === 'draft' ? $this->compareRows($selected) : null,
         ], $this->approvalsOnly ? 'Payroll Approvals' : 'Payroll');
     }
 }

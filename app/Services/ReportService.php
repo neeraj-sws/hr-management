@@ -473,7 +473,9 @@ class ReportService
                 $profile = $e->salaryProfiles->filter(fn ($p) => $p->effective_from->toDateString() <= $monthEnd)->last();
                 if (! $profile) continue;
                 $days = app(HrWorkflowService::class)->salaryDaysFor($e, $month->toDateString(), $profile)['days'];
-                $item = $items->get($e->id.'|'.$month->format('Y-m'))?->first();
+                // Two runs in one month (e.g. a part-month draft and the full month): the one covering the most days,
+                // then the latest, so the month's salary is never read from a part-month run.
+                $item = $items->get($e->id.'|'.$month->format('Y-m'))?->sortByDesc(fn ($i) => sprintf('%03d|%010d', $i->run->period_starts_on->diffInDays($i->run->period_ends_on), $i->payroll_run_id))->first();
                 $rows->push(['employee_code' => $e->employee_code, 'employee_name' => $e->name, 'month' => $month->format('M Y'),
                     'salary_type' => $profile->isDaily() ? 'per day' : 'monthly',
                     'monthly_salary' => $profile->isDaily() ? number_format((float) $profile->daily_rate, 2).' / day' : (float) $profile->monthly_salary,

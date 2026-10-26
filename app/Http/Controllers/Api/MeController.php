@@ -64,7 +64,21 @@ class MeController extends ApiController
     {
         $employee = $request->user()?->employeeProfile;
         abort_unless($employee, 404);
-        $request->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.mimes' => 'Use a JPG, PNG or WebP photo.', 'photo.max' => 'The photo is larger than 3 MB.']);
+        // The app (1.1.10+) sends the photo as base64 text (photo_base64): no file upload for the phone to drop.
+        // Older apps, the website and the desktop app send a normal file (photo).
+        // ($request->files, not hasFile(): hasFile() caches the file list before the decoded photo is added.)
+        if (! $request->files->has('photo') && $request->filled('photo_base64')) {
+            $raw = preg_replace('/^data:[^;,]+;base64,/', '', (string) $request->input('photo_base64'));
+            $bytes = base64_decode((string) $raw, true);
+            if ($bytes === false || $bytes === '') throw \Illuminate\Validation\ValidationException::withMessages(['photo' => 'The photo could not be read. Choose it again.']);
+            if (strlen($bytes) > 3 * 1024 * 1024) throw \Illuminate\Validation\ValidationException::withMessages(['photo' => 'The photo is larger than 3 MB.']);
+            $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes) ?: 'application/octet-stream';
+            $extension = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'][$mime] ?? 'bin';
+            $temp = tempnam(sys_get_temp_dir(), 'swsphoto');
+            file_put_contents($temp, $bytes);
+            $request->files->set('photo', new \Illuminate\Http\UploadedFile($temp, 'profile.'.$extension, $mime, null, true));
+        }
+        $request->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.required' => 'Choose a photo.', 'photo.mimes' => 'Use a JPG, PNG or WebP photo.', 'photo.max' => 'The photo is larger than 3 MB.']);
         $photos->save($employee, $request->file('photo'), $request->user());
         $employee->refresh();
 
