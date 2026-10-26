@@ -1,3 +1,4 @@
+import { FormSheet } from '../components/FormSheet';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -10,6 +11,7 @@ type Comment = { id: number; author: string | null; body: string; created_at: st
 /** One task: details, its subtasks and the comment thread. */
 export default function TaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [commenting, setCommenting] = useState(false);
   const [task, setTask] = useState<(Task & { parent_id?: number | null }) | null>(null);
   const [subtasks, setSubtasks] = useState<Task[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -37,6 +39,7 @@ export default function TaskScreen() {
       const created = (await post<{ data: Comment }>(`/tasks/${id}/comments`, { body })).data;
       setComments((current) => [created, ...current]);
       setBody('');
+      setCommenting(false);
     } catch (e) {
       setError(e instanceof ApiError ? e.firstMessage : 'Could not post the comment.');
     } finally {
@@ -61,8 +64,7 @@ export default function TaskScreen() {
       </Card>
       <Card>
         <H2>Comments</H2>
-        <Field label="Add a comment" value={body} onChangeText={setBody} multiline placeholder="Question, update or blocker" />
-        <Button title="Post" tone="primary" small onPress={send} loading={busy} />
+        <Button title="Add comment" tone="primary" small onPress={() => setCommenting(true)} />
         <View style={{ marginTop: 10 }}>
           {comments.length ? comments.map((c) => (
             <View key={c.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eef1f6' }}>
@@ -72,6 +74,10 @@ export default function TaskScreen() {
           )) : <Muted>No comments yet.</Muted>}
         </View>
       </Card>
+      <FormSheet visible={commenting} title="Add a comment" onClose={() => setCommenting(false)}>
+        <Field label="Comment" value={body} onChangeText={setBody} multiline placeholder="Question, update or blocker" />
+        <Button title="Post" tone="primary" onPress={async () => { await send(); }} loading={busy} />
+      </FormSheet>
     </Screen>
   );
 }
