@@ -1265,3 +1265,20 @@ div.tm-card{cursor:default}
 .ins-foot{margin-top:14px}
 @media (max-width:900px){.ins-grid{grid-template-columns:1fr}}
 @media print{.sidebar,.topbar,.ins-search,.ins-index,.page-head .btn{display:none!important}.ins-grid{grid-template-columns:1fr}}
+
+/* why-less: clear rows */
+.why-less .wl-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px dashed #F0E1C4;font-size:13.5px;color:#334258}
+.why-less .wl-row:first-of-type{border-top:0}
+.why-less .wl-row span small{display:block;color:#8a96aa;font-size:12px;font-weight:400}
+.why-less .wl-row b{white-space:nowrap;font-variant-numeric:tabular-nums}
+.why-less .wl-full b{color:#13254F}
+.why-less .wl-neg{color:#A32D2D}
+.why-less .wl-title{font-weight:600}
+.why-less .wl-block{border-top:1px dashed #F0E1C4}
+.why-less .wl-block .wl-row{border-top:0}
+.why-less .wl-table{width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 6px;background:#fff;border:1px solid #F0E1C4;border-radius:8px}
+.why-less .wl-table th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:#8a96aa;text-align:left;padding:6px 8px;border-bottom:1px solid #F0E1C4;font-weight:700}
+.why-less .wl-table td{padding:6px 8px;border-top:1px solid #FAF1DF;color:#334258;vertical-align:top}
+.why-less .wl-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.why-less .wl-table td small{display:block;color:#8a96aa;font-size:11px}
+.why-less .wl-total{border-top:2px solid #E9C98F;font-weight:700;color:#13254F;font-size:14px}

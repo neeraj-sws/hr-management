@@ -83,7 +83,7 @@ class SalarySummaryService
         $byHours = (array) ($b['hours_paid_days'] ?? []);
         $shortfall = $this->shortfall($month, $source, $b, $days, $data);
         $byHoursCut = array_sum(array_map(fn ($d) => 1 - (float) ($d['share'] ?? 1), $byHours));
-        if ($byHours) $halfNote .= ' ('.count($byHours).' '.(count($byHours) === 1 ? 'day' : 'days').' checked in late, paid by hours at work: '.collect($byHours)->map(fn ($d, $date) => \Illuminate\Support\Carbon::parse($date)->format('d M').' '.Duration::hms((int) ($d['seconds'] ?? 0)).' = '.rtrim(rtrim(number_format((float) ($d['share'] ?? 0), 2), '0'), '.').' day')->join(', ').')';
+        if ($byHours) $halfNote .= ' ('.count($byHours).' late check-in '.(count($byHours) === 1 ? 'day' : 'days').' paid for the hours worked)';
         $daysPaid = (float) $days['present'] - 0.5 * count($halfDays) - $byHoursCut + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0) + 0.5 * count($halfHolidays);
         $earnings = [];
         $earnings[] = ['Salary for days worked', $money($b['base_salary'] ?? 0), ($data['pay_basis'] ?? 'monthly') === 'daily'
@@ -158,32 +158,44 @@ class SalarySummaryService
             $lines[] = ['label' => $label, 'detail' => $detail, 'days' => round($d, 4), 'amount' => round($d * $rate, 2)];
             $left -= $d;
         };
+        // Late check-ins: shown as hours worked and rupees (never as a fraction of a day).
+        $late = [];
         foreach ((array) ($b['hours_paid_days'] ?? []) as $d => $h) {
-            $add($fmtDate($d).': checked in '.Carbon::parse($h['check_in'] ?? '00:00')->format('g:i A').' (after the late check-in time)',
-                'paid by hours at work: '.Duration::hms((int) ($h['seconds'] ?? 0)).' = '.$num((float) ($h['share'] ?? 0)).' day', 1 - (float) ($h['share'] ?? 1));
+            $share = (float) ($h['share'] ?? 1);
+            $worked = (int) ($h['seconds'] ?? 0);
+            $standard = (int) ($h['standard'] ?? ($share > 0 ? round($worked / $share) : 0));
+            if ($share >= 0.9999) continue; // worked a full day's hours: nothing cut, nothing to explain
+            $late[] = ['date' => $fmtDate($d), 'day' => Carbon::parse($d)->format('D'), 'in' => Carbon::parse($h['check_in'] ?? '00:00')->format('g:i A'),
+                'worked' => Duration::hm($worked), 'of' => Duration::hm($standard), 'short' => Duration::hm(max(0, $standard - $worked)),
+                'paid' => round($share * $rate, 2), 'cut' => round((1 - $share) * $rate, 2)];
+            $left -= 1 - $share;
         }
         $half = (array) ($b['half_days'] ?? []);
-        if ($half) $add(count($half).' half '.(count($half) === 1 ? 'day' : 'days').' ('.$dates($half).')', 'at work under the half-day limit: paid ½ day each', 0.5 * count($half));
+        if ($half) $add('Half day'.(count($half) === 1 ? '' : 's').' — '.$dates($half), 'came in, but less than the half-day hours at work: half of the day is paid', 0.5 * count($half));
         $halfHoliday = (array) ($b['half_holiday_paid'] ?? []);
-        if ($halfHoliday) $add('Half-day holiday, not at work ('.$dates($halfHoliday).')', 'the holiday half is paid', 0.5 * count($halfHoliday));
+        if ($halfHoliday) $add('Half-day holiday, not at work — '.$dates($halfHoliday), 'the holiday half is paid, the working half is not', 0.5 * count($halfHoliday));
         $unpaid = (float) ($days['unpaid_leave'] ?? 0);
-        if ($unpaid > 0) $add('Unpaid leave: '.$num($unpaid).' '.($unpaid == 1 ? 'day' : 'days'), null, min($unpaid, max(0, $left)));
+        if ($unpaid > 0) $add('Unpaid leave — '.$num($unpaid).' '.($unpaid == 1 ? 'day' : 'days'), null, min($unpaid, max(0, $left)));
         if ($left > 0.005) {
             $absent = (array) ($b['_days']['absent'] ?? []);
             $upcoming = (array) ($b['_days']['upcoming'] ?? []);
             $known = count($absent) + count($upcoming);
             if ($upcoming && abs($known - $left) < 0.01) {
-                if ($absent) $add('Absent, no leave: '.count($absent).' '.(count($absent) === 1 ? 'day' : 'days').' ('.$dates($absent).')', null, (float) count($absent));
-                $add('Days still to come: '.count($upcoming).' ('.$dates($upcoming).')', 'not worked yet: paid after the payroll is recalculated at month end', (float) count($upcoming));
+                if ($absent) $add('Absent, no leave — '.count($absent).' '.(count($absent) === 1 ? 'day' : 'days'), $dates($absent), (float) count($absent));
+                $add('Days still to come — '.count($upcoming).' '.(count($upcoming) === 1 ? 'day' : 'days'), $dates($upcoming).' · not worked yet; paid when payroll is recalculated at month end', (float) count($upcoming));
             } else {
-                $add('Absent, no leave: '.$num($left).' '.(abs($left - 1) < 0.01 ? 'day' : 'days').(count($absent) && abs(count($absent) - $left) < 0.01 ? ' ('.$dates($absent).')' : ''), null, $left);
+                $add('Absent, no leave — '.$num($left).' '.(abs($left - 1) < 0.01 ? 'day' : 'days'), count($absent) && abs(count($absent) - $left) < 0.01 ? $dates($absent) : null, $left);
             }
         }
         $estimate = $source === 'estimate';
 
+        $standardSeconds = (int) (collect((array) ($b['hours_paid_days'] ?? []))->first()['standard'] ?? round((float) ($data['standard_daily_hours'] ?? 0) * 3600));
+
         return ['rate' => round($rate, 2), 'days_paid' => $paidDays, 'working' => $working, 'estimate' => $estimate,
+            'late' => $late, 'late_cut' => round(array_sum(array_column($late, 'cut')), 2),
+            'hourly' => $standardSeconds > 0 ? round($rate / ($standardSeconds / 3600), 2) : null, 'day_hours' => $standardSeconds > 0 ? Duration::hm($standardSeconds) : null,
             'full' => round($working * $rate, 2),
-            'full_label' => ($estimate ? 'Salary for the '.$num($working).' working days so far' : 'Full salary: '.$num($working).' working days').' × ₹'.number_format($rate, 2),
+            'full_label' => ($estimate ? 'Salary for the '.$num($working).' working days so far' : 'Full salary for '.$num($working).' working days'),
             'lines' => $lines, 'earned' => $earned];
     }
 

@@ -75,7 +75,7 @@
             <div><span>Paid leave</span><strong>{{ (float) $item->paid_leave_days }}</strong></div>
             <div><span>Unpaid leave</span><strong>{{ (float) $item->unpaid_leave_days }}</strong></div>
             @if(! empty($b['half_days']))<div title="Paid half a day each: {{ collect($b['half_days'])->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ') }}"><span>Half days (½ paid)</span><strong>{{ count($b['half_days']) }}</strong></div>@endif
-            @if(! empty($b['hours_paid_days']))<div title="Checked in late: paid by hours at work"><span>Late check-in (paid by hours)</span><strong>{{ collect($b['hours_paid_days'])->sum(fn ($d) => (float) ($d['share'] ?? 0)) == 0 ? 0 : round(collect($b['hours_paid_days'])->sum(fn ($d) => (float) ($d['share'] ?? 0)), 2) }} of {{ count($b['hours_paid_days']) }}</strong></div>@endif
+            @if(! empty($b['hours_paid_days']))<div title="Came after the late check-in time: paid for the hours worked"><span>Late check-ins (paid by hours)</span><strong>{{ count($b['hours_paid_days']) }}</strong></div>@endif
             @if(! empty($b['paid_holiday_days']))<div><span>Paid holidays</span><strong>{{ $b['paid_holiday_days'] }}</strong></div>@endif
             @if(! empty($b['short_hours']['enabled']))<div><span>Hours worked / required</span><strong style="font-size:14px">{{ \App\Support\Duration::hms($b['short_hours']['actual_seconds']) }} / {{ \App\Support\Duration::hms($b['short_hours']['required_seconds']) }}</strong></div>@endif
         </div>

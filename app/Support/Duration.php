@@ -33,6 +33,14 @@ class Duration
         return $m === 0 ? "{$h} h" : "{$h} h {$m} min";
     }
 
+    /** Hours and minutes for people: "3h 00m", "8h 30m". */
+    public static function hm(int|float|string|null $seconds): string
+    {
+        $minutes = max(0, (int) round((float) $seconds / 60));
+
+        return sprintf('%dh %02dm', intdiv($minutes, 60), $minutes % 60);
+    }
+
     /** For values stored as decimal hours (estimates, policy hours). */
     public static function fromHours(int|float|string|null $hours): string
     {

@@ -1,15 +1,26 @@
 @props(['s'])
-{{-- "Why your salary is less than full": full salary for the working days, each cut with its dates, salary for days worked. --}}
+{{-- "Why the salary is less than full": full salary, then late check-ins (hours worked and rupees), then other cuts, then what is paid. --}}
 @if($s)
+@php($rs = fn ($v) => '₹'.number_format((float) $v, 2))
 <div class="why-less">
-    <div class="why-less-head"><strong>{{ $s['lines'] ? 'Why the salary is less than full' : 'Full salary, no cuts' }}</strong>@if($s['estimate'])<small>so far this month</small>@endif</div>
-    <table>
-        <tr><td>{{ $s['full_label'] }}</td><td class="num">₹{{ number_format($s['full'], 2) }}</td></tr>
-        @foreach($s['lines'] as $l)
-            <tr class="why-cut"><td>− {{ $l['label'] }}@if($l['detail'])<small>{{ $l['detail'] }}</small>@endif<small>{{ rtrim(rtrim(number_format($l['days'], 2), '0'), '.') }} {{ abs($l['days'] - 1) < 0.001 ? 'day' : 'days' }} × ₹{{ number_format($s['rate'], 2) }}</small></td><td class="num">−₹{{ number_format($l['amount'], 2) }}</td></tr>
-        @endforeach
-        <tr class="why-total"><td>= Salary for days worked <small>{{ rtrim(rtrim(number_format($s['days_paid'], 4), '0'), '.') }} days paid</small></td><td class="num">₹{{ number_format($s['earned'], 2) }}</td></tr>
-    </table>
-    <p class="why-note">Bonus, reimbursements and deductions (advance, penalties, TDS) are added or taken off after this.</p>
+    <div class="why-less-head"><strong>{{ ($s['lines'] || $s['late']) ? 'Why the salary is less than full' : 'Full salary — nothing cut' }}</strong>@if($s['estimate'])<small>this month so far · final after month end</small>@endif</div>
+    <div class="wl-row wl-full"><span>{{ $s['full_label'] }}<small>{{ $rs($s['rate']) }} a day{{ $s['hourly'] ? ' · '.$s['day_hours'].' a day = '.$rs($s['hourly']).' an hour' : '' }}</small></span><b>{{ $rs($s['full']) }}</b></div>
+
+    @if($s['late'])
+        <div class="wl-block">
+            <div class="wl-row wl-title"><span>Came after the late check-in time — paid only for the hours worked<small>{{ count($s['late']) }} {{ count($s['late']) === 1 ? 'day' : 'days' }}</small></span><b class="wl-neg">−{{ $rs($s['late_cut']) }}</b></div>
+            <div class="table-wrap"><table class="wl-table">
+                <thead><tr><th>Date</th><th>Came in</th><th>Worked</th><th class="num">Paid</th><th class="num">Not paid</th></tr></thead>
+                <tbody>@foreach($s['late'] as $l)<tr><td class="nowrap">{{ $l['day'] }}, {{ $l['date'] }}</td><td class="nowrap">{{ $l['in'] }}</td><td class="nowrap">{{ $l['worked'] }} <span class="muted">of {{ $l['of'] }}</span></td><td class="num">{{ $rs($l['paid']) }}</td><td class="num wl-neg">−{{ $rs($l['cut']) }}<small>{{ $l['short'] }} short</small></td></tr>@endforeach</tbody>
+            </table></div>
+        </div>
+    @endif
+
+    @foreach($s['lines'] as $l)
+        <div class="wl-row"><span>{{ $l['label'] }}@if($l['detail'])<small>{{ $l['detail'] }}</small>@endif<small>@if(abs($l['days'] - round($l['days'])) < 0.001){{ (int) round($l['days']) }} {{ round($l['days']) == 1 ? 'day' : 'days' }} × {{ $rs($s['rate']) }}@elseif(abs($l['days'] * 2 - round($l['days'] * 2)) < 0.001){{ (int) round($l['days'] * 2) }} × half day ({{ $rs($s['rate'] / 2) }} each)@else{{ $rs($l['amount']) }}@endif</small></span><b class="wl-neg">−{{ $rs($l['amount']) }}</b></div>
+    @endforeach
+
+    <div class="wl-row wl-total"><span>Salary for days worked</span><b>{{ $rs($s['earned']) }}</b></div>
+    <p class="why-note">Bonus and reimbursements are added, and advance recovery, penalties and TDS taken off, after this.</p>
 </div>
 @endif

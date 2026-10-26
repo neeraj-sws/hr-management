@@ -54,7 +54,7 @@ class HrWorkflowService
         $net = (int) $attendance->officeSeconds($session);
         $standard = max(1, (int) round($attendance->dailyHours($employee, $date) * 3600));
 
-        return ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'check_in' => $session->check_in->format('H:i')];
+        return ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'standard' => $standard, 'check_in' => $session->check_in->format('H:i')];
     }
 
     /** Half day pays half a day for days from this date (Settings > Payroll can change it or switch it off). */
@@ -623,7 +623,7 @@ class HrWorkflowService
             'gross' => (float) $f['gross'], 'net' => (float) $f['net'], 'working_days' => (int) $f['scheduledTotal'], 'present_days' => (float) $f['presentDays'],
             'paid_leave_days' => (float) $f['paidLeaveDays'], 'unpaid_leave_days' => (float) $f['unpaidLeaveDays'],
             'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
-            'month_divisors' => $f['monthDivisors'], 'working_days_per_month' => $f['workingDaysPerMonth'],
+            'month_divisors' => $f['monthDivisors'], 'working_days_per_month' => $f['workingDaysPerMonth'], 'standard_daily_hours' => $f['standardDailyHours'],
             'breakdown' => [
                 'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
                 'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],

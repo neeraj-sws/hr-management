@@ -23,7 +23,7 @@
                     @if($s)
                         <span class="att-cal-time">{{ $s->check_in?->format('h:i A') ?? '—' }} – {{ $s->check_out?->format('h:i A') ?? ($day->isToday() ? 'now' : '—') }}</span>
                         <span class="att-cal-worked" title="Worked: in–out less break and idle">@hms($att->workedSeconds($s))</span>
-                        @if($s->check_out && ($latePay = app(\App\Services\HrWorkflowService::class)->lateCheckInPay($s->employee, $s)))<span class="att-cal-paid" title="Checked in after the late check-in time: paid by hours at work">paid {{ rtrim(rtrim(number_format($latePay['share'], 2), '0'), '.') }} day</span>@endif
+                        @if($s->check_out && ($latePay = app(\App\Services\HrWorkflowService::class)->lateCheckInPay($s->employee, $s)))<span class="att-cal-paid" title="Came after the late check-in time: paid only for the hours worked">paid for {{ \App\Support\Duration::hm($latePay['seconds']) }} of {{ \App\Support\Duration::hm($latePay['standard']) }}</span>@endif
                         @if($s->check_out)<span class="att-cal-atwork" title="At work = check-in to check-out less breaks (idle and meetings are not taken off). Under the half-day limit it is a half day.">at work @hms($att->officeSeconds($s))</span>@endif
                     @elseif($info['label'])
                         <span class="att-cal-time">{{ \Illuminate\Support\Str::limit($info['label'], 28) }}</span>
