@@ -1050,3 +1050,106 @@ div.tm-card{cursor:default}
 .ma-table td small{display:block;color:#6b7a90;font-size:12px}
 @media (max-width:1100px){.ma-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.ma-tile-wide{grid-column:1 / -1}}
 @media (max-width:640px){.ma-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.ma-page .clock-card .actions{min-width:0;width:100%}.ma-page .timer-display{font-size:36px}}
+/* ---------- Holidays ---------- */
+.hol-year{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:10px;padding:3px}
+.hol-year .btn{border:0}
+.hol-year strong{color:#13254F;min-width:44px;text-align:center}
+.hol-top{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;margin-bottom:14px}
+.hol-next{display:flex;align-items:center;gap:18px;background:linear-gradient(120deg,#13254F,#1F3B7A);color:#fff;border-radius:12px;padding:18px 22px}
+.hol-next-date{flex:none;width:74px;border-radius:12px;background:#fff;color:#13254F;text-align:center;padding:8px 0;box-shadow:0 6px 16px -8px #0006}
+.hol-next-date span{display:block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#C53030}
+.hol-next-date strong{display:block;font-size:30px;line-height:1.05}
+.hol-next-date small{display:block;font-size:11px;color:#6b7a90}
+.hol-next-text{flex:1;min-width:0}
+.hol-next-text .eyebrow{color:#9fb3d1}
+.hol-next-text h2{margin:2px 0;font-size:24px;color:#fff}
+.hol-next-text p{margin:0;color:#c9d6ee}
+.hol-count{text-align:center;background:#ffffff14;border-radius:12px;padding:10px 16px}
+.hol-count strong{display:block;font-size:28px;line-height:1.1}
+.hol-count span{font-size:12px;color:#c9d6ee}
+.hol-tiles{display:grid;gap:10px}
+.hol-tile{background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+.hol-tile span{color:#5b6b86;font-size:13px;font-weight:600}
+.hol-tile strong{font-size:22px;color:#13254F}
+.hol-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
+.hol-side{display:grid;gap:14px}
+.hol-card{background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:12px;padding-bottom:6px}
+.hol-card-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #EEF1F5}
+.hol-card-head h2{margin:0;font-size:16px;color:#13254F}
+.hol-pad{padding:0 18px;margin:10px 0}
+.hol-month{margin:14px 18px 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a96aa}
+.hol-list{list-style:none;margin:0;padding:0 10px}
+.hol-item{display:flex;align-items:center;gap:14px;padding:10px 8px;border-radius:10px}
+.hol-item:hover{background:#F6F8FB}
+.hol-item.is-past{opacity:.55}
+.hol-item.is-today{background:#E7F6EC}
+.hol-date{flex:none;width:52px;text-align:center;border:1px solid #E4E9F0;border-radius:10px;padding:5px 0;background:#fff}
+.hol-date strong{display:block;font-size:20px;color:#13254F;line-height:1.1}
+.hol-date span{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#C53030}
+.hol-date-sm{width:44px}.hol-date-sm strong{font-size:16px}
+.hol-info{flex:1;min-width:0}
+.hol-info strong{display:block;color:#13254F}
+.hol-info small{display:block;color:#6b7a90;font-size:12px}
+.hol-tags{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.hol-tag{border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;background:#E6F1FB;color:#185FA5}
+.hol-tag-opt{background:#FAEEDA;color:#854F0B}
+.hol-tag-pay{background:#F1F4F9;color:#334258}
+.hol-tag-today{background:#2EAD5B;color:#fff}
+.hol-past{font-size:12px;color:#8a96aa}
+.hol-off{display:flex;gap:12px;align-items:center;padding:8px 18px}
+.hol-off strong{display:block;color:#13254F;font-size:13.5px}
+.hol-off small{display:block;color:#6b7a90;font-size:12px}
+@media (max-width:1000px){.hol-top,.hol-grid{grid-template-columns:1fr}.hol-tiles{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:600px){.hol-next{flex-wrap:wrap}.hol-tiles{grid-template-columns:1fr}.hol-item{flex-wrap:wrap}.hol-tags{width:100%;justify-content:flex-start;padding-left:66px}}
+
+/* ---------- Salary (employee) ---------- */
+.sp-summary{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:12px;margin-bottom:14px}
+.sp-card{background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:12px;padding:14px 16px}
+.sp-card span{display:block;color:#5b6b86;font-size:12.5px;font-weight:600}
+.sp-card strong{display:block;color:#13254F;font-size:22px;margin:2px 0;font-variant-numeric:tabular-nums}
+.sp-card small{color:#8a96aa;font-size:12px}
+.sp-pending{border-left:4px solid #854F0B}
+.sp-pending strong{color:#854F0B;font-size:26px}
+.sp-pending strong.sp-zero{color:#1E7A41}
+.sp-neg{color:#A32D2D!important}
+.sp-head{flex-wrap:wrap;gap:10px}
+.sp-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sp-filters .docs-chips{margin:0}
+.sp-due.is-active{background:#FAEEDA;border-color:#E9C98F;color:#854F0B}
+.sp-list{display:grid;gap:10px;padding:14px 16px}
+.sp-pad{padding:0 16px 12px;margin:0}
+.sm-card{border:1px solid var(--line,#e4e9f0);border-radius:12px;background:#fff;overflow:hidden}
+.sm-card > summary{display:flex;align-items:center;gap:14px;padding:12px 14px;cursor:pointer;list-style:none}
+.sm-card > summary::-webkit-details-marker{display:none}
+.sm-card[open] > summary{border-bottom:1px solid #EEF1F5}
+.sm-badge{flex:none;width:52px;height:52px;border-radius:12px;display:grid;place-content:center;text-align:center}
+.sm-badge b{font-size:13px;line-height:1.1}.sm-badge small{font-size:10.5px;font-weight:600}
+.sm-blue{background:#E6F1FB;color:#185FA5}.sm-amber{background:#FAEEDA;color:#854F0B}.sm-green{background:#E1F5EE;color:#085041}
+.sm-head{flex:1;min-width:0}
+.sm-head strong{display:block;color:#13254F}
+.sm-head small{display:block;color:#6b7a90;font-size:12px}
+.sm-card .salary-month-figures{display:flex;gap:18px}
+.sm-card .salary-month-figures span{display:flex;flex-direction:column;text-align:right;font-variant-numeric:tabular-nums;color:#334258}
+.sm-card .salary-month-figures small{font-size:11px;color:#8a96aa}
+.sm-card .salary-month-figures .neg{color:#A32D2D}
+.sm-card .salary-month-figures strong{color:#13254F}
+.sm-pill{flex:none;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;white-space:nowrap}
+.sm-pill-amber{background:#FAEEDA;color:#854F0B}.sm-pill-green{background:#E1F5EE;color:#085041}.sm-pill-blue{background:#E6F1FB;color:#185FA5}
+.sm-chev{flex:none;color:#8a96aa;transition:transform .15s}
+.sm-card[open] .sm-chev{transform:rotate(180deg)}
+.sm-body{padding:12px 14px}
+.sm-att-head{display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:#334258;margin-bottom:6px}
+.sm-att-bar{display:flex;height:8px;border-radius:99px;background:#EDF0F5;overflow:hidden}
+.sm-att-present{background:#2EAD5B}.sm-att-leave{background:#378ADD}.sm-att-unpaid{background:#E24B4A}
+.sm-legend{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 10px;font-size:12px;color:#6b7a90}
+.sm-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+.sm-lines td{text-align:left}
+.sm-lines td.num{text-align:right}
+.sm-lines td small{display:block;color:#6b7a90;font-size:12px}
+.sm-sub td{color:#6b7a90}
+.sm-total td{background:#F6F8FB}
+.sm-neg{color:#A32D2D}.sm-due{color:#854F0B;font-weight:700}
+.sm-note{margin:8px 0 0}
+.sm-actions{display:flex;justify-content:flex-end;margin-top:10px}
+@media (max-width:1000px){.sp-summary{grid-template-columns:1fr 1fr}}
+@media (max-width:700px){.sp-summary{grid-template-columns:1fr}.sm-card > summary{flex-wrap:wrap}.sm-card .salary-month-figures{width:100%;justify-content:space-between;order:5}}

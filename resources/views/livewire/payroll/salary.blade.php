@@ -4,14 +4,41 @@
     <x-errors />
 
     @if($own)
-        {{-- What this month's salary comes to so far, and every past month with each deduction. --}}
-        <section class="card mb">
-            <div class="card-head"><div><h2>This month so far</h2><p>As payroll would pay it if the month ended today</p></div></div>
-            @if($mySoFar)<div style="padding-top:12px"><x-salary-month :month="$mySoFar" open /></div>@else<div class="card-body"><x-empty title="No salary set up yet" icon="wallet" /></div>@endif
-        </section>
-        <section class="card mb">
-            <div class="card-head"><div><h2>Salary history</h2><p>Every month with what was earned, each deduction, and what was paid · click a month for details</p></div></div>
-            <div style="padding-top:12px">@forelse($myHistory as $m)<x-salary-month :month="$m" />@empty<div class="card-body"><x-empty title="No salary months yet" icon="wallet" /></div>@endforelse</div>
+        {{-- Your salary: what is still to be paid, the year at a glance, then every month (click to open). --}}
+        @php
+            $hist = collect($myHistory);
+            $dueMonths = $hist->filter(fn ($m) => $m['remaining'] > 0);
+            $years = $hist->pluck('month')->push($mySoFar['month'] ?? null)->filter()->map(fn ($m) => substr($m, 0, 4))->unique()->sortDesc()->values();
+            $thisYear = $years->first() ?? (string) now()->year;
+            $yearRows = $hist->filter(fn ($m) => str_starts_with($m['month'], $thisYear));
+        @endphp
+        <div class="sp-summary">
+            <div class="sp-card sp-pending">
+                <span>Pending amount</span>
+                <strong @class(['sp-zero' => ! $dueMonths->sum('remaining')])>{{ number_format($dueMonths->sum('remaining'), 2) }}</strong>
+                <small>{{ $dueMonths->count() ? $dueMonths->count().' '.str('month')->plural($dueMonths->count()).' due · '.$dueMonths->map(fn ($m) => \Illuminate\Support\Carbon::parse($m['month'].'-01')->format('M'))->reverse()->join(', ') : 'Nothing due · all months paid' }}</small>
+            </div>
+            <div class="sp-card"><span>Earned in {{ $thisYear }}</span><strong>{{ number_format($yearRows->sum('net'), 2) }}</strong><small>net, after deductions</small></div>
+            <div class="sp-card"><span>Total deductions</span><strong class="sp-neg">{{ number_format($yearRows->sum('deductions_total'), 2) }}</strong><small>in {{ $thisYear }}</small></div>
+            <div class="sp-card"><span>This month so far</span><strong>{{ $mySoFar ? number_format($mySoFar['net'], 2) : '—' }}</strong><small>{{ $mySoFar ? $mySoFar['days']['present'].' of '.$mySoFar['days']['working'].' days present' : 'No salary set up yet' }}</small></div>
+        </div>
+
+        <section class="card mb sp-months" x-data="{ year: @js($thisYear), dueOnly: false, shown(el) { return (this.year === 'all' || el.dataset.year === this.year) && (! this.dueOnly || el.dataset.due === '1'); } }">
+            <div class="card-head sp-head">
+                <div><h2>Salary history</h2><p>This month so far, then every month with what was earned, each deduction, and what was paid · click a month for details</p></div>
+                <div class="sp-filters">
+                    <div class="docs-chips" role="group" aria-label="Year">
+                        @foreach($years as $y)<button type="button" class="docs-chip" :class="year === '{{ $y }}' && 'is-active'" x-on:click="year = '{{ $y }}'">{{ $y }}</button>@endforeach
+                        <button type="button" class="docs-chip" :class="year === 'all' && 'is-active'" x-on:click="year = 'all'">All</button>
+                    </div>
+                    <button type="button" class="docs-chip sp-due" :class="dueOnly && 'is-active'" x-on:click="dueOnly = ! dueOnly" :aria-pressed="dueOnly ? 'true' : 'false'"><x-icon name="alert" class="icon-sm" />Due only</button>
+                </div>
+            </div>
+            <div class="sp-list">
+                @if($mySoFar)<div x-show="shown($el.firstElementChild)"><x-salary-month :month="$mySoFar" open /></div>@endif
+                @forelse($myHistory as $m)<div x-show="shown($el.firstElementChild)"><x-salary-month :month="$m" /></div>@empty @unless($mySoFar)<div class="card-body"><x-empty title="No salary months yet" icon="wallet" /></div>@endunless @endforelse
+            </div>
+            <p class="small muted sp-pad" x-show="dueOnly" x-cloak>Showing only months with an amount still due.</p>
         </section>
         <section class="card mb">
             <div class="card-head"><div><h2>My salary</h2><p>Current and historical salary profiles</p></div><a class="btn btn-sm" href="{{ route('payroll.payslips') }}">My payslips</a></div>
