@@ -38,10 +38,13 @@ class DailyStatus extends Component
     #[Url] public string $sortBy = 'latest';
     /** View details drawer: the status shown and its tab. */
     public ?int $viewing = null;
+    /** Today's status form opens from the "Add today's status" button (?write=1 opens it straight away). */
+    public bool $showStatusForm = false;
     public string $viewTab = 'work';
 
     public function mount(): void
     {
+        $this->showStatusForm = request()->boolean('write') && $this->ownEmployee() !== null;
         $today = $this->ownEmployee() ? DailyWorkStatus::where('employee_id', $this->ownEmployee()->id)->whereDate('work_date', today())->first() : null;
         $this->fill(['summary' => (string) $today?->summary, 'plan' => (string) $today?->plan, 'blockers' => (string) $today?->blockers, 'notes' => (string) $today?->notes, 'pending' => (string) $today?->pending, 'tomorrowPlan' => (string) $today?->tomorrow_plan]);
         foreach ((array) ($today?->project_updates ?? []) as $line) {
@@ -118,7 +121,27 @@ class DailyStatus extends Component
         $audit->record('work_status.submitted', $status, ['has_blockers' => (bool) $status->blockers, 'projects' => collect($lines)->pluck('project')->all()]);
         app(\App\Services\WorkService::class)->notifyBlocker($employee, $status);
         app(\App\Services\WorkService::class)->notifyDailyStatus($employee, $status);
+        $this->showStatusForm = false;
         $this->toast('Daily status saved.');
+    }
+
+    public function openStatusForm(): void
+    {
+        abort_unless($this->ownEmployee(), 403);
+        $this->resetValidation();
+        $this->showStatusForm = true;
+    }
+
+    public function closeModal(): void
+    {
+        $this->showStatusForm = false;
+    }
+
+    /** "Edit my status" in View details: close the drawer, open the form. */
+    public function editFromDrawer(): void
+    {
+        $this->viewing = null;
+        $this->openStatusForm();
     }
 
     /** Manager/HR nudges people who checked in but have not written today's status. */
@@ -310,6 +333,7 @@ class DailyStatus extends Component
             'departments' => $canSeeTeam ? \App\Models\Department::orderBy('name')->get(['id', 'name']) : collect(),
             'people' => $canSeeTeam ? AttendanceEmployee::where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))->orderBy('name')->get(['id', 'name']) : collect(),
             'detail' => $detail,
+            'savedToday' => $own ? DailyWorkStatus::where('employee_id', $own->id)->whereDate('work_date', today())->first() : null,
             'projectNames' => Project::pluck('name', 'id'),
         ], 'Daily Work Status');
     }

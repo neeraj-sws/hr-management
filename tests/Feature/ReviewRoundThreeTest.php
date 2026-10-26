@@ -498,7 +498,7 @@ class ReviewRoundThreeTest extends TestCase
 
         // A manager opening the notification link sees that report's status first.
         $this->actingAs($khushboo->user)->get(route('work.daily-status', ['employee' => $risha->id, 'date' => '2026-10-15']))->assertOk()
-            ->assertSee('Team updates')->assertSeeInOrder(['Risha tested the HRMS module', 'Plan for today'])->assertDontSee('Vijay built the payroll screen');
+            ->assertSee('Team updates')->assertSee('Risha tested the HRMS module')->assertSee('today&#039;s status', false)->assertDontSee('Vijay built the payroll screen');
         Livewire::actingAs($khushboo->user)->test(\App\Livewire\Work\DailyStatus::class)->assertSee('Risha tested the HRMS module')->assertDontSee('Vijay built the payroll screen');
 
         // An employee sees only their own — even with another person's id in the link.

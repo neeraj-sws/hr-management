@@ -328,6 +328,7 @@ class HrmsReviewFixesTest extends TestCase
         Task::create(['title' => 'Build login', 'assignee_id' => $this->employee->id, 'project_id' => $project->id, 'status' => 'in_progress', 'priority' => 'normal']);
 
         Livewire::actingAs($this->employeeUser)->test(\App\Livewire\Work\DailyStatus::class)
+            ->assertSee("Add today's status", false)->call('openStatusForm') // the form opens from the button
             ->assertSee('Project &amp; task-wise status', false)->assertSee('Atlas')->assertSee('Build login')
             ->set('summary', 'Login screen mostly done')->set('projectUpdates.'.$project->id, 'Finished the form validation')
             ->call('save')->assertHasNoErrors();

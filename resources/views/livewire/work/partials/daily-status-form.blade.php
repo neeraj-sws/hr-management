@@ -1,6 +1,6 @@
 {{-- The signed-in employee's own status for today (plan, project / task lines, completed, blockers …). --}}
-<section class="card">
-    <div class="card-head"><div><h2>Today · {{ today()->format('d M Y') }}</h2><p>You can update it until the end of the day.</p></div></div>
+<section class="ds-form">
+    <p class="small muted" style="margin:0 0 10px">You can update it until the end of the day. At the end of the day a summary goes to you and your manager by e-mail.</p>
     <form class="card-body" wire:submit="save">
         <x-errors />
         <x-field label="Plan for today" name="plan"><textarea wire:model="plan" rows="2" placeholder="What you will work on today (fill this in the morning)"></textarea></x-field>

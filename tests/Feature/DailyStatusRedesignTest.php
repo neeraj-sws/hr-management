@@ -79,4 +79,22 @@ class DailyStatusRedesignTest extends TestCase
         Livewire::actingAs($this->managerUser)->test(DailyStatus::class)->call('remindOne', $this->outsider->id)->assertForbidden();
         Livewire::actingAs($this->managerUser)->test(DailyStatus::class)->call('remindOne', $this->b->id)->assertHasNoErrors();
     }
+
+    public function test_form_opens_from_the_button_and_end_of_day_summary_goes_to_person_and_manager(): void
+    {
+        $userA = User::factory()->create(['email' => 'khushboo@company.test']);
+        $userA->assignRole('Employee');
+        $this->a->update(['user_id' => $userA->id]);
+        Livewire::actingAs($userA)->test(DailyStatus::class)->assertSet('showStatusForm', false)->call('openStatusForm')->assertSet('showStatusForm', true)->assertSee('Plan for today');
+        $this->actingAs($userA)->get(route('work.daily-status', ['write' => 1]))->assertOk()->assertSee('Plan for today');
+
+        \Illuminate\Support\Facades\Notification::fake();
+        $this->artisan('work:daily-status-summary')->assertSuccessful();
+        \Illuminate\Support\Facades\Notification::assertSentTo($userA, \App\Notifications\DailyStatusSummary::class);
+        \Illuminate\Support\Facades\Notification::assertSentTo($this->managerUser, \App\Notifications\DailyStatusSummary::class);
+        $status = \App\Models\DailyWorkStatus::where('employee_id', $this->a->id)->whereDate('work_date', '2026-10-21')->firstOrFail();
+        $mail = (new \App\Notifications\DailyStatusSummary($status, ['worked' => 3600, 'break' => 600, 'idle' => 0, 'task_seconds' => 1800, 'check_in' => '10:00 AM', 'check_out' => null]))->toMail($this->managerUser);
+        $this->assertStringContainsString('Khushboo Verma', $mail->subject);
+        $this->assertStringContainsString('worked 01:00:00', implode(' ', $mail->introLines));
+    }
 }

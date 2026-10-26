@@ -5,7 +5,7 @@
     $can = fn (string $route, array $params = []) => \App\Support\Navigation::canAccess($u, $route, $params);
     $quick = array_values(array_filter([
         $u->employeeProfile && $can('leave.requests') ? ['label' => 'Apply leave', 'icon' => 'calendar-plus', 'tone' => 'green', 'url' => route('leave.requests', ['tab' => 'mine', 'new' => 1], false)] : null,
-        $u->employeeProfile && $can('work.daily-status') ? ['label' => 'Submit daily status', 'icon' => 'message-plus', 'tone' => 'blue', 'url' => route('work.daily-status', [], false).'#my-status'] : null,
+        $u->employeeProfile && $can('work.daily-status') ? ['label' => 'Submit daily status', 'icon' => 'message-plus', 'tone' => 'blue', 'url' => route('work.daily-status', ['write' => 1], false)] : null,
         $can('lifecycle.documents') && ($u->employeeProfile || $u->can('lifecycle.manage')) ? ['label' => 'Upload document', 'icon' => 'file-upload', 'tone' => 'violet', 'url' => route('lifecycle.documents', ['upload' => 1], false)] : null,
     ]));
     $go = array_values(array_filter([

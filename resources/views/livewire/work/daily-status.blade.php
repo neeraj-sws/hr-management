@@ -11,8 +11,14 @@
     @endphp
     <div class="page-head">
         <div><h1>Daily Work Status</h1><p>{{ $canSeeTeam ? 'Track team progress, what they worked on, and any blockers.' : 'Write what you worked on today; your manager sees it.' }}</p></div>
-        <div class="ds-date-chip"><x-icon name="calendar" class="icon-sm" />{{ $day->format('D, d M Y') }}</div>
+        <div class="actions">
+            <div class="ds-date-chip"><x-icon name="calendar" class="icon-sm" />{{ $day->format('D, d M Y') }}</div>
+            @if($own)<button type="button" class="btn btn-primary" wire:click="openStatusForm"><x-icon name="{{ $savedToday ? 'edit' : 'plus' }}" class="icon-sm" />{{ $savedToday ? "Edit today's status" : "Add today's status" }}</button>@endif
+        </div>
     </div>
+    @if($own && ! $savedToday && ! $canSeeTeam)
+        <div class="ds-nudge"><x-icon name="message-plus" class="icon-sm" /><span>You haven't written today's status yet.</span><button type="button" class="btn btn-sm btn-primary" wire:click="openStatusForm">Add today's status</button></div>
+    @endif
 
     @if($canSeeTeam)
         {{-- Summary for the chosen day (today unless a date is picked). --}}
@@ -36,7 +42,6 @@
 
     <div @class(['ds-grid' => $canSeeTeam])>
         <div class="ds-main">
-            @if(! $canSeeTeam && $own)@include('livewire.work.partials.daily-status-form')@endif
 
             <section class="ds-card">
                 <div class="ds-card-head">
@@ -71,7 +76,7 @@
                                     <div class="menu-panel">
                                         <button type="button" class="menu-item" wire:click="view({{ $status->id }})"><x-icon name="eye" class="icon-sm" />View details</button>
                                         @if($status->employee && \App\Support\Navigation::canAccess(auth()->user(), 'people.employees.show', ['employee' => $status->employee->id]))<a class="menu-item" href="{{ route('people.employees.show', $status->employee) }}"><x-icon name="user" class="icon-sm" />Employee profile</a>@endif
-                                        @if($status->employee?->user_id === auth()->id() && $status->work_date->isToday())<a class="menu-item" href="#my-status"><x-icon name="edit" class="icon-sm" />Edit my status</a>@endif
+                                        @if($status->employee?->user_id === auth()->id() && $status->work_date->isToday())<button type="button" class="menu-item" wire:click="openStatusForm"><x-icon name="edit" class="icon-sm" />Edit my status</button>@endif
                                     </div>
                                 </details>
                                 <button type="button" class="ds-view" wire:click="view({{ $status->id }})">View details <x-icon name="arrow-right" class="icon-sm" /></button>
@@ -126,11 +131,10 @@
         @endif
     </div>
 
-    @if($canSeeTeam && $own)
-        <details class="ds-card ds-mine" id="my-status" @if(! \App\Models\DailyWorkStatus::where('employee_id', $own->id)->whereDate('work_date', today())->exists()) open @endif>
-            <summary class="ds-card-head"><h2>My status today</h2><span class="muted small">Your own update · your manager is notified</span></summary>
-            @include('livewire.work.partials.daily-status-form')
-        </details>
+    @if($showStatusForm && $own)
+        <x-modal title="Today's status · {{ today()->format('d M Y') }}" size="lg">
+            <div class="ds-form-modal">@include('livewire.work.partials.daily-status-form')</div>
+        </x-modal>
     @endif
 
     {{-- View details: a large side drawer with the full update, tabs and quick facts. --}}
@@ -233,7 +237,7 @@
                             <div class="ds-quick">
                                 @if(\App\Support\Navigation::canAccess(auth()->user(), 'people.employees.show', ['employee' => $e->id]))<a class="btn btn-sm" href="{{ route('people.employees.show', $e) }}"><x-icon name="user" class="icon-sm" />Profile</a>@endif
                                 @if($e->email)<a class="btn btn-sm" href="mailto:{{ $e->email }}"><x-icon name="mail" class="icon-sm" />E-mail</a>@endif
-                                @if($detail['canEdit'])<a class="btn btn-sm btn-primary" href="#my-status" wire:click="closeView"><x-icon name="edit" class="icon-sm" />Edit my status</a>@endif
+                                @if($detail['canEdit'])<button type="button" class="btn btn-sm btn-primary" wire:click="editFromDrawer"><x-icon name="edit" class="icon-sm" />Edit my status</button>@endif
                             </div>
                         </section>
                     </aside>
