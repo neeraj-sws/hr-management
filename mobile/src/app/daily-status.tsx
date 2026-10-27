@@ -164,7 +164,7 @@ export default function DailyStatusScreen() {
           <Text style={styles.meta}><MaterialCommunityIcons name="clock-outline" size={13} /> In {todayInfo.check_in} · worked {hm(todayInfo.worked_seconds)} · break {hm(todayInfo.break_seconds)}</Text>
         ) : <Text style={styles.meta}>Not checked in yet</Text>}
         <Text style={styles.meta}><MaterialCommunityIcons name="format-list-checks" size={13} /> {todayInfo?.task_count ?? 0} tasks · {hm(todayInfo?.task_seconds ?? 0)} on timer</Text>
-        {!written ? <Text style={[styles.meta, { color: amber.fg }]}>Write it before you leave · a reminder comes at 6:15 PM</Text> : null}
+        {!written ? <Text style={[styles.meta, { color: amber.fg }]}>Write it before you leave · a reminder comes at {data?.reminder_at ?? '6:00 PM'}</Text> : null}
         <View style={{ marginTop: 10 }}><Button title={written ? "Edit today's status" : "Write today's status"} tone={written ? 'default' : 'primary'} onPress={() => setFormOpen(true)} /></View>
       </View>
 

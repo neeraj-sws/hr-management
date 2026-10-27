@@ -250,7 +250,12 @@
     @if($rules)
         <x-modal title="Daily status: who must write it" size="lg" close="closeRules">
             <div class="modal-body">
-                <p class="small" style="margin-top:0"><strong>Compulsory + 6:15 PM reminder</strong>: listed as missing, reminded automatically. <strong>Compulsory, no automatic reminder</strong>: listed as missing; the Remind button still works. <strong>Not compulsory</strong>: may write it; never missing, never reminded, no penalty. A change applies from today; past days keep their rule.</p>
+                <p class="small" style="margin-top:0"><strong>Compulsory + reminder</strong>: listed as missing, reminded automatically at {{ \App\Support\DailyStatusRule::reminderLabel() }}. <strong>Compulsory, no automatic reminder</strong>: listed as missing; the Remind button still works. <strong>Not compulsory</strong>: may write it; never missing, never reminded, no penalty. A change applies from today; past days keep their rule.</p>
+                <form class="dsr-default dsr-time" wire:submit="saveReminderTime">
+                    <label class="field"><span>Automatic reminder time (every day, to people who checked in and have not written it)</span><input type="time" wire:model="reminderTime"></label>
+                    <button class="btn btn-primary btn-sm" wire:loading.attr="disabled">Save time</button>
+                    @error('reminderTime')<span class="error">{{ $message }}</span>@enderror
+                </form>
                 <div class="dsr-default">
                     <label class="field"><span>Company default (everyone without their own choice, and new employees)</span>
                         <select wire:change="setDefaultRule($event.target.value)">@foreach(\App\Support\DailyStatusRule::MODES as $key => $label)<option value="{{ $key }}" @selected($rules['default'] === $key)>{{ $label }}</option>@endforeach</select></label>

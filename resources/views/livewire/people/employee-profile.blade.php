@@ -229,7 +229,7 @@
             </div></section>
         @endif
         @if($canEdit)
-            <section class="card"><div class="card-head"><div><h2>Daily status</h2><p>Whether {{ $employee->name }} must write a daily status, and gets the 6:15 PM reminder. Applies from today.</p></div></div><div class="card-body">
+            <section class="card"><div class="card-head"><div><h2>Daily status</h2><p>Whether {{ $employee->name }} must write a daily status, and gets the {{ \App\Support\DailyStatusRule::reminderLabel() }} reminder. Applies from today.</p></div></div><div class="card-body">
                 <label class="field"><span class="sr-only">Daily status</span><select wire:change="setDailyStatusRule($event.target.value)">
                     <option value="default" @selected(! $dailyStatusOwn)>Company default ({{ \App\Support\DailyStatusRule::MODES[\App\Support\DailyStatusRule::mode(null)] }})</option>
                     @foreach(\App\Support\DailyStatusRule::MODES as $key => $label)<option value="{{ $key }}" @selected($dailyStatusOwn && $dailyStatusMode === $key)>{{ $label }}</option>@endforeach

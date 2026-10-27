@@ -17,9 +17,10 @@ Schedule::command('monitoring:expire-capture')->dailyAt('00:10')->withoutOverlap
 Schedule::command('compliance:assess')->dailyAt('03:00')->withoutOverlapping();
 Schedule::command('work:notify-overdue-tasks')->dailyAt('09:45')->withoutOverlapping();
 Schedule::command('sanctum:prune-expired --hours=24')->dailyAt('04:00');
-// Every day: only people who checked in that day and have not written it are reminded, so a working Saturday
-// (or any extra working day) is covered and a day off is not.
-Schedule::command('work:remind-daily-status')->dailyAt('18:15')->withoutOverlapping();
+// Every day at the time set in Work > Daily status > Who must write it (default 6:00 PM): the command checks
+// every 5 minutes and sends once the time has come. Only people who checked in that day, have not written it
+// and are "Compulsory + reminder" are reminded, once a day, so a working Saturday is covered and a day off is not.
+Schedule::command('work:remind-daily-status')->everyFiveMinutes()->withoutOverlapping();
 // End of the day: each daily status written today goes by e-mail (task status and timing) to the person and their manager.
 Schedule::command('work:daily-status-summary')->dailyAt('20:30')->withoutOverlapping();
 // Before-shift and forgot-to-check-out reminders (each sent once per person per day).

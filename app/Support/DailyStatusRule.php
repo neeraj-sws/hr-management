@@ -9,7 +9,7 @@ use App\Services\PolicyConfigurationService;
 /**
  * Who must write a daily status, and who gets the reminders (Work > Daily status > Who must write it).
  * A company default plus a per-employee choice, each from the date it was saved (older days keep their rule):
- *   required_reminder: must write it; automatic 6:15 PM reminder; "Remind" button works (default)
+ *   required_reminder: must write it; automatic reminder at the set time (default 6:00 PM); "Remind" button works (default)
  *   required:          must write it; no automatic reminder; the "Remind" button still works
  *   optional:          may write it; never "missing", never reminded, no penalty
  */
@@ -18,10 +18,32 @@ class DailyStatusRule
     public const KEY = 'work.daily_status';
 
     public const MODES = [
-        'required_reminder' => 'Compulsory + 6:15 PM reminder',
+        'required_reminder' => 'Compulsory + reminder',
         'required' => 'Compulsory, no automatic reminder',
         'optional' => 'Not compulsory',
     ];
+
+    public const REMINDER_KEY = 'work.daily_status_reminder';
+    public const REMINDER_DEFAULT = '18:00';
+
+    /** When the automatic reminder goes out each day, 'HH:MM' (24-hour). */
+    public static function reminderTime(): string
+    {
+        $time = (string) (app(PolicyConfigurationService::class)->forEmployee(null, self::REMINDER_KEY, today()->toDateString(), [])['time'] ?? self::REMINDER_DEFAULT);
+
+        return preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $time) ? $time : self::REMINDER_DEFAULT;
+    }
+
+    /** The reminder time as people read it, e.g. "6:00 PM". */
+    public static function reminderLabel(): string
+    {
+        return \Illuminate\Support\Carbon::createFromFormat('H:i', self::reminderTime())->format('g:i A');
+    }
+
+    public static function setReminderTime(string $time, int $actor): void
+    {
+        app(PeopleOperationsService::class)->setPolicy(self::REMINDER_KEY, 'work', 'Daily status reminder time', ['time' => $time], null, $actor, today()->toDateString());
+    }
 
     /** @return array{required: bool, reminder: bool} */
     public static function for(?AttendanceEmployee $employee, ?string $date = null): array

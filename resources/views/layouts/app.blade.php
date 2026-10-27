@@ -288,7 +288,7 @@
                         <div class="nf-live" x-ref="panel">@include('partials.bell-panel')</div>
                         <a class="nf-panel-foot" href="{{ route('system.notifications') }}">View all notifications <x-icon name="arrow-right" class="icon-sm" /></a>
                     </div>
-                    {{-- An important reminder (e.g. daily status at 6:15 PM) opens here and stays until it is closed. --}}
+                    {{-- An important reminder (e.g. the daily status reminder) opens here and stays until it is closed. --}}
                     <template x-if="urgent">
                         <div class="nf-urgent" role="alertdialog" aria-live="assertive">
                             <strong>Reminder</strong>

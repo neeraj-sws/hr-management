@@ -100,4 +100,28 @@ class DailyStatusRuleTest extends TestCase
         \Laravel\Sanctum\Sanctum::actingAs($this->must->user);
         $this->assertSame(['2026-10-24'], $this->getJson('/api/daily-status?month=2026-10')->json('month_summary.missed'));
     }
+
+    public function test_reminder_goes_at_the_set_time_default_six_pm(): void
+    {
+        $this->assertSame('18:00', DailyStatusRule::reminderTime());
+        $this->assertSame('6:00 PM', DailyStatusRule::reminderLabel());
+
+        // Before 6:00 PM: nothing; at 6:00 PM: sent once; a later run the same day sends nothing more.
+        Carbon::setTestNow('2026-10-24 17:55:00');
+        $this->artisan('work:remind-daily-status')->expectsOutput('Before the reminder time (6:00 PM): nothing sent.')->assertSuccessful();
+        $this->assertSame(0, $this->must->user->notifications()->count());
+        Carbon::setTestNow('2026-10-24 18:00:00');
+        $this->artisan('work:remind-daily-status')->assertSuccessful();
+        Carbon::setTestNow('2026-10-24 18:05:00');
+        $this->artisan('work:remind-daily-status')->assertSuccessful();
+        $this->assertSame(1, $this->must->user->notifications()->where('data->kind', 'DailyStatusReminder')->count());
+
+        // The admin moves it to 6:30 PM (Who must write it window); the app shows the new time.
+        Livewire::actingAs($this->admin)->test(DailyStatus::class)->call('openRules')->assertSet('reminderTime', '18:00')
+            ->set('reminderTime', '18:30')->call('saveReminderTime')->assertHasNoErrors();
+        $this->assertSame('6:30 PM', DailyStatusRule::reminderLabel());
+        \Laravel\Sanctum\Sanctum::actingAs($this->must->user);
+        $this->assertSame('6:30 PM', $this->getJson('/api/daily-status')->assertOk()->json('reminder_at'));
+        Livewire::actingAs($this->admin)->test(DailyStatus::class)->call('openRules')->set('reminderTime', '25:99')->call('saveReminderTime')->assertHasErrors('reminderTime');
+    }
 }

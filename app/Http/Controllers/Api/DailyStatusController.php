@@ -30,6 +30,8 @@ class DailyStatusController extends ApiController
             'today' => $today ? $this->present($today) : null,
             // The app's "Today" card: timing so far and the tasks timed today (the form can add them to Completed).
             'today_info' => $this->dayFigures($employee, today()->toDateString(), true),
+            // When the automatic reminder comes (Work > Daily status > Who must write it), e.g. "6:00 PM".
+            'reminder_at' => \App\Support\DailyStatusRule::reminderLabel(),
             // Month tiles and the "Missed" cards: days at work with no status written.
             'month_summary' => $this->monthSummary($employee, $from, $to->min(today())),
             'team' => $this->team($request, $employee),

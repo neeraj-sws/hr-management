@@ -92,7 +92,7 @@ class Instructions
                 ['Questions', 'If something looks wrong, ask HR within 5 days of the payslip. A correction for a paid month is made in the next month as an arrear.'],
             ]],
             ['key' => 'work', 'title' => 'Daily status and tasks', 'icon' => 'edit', 'items' => [
-                ['Daily status', 'Fill in your daily status every working day before you leave (plan, done, blockers): mobile app > More > Daily status. At 6:15 PM a reminder comes on your phone if it is not filled in.'],
+                ['Daily status', 'Fill in your daily status every working day before you leave (plan, done, blockers): mobile app > More > Daily status. At '.\App\Support\DailyStatusRule::reminderLabel().' a reminder comes on your phone if it is not filled in.'],
                 ['End-of-day e-mail', 'At 8:30 PM a summary of your day (what you planned, finished, task times, check-in, check-out, breaks) is e-mailed to '.($summaryWhoText ?: 'HR').'.'],
                 ['Tasks', 'Mobile app > Tasks tab: start the timer on the task you work on, and update its status. Overdue tasks are reminded at 9:45 AM.'],
             ]],

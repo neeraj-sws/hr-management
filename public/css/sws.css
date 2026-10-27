@@ -1457,3 +1457,5 @@ div.tm-card{cursor:default}
 .sa-shot img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover}
 .sa-shot span{display:block;padding:4px 8px;font-size:12px;color:var(--ink-2);font-weight:600}
 @media (max-width:520px){.sa-tiles{grid-template-columns:1fr 1fr}.sa-shots{grid-template-columns:1fr}}
+.dsr-time{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-bottom:10px}
+.dsr-time .field{margin:0}

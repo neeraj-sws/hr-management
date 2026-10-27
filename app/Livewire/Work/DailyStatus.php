@@ -157,6 +157,7 @@ class DailyStatus extends Component
     {
         abort_unless($this->canSetRules(), 403);
         $this->showRules = true;
+        $this->reminderTime = \App\Support\DailyStatusRule::reminderTime();
     }
 
     public function closeRules(): void
@@ -174,6 +175,19 @@ class DailyStatus extends Component
         else \App\Support\DailyStatusRule::set($employee, $mode, $this->user()->id);
         app(AuditLogger::class)->record('daily_status.rule_set', $employee, ['mode' => $mode]);
         $this->toast("{$employee->name}: ".(\App\Support\DailyStatusRule::MODES[\App\Support\DailyStatusRule::mode($employee)] ?? $mode).'.');
+    }
+
+    /** When the automatic reminder goes out each day (default 6:00 PM). */
+    public string $reminderTime = '';
+
+    public function saveReminderTime(): void
+    {
+        abort_unless($this->canSetRules(), 403);
+        \App\Services\ImpersonationService::block();
+        $this->validate(['reminderTime' => ['required', 'date_format:H:i']], [], ['reminderTime' => 'reminder time']);
+        \App\Support\DailyStatusRule::setReminderTime($this->reminderTime, $this->user()->id);
+        app(AuditLogger::class)->record('daily_status.reminder_time', null, ['time' => $this->reminderTime]);
+        $this->toast('The daily status reminder now goes at '.\App\Support\DailyStatusRule::reminderLabel().' every day.');
     }
 
     /** Company default: everyone without their own choice (and new employees). */
