@@ -196,7 +196,14 @@ class SalarySummaryService
             'hourly' => $standardSeconds > 0 ? round($rate / ($standardSeconds / 3600), 2) : null, 'day_hours' => $standardSeconds > 0 ? Duration::hm($standardSeconds) : null,
             'full' => round($working * $rate, 2),
             'full_label' => ($estimate ? 'Salary for the '.$num($working).' working days so far' : 'Full salary for '.$num($working).' working days'),
-            'lines' => $lines, 'earned' => $earned];
+            'lines' => $lines, 'earned' => $earned,
+            // Worked on a weekly off / holiday: paid on top, by the hours worked (shown after "Salary for days worked").
+            'extra' => (float) ($b['extra_work']['amount'] ?? 0) > 0 ? [
+                'amount' => round((float) $b['extra_work']['amount'], 2),
+                'days' => (int) ($b['extra_work']['days'] ?? 0),
+                'hours' => Duration::hm((int) ($b['extra_work']['seconds'] ?? 0)),
+                'dates' => collect((array) ($b['extra_work']['dates'] ?? []))->map(fn ($d, $date) => Carbon::parse($date)->format('d M').' ('.Duration::hm((int) ($d['seconds'] ?? 0)).')')->values()->join(', '),
+            ] : null];
     }
 
     /** "05–09 Oct, 12 Oct" from a list of dates. */

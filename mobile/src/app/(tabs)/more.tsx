@@ -78,6 +78,7 @@ export default function More() {
     { title: 'Work', tiles: [
       ...(isManager ? [{ label: 'My team', icon: '👥', href: '/team' }] : []),
       { label: 'Daily status', icon: '📝', href: '/daily-status' },
+      { label: 'Notes', icon: '🗒️', href: '/notes' },
       { label: 'Correction', icon: '🕘', href: '/corrections' },
       { label: 'Training', icon: '🎓', href: '/training' },
       { label: 'Performance', icon: '📈', href: '/performance' },

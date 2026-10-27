@@ -278,6 +278,7 @@ class DesktopApp:
         ttk.Button(header, text="Sign out", style="Header.TButton", command=self.logout).pack(side="right")
         ttk.Button(header, text="Refresh", style="Header.TButton", command=self.refresh).pack(side="right", padx=8)
         ttk.Button(header, text="Daily status", style="Header.TButton", command=self._open_daily_status).pack(side="right")
+        ttk.Button(header, text="Notes", style="Header.TButton", command=self._open_notes).pack(side="right", padx=(0, 8))
         self.autostart_var = tk.BooleanVar(value=autostart.is_enabled())
         tk.Checkbutton(header, text="Open at Windows start", variable=self.autostart_var, command=self._toggle_autostart,
                        bg=NAVY, fg="#dce6f5", selectcolor=NAVY, activebackground=NAVY, activeforeground="white", font=("Segoe UI", 9)).pack(side="right", padx=12)
@@ -755,6 +756,115 @@ class DesktopApp:
 
         ttk.Button(win, text="Save status", style="Primary.TButton", command=save).pack(fill="x", pady=(12, 0))
         self._run(self.client.daily_status, fill, lambda _e: None)
+
+    # Notes ------------------------------------------------------------------
+    def _open_notes(self):
+        """My notes: write, edit and delete your own notes; notes your manager or team shared with you are read only."""
+        win = tk.Toplevel(self.root, bg="white", padx=16, pady=14)
+        win.title("My notes")
+        win.transient(self.root)
+        win.geometry("760x520")
+        state = {"notes": [], "current": None}
+
+        tk.Label(win, text="My notes", font=("Segoe UI", 13, "bold"), fg=NAVY, bg="white").grid(row=0, column=0, columnspan=2, sticky="w")
+        left = tk.Frame(win, bg="white")
+        left.grid(row=1, column=0, sticky="nsew", padx=(0, 12), pady=(8, 0))
+        right = tk.Frame(win, bg="white")
+        right.grid(row=1, column=1, sticky="nsew", pady=(8, 0))
+        win.columnconfigure(0, weight=2)
+        win.columnconfigure(1, weight=3)
+        win.rowconfigure(1, weight=1)
+
+        ttk.Button(left, text="+ New note", style="Primary.TButton", command=lambda: show(None)).pack(fill="x")
+        listbox = tk.Listbox(left, font=("Segoe UI", 10), activestyle="none", relief="solid", bd=1, highlightthickness=0, selectbackground="#dce7ff", selectforeground=INK)
+        listbox.pack(fill="both", expand=True, pady=(8, 0))
+
+        tk.Label(right, text="Title", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        title_entry = tk.Entry(right, font=("Segoe UI", 10), relief="solid", bd=1)
+        title_entry.pack(fill="x", ipady=4)
+        tk.Label(right, text="Note", bg="white", fg=INK, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 2))
+        body_box = tk.Text(right, height=12, wrap="word", font=("Segoe UI", 10), relief="solid", bd=1, highlightthickness=0)
+        body_box.pack(fill="both", expand=True)
+        info = tk.Label(right, text="", bg="white", fg=MUTED, wraplength=420, justify="left")
+        info.pack(anchor="w", pady=(6, 0))
+        buttons = tk.Frame(right, bg="white")
+        buttons.pack(fill="x", pady=(8, 0))
+        save_btn = ttk.Button(buttons, text="Save note", style="Primary.TButton", command=lambda: save())
+        save_btn.pack(side="left")
+        delete_btn = ttk.Button(buttons, text="Delete", command=lambda: delete())
+        delete_btn.pack(side="left", padx=8)
+
+        def error_text(e):
+            return "You are offline; try again when connected." if isinstance(e, ApiError) and e.is_network else (e.first_message if isinstance(e, ApiError) else str(e))
+
+        def show(note):
+            state["current"] = note
+            editable = note is None or note.get("can_edit")
+            for widget in (title_entry, body_box):
+                widget.config(state="normal")
+            title_entry.delete(0, "end")
+            body_box.delete("1.0", "end")
+            if note:
+                title_entry.insert(0, note.get("title") or "")
+                body_box.insert("1.0", note.get("body") or "")
+                info.config(text=("Only you can see this note." if note.get("shared") == "Private" else f"{note.get('shared')} · ") + ("" if editable else "shared with you, read only"), fg=MUTED)
+            else:
+                listbox.selection_clear(0, "end")
+                info.config(text="New note · only you can see it.", fg=MUTED)
+                title_entry.focus_set()
+            if not editable:
+                title_entry.config(state="disabled")
+                body_box.config(state="disabled")
+            save_btn.state(["!disabled"] if editable else ["disabled"])
+            delete_btn.state(["!disabled"] if note and editable else ["disabled"])
+
+        def fill(notes, select_id=None):
+            state["notes"] = notes or []
+            listbox.delete(0, "end")
+            for n in state["notes"]:
+                listbox.insert("end", ("" if n.get("can_edit") else "↗ ") + (n.get("title") or ""))
+            chosen = next((i for i, n in enumerate(state["notes"]) if n.get("id") == select_id), None)
+            if chosen is not None:
+                listbox.selection_set(chosen)
+                show(state["notes"][chosen])
+            elif not state["notes"]:
+                show(None)
+
+        def on_pick(_e=None):
+            sel = listbox.curselection()
+            if sel:
+                show(state["notes"][sel[0]])
+
+        listbox.bind("<<ListboxSelect>>", on_pick)
+
+        def save():
+            title, body = title_entry.get().strip(), body_box.get("1.0", "end").strip()
+            if not title or not body:
+                info.config(text="Write a title and the note.", fg=RED)
+                return
+            current = state["current"]
+            info.config(text="Saving...", fg=MUTED)
+
+            def done(saved):
+                self._flash("Note saved.", GREEN)
+                self._run(self.client.notes, lambda notes: fill(notes, (saved or {}).get("id")), lambda e: info.config(text=error_text(e), fg=RED))
+
+            self._run(lambda: self.client.save_note(title, body, current.get("id") if current else None), done, lambda e: info.config(text=error_text(e), fg=RED))
+
+        def delete():
+            current = state["current"]
+            if not current or not messagebox.askyesno("Delete note", f"Delete \"{current.get('title')}\"?", parent=win):
+                return
+
+            def done(_):
+                self._flash("Note deleted.", GREEN)
+                show(None)
+                self._run(self.client.notes, fill, lambda e: info.config(text=error_text(e), fg=RED))
+
+            self._run(lambda: self.client.delete_note(current["id"]), done, lambda e: info.config(text=error_text(e), fg=RED))
+
+        show(None)
+        self._run(self.client.notes, fill, lambda e: info.config(text=error_text(e), fg=RED))
 
     # Tray -------------------------------------------------------------------
     def _start_tray(self):

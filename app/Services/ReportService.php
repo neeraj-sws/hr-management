@@ -417,7 +417,7 @@ class ReportService
             $last = $e->exit_date ? min($end, $e->exit_date->toDateString()) : $end;
             if ($start > $last) continue;
             foreach ($this->attendance->days($e, \Illuminate\Support\Carbon::parse($start), \Illuminate\Support\Carbon::parse($last)) as $day) {
-                if (in_array($day['status'], ['upcoming', 'not_joined'], true)) continue;
+                if (in_array($day['status'], ['upcoming', 'not_joined', 'left'], true)) continue;
                 // Before joining only days someone actually worked (imported history) are listed.
                 if (! $day['session'] && $e->joined_at && $day['date'] < $e->joined_at->toDateString()) continue;
                 if ($only && $day['status'] !== $only) continue;

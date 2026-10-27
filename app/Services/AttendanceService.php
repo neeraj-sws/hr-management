@@ -750,6 +750,8 @@ class AttendanceService
             ->whereDate('starts_on', '<=', $to->toDateString())->whereDate('ends_on', '>=', $from->toDateString())->get();
         $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', $to->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         $joined = $employee->joined_at ? Carbon::parse($employee->joined_at)->startOfDay() : null;
+        // Ex-employee: days after the last working day are "Left" (not absent, not counted anywhere).
+        $left = $employee->exit_date ? Carbon::parse($employee->exit_date)->startOfDay() : null;
         $resolutions = \App\Models\LeaveConflictResolution::where('employee_id', $employee->id)->whereDate('work_date','>=',$from->toDateString())->whereDate('work_date','<=',$to->toDateString())->get()
             ->mapWithKeys(fn ($r) => [$r->work_date->toDateString() => $r->resolution]);
 
@@ -774,6 +776,7 @@ class AttendanceService
                 $session !== null && ! $partLeave && $this->isHalfDay($session) => 'half_day',
                 $session !== null && $this->isLate($session) => 'late',
                 $session !== null => 'present',
+                $left && $day->gt($left) => 'left',
                 $onLeave => 'on_leave',
                 // What an imported sheet said for the day wins over the calendar's guess.
                 $mark !== null => ['off' => 'weekend', 'holiday' => 'holiday'][$mark->status] ?? 'absent',

@@ -1273,6 +1273,7 @@ div.tm-card{cursor:default}
 .why-less .wl-row b{white-space:nowrap;font-variant-numeric:tabular-nums}
 .why-less .wl-full b{color:#13254F}
 .why-less .wl-neg{color:#A32D2D}
+.why-less .wl-pos{color:#12804a}
 .why-less .wl-title{font-weight:600}
 .why-less .wl-block{border-top:1px dashed #F0E1C4}
 .why-less .wl-block .wl-row{border-top:0}
@@ -1459,3 +1460,4 @@ div.tm-card{cursor:default}
 @media (max-width:520px){.sa-tiles{grid-template-columns:1fr 1fr}.sa-shots{grid-template-columns:1fr}}
 .dsr-time{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-bottom:10px}
 .dsr-time .field{margin:0}
+.badge-left{background:#eef1f5;color:#5d6a7c}

@@ -33,7 +33,7 @@ class LeaveHistory
         $rows = collect();
         foreach ($days as $day) {
             $date = $day['date'];
-            if (in_array($day['status'], ['weekend', 'holiday', 'not_joined'], true)) continue; // off days need no leave
+            if (in_array($day['status'], ['weekend', 'holiday', 'not_joined', 'left'], true)) continue; // off days need no leave
             $leave = $leaves->first(fn ($l) => $l->starts_on->toDateString() <= $date && $l->ends_on->toDateString() >= $date);
             $session = $day['session'];
             if ($leave) {

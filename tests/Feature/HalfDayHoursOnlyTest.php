@@ -89,4 +89,30 @@ class HalfDayHoursOnlyTest extends TestCase
         $this->day('2026-10-13', '09:00', '12:00');
         $this->assertEqualsWithDelta(500, (float) $this->item()->calculation_breakdown['base_salary'], 0.01);
     }
+
+    public function test_extra_working_on_an_off_day_is_shown_where_gross_is_explained(): void
+    {
+        $this->day('2026-10-12', '09:00', '18:00');
+        $this->day('2026-10-18', '09:00', '13:00'); // Sunday (weekly off): 4 h extra working
+        $item = $this->item();
+        $extra = (float) $item->calculation_breakdown['extra_work']['amount'];
+        $this->assertGreaterThan(0, $extra);
+        $this->assertEqualsWithDelta((float) $item->calculation_breakdown['base_salary'] + $extra, (float) $item->gross_amount, 0.01, 'Gross = salary for days worked + extra working');
+
+        $s = app(\App\Services\SalarySummaryService::class)->soFar($this->employee)['shortfall'];
+        $this->assertSame($extra, $s['extra']['amount']);
+        $this->assertSame('4h 00m', $s['extra']['hours']);
+
+        $admin = $this->admin;
+        \Livewire\Livewire::actingAs($admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $item->payroll_run_id)->set('breakdownItemId', $item->id)
+            ->assertSee('Extra working on off days')->assertSee('18 Oct: 4h 00m')->assertSee('+'.number_format($extra, 2));
+    }
+
+    public function test_late_check_in_on_a_working_day_is_paid_at_most_a_full_day(): void
+    {
+        $this->day('2026-10-13', '12:30', '22:30'); // in after 12:00, 10 h at work on an 8 h day
+        $this->assertSame(1.0, (float) $this->item()->calculation_breakdown['hours_paid_days']['2026-10-13']['share'], 'Never more than one day');
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $this->employee])
+            ->assertSee('paid full day (8h 00m max)')->assertDontSee('paid for 10h 00m');
+    }
 }

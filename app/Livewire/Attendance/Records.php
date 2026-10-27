@@ -60,6 +60,15 @@ class Records extends Component
         $this->resetPage();
     }
 
+    /** Ex-employee: the day list stops at the end of the month they left in (no rows for the months after). */
+    private function listEnd(AttendanceEmployee $employee): Carbon
+    {
+        $to = Carbon::parse($this->to);
+        if ($employee->exit_date) $to = $to->min(Carbon::parse($employee->exit_date)->endOfMonth()->startOfDay())->max(Carbon::parse($this->from)->subDay());
+
+        return $to;
+    }
+
     public function openDetail(int $id, ?string $tab = null): void
     {
         $this->detail = AttendanceSession::whereKey($id)->exists() ? $id : null;
@@ -152,7 +161,7 @@ class Records extends Component
         // One employee chosen: list every day of the range (leave, weekly off / 3rd Saturday, absent too), newest first.
         $dayEmployee = $this->employee ? AttendanceEmployee::with('department')->find($this->employee) : null;
         $dayRows = $dayEmployee && ! $this->status && Carbon::parse($this->from)->diffInDays($this->to) <= 400
-            ? $attendance->days($dayEmployee, Carbon::parse($this->from), Carbon::parse($this->to))->reverse()->values()->all()
+            ? $attendance->days($dayEmployee, Carbon::parse($this->from), $this->listEnd($dayEmployee))->reverse()->values()->all()
             : null;
 
         $detail = $this->detail ? AttendanceSession::with(['employee.department', 'employee.manager', 'device', 'checkInOffice', 'checkOutOffice', 'events' => fn ($q) => $q->orderBy('event_time')])->find($this->detail) : null;

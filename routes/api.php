@@ -77,6 +77,11 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/daily-status', [DailyStatusController::class, 'store'])->name('api.daily-status.store');
     Route::post('/daily-status/remind/{employee}', [DailyStatusController::class, 'remind'])->name('api.daily-status.remind');
 
+    Route::get('/notes', [\App\Http\Controllers\Api\NoteController::class, 'index'])->name('api.notes.index');
+    Route::post('/notes', [\App\Http\Controllers\Api\NoteController::class, 'store'])->name('api.notes.store');
+    Route::patch('/notes/{note}', [\App\Http\Controllers\Api\NoteController::class, 'update'])->name('api.notes.update');
+    Route::delete('/notes/{note}', [\App\Http\Controllers\Api\NoteController::class, 'destroy'])->name('api.notes.destroy');
+
     Route::get('/announcements', [CompanyController::class, 'announcements'])->name('api.announcements');
     Route::get('/celebrations', [CompanyController::class, 'celebrations'])->name('api.celebrations');
     Route::get('/holidays', [CompanyController::class, 'holidays'])->name('api.holidays');

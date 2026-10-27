@@ -84,7 +84,7 @@
                 <th data-col="screen" class="ar-c">Screen time</th><th data-col="late" class="num">Late by</th>
                 <th data-col="source">Source</th><th data-col="status">Status</th><th class="ar-act"><span class="sr-only">Actions</span></th></tr></thead>
             <tbody>
-            @if($dayRows)
+            @if($dayRows !== null)
                 {{-- One employee: every day of the range, incl. leave, weekly off / 3rd Saturday and absent days. --}}
                 @forelse($dayRows as $day)
                     @if($day['session'])
@@ -93,12 +93,12 @@
                         @php($date = \Illuminate\Support\Carbon::parse($day['date']))
                         <tr class="day-row day-{{ $day['status'] }}"><td class="nowrap ar-date" data-label="Date"><strong>{{ $date->format('d M Y') }}</strong><small>{{ $date->format('D') }}</small></td>
                             <td data-label="Employee"><div class="ar-person"><x-avatar :employee="$dayEmployee" /><div><strong>{{ $dayEmployee?->name }}</strong><small>{{ $dayEmployee?->department?->name }}</small></div></div></td>
-                            <td colspan="8" class="small muted ar-dayinfo" style="text-align:left">{{ ['on_leave' => 'On leave', 'weekend' => 'Weekly off', 'holiday' => 'Holiday', 'absent' => 'No attendance', 'upcoming' => 'Upcoming', 'not_joined' => 'Before joining'][$day['status']] ?? '' }}@if($day['label']) · <strong>{{ $day['label'] }}</strong>@endif</td>
+                            <td colspan="8" class="small muted ar-dayinfo" style="text-align:left">{{ ['on_leave' => 'On leave', 'weekend' => 'Weekly off', 'holiday' => 'Holiday', 'absent' => 'No attendance', 'upcoming' => 'Upcoming', 'not_joined' => 'Before joining', 'left' => 'After leaving the company'][$day['status']] ?? '' }}@if($day['label']) · <strong>{{ $day['label'] }}</strong>@endif</td>
                             <td data-col="status" data-label="Status">@if($day['status'] === 'weekend')<x-badge tone="violet">{{ $day['label'] ?: 'Weekly off' }}</x-badge>@elseif($day['status'] === 'on_leave')<x-badge status="on_leave">{{ $day['label'] ?: 'On leave' }}</x-badge>@else<x-badge :status="$day['status']" />@endif</td>
                             <td class="ar-act"></td></tr>
                     @endif
                 @empty
-                    <tr><td colspan="12"><x-empty title="No days in this range" icon="calendar" /></td></tr>
+                    <tr><td colspan="12"><x-empty :title="$dayEmployee?->exit_date ? $dayEmployee->name.' left the company on '.$dayEmployee->exit_date->format('d M Y').': no days to show after '.$dayEmployee->exit_date->format('F Y').'.' : 'No days in this range'" icon="calendar" /></td></tr>
                 @endforelse
             @else
             @forelse($sessions as $s)
@@ -109,7 +109,7 @@
             @endif
             </tbody>
         </table></div>
-        @if($dayRows)
+        @if($dayRows !== null)
             <div class="card-foot small muted">{{ collect($dayRows)->where('session', '!=', null)->count() }} present · {{ collect($dayRows)->where('status', 'on_leave')->count() }} on leave · {{ collect($dayRows)->where('status', 'weekend')->count() + collect($dayRows)->where('status', 'holiday')->count() }} off / holiday · {{ collect($dayRows)->where('status', 'absent')->count() }} absent</div>
         @elseif($sessions->total())
             <div class="ar-foot">

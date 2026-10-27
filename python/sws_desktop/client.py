@@ -134,6 +134,18 @@ class HrClient:
     def save_daily_status(self, plan: str, summary: str, blockers: str, notes: str, yesterday: str = "", pending: str = "", tomorrow_plan: str = "") -> dict:
         return self.request("POST", "/daily-status", {"yesterday": yesterday or None, "plan": plan or None, "summary": summary, "pending": pending or None, "tomorrow_plan": tomorrow_plan or None, "blockers": blockers or None, "notes": notes or None})["data"]
 
+    # Notes: own notes (add, edit, delete); notes shared by the manager or team are read only.
+    def notes(self) -> list:
+        return self.request("GET", "/notes")["data"]
+
+    def save_note(self, title: str, body: str, note_id: int | None = None) -> dict:
+        if note_id:
+            return self.request("PATCH", f"/notes/{note_id}", {"title": title, "body": body})["data"]
+        return self.request("POST", "/notes", {"title": title, "body": body})["data"]
+
+    def delete_note(self, note_id: int) -> dict:
+        return self.request("DELETE", f"/notes/{note_id}")
+
     def acknowledge_screen_capture(self) -> dict:
         return self.request("POST", "/monitoring/acknowledge", {})["data"]
 
