@@ -72,11 +72,12 @@ export function Badge({ label, tone }: { label: string; tone?: keyof typeof badg
   );
 }
 
-export function Field({ label, error, ...props }: TextInputProps & { label: string; error?: string }) {
+export function Field({ label, error, style, ...props }: TextInputProps & { label: string; error?: string }) {
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput placeholderTextColor={colors.faint} style={[styles.input, error ? { borderColor: colors.red } : null]} {...props} />
+      {/* An extra style (e.g. a red border) is added on top of the normal box, never instead of it. */}
+      <TextInput placeholderTextColor={colors.faint} {...props} style={[styles.input, style, error ? { borderColor: colors.red } : null]} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );

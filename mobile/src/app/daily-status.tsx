@@ -136,10 +136,18 @@ export default function DailyStatusScreen() {
 
   // History: written days and missed days (no status) together, newest first.
   const missed = (summary?.missed ?? []).filter((d) => !history.some((s) => s.work_date === d));
-  const cards: ({ kind: 'status'; s: Status } | { kind: 'missed'; date: string })[] = [
+  const sorted: ({ kind: 'status'; s: Status } | { kind: 'missed'; date: string })[] = [
     ...history.filter((s) => !onlyBlockers || s.blockers).map((s) => ({ kind: 'status' as const, s })),
     ...(onlyBlockers ? [] : missed.map((date) => ({ kind: 'missed' as const, date }))),
   ].sort((a, b) => (b.kind === 'status' ? b.s.work_date : b.date).localeCompare(a.kind === 'status' ? a.s.work_date : a.date));
+  // Missed days next to each other (no status in between) are one card: "Missed · 12–16 Oct · 5 days".
+  const cards: ({ kind: 'status'; s: Status } | { kind: 'missed'; date: string; dates: string[] })[] = [];
+  for (const c of sorted) {
+    const last = cards[cards.length - 1];
+    if (c.kind === 'missed' && last && last.kind === 'missed') last.dates.push(c.date);
+    else cards.push(c.kind === 'missed' ? { ...c, dates: [c.date] } : c);
+  }
+  const shortDate = (ymd: string) => new Date(`${ymd}T00:00:00`).toLocaleDateString([], { day: 'numeric', month: 'short' });
 
   const written = !!todayStatus;
   return (
@@ -197,7 +205,10 @@ export default function DailyStatusScreen() {
       {cards.length ? cards.map((c) => c.kind === 'missed' ? (
         <View key={`m${c.date}`} style={[styles.dayCard, { backgroundColor: red.bg, borderColor: red.line }]}>
           <DateBadge ymd={c.date} color={red} />
-          <Text style={[styles.dayLine, { color: red.fg, alignSelf: 'center' }]}>Missed — no status written</Text>
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Text style={[styles.dayLine, { color: red.fg }]}>{c.dates.length > 1 ? `Missed · ${c.dates.length} days` : 'Missed — no status written'}</Text>
+            {c.dates.length > 1 ? <Text style={[styles.meta, { color: red.fg }]}>{shortDate(c.dates[c.dates.length - 1])} – {shortDate(c.dates[0])} · no status written</Text> : null}
+          </View>
         </View>
       ) : (
         <Pressable key={c.s.id} onPress={() => setOpen(open === c.s.id ? null : c.s.id)} style={styles.dayCard} accessibilityRole="button">
