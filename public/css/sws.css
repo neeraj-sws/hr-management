@@ -572,7 +572,7 @@ details.nav-group[data-current]>summary.nav-mod{background:#ffffff12;color:#fff}
 .nav-profile-btn{list-style:none;display:grid;place-items:center;width:32px;height:32px;border-radius:8px;color:#c9d6ee;cursor:pointer}
 .nav-profile-btn::-webkit-details-marker{display:none}
 .nav-profile-btn:hover{background:#ffffff14;color:#fff}
-.nav-profile-menu .menu-panel{bottom:calc(100% + 8px);top:auto;right:0;left:auto;min-width:200px}
+.nav-profile-menu .menu-panel{bottom:calc(100% + 8px);top:auto;right:0;left:auto;width:220px;min-width:0;max-width:calc(var(--sidebar) - 28px)}
 @media (min-width:981px){
   html.nav-collapsed{--sidebar:78px}
   html.nav-collapsed .sidebar{width:78px}
