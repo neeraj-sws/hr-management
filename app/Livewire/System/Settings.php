@@ -98,6 +98,10 @@ class Settings extends Component
     public bool $selfieMobile = false;
     public bool $alertsEnabled = true;
     public string $absentAfter = '11:00';
+    /** Manager told when a break starts and ends. */
+    public bool $breakAlerts = true;
+    /** A break this long alerts the employee and their manager (0 = off). */
+    public string $longBreakMinutes = '60';
     public bool $showOfficeForm = false;
     public ?int $officeId = null;
     public string $officeName = '';
@@ -193,7 +197,7 @@ class Settings extends Component
             'requireLocation' => (bool) ($location['required_for_mobile'] ?? false),
             'requireLocationWeb' => (bool) ($location['required_for_web'] ?? false),
             'selfieWeb' => (bool) ($selfie['required_web'] ?? false), 'selfieMobile' => (bool) ($selfie['required_mobile'] ?? false),
-            'alertsEnabled' => (bool) ($alerts['enabled'] ?? true), 'absentAfter' => (string) ($alerts['absent_after'] ?? '11:00'),
+            'alertsEnabled' => (bool) ($alerts['enabled'] ?? true), 'absentAfter' => (string) ($alerts['absent_after'] ?? '11:00'), 'breakAlerts' => (bool) ($alerts['break_alerts'] ?? true), 'longBreakMinutes' => (string) ($alerts['long_break_minutes'] ?? 60),
             'captureEnabled' => (bool) ($capture['enabled'] ?? false), 'captureInterval' => (string) ($capture['interval_minutes'] ?? 10), 'captureActiveOnly' => (bool) ($capture['active_only'] ?? true),
             'captureWindowStart' => (string) ($capture['window_start'] ?? ''), 'captureWindowEnd' => (string) ($capture['window_end'] ?? ''), 'captureRetention' => (string) ($capture['retention_days'] ?? 30), 'capturePurpose' => (string) ($capture['purpose'] ?? ''),
             'startTime' => (string) ($hours['start_time'] ?? ''), 'endTime' => (string) ($hours['end_time'] ?? ''),
@@ -600,9 +604,9 @@ class Settings extends Component
         $people->setPolicy('attendance.rules', 'attendance', 'Attendance rules', ['grace_minutes' => (int) $this->graceMinutes, 'half_day_hours' => (float) $this->halfDayHours], null, auth()->id(), today()->toDateString());
         $people->setPolicy('attendance.idle', 'attendance', 'Away-time prompt (desktop)', ['away_prompt_minutes' => (int) $this->idleMinutes, 'idle_after_minutes' => (int) $this->idleAfterMinutes], null, auth()->id(), today()->toDateString());
         $people->setPolicy('attendance.auto_checkout', 'attendance', 'Automatic check-out (desktop)', ['enabled' => $this->autoCheckout, 'idle_minutes' => (int) $this->autoCheckoutMinutes], null, auth()->id(), today()->toDateString());
-        $this->validate(['absentAfter' => ['required', 'date_format:H:i']], [], ['absentAfter' => 'absent alert time']);
+        $this->validate(['absentAfter' => ['required', 'date_format:H:i'], 'longBreakMinutes' => ['required', 'integer', 'min:0', 'max:600']], [], ['absentAfter' => 'absent alert time', 'longBreakMinutes' => 'long break alert']);
         $people->setPolicy('attendance.selfie', 'attendance', 'Selfie at check-in/out', ['required_web' => $this->selfieWeb, 'required_mobile' => $this->selfieMobile], null, auth()->id(), today()->toDateString());
-        $people->setPolicy('attendance.alerts', 'attendance', 'Late and absence alerts', ['enabled' => $this->alertsEnabled, 'absent_after' => $this->absentAfter], null, auth()->id(), today()->toDateString());
+        $people->setPolicy('attendance.alerts', 'attendance', 'Late and absence alerts', ['enabled' => $this->alertsEnabled, 'absent_after' => $this->absentAfter, 'break_alerts' => $this->breakAlerts, 'long_break_minutes' => (int) $this->longBreakMinutes], null, auth()->id(), today()->toDateString());
         $this->toast('Work hours and attendance rules saved.');
     }
 

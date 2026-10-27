@@ -44,7 +44,7 @@ class NotificationPresenter
         'PayrollRun' => 'payroll', 'SalaryPayment' => 'payroll', 'Payslip' => 'payroll', 'SalaryAdjustment' => 'payroll', 'SalaryAdvance' => 'payroll', 'SalaryProfile' => 'payroll', 'EmployeeFinalSettlement' => 'payroll', 'EmployeeFinalSettlementPayment' => 'payroll',
         'LeaveRequest' => 'leave', 'OvertimeRequest' => 'leave', 'LeaveBalance' => 'leave', 'ExpenseClaim' => 'leave',
         'MonitoringRequest' => 'other', 'ScreenCapture' => 'other',
-        'AttendanceAbsent' => 'attendance', 'AttendanceBreak' => 'attendance', 'AttendanceSession' => 'attendance', 'ShiftReminder' => 'attendance', 'CheckoutReminder' => 'attendance', 'AutoCheckout' => 'attendance', 'Shift' => 'attendance', 'WeeklyOff' => 'attendance',
+        'AttendanceAbsent' => 'attendance', 'AttendanceBreak' => 'attendance', 'AttendanceLongBreak' => 'attendance', 'AttendanceSession' => 'attendance', 'ShiftReminder' => 'attendance', 'CheckoutReminder' => 'attendance', 'AutoCheckout' => 'attendance', 'Shift' => 'attendance', 'WeeklyOff' => 'attendance',
     ];
 
     /** Requests that can be approved or rejected straight from the notification. */

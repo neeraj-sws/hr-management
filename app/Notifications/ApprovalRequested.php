@@ -38,6 +38,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'AttendanceSession' => 'attendance.my',
         'AttendanceLate' => 'attendance.my',
         'AttendanceBreak' => 'attendance.dashboard',
+        'AttendanceLongBreak' => 'attendance.dashboard',
         'ShiftReminder' => 'attendance.my',
         'CheckoutReminder' => 'attendance.my',
         'Payslip' => 'payroll.payslips',
@@ -78,7 +79,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
 
     private const KIND_GROUP = [
         'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work', 'PerformanceGoal' => 'work', 'PerformanceFeedback' => 'work',
-        'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance', 'AttendanceBreak' => 'attendance',
+        'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance', 'AttendanceBreak' => 'attendance', 'AttendanceLongBreak' => 'attendance',
         'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders', 'ShiftReminder' => 'reminders', 'CheckoutReminder' => 'reminders',
         'Announcement' => 'company', 'Celebration' => 'company', 'WeeklyOff' => 'attendance', 'Shift' => 'attendance',
     ];

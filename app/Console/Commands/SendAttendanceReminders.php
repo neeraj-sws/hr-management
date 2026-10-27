@@ -14,7 +14,8 @@ class SendAttendanceReminders extends Command
     {
         $before = $reminders->beforeShift();
         $checkout = $reminders->forgotCheckout();
-        $this->info("Reminders sent: {$before} before shift, {$checkout} still checked in.");
+        $breaks = app(\App\Services\AttendanceAlertService::class)->longBreaks();
+        $this->info("Reminders sent: {$before} before shift, {$checkout} still checked in, {$breaks} long breaks.");
 
         return self::SUCCESS;
     }

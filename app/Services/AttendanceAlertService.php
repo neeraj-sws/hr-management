@@ -17,7 +17,8 @@ use Illuminate\Support\Carbon;
  */
 class AttendanceAlertService
 {
-    public const DEFAULTS = ['enabled' => true, 'absent_after' => '11:00'];
+    /** break_alerts: manager told when a break starts and ends · long_break_minutes: break this long → alert (0 = off). */
+    public const DEFAULTS = ['enabled' => true, 'absent_after' => '11:00', 'break_alerts' => true, 'long_break_minutes' => 60];
 
     public function __construct(private readonly PolicyConfigurationService $policies, private readonly AttendanceService $attendance) {}
 
@@ -71,5 +72,56 @@ class AttendanceAlertService
         }
 
         return $absent->count();
+    }
+
+    /** Break started: the manager gets a bell notification and a phone push (no e-mail). */
+    public function breakStarted(AttendanceEmployee $employee, AttendanceSession $session, Carbon|\Carbon\CarbonInterface $at): void
+    {
+        if (! ($this->settings()['break_alerts'] ?? true)) return;
+        $this->toManager($employee, $at, 'AttendanceBreak', $session->id, "{$employee->name} started a break at {$at->format('h:i A')}.");
+    }
+
+    /** Back from break: the manager is told when, and how long the break was. */
+    public function breakEnded(AttendanceEmployee $employee, AttendanceSession $session, Carbon|\Carbon\CarbonInterface $at, int $seconds): void
+    {
+        if (! ($this->settings()['break_alerts'] ?? true)) return;
+        $this->toManager($employee, $at, 'AttendanceBreak', $session->id, "{$employee->name} is back from break at {$at->format('h:i A')} · break of ".\App\Support\Duration::words(intdiv($seconds, 60)).'.');
+    }
+
+    /**
+     * Breaks running longer than the set minutes: the employee (press Resume) and their manager are told, once per break.
+     * Runs every 5 minutes with the attendance reminders. @return int breaks alerted
+     */
+    public function longBreaks(?Carbon $now = null): int
+    {
+        $now ??= now();
+        $minutes = (int) ($this->settings()['long_break_minutes'] ?? 60);
+        if ($minutes <= 0) return 0;
+        $sent = 0;
+        $sessions = AttendanceSession::with(['employee.user', 'employee.manager.user'])->where('status', 'on_break')->whereNull('check_out')
+            ->whereDate('work_date', '>=', $now->copy()->subDay()->toDateString())->get();
+        foreach ($sessions as $session) {
+            $employee = $session->employee;
+            $start = $session->events()->where('event_type', 'break_start')->latest('event_time')->first();
+            if (! $employee || ! $start || $start->event_time->gt($now->copy()->subMinutes($minutes))) continue;
+            // One alert per break: the break_start event's id is the record id.
+            if (\Illuminate\Notifications\DatabaseNotification::where('data->kind', 'AttendanceLongBreak')->where('data->record_id', $start->id)->exists()) continue;
+            $long = \App\Support\Duration::words((int) $start->event_time->diffInMinutes($now));
+            $since = $start->event_time->format('h:i A');
+            if ($employee->user) rescue(fn () => $employee->user->notify(new \App\Notifications\ApprovalRequested('AttendanceLongBreak', $start->id, "Your break started at {$since} and has run {$long}. Press Resume when you are back at work.", route('attendance.my', [], false), false)), null, true);
+            $this->toManager($employee, $now, 'AttendanceLongBreak', $start->id, "{$employee->name} has been on break for {$long} (since {$since}).", false);
+            $sent++;
+        }
+
+        return $sent;
+    }
+
+    /** Bell + push to the person's manager, never e-mail; a break sent in late by an offline phone (over 15 min ago) is not announced. */
+    private function toManager(AttendanceEmployee $employee, \Carbon\CarbonInterface $at, string $kind, int $recordId, string $message, bool $checkAge = true): void
+    {
+        $manager = $employee->manager?->user;
+        if (! $manager || ! ($manager->is_active ?? true) || $manager->id === $employee->user_id) return;
+        if ($checkAge && $at->lt(now()->subMinutes(15))) return;
+        rescue(fn () => $manager->notify(new \App\Notifications\ApprovalRequested($kind, $recordId, $message, route('attendance.dashboard', [], false), false)), null, true);
     }
 }

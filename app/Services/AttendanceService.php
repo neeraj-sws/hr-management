@@ -195,27 +195,16 @@ class AttendanceService
 
             return $session->fresh();
         });
-        $this->tellManagerBreakStarted($employee, $session, $at ? $this->local($at) : now());
+        app(AttendanceAlertService::class)->breakStarted($employee, $session, $at ? $this->local($at) : now());
 
         return $session;
-    }
-
-    /**
-     * Break started: the manager gets a bell notification and a phone push (no e-mail). A break sent in late by
-     * an offline phone (more than 15 minutes ago) is not announced, so nobody is told about a break already over.
-     */
-    private function tellManagerBreakStarted(AttendanceEmployee $employee, AttendanceSession $session, CarbonInterface $at): void
-    {
-        $manager = $employee->manager?->user;
-        if (! $manager || ! ($manager->is_active ?? true) || $manager->id === $employee->user_id || $at->lt(now()->subMinutes(15))) return;
-        rescue(fn () => $manager->notify(new \App\Notifications\ApprovalRequested('AttendanceBreak', $session->id, "{$employee->name} started a break at {$at->format('h:i A')}.", route('attendance.dashboard', [], false), false)), null, true);
     }
 
     public function endBreak(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null): AttendanceSession
     {
         $this->guardSource($employee, $source);
 
-        return DB::transaction(function () use ($employee, $source, $at) {
+        $session = DB::transaction(function () use ($employee, $source, $at) {
             $now = $at ? $this->local($at) : now();
             $session = $this->lockedOpenSession($employee, $now);
             if ($session->status !== 'on_break') throw ValidationException::withMessages(['break' => 'No active break found.']);
@@ -223,6 +212,10 @@ class AttendanceService
 
             return $session->fresh();
         });
+        $end = $session->events()->where('event_type', 'break_end')->latest('event_time')->first();
+        app(AttendanceAlertService::class)->breakEnded($employee, $session, $end?->event_time ?? now(), (int) ($end?->duration_seconds ?? 0));
+
+        return $session;
     }
 
     public function checkOut(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null, ?array $location = null, ?\Illuminate\Http\UploadedFile $photo = null): AttendanceSession

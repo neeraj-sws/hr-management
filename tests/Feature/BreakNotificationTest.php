@@ -71,4 +71,42 @@ class BreakNotificationTest extends TestCase
 
         $this->assertSame(0, $this->bossUser->notifications()->count());
     }
+
+    public function test_manager_is_told_when_the_break_ends_and_long_breaks_alert_once(): void
+    {
+        $attendance = app(AttendanceService::class);
+        Carbon::setTestNow('2026-10-27 10:00:00');
+        $attendance->checkIn($this->employee, 'web');
+        Carbon::setTestNow('2026-10-27 13:00:00');
+        $attendance->startBreak($this->employee, 'web');
+
+        // 59 minutes: nothing yet; 61 minutes: employee and manager told; again later: not repeated.
+        $alerts = app(\App\Services\AttendanceAlertService::class);
+        Carbon::setTestNow('2026-10-27 13:59:00');
+        $this->assertSame(0, $alerts->longBreaks());
+        Carbon::setTestNow('2026-10-27 14:01:00');
+        $this->assertSame(1, $alerts->longBreaks());
+        $this->artisan('attendance:reminders')->assertSuccessful();
+        $this->assertSame(1, $this->bossUser->notifications()->where('data->kind', 'AttendanceLongBreak')->count());
+        $this->assertSame('Riya Sharma has been on break for 1 h 1 min (since 01:00 PM).', $this->bossUser->notifications()->where('data->kind', 'AttendanceLongBreak')->first()->data['message']);
+        $this->assertStringContainsString('Press Resume', $this->user->notifications()->where('data->kind', 'AttendanceLongBreak')->first()->data['message']);
+
+        Carbon::setTestNow('2026-10-27 14:10:00');
+        $attendance->endBreak($this->employee, 'web');
+        $this->assertSame('Riya Sharma is back from break at 02:10 PM · break of 1 h 10 min.', $this->bossUser->notifications()->where('data->kind', 'AttendanceBreak')->latest()->first()->data['message']);
+    }
+
+    public function test_break_alerts_can_be_switched_off(): void
+    {
+        app(\App\Services\PeopleOperationsService::class)->setPolicy('attendance.alerts', 'attendance', 'Late and absence alerts', ['enabled' => true, 'absent_after' => '11:00', 'break_alerts' => false, 'long_break_minutes' => 0], null, User::where('email', 'admin@example.com')->value('id'), '2026-01-01');
+        $attendance = app(AttendanceService::class);
+        Carbon::setTestNow('2026-10-27 10:00:00');
+        $attendance->checkIn($this->employee, 'web');
+        Carbon::setTestNow('2026-10-27 13:00:00');
+        $attendance->startBreak($this->employee, 'web');
+        Carbon::setTestNow('2026-10-27 16:00:00');
+        $this->assertSame(0, app(\App\Services\AttendanceAlertService::class)->longBreaks());
+        $attendance->endBreak($this->employee, 'web');
+        $this->assertSame(0, $this->bossUser->notifications()->count());
+    }
 }
