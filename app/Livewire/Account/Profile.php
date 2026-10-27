@@ -38,6 +38,10 @@ class Profile extends Component
     public string $phone = '';
     public string $dateOfBirth = '';
     public bool $shareBirthday = true;
+    public string $address = '';
+    public string $emergencyName = '';
+    public string $emergencyRelation = '';
+    public string $emergencyPhone = '';
     public array $prefs = [];
     /** Website: play a short sound when a new notification arrives. */
     public bool $webSound = true;
@@ -47,6 +51,10 @@ class Profile extends Component
         $this->phone = (string) ($this->ownEmployee()?->phone ?? '');
         $this->dateOfBirth = (string) $this->ownEmployee()?->date_of_birth?->toDateString();
         $this->shareBirthday = (bool) ($this->ownEmployee()?->share_birthday ?? true);
+        $this->address = (string) ($this->ownEmployee()?->address ?? '');
+        $this->emergencyName = (string) ($this->ownEmployee()?->emergency_contact_name ?? '');
+        $this->emergencyRelation = (string) ($this->ownEmployee()?->emergency_contact_relation ?? '');
+        $this->emergencyPhone = (string) ($this->ownEmployee()?->emergency_contact_phone ?? '');
         $saved = (array) ($this->user()->notification_preferences ?? []);
         $this->webSound = (bool) ($saved['web_sound'] ?? true);
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => $definition) {
@@ -58,9 +66,10 @@ class Profile extends Component
     {
         \App\Services\ImpersonationService::block();
         $employee = $this->requireEmployee();
-        $data = $this->validate(['phone' => ['nullable', 'string', 'max:40', 'regex:/^[0-9+\-\s()]*$/'], 'dateOfBirth' => ['nullable', 'date', 'before:today', 'after:1900-01-01']], [], ['dateOfBirth' => 'date of birth']);
-        $employee->update(['phone' => $data['phone'] ?: null, 'date_of_birth' => $data['dateOfBirth'] ?: null, 'share_birthday' => $this->shareBirthday]);
-        $audit->record('profile.contact_updated', $employee);
+        // The same rules and save as the app's Settings screen.
+        $r = \App\Services\OwnProfileService::rules();
+        $data = $this->validate(['phone' => $r['phone'], 'dateOfBirth' => $r['date_of_birth'], 'address' => $r['address'], 'emergencyName' => $r['emergency_contact_name'], 'emergencyRelation' => $r['emergency_contact_relation'], 'emergencyPhone' => $r['emergency_contact_phone']], [], ['dateOfBirth' => 'date of birth', 'emergencyName' => 'emergency contact name', 'emergencyRelation' => 'relation', 'emergencyPhone' => 'emergency contact phone']);
+        app(\App\Services\OwnProfileService::class)->save($employee, ['phone' => $data['phone'], 'date_of_birth' => $data['dateOfBirth'], 'share_birthday' => $this->shareBirthday, 'address' => $data['address'], 'emergency_contact_name' => $data['emergencyName'], 'emergency_contact_relation' => $data['emergencyRelation'], 'emergency_contact_phone' => $data['emergencyPhone']], $this->user());
         $this->toast('Contact details saved.');
     }
 

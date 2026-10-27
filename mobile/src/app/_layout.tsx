@@ -49,6 +49,7 @@ function RootNavigator() {
         <Stack.Screen name="performance" options={{ title: 'My performance' }} />
         <Stack.Screen name="team" options={{ title: 'My team today' }} />
         <Stack.Screen name="task" options={{ title: 'Task' }} />
+        <Stack.Screen name="settings" options={{ title: 'My profile & settings' }} />
       </Stack.Protected>
       <Stack.Protected guard={!me}>
         <Stack.Screen name="login" options={{ headerShown: false }} />

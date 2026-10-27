@@ -120,6 +120,12 @@ export default function More() {
         ) : null}
         {photoNote ? <Notice tone={photoNote.tone} text={photoNote.text} /> : null}
         {me?.employee ? (
+          <Pressable onPress={() => router.push('/settings')} style={({ pressed }) => [styles.settingsLink, pressed && { backgroundColor: colors.blueSoft }]} accessibilityRole="button">
+            <Text style={styles.settingsText}>⚙️  My profile & settings</Text>
+            <Text style={styles.settingsHint}>Phone, address, emergency contact, notifications ›</Text>
+          </Pressable>
+        ) : null}
+        {me?.employee ? (
           <Pressable onPress={() => setShowDetails((v) => !v)} style={{ marginTop: 8 }}>
             <Muted style={{ color: colors.blue }}>{showDetails ? 'Hide details ▲' : 'Show details ▼'}</Muted>
           </Pressable>
@@ -163,6 +169,9 @@ function initials(name?: string): string {
 }
 
 const styles = StyleSheet.create({
+  settingsLink: { marginTop: 10, borderWidth: 1, borderColor: colors.line, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12 },
+  settingsText: { color: colors.blue, fontWeight: '800', fontSize: 14 },
+  settingsHint: { color: colors.muted, fontSize: 12, marginTop: 2 },
   photoActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.navy, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.white, fontWeight: '800', fontSize: 16 },

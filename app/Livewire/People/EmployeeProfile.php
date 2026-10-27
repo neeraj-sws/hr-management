@@ -179,6 +179,8 @@ class EmployeeProfile extends Component
             'tasks' => $employee->tasks()->where('status', '!=', 'completed')->latest()->limit(8)->get(),
             'assets' => $employee->assets()->latest()->get(),
             'documents' => $canSeeDocs ? $employee->documents()->latest()->get() : collect(),
+            // Home address and emergency contact: the person, HR and admins (the same people who see documents).
+            'canSeeContact' => $canSeeDocs,
             'showSalary' => $showSalary,
             'salarySoFar' => $showSalary ? app(\App\Services\SalarySummaryService::class)->soFar($employee) : null,
             'salaryHistory' => $showSalary ? app(\App\Services\SalarySummaryService::class)->history($employee) : [],

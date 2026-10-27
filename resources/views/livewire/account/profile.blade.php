@@ -39,6 +39,10 @@
                         <x-field label="Phone" name="phone"><input wire:model="phone" type="tel" autocomplete="tel"></x-field>
                         <x-field label="Date of birth" name="dateOfBirth" hint="only the day and month are shown to colleagues"><input wire:model="dateOfBirth" type="date" max="{{ today()->subDay()->toDateString() }}"></x-field>
                         <label class="check"><input type="checkbox" wire:model="shareBirthday"> Let colleagues see my birthday and send wishes</label>
+                        <x-field label="Current address" name="address" hint="only HR sees it"><textarea wire:model="address" rows="2" autocomplete="street-address"></textarea></x-field>
+                        <x-field label="Emergency contact name" name="emergencyName"><input wire:model="emergencyName" autocomplete="off"></x-field>
+                        <x-field label="Relation" name="emergencyRelation" hint="e.g. Father, Wife, Brother"><input wire:model="emergencyRelation"></x-field>
+                        <x-field label="Emergency contact phone" name="emergencyPhone"><input wire:model="emergencyPhone" type="tel"></x-field>
                         <div class="form-actions"><button class="btn btn-primary" wire:loading.attr="disabled">Save</button></div>
                     </form>
                 </section>

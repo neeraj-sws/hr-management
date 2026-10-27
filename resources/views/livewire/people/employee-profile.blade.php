@@ -40,6 +40,10 @@
         <section class="card"><div class="card-head"><h2>Profile</h2></div><div class="card-body"><dl class="kv">
             <dt>Email</dt><dd>{{ $employee->email ?? '—' }}</dd>
             <dt>Phone</dt><dd>{{ $employee->phone ?? '—' }}</dd>
+            @if($canSeeContact)
+                <dt>Address</dt><dd style="white-space: pre-line">{{ $employee->address ?: '—' }}</dd>
+                <dt>Emergency contact</dt><dd>@if($employee->emergency_contact_name || $employee->emergency_contact_phone){{ $employee->emergency_contact_name ?: '—' }}@if($employee->emergency_contact_relation) ({{ $employee->emergency_contact_relation }})@endif @if($employee->emergency_contact_phone) · <a href="tel:{{ $employee->emergency_contact_phone }}">{{ $employee->emergency_contact_phone }}</a>@endif @else — @endif</dd>
+            @endif
             <dt>Manager</dt><dd>{{ $employee->manager?->name ?? '—' }}</dd>
             <dt>Direct reports</dt><dd>{{ $employee->directReports->pluck('name')->join(', ') ?: '—' }}</dd>
             <dt>Teams</dt><dd>{{ $employee->teams->pluck('name')->join(', ') ?: '—' }}</dd>

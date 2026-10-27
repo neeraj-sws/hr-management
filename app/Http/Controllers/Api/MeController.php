@@ -85,6 +85,38 @@ class MeController extends ApiController
         return response()->json(['message' => 'Profile picture updated.', 'photo_url' => url('/api/me/photo').'?v='.substr(md5((string) $employee->photo_path), 0, 8)]);
     }
 
+    /** GET /api/me/profile: the app's Settings screen (own details, the ones only HR changes, 2-step sign-in). */
+    public function profile(Request $request, \App\Services\OwnProfileService $profile): JsonResponse
+    {
+        return response()->json(['data' => $profile->forApp($this->apiUser($request))]);
+    }
+
+    /** POST /api/me/profile: the employee saves their phone, date of birth, address and emergency contact. */
+    public function saveProfile(Request $request, \App\Services\OwnProfileService $profile): JsonResponse
+    {
+        $user = $this->apiUser($request);
+        $employee = $user->employeeProfile;
+        abort_unless($employee, 404);
+        $data = $request->validate(\App\Services\OwnProfileService::rules(), \App\Services\OwnProfileService::messages(), ['date_of_birth' => 'date of birth', 'emergency_contact_name' => 'emergency contact name', 'emergency_contact_relation' => 'relation', 'emergency_contact_phone' => 'emergency contact phone']);
+        $profile->save($employee, $data, $user);
+
+        return response()->json(['message' => 'Your details are saved.', 'data' => $profile->forApp($user->fresh())]);
+    }
+
+    /** POST /api/me/two-factor {on: bool}: the same switch as "2-step sign-in" on the website profile. */
+    public function twoFactor(Request $request, \App\Services\OwnProfileService $profile): JsonResponse
+    {
+        $user = $this->apiUser($request);
+        $on = $request->validate(['on' => ['required', 'boolean']])['on'];
+        if ($on && ! \App\Notifications\Channels\SafeMailChannel::enabled()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['on' => 'Sign-in codes are sent by e-mail, and the company has e-mail turned off. Ask HR.']);
+        }
+        $user->forceFill(['two_factor_enabled' => (bool) $on])->save();
+        app(\App\Services\AuditLogger::class)->record($on ? 'profile.two_factor_on' : 'profile.two_factor_off', $user);
+
+        return response()->json(['message' => $on ? 'From your next sign-in, a code will be e-mailed to you.' : '2-step sign-in turned off for your account.', 'data' => $profile->forApp($user->fresh())]);
+    }
+
     /** DELETE /api/me/photo: back to initials. */
     public function deletePhoto(Request $request, \App\Services\EmployeePhotoService $photos)
     {
