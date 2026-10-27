@@ -85,6 +85,7 @@ export type SalaryMonth = {
 /** "Why the salary is less than full": full salary, late check-ins (hours and rupees), other cuts, salary for days worked. */
 export type Shortfall = {
   rate: number; working: number; full: number; full_label: string; earned: number; estimate: boolean; hourly: number | null; day_hours: string | null; late_cut: number;
+  late_title?: string;
   late: { date: string; day: string; in: string; leave?: string | null; worked: string; of: string; short: string; paid: number; cut: number }[];
   lines: { label: string; detail: string | null; days: number; amount: number }[];
 };

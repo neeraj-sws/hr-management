@@ -47,6 +47,8 @@ class HalfDayPayTest extends TestCase
         // Per-day salary 22,000 ÷ 22 = 1,000.
         SalaryProfile::create(['employee_id' => $this->employee->id, 'monthly_salary' => 22000, 'effective_from' => '2026-01-01', 'working_days_per_month' => 22, 'standard_daily_hours' => 8]);
         $this->workflow = app(HrWorkflowService::class);
+        // These tests check the fixed half-day rule; HalfDayHoursOnlyTest checks the default (paid by hours).
+        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_day_hours_only' => false], null, $this->admin->id, '2026-01-01');
     }
 
     protected function tearDown(): void
@@ -138,7 +140,7 @@ class HalfDayPayTest extends TestCase
         $this->assertEqualsWithDelta(1750, (float) $item->calculation_breakdown['base_salary'], 0.01);
 
         // Settings > Payroll switch off: as before (a paid half-day leave = full day, an unpaid one = half day).
-        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_leave_hours_only' => false], null, $this->admin->id, '2026-01-01');
+        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_day_hours_only' => false, 'half_leave_hours_only' => false], null, $this->admin->id, '2026-01-01');
         $this->assertEqualsWithDelta(2500, (float) $this->item()->calculation_breakdown['base_salary'], 0.01);
     }
 
@@ -150,7 +152,7 @@ class HalfDayPayTest extends TestCase
         $this->assertEqualsWithDelta(1000, (float) $sep->calculation_breakdown['base_salary'], 0.01);
 
         $this->day('2026-10-13', '09:00', '12:00');
-        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_day_pay' => false], null, $this->admin->id, '2026-01-01');
+        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_day_hours_only' => false, 'half_day_pay' => false], null, $this->admin->id, '2026-01-01');
         $this->assertEqualsWithDelta(1000, (float) $this->item()->calculation_breakdown['base_salary'], 0.01, 'Switched off: a half day is paid in full');
     }
 
@@ -164,7 +166,7 @@ class HalfDayPayTest extends TestCase
 
     public function test_short_hours_never_cut_a_half_day_twice(): void
     {
-        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'short_hours_deduction' => true], null, $this->admin->id, '2026-01-01');
+        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_day_hours_only' => false, 'short_hours_deduction' => true], null, $this->admin->id, '2026-01-01');
         $this->day('2026-10-13', '09:00', '12:00');
         $item = $this->item();
         $this->assertSame(0.0, (float) $item->calculation_breakdown['short_hours']['amount']);
@@ -214,7 +216,7 @@ class HalfDayPayTest extends TestCase
     {
         // Calendar divisor with a paid holiday (20 Oct): Oct has 21 working days without it.
         app(PeopleOperationsService::class)->setPolicy('calendar.working_days', 'calendar', 'Working calendar', ['days' => [1, 2, 3, 4, 5], 'holidays' => ['2026-10-20'], 'holiday_names' => ['2026-10-20' => 'Dussehra']], null, $this->admin->id, '2026-01-01');
-        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'divisor' => 'calendar'], null, $this->admin->id, '2026-01-01');
+        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_day_hours_only' => false, 'divisor' => 'calendar'], null, $this->admin->id, '2026-01-01');
         $this->day('2026-10-12', '09:00', '18:00');
         SalaryAdjustment::create(['employee_id' => $this->employee->id, 'effective_on' => '2026-10-05', 'amount' => 5000, 'kind' => 'bonus', 'is_recurring' => false, 'status' => 'approved', 'reason' => 'Festival', 'requested_by' => $this->admin->id]);
         \App\Models\ExpenseClaim::create(['employee_id' => $this->employee->id, 'category' => 'Travel', 'spent_on' => '2026-10-10', 'amount' => 43, 'description' => 'Auto', 'status' => 'approved']);

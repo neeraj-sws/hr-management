@@ -36,6 +36,7 @@ class Instructions
         $half = intdiv($halfSeconds, 3600).' h'.(($halfSeconds % 3600) ? ' '.intdiv($halfSeconds % 3600, 60).' min' : '');
         $payroll = $policies->forEmployee($employee, 'payroll.calculation', $today, []);
         $lateOn = (bool) ($payroll['late_checkin_hours_pay'] ?? true);
+        $halfByHours = (bool) ($payroll['half_day_hours_only'] ?? true);
         $lateAfter = Carbon::parse((string) ($payroll['late_checkin_after'] ?? '12:00'))->format('g:i A');
         $idle = $policies->forEmployee($employee, 'attendance.idle', $today, []);
         $idleAfter = (int) ($idle['idle_after_minutes'] ?? 5);
@@ -70,7 +71,9 @@ class Instructions
             ]],
             ['key' => 'half-day', 'title' => 'Half day, late check-in and pay for the day', 'icon' => 'alert', 'items' => [
                 ['Time at work', 'Check-out time − check-in time − breaks taken. Idle time and meetings are not taken off.'],
-                ['Half day', "Less than {$half} at work in a day = Half day: ½ day's salary. {$half} or more is a full day."],
+                ['Half day', $halfByHours
+                    ? "Less than {$half} at work in a day = Half day: you are paid ONLY for the time you were at work (e.g. 3 h at work = 3 hours' pay). {$half} or more is a full day."
+                    : "Less than {$half} at work in a day = Half day: ½ day's salary. {$half} or more is a full day."],
                 ['Late check-in', $lateOn ? "Checking in after {$lateAfter}: that day is paid only for the hours at work (hours at work ÷ {$hoursText}, at most one day). Example: in at 1:30 PM, 6 h at work = ".rtrim(rtrim(number_format(6 / max(1, $dailyHours), 2), '0'), '.').' day.' : 'Coming late is marked as Late on your attendance.'],
                 ['Planned half day', 'If you know you will work only half a day, apply for a half-day leave in advance (mobile app > Leave), so the day is not marked Absent or Late. Even when the leave is approved, only the hours you actually work that day are paid.'],
                 ['Festival half day', 'On a half-day holiday the office closes early: coming in = full day; not coming = ½ day (when the holiday is paid).'],
@@ -84,7 +87,7 @@ class Instructions
                 ['No leave applied', 'Absent with no leave = not paid. HR can record the day as leave only if you informed them.'],
             ]],
             ['key' => 'salary', 'title' => 'Salary and payslips', 'icon' => 'wallet', 'items' => [
-                ['How it is worked out', "Monthly salary ÷ the month's working days = one day's salary. You are paid for: days present + approved paid leave + paid holidays. Half days are paid ½, late check-ins by hours."],
+                ['How it is worked out', "Monthly salary ÷ the month's working days = one day's salary. You are paid for: days present + approved paid leave + paid holidays. ".($halfByHours ? 'Half days and late check-ins are paid by the hours at work.' : 'Half days are paid ½, late check-ins by hours.')],
                 ['Why less than full', "Mobile app > More > My salary: open a month to see \"Why the salary is less than full\" — every day not paid, with its date and amount."],
                 ['This month so far', 'My salary also shows this month so far. It is final only after the month ends and payroll is approved.'],
                 ['Payslip', 'After salary is paid, your payslip is in the mobile app > More > Payslips (or My salary > open the month > Download payslip).'],

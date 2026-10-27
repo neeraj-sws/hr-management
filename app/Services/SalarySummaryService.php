@@ -83,7 +83,7 @@ class SalarySummaryService
         $byHours = (array) ($b['hours_paid_days'] ?? []);
         $shortfall = $this->shortfall($month, $source, $b, $days, $data);
         $byHoursCut = array_sum(array_map(fn ($d) => 1 - (float) ($d['share'] ?? 1), $byHours));
-        if ($byHours) $halfNote .= ' ('.count($byHours).' late check-in '.(count($byHours) === 1 ? 'day' : 'days').' paid for the hours worked)';
+        if ($byHours) $halfNote .= ' ('.self::byHoursNote($byHours).')';
         $daysPaid = (float) $days['present'] - 0.5 * count($halfDays) - $byHoursCut + (float) $days['paid_leave'] + (float) ($b['paid_holiday_days'] ?? 0) + 0.5 * count($halfHolidays);
         $earnings = [];
         $earnings[] = ['Salary for days worked', $money($b['base_salary'] ?? 0), ($data['pay_basis'] ?? 'monthly') === 'daily'
@@ -165,7 +165,7 @@ class SalarySummaryService
             $worked = (int) ($h['seconds'] ?? 0);
             $standard = (int) ($h['standard'] ?? ($share > 0 ? round($worked / $share) : 0));
             if ($share >= 0.9999) continue; // worked a full day's hours: nothing cut, nothing to explain
-            $late[] = ['date' => $fmtDate($d), 'day' => Carbon::parse($d)->format('D'), 'in' => Carbon::parse($h['check_in'] ?? '00:00')->format('g:i A'), 'leave' => $h['leave'] ?? null,
+            $late[] = ['date' => $fmtDate($d), 'day' => Carbon::parse($d)->format('D'), 'in' => Carbon::parse($h['check_in'] ?? '00:00')->format('g:i A'), 'leave' => $h['leave'] ?? null, 'kind' => self::byHoursKind($h),
                 'worked' => Duration::hm($worked), 'of' => Duration::hm($standard), 'short' => Duration::hm(max(0, $standard - $worked)),
                 'paid' => round($share * $rate, 2), 'cut' => round((1 - $share) * $rate, 2)];
             $left -= 1 - $share;
@@ -192,7 +192,7 @@ class SalarySummaryService
         $standardSeconds = (int) (collect((array) ($b['hours_paid_days'] ?? []))->first()['standard'] ?? round((float) ($data['standard_daily_hours'] ?? 0) * 3600));
 
         return ['rate' => round($rate, 2), 'days_paid' => $paidDays, 'working' => $working, 'estimate' => $estimate,
-            'late' => $late, 'late_cut' => round(array_sum(array_column($late, 'cut')), 2),
+            'late' => $late, 'late_cut' => round(array_sum(array_column($late, 'cut')), 2), 'late_title' => self::byHoursTitle(array_column($late, 'kind')),
             'hourly' => $standardSeconds > 0 ? round($rate / ($standardSeconds / 3600), 2) : null, 'day_hours' => $standardSeconds > 0 ? Duration::hm($standardSeconds) : null,
             'full' => round($working * $rate, 2),
             'full_label' => ($estimate ? 'Salary for the '.$num($working).' working days so far' : 'Full salary for '.$num($working).' working days'),
@@ -238,5 +238,33 @@ class SalarySummaryService
             'monthly_salary' => $money($s->basic_salary), 'per_day_rate' => $money($s->salary_per_day), 'days_paid' => (float) $s->total_salary_paid_days, 'earnings' => $earnings, 'deductions' => $deductions,
             'gross' => $money((float) $s->salary_before_adjustment + (float) $s->increment_bonus), 'deductions_total' => $money($s->total_payment_deduction), 'net' => $net,
             'paid' => $paid, 'remaining' => $money(max(0, (float) $s->salary_remains)), 'payslip_id' => $item?->payslip?->id, 'paid_on' => $s->payment_date?->toDateString()];
+    }
+
+    /** Why a day was paid by the hours at work: late (check-in after the cut-off), half_day (under the half-day limit) or leave (half-day / short leave). */
+    public static function byHoursKind(array $day): string
+    {
+        return ! empty($day['half_day']) ? 'half_day' : (! empty($day['leave']) ? 'leave' : 'late');
+    }
+
+    /** Title over the "paid by the hours" rows. */
+    public static function byHoursTitle(array $kinds): string
+    {
+        $kinds = array_values(array_unique($kinds));
+        if ($kinds === ['late']) return 'Came after the late check-in time — paid only for the hours worked';
+        if ($kinds === ['half_day']) return 'Half day — paid only for the hours at work';
+        if ($kinds === ['leave']) return 'Half-day leave — paid only for the hours worked';
+
+        return 'Paid only for the hours worked (late check-in, half day or half-day leave)';
+    }
+
+    /** "2 late check-in days and 1 half day paid for the hours worked". */
+    public static function byHoursNote(array $byHours): string
+    {
+        $names = ['late' => ['late check-in day', 'late check-in days'], 'half_day' => ['half day', 'half days'], 'leave' => ['half-day leave day', 'half-day leave days']];
+        $counts = array_count_values(array_map(fn ($h) => self::byHoursKind((array) $h), $byHours));
+        $parts = [];
+        foreach ($names as $kind => [$one, $many]) if ($n = $counts[$kind] ?? 0) $parts[] = $n.' '.($n === 1 ? $one : $many);
+
+        return implode(' and ', $parts).' paid for the hours worked';
     }
 }

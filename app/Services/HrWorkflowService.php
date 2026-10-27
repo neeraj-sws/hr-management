@@ -399,6 +399,9 @@ class HrWorkflowService
         // (check-in to check-out less breaks; idle and meetings are not taken off) pays half a day, unless an
         // approved paid half-day or short leave covers that day. The same rule marks the day "Half day" in attendance.
         $halfDayPay = (bool) ($payrollPolicy['half_day_pay'] ?? true);
+        // Half day paid by the hours at work (Settings > Payroll, on by default): time at work ÷ the working day,
+        // not a fixed half day. Untick to pay a fixed half day as before.
+        $halfDayHoursOnly = (bool) ($payrollPolicy['half_day_hours_only'] ?? true);
         $halfDayFrom = (string) ($payrollPolicy['half_day_pay_from'] ?? self::HALF_DAY_PAY_FROM);
         $halfDaySet = [];
         // Check-in after the cut-off (Settings > Payroll, default 12:00): that day is paid by the hours at work —
@@ -432,7 +435,15 @@ class HrWorkflowService
                     $hoursPaidSet[$date] = $late;
                     continue; // paid by hours, not as a half day
                 }
-                if ($halfDayPay && $halfRules->isHalfDay($daySession)) $halfDaySet[$date] = true;
+                if ($halfDayPay && $halfRules->isHalfDay($daySession)) {
+                    if ($halfDayHoursOnly) {
+                        $net = (int) $halfRules->officeSeconds($daySession);
+                        $standard = max(1, (int) round($halfRules->dailyHours($employee, $date) * 3600));
+                        $hoursPaidSet[$date] = ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'standard' => $standard, 'check_in' => $daySession->check_in->format('H:i'), 'leave' => 'Half day · paid for the hours at work', 'half_day' => true];
+                    } else {
+                        $halfDaySet[$date] = true;
+                    }
+                }
             }
             ksort($halfDaySet);
             ksort($hoursPaidSet);

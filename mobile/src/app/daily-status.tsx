@@ -36,6 +36,8 @@ export default function DailyStatusScreen() {
   const [todayInfo, setTodayInfo] = useState<DayInfo | null>(null);
   const [summary, setSummary] = useState<MonthSummary | null>(null);
   const [team, setTeam] = useState<TeamRow[]>([]);
+  // When the automatic reminder comes (set by HR; default 6:00 PM).
+  const [reminderAt, setReminderAt] = useState('6:00 PM');
   const [loaded, setLoaded] = useState(false);
   const [plan, setPlan] = useState('');
   const [completed, setCompleted] = useState('');
@@ -55,10 +57,11 @@ export default function DailyStatusScreen() {
   const [month, setMonth] = useMonth();
   const load = useCallback(async () => {
     try {
-      const response = await get<{ data: Status[]; today: Status | null; today_info?: DayInfo; month_summary?: MonthSummary; team?: TeamRow[] }>(`/daily-status?month=${month}`);
+      const response = await get<{ data: Status[]; today: Status | null; today_info?: DayInfo; month_summary?: MonthSummary; team?: TeamRow[]; reminder_at?: string }>(`/daily-status?month=${month}`);
       setHistory(response.data);
       setTodayStatus(response.today);
       setTodayInfo(response.today_info ?? null);
+      if (response.reminder_at) setReminderAt(response.reminder_at);
       setSummary(response.month_summary ?? null);
       setTeam(response.team ?? []);
       if (response.today) {
@@ -164,7 +167,7 @@ export default function DailyStatusScreen() {
           <Text style={styles.meta}><MaterialCommunityIcons name="clock-outline" size={13} /> In {todayInfo.check_in} · worked {hm(todayInfo.worked_seconds)} · break {hm(todayInfo.break_seconds)}</Text>
         ) : <Text style={styles.meta}>Not checked in yet</Text>}
         <Text style={styles.meta}><MaterialCommunityIcons name="format-list-checks" size={13} /> {todayInfo?.task_count ?? 0} tasks · {hm(todayInfo?.task_seconds ?? 0)} on timer</Text>
-        {!written ? <Text style={[styles.meta, { color: amber.fg }]}>Write it before you leave · a reminder comes at {data?.reminder_at ?? '6:00 PM'}</Text> : null}
+        {!written ? <Text style={[styles.meta, { color: amber.fg }]}>Write it before you leave · a reminder comes at {reminderAt}</Text> : null}
         <View style={{ marginTop: 10 }}><Button title={written ? "Edit today's status" : "Write today's status"} tone={written ? 'default' : 'primary'} onPress={() => setFormOpen(true)} /></View>
       </View>
 

@@ -40,7 +40,7 @@ class WorkingHoursRulesTest extends TestCase
         $people = app(PeopleOperationsService::class);
         $people->setPolicy('attendance.rules', 'attendance', 'Attendance rules', ['grace_minutes' => 16, 'half_day_hours' => 4.5], null, $this->admin->id, '2026-01-01');
         $people->setPolicy('calendar.working_days', 'calendar', 'Working calendar', ['days' => [1, 2, 3, 4, 5], 'holidays' => []], null, $this->admin->id, '2026-01-01');
-        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 25], null, $this->admin->id, '2026-01-01');
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 25, 'half_day_hours_only' => false], null, $this->admin->id, '2026-01-01');
     }
 
     protected function tearDown(): void
@@ -54,7 +54,7 @@ class WorkingHoursRulesTest extends TestCase
         $user = User::factory()->create(['email' => strtolower($code).'@example.com']);
         $user->assignRole('Employee');
         $e = AttendanceEmployee::create(['employee_code' => $code, 'name' => "Person {$code}", 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01', 'daily_work_hours' => 8.5, 'work_start' => $start, 'work_end' => $end]);
-        SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 25500, 'effective_from' => '2026-01-01', 'working_days_per_month' => 25, 'standard_daily_hours' => 8.5]);
+        SalaryProfile::create(['employee_id' => $e->id, 'monthly_salary' => 25500, 'effective_from' => '2026-01-01', 'working_days_per_month' => 25, 'half_day_hours_only' => false, 'standard_daily_hours' => 8.5]);
 
         return $e;
     }
@@ -134,9 +134,9 @@ class WorkingHoursRulesTest extends TestCase
         $e = $this->person('WH-4');
         $this->day($e, '2026-10-09', '12:30', '19:30', 30);
         $people = app(PeopleOperationsService::class);
-        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 25, 'late_checkin_hours_pay' => false], null, $this->admin->id, '2026-01-01');
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 25, 'half_day_hours_only' => false, 'late_checkin_hours_pay' => false], null, $this->admin->id, '2026-01-01');
         $this->assertEqualsWithDelta(1020, (float) $this->payroll()->get($e->id)->calculation_breakdown['base_salary'], 0.01, 'Off: full day');
-        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 25, 'late_checkin_after' => '13:00'], null, $this->admin->id, '2026-01-01');
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 25, 'half_day_hours_only' => false, 'late_checkin_after' => '13:00'], null, $this->admin->id, '2026-01-01');
         $this->assertEqualsWithDelta(1020, (float) $this->payroll()->get($e->id)->calculation_breakdown['base_salary'], 0.01, 'Cut-off 13:00: 12:30 is not late enough');
     }
 
@@ -154,7 +154,7 @@ class WorkingHoursRulesTest extends TestCase
         $this->assertSame(22.0, (float) $s['working']);
         $this->assertEqualsWithDelta(22 * 1020, $s['full'], 0.01);
         // Late check-in in hours and rupees, never as a fraction of a day: 6h 30m of 8h 30m, ₹780 paid, ₹240 not paid.
-        $this->assertSame([['date' => '09 Oct', 'day' => 'Fri', 'in' => '12:30 PM', 'leave' => null, 'worked' => '6h 30m', 'of' => '8h 30m', 'short' => '2h 00m', 'paid' => 779.99, 'cut' => 240.01]], $s['late']);
+        $this->assertSame([['date' => '09 Oct', 'day' => 'Fri', 'in' => '12:30 PM', 'leave' => null, 'kind' => 'late', 'worked' => '6h 30m', 'of' => '8h 30m', 'short' => '2h 00m', 'paid' => 779.99, 'cut' => 240.01]], $s['late']);
         $this->assertSame(120.0, $s['hourly'], '₹1,020 a day ÷ 8h 30m');
         $labels = array_column($s['lines'], 'label');
         $this->assertSame(['Half day — 07 Oct', 'Absent, no leave — 12 days', 'Days still to come — 5 days'], $labels);
