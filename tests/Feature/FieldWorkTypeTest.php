@@ -99,7 +99,9 @@ class FieldWorkTypeTest extends TestCase
         $session = AttendanceSession::firstOrFail();
         $this->assertSame(0, $session->idleSeconds());
         $this->assertSame('Client call on phone', $session->events()->where('event_type', 'away_worked')->first()->metadata['note']);
-        $this->actingAs($this->admin)->get(route('attendance.records'))->assertOk()->assertSee('10:00 AM–11:00 AM working: Client call on phone');
+        // The table shows only "View activity"; the note is in the Screen activity panel's timeline.
+        $this->actingAs($this->admin)->get(route('attendance.records'))->assertOk()->assertSee('View activity')->assertDontSee('working: Client call on phone');
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Attendance\Records::class)->call('openDetail', $session->id, 'timeline')->assertSee('Working away: Client call on phone');
         $this->postJson('/api/attendance/away', ['from' => '2026-10-14 10:00:00', 'to' => '2026-10-14 11:00:00', 'reason' => 'idle', 'as' => 'work', 'note' => str_repeat('x', 201)])->assertUnprocessable();
     }
 

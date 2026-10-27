@@ -23,12 +23,6 @@
             <strong><span x-text="hms(v.active)">@hms($t['active'])</span> in use</strong>
             <small>@if($t['meeting'])<span x-text="hms(v.meeting)">@hms($t['meeting'])</span> meet · @endif<span x-text="hms(v.sIdle)">@hms($t['idle'])</span> idle · @if($t['untracked'] >= 60)@hms($t['untracked']) not tracked @else<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $total) }}</span>% working @endif</small>
             @if(! ($f['idle_deducted'] ?? true))<small class="ar-field">Field / mobile · idle not taken off</small>@endif
-            {{-- What they said they were doing when they answered "I was working" (one short line each; full list in View details). --}}
-            @if($t['meeting'] > 0)
-                @foreach($s->events()->where('event_type', 'away_worked')->orderBy('event_time')->get() as $away)
-                    @if($away->metadata['note'] ?? null)@php($line = \Illuminate\Support\Carbon::parse($away->metadata['from'] ?? $away->event_time)->format('h:i A').'–'.$away->event_time->format('h:i A').' working: '.$away->metadata['note'])<small class="ar-note" title="{{ $line }}">{{ $line }}</small>@endif
-                @endforeach
-            @endif
         @else
             <span class="muted small" title="Idle and screen time come from the SWS HR desktop app; it has not reported for this day">no desktop app</span>
         @endif
