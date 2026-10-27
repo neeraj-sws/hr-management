@@ -620,7 +620,9 @@ class AttendanceService
             'work_start' => $shift ? substr((string) $shift->start_time, 0, 5) : ($employee->work_start ?: ($hours['start_time'] ?? null)),
             'grace_minutes' => $shift && $shift->grace_minutes !== null ? $shift->grace_minutes : max(0, (int) ($current['grace_minutes'] ?? 0)),
             'shift' => $shift?->name,
-            'half_day_seconds' => (int) round(((float) ($current['half_day_hours'] ?? $dailyHours / 2)) * 3600),
+            // The company's half-day limit (e.g. 4:30) fits a normal day. Someone whose whole day is that long
+            // or shorter (a 1-hour cleaning job, a 4-hour part-timer) gets half of their own day instead.
+            'half_day_seconds' => (int) round((($limit = (float) ($current['half_day_hours'] ?? $dailyHours / 2)) < $dailyHours ? $limit : $dailyHours / 2) * 3600),
             'daily_seconds' => (int) round($dailyHours * 3600),
         ];
     }

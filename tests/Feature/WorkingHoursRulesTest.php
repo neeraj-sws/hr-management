@@ -180,4 +180,20 @@ class WorkingHoursRulesTest extends TestCase
         \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $item->payroll_run_id)->set('breakdownItemId', $item->id)
             ->assertSee('Came after the late check-in time, paid for hours worked')->assertSee('09 Oct: came 12:30 PM, worked 6h 30m of 8h 30m');
     }
+
+    public function test_short_day_person_is_not_a_half_day_for_working_their_full_short_day(): void
+    {
+        // Cleaning job 09:15-10:15, 1 hour a day. The company half-day limit is 4:30.
+        $e = $this->person('SHORT', '09:15', '10:15');
+        $e->update(['daily_work_hours' => 1]);
+        $full = AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-20', 'check_in' => '2026-10-20 09:15:00', 'check_out' => '2026-10-20 10:15:00', 'status' => 'completed']);
+        $short = AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-21', 'check_in' => '2026-10-21 09:15:00', 'check_out' => '2026-10-21 09:35:00', 'status' => 'completed']);
+        $this->assertFalse($this->attendance->isHalfDay($full->fresh('employee')), 'Worked the whole 1-hour day');
+        $this->assertTrue($this->attendance->isHalfDay($short->fresh('employee')), '20 minutes of a 1-hour day is a half day');
+
+        // A normal 8:30 day still uses the 4:30 limit.
+        $n = $this->person('NORM');
+        $s = AttendanceSession::create(['employee_id' => $n->id, 'work_date' => '2026-10-20', 'check_in' => '2026-10-20 10:00:00', 'check_out' => '2026-10-20 14:20:00', 'status' => 'completed']);
+        $this->assertTrue($this->attendance->isHalfDay($s->fresh('employee')), '4:20 of 8:30 is a half day');
+    }
 }
