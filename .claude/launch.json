@@ -55,6 +55,29 @@
         "CI": "1",
         "BROWSER": "none"
       }
+    },
+    {
+      "name": "sws-hr-local-test",
+      "runtimeExecutable": "php",
+      "runtimeArgs": [
+        "artisan",
+        "serve",
+        "--host=127.0.0.1",
+        "--port=8021"
+      ],
+      "port": 8021,
+      "env": {
+        "DB_CONNECTION": "sqlite",
+        "DB_DATABASE": "C:/Users/hp/AppData/Local/Temp/claude/D--vh-hr-management/35e9be75-ba08-463b-810a-deeb42b6473e/scratchpad/uat.sqlite",
+        "QUEUE_CONNECTION": "sync",
+        "APP_URL": "http://localhost:8021",
+        "MAIL_MAILER": "log",
+        "SESSION_DRIVER": "file",
+        "SESSION_SECURE_COOKIE": "false",
+        "SESSION_DOMAIN": "",
+        "APP_ENV": "local",
+        "CACHE_STORE": "file"
+      }
     }
   ]
 }

@@ -87,7 +87,7 @@
         <section class="card">
             <div class="card-head"><div><h2>Attendance · {{ $calendarMonth->format('F Y') }}</h2><p>Every day of the month, imported days included</p></div>
                 <div class="toolbar" style="border:0;padding:0">
-                    <label class="field"><span class="sr-only">Month</span><input type="month" wire:model.live="attendanceMonth" value="{{ $calendarMonth->format('Y-m') }}" max="{{ now()->format('Y-m') }}"></label>
+                    <label class="field"><span class="sr-only">Month</span><input type="month" value="{{ $calendarMonth->format('Y-m') }}" max="{{ now()->format('Y-m') }}" wire:change="$set('attendanceMonth', $event.target.value)"></label>
                     <a class="btn btn-sm" href="{{ route('attendance.records', ['employee' => $employee->id, 'from' => $calendarMonth->toDateString(), 'to' => $calendarMonth->copy()->endOfMonth()->min(today())->toDateString()]) }}">Day-by-day list →</a>
                     <a class="link-sm" href="{{ route('reports.show', ['type' => 'attendance', 'employee' => $employee->id, 'from' => $calendarMonth->toDateString(), 'to' => $calendarMonth->copy()->endOfMonth()->min(today())->toDateString()]) }}">Report →</a>
                 </div></div>
@@ -226,6 +226,15 @@
                         <button type="button" class="chip {{ $on ? 'chip-on' : '' }}" wire:click="setAttendanceSources({{ \Illuminate\Support\Js::from($on ? array_values(array_diff($attendanceSources, [$key])) : array_merge($attendanceSources, [$key])) }})">{{ $label }}</button>
                     @endforeach
                 </div>
+            </div></section>
+        @endif
+        @if($canEdit)
+            <section class="card"><div class="card-head"><div><h2>Daily status</h2><p>Whether {{ $employee->name }} must write a daily status, and gets the 6:15 PM reminder. Applies from today.</p></div></div><div class="card-body">
+                <label class="field"><span class="sr-only">Daily status</span><select wire:change="setDailyStatusRule($event.target.value)">
+                    <option value="default" @selected(! $dailyStatusOwn)>Company default ({{ \App\Support\DailyStatusRule::MODES[\App\Support\DailyStatusRule::mode(null)] }})</option>
+                    @foreach(\App\Support\DailyStatusRule::MODES as $key => $label)<option value="{{ $key }}" @selected($dailyStatusOwn && $dailyStatusMode === $key)>{{ $label }}</option>@endforeach
+                </select></label>
+                <p class="small muted">Everyone at once: Work &gt; Daily status &gt; Who must write it.</p>
             </div></section>
         @endif
         @if($appUsageOn !== null)

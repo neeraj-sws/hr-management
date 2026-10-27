@@ -1394,3 +1394,14 @@ div.tm-card{cursor:default}
   .ar-tiles{grid-template-columns:1fr 1fr}
   .ar-foot{justify-content:center}
 }
+
+/* Daily status: who must write it */
+.dsr-default{background:var(--blue-soft);border-radius:10px;padding:10px 12px}
+.dsr-default select{max-width:360px}
+.dsr-tools{flex-wrap:wrap;gap:8px;align-items:center}
+.dsr-list{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.dsr-select{min-width:250px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff}
+.dsr-select.dsr-required_reminder{border-color:#b9d9c6;background:var(--green-soft)}
+.dsr-select.dsr-required{border-color:#f0d9a8;background:var(--amber-soft)}
+.dsr-select.dsr-optional{border-color:var(--line);background:#f4f6fa;color:var(--muted)}
+.dsr-list th,.dsr-list td{text-align:left}

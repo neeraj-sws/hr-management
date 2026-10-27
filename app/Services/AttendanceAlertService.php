@@ -74,7 +74,7 @@ class AttendanceAlertService
         return $absent->count();
     }
 
-    /** Break started: the manager gets a bell notification and a phone push (no e-mail). */
+    /** Break started: the manager, HR and admins get a bell notification and a phone push (no e-mail). */
     public function breakStarted(AttendanceEmployee $employee, AttendanceSession $session, Carbon|\Carbon\CarbonInterface $at): void
     {
         if (! ($this->settings()['break_alerts'] ?? true)) return;
@@ -116,12 +116,16 @@ class AttendanceAlertService
         return $sent;
     }
 
-    /** Bell + push to the person's manager, never e-mail; a break sent in late by an offline phone (over 15 min ago) is not announced. */
+    /** Bell + push to the manager, HR and admins, never e-mail; a break sent in late by an offline phone (over 15 min ago) is not announced. */
     private function toManager(AttendanceEmployee $employee, \Carbon\CarbonInterface $at, string $kind, int $recordId, string $message, bool $checkAge = true): void
     {
-        $manager = $employee->manager?->user;
-        if (! $manager || ! ($manager->is_active ?? true) || $manager->id === $employee->user_id) return;
         if ($checkAge && $at->lt(now()->subMinutes(15))) return;
-        rescue(fn () => $manager->notify(new \App\Notifications\ApprovalRequested($kind, $recordId, $message, route('attendance.dashboard', [], false), false)), null, true);
+        // The manager, HR (attendance permission) and Master Admins; never the employee themself, each person once.
+        $admins = rescue(fn () => \App\Models\User::role('Master Admin')->where('is_active', true)->get(), collect(), false);
+        $people = collect([$employee->manager?->user])->merge(Notifier::withPermission('attendance.correct'))->merge($admins)->filter()
+            ->filter(fn ($u) => ($u->is_active ?? true) && $u->id !== $employee->user_id)->unique('id');
+        foreach ($people as $user) {
+            rescue(fn () => $user->notify(new \App\Notifications\ApprovalRequested($kind, $recordId, $message, route('attendance.dashboard', [], false), false)), null, true);
+        }
     }
 }

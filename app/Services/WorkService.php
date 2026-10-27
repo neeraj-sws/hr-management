@@ -244,6 +244,8 @@ class WorkService
         $sent = 0;
         foreach ($people as $person) {
             if (! $person->user) continue;
+            // Only people the admin set as "Compulsory + reminder" (Work > Daily status > Who must write it).
+            if (! \App\Support\DailyStatusRule::reminds($person, $date)) continue;
             if ($person->user->notifications()->where('data->kind', 'DailyStatusReminder')->whereDate('created_at', today())->exists()) continue;
             $person->user->notify(new ApprovalRequested('DailyStatusReminder', $person->id, 'Please submit your daily work status for '.\Illuminate\Support\Carbon::parse($date)->format('d M').'.', route('work.daily-status', [], false)));
             $sent++;
@@ -262,6 +264,8 @@ class WorkService
         $sent = 0;
         foreach ($people as $person) {
             if (! $person->user || $person->user_id === $by->id) continue;
+            // "Remind" pressed by HR / a manager: everyone who must write it (with or without automatic reminders).
+            if (! \App\Support\DailyStatusRule::required($person, $date)) continue;
             if ($person->user->notifications()->where('data->kind', 'DailyStatusRequested')->where('created_at', '>=', now()->subHour())->exists()) continue;
             $sent += Notifier::send($person->user, 'DailyStatusRequested', $person->id, "{$by->name} reminds you to submit your daily work status for ".\Illuminate\Support\Carbon::parse($date)->format('d M').": what you completed, pending work and tomorrow's plan.", route('work.daily-status', [], false), $by->id);
         }

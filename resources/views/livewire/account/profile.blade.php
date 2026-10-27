@@ -70,7 +70,17 @@
             </div>
         </section>
         <section class="card" id="password">
-            <div class="card-head"><div><h2>Password</h2><p>For security, only an administrator can change your password. Contact your HR administrator if you need it reset.</p></div></div>
+            @if(\App\Livewire\Account\Profile::canChangeOwnPassword($user))
+                <div class="card-head"><div><h2>Change password</h2><p>At least 12 characters, with letters and numbers. The mobile and desktop apps will ask you to sign in again.</p></div></div>
+                <form class="card-body form-grid" wire:submit="changePassword">
+                    <x-field label="Current password" name="currentPassword"><input type="password" wire:model="currentPassword" autocomplete="current-password"></x-field>
+                    <x-field label="New password" name="newPassword"><input type="password" wire:model="newPassword" autocomplete="new-password"></x-field>
+                    <x-field label="New password again" name="newPassword_confirmation"><input type="password" wire:model="newPassword_confirmation" autocomplete="new-password"></x-field>
+                    <div class="form-actions full"><button class="btn btn-primary" wire:loading.attr="disabled">Change password</button></div>
+                </form>
+            @else
+                <div class="card-head"><div><h2>Password</h2><p>For security, only an administrator can change your password. Contact your HR administrator if you need it reset.</p></div></div>
+            @endif
         </section>
     </div>
 </div>

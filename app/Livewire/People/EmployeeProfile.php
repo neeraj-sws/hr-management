@@ -100,6 +100,17 @@ class EmployeeProfile extends Component
         $this->toast('Attendance methods updated.');
     }
 
+    /** Daily status for this person: compulsory + reminder, compulsory only, not compulsory, or the company default. */
+    public function setDailyStatusRule(string $mode): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        \App\Services\ImpersonationService::block();
+        if ($mode === 'default') \App\Support\DailyStatusRule::useDefault($this->employee);
+        else \App\Support\DailyStatusRule::set($this->employee, $mode, $this->user()->id);
+        app(\App\Services\AuditLogger::class)->record('daily_status.rule_set', $this->employee, ['mode' => $mode]);
+        $this->toast('Daily status: '.\App\Support\DailyStatusRule::MODES[\App\Support\DailyStatusRule::mode($this->employee)].' (from today).');
+    }
+
     public function toggleAppUsage(\App\Services\AppUsageService $usage): void
     {
         $on = ! $usage->enabledFor($this->employee);
@@ -151,7 +162,7 @@ class EmployeeProfile extends Component
             if ($session->check_out && ($early = $attendance->earlyMinutes($session)) > 0) $discipline->push(['date' => $day['date'], 'type' => 'early', 'label' => 'Early check-out', 'detail' => 'Out '.$session->check_out->format('h:i A').' · early by '.\App\Support\Duration::fromMinutes($early)]);
             if ($day['date'] < today()->toDateString()) {
                 $status = $statuses->get($day['date']);
-                if (! $status) $discipline->push(['date' => $day['date'], 'type' => 'no_status', 'label' => 'Daily status missing', 'detail' => 'Worked but no daily status was submitted']);
+                if (! $status && \App\Support\DailyStatusRule::required($employee, $day['date'])) $discipline->push(['date' => $day['date'], 'type' => 'no_status', 'label' => 'Daily status missing', 'detail' => 'Worked but no daily status was submitted']);
                 elseif ($status->submitted_at && $status->submitted_at->toDateString() > $day['date']) $discipline->push(['date' => $day['date'], 'type' => 'late_status', 'label' => 'Daily status late', 'detail' => 'Submitted '.$status->submitted_at->format('d M, h:i A')]);
             }
         }
@@ -185,6 +196,8 @@ class EmployeeProfile extends Component
             'salarySoFar' => $showSalary ? app(\App\Services\SalarySummaryService::class)->soFar($employee) : null,
             'salaryHistory' => $showSalary ? app(\App\Services\SalarySummaryService::class)->history($employee) : [],
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
+            'dailyStatusMode' => \App\Support\DailyStatusRule::mode($employee),
+            'dailyStatusOwn' => \App\Support\DailyStatusRule::hasOwnChoice($employee),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
             'attendanceSources' => app(\App\Services\AttendanceService::class)->allowedSources($employee),
             'appUsageOn' => $user->can('monitoring.manage') ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : null,

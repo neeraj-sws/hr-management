@@ -144,6 +144,68 @@ class DailyStatus extends Component
         $this->openStatusForm();
     }
 
+    /** "Who must write it" (HR / admins): per person compulsory + reminder, compulsory only, or not compulsory. */
+    public bool $showRules = false;
+    public string $rulesSearch = '';
+
+    private function canSetRules(): bool
+    {
+        return $this->user()->canAny(['hr.manage', 'employees.manage']) || \App\Support\Access::isAdmin($this->user());
+    }
+
+    public function openRules(): void
+    {
+        abort_unless($this->canSetRules(), 403);
+        $this->showRules = true;
+    }
+
+    public function closeRules(): void
+    {
+        $this->showRules = false;
+    }
+
+    /** One person: a mode, or 'default' to follow the company default. Applies from today. */
+    public function setRule(int $employeeId, string $mode): void
+    {
+        abort_unless($this->canSetRules(), 403);
+        \App\Services\ImpersonationService::block();
+        $employee = AttendanceEmployee::findOrFail($employeeId);
+        if ($mode === 'default') \App\Support\DailyStatusRule::useDefault($employee);
+        else \App\Support\DailyStatusRule::set($employee, $mode, $this->user()->id);
+        app(AuditLogger::class)->record('daily_status.rule_set', $employee, ['mode' => $mode]);
+        $this->toast("{$employee->name}: ".(\App\Support\DailyStatusRule::MODES[\App\Support\DailyStatusRule::mode($employee)] ?? $mode).'.');
+    }
+
+    /** Company default: everyone without their own choice (and new employees). */
+    public function setDefaultRule(string $mode): void
+    {
+        abort_unless($this->canSetRules(), 403);
+        \App\Services\ImpersonationService::block();
+        \App\Support\DailyStatusRule::set(null, $mode, $this->user()->id);
+        app(AuditLogger::class)->record('daily_status.rule_default', null, ['mode' => $mode]);
+        $this->toast('Company default: '.\App\Support\DailyStatusRule::MODES[$mode].'.');
+    }
+
+    /** Everyone shown in the list (after the search) set to one mode. */
+    public function setRuleForAll(string $mode): void
+    {
+        abort_unless($this->canSetRules() && isset(\App\Support\DailyStatusRule::MODES[$mode]), 403);
+        \App\Services\ImpersonationService::block();
+        $people = $this->rulePeople();
+        foreach ($people as $employee) \App\Support\DailyStatusRule::set($employee, $mode, $this->user()->id);
+        app(AuditLogger::class)->record('daily_status.rule_bulk', null, ['mode' => $mode, 'employees' => $people->count()]);
+        $this->toast($people->count().' '.str('person')->plural($people->count()).': '.\App\Support\DailyStatusRule::MODES[$mode].'.');
+    }
+
+    private function rulePeople(): \Illuminate\Support\Collection
+    {
+        $q = trim($this->rulesSearch);
+
+        return AttendanceEmployee::with('department')->where('is_active', true)
+            ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('name', 'like', "%{$q}%")->orWhere('employee_code', 'like', "%{$q}%")->orWhereHas('department', fn ($d) => $d->where('name', 'like', "%{$q}%"))))
+            ->inCodeOrder()->get();
+    }
+
     /** Manager/HR nudges people who checked in but have not written today's status. */
     public function remindMissing(): void
     {
@@ -296,9 +358,11 @@ class DailyStatus extends Component
             $submitted = DailyWorkStatus::whereDate('work_date', $day)->pluck('employee_id');
             $people = AttendanceEmployee::with('department')->where('is_active', true)->when($scope, fn ($q) => $q->whereIn('id', $scope->all() ?: [0]))
                 ->whereHas('sessions', fn ($q) => $q->whereDate('work_date', $day));
-            $expected = (clone $people)->count() + DailyWorkStatus::whereDate('work_date', $day)->when($scope, fn ($q) => $q->whereIn('employee_id', $scope->all() ?: [0]))
+            // People whose daily status is not compulsory (Who must write it) are never "missing".
+            $optional = (clone $people)->whereNotIn('id', $submitted)->get()->reject(fn ($p) => \App\Support\DailyStatusRule::required($p, $day))->pluck('id');
+            $expected = (clone $people)->count() - $optional->count() + DailyWorkStatus::whereDate('work_date', $day)->when($scope, fn ($q) => $q->whereIn('employee_id', $scope->all() ?: [0]))
                 ->whereNotIn('employee_id', (clone $people)->pluck('id'))->count();
-            $missing = $people->whereNotIn('id', $submitted)->inCodeOrder()->get();
+            $missing = $people->whereNotIn('id', $submitted)->whereNotIn('id', $optional->all())->inCodeOrder()->get();
         }
         $onDay = fn (string $d) => $filtered()->whereDate('work_date', $d);
         $submittedOnDay = $onDay($day)->count();
@@ -310,7 +374,14 @@ class DailyStatus extends Component
             if (! $detail) $this->viewing = null;
         }
 
+        $rules = $this->showRules && $this->canSetRules() ? [
+            'default' => \App\Support\DailyStatusRule::mode(null),
+            'people' => $this->rulePeople()->map(fn ($e) => ['employee' => $e, 'mode' => \App\Support\DailyStatusRule::mode($e), 'own' => \App\Support\DailyStatusRule::hasOwnChoice($e)]),
+        ] : null;
+
         return $this->page('livewire.work.daily-status', [
+            'rules' => $rules,
+            'canSetRules' => $this->canSetRules(),
             'statuses' => $statuses,
             'own' => $own,
             'canSeeTeam' => $canSeeTeam,

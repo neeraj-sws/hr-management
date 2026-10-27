@@ -86,6 +86,39 @@ class Profile extends Component
         $this->toast('Notification preferences saved.');
     }
 
+    public string $currentPassword = '';
+    public string $newPassword = '';
+    public string $newPassword_confirmation = '';
+
+    /** Admins and HR change their own password here (current password needed). Other people: HR resets it. */
+    public static function canChangeOwnPassword(\App\Models\User $user): bool
+    {
+        return \App\Support\Access::isAdmin($user) || $user->hasRole('HR') || $user->can('hr.manage');
+    }
+
+    public function changePassword(AuditLogger $audit): void
+    {
+        \App\Services\ImpersonationService::block();
+        $user = $this->user();
+        abort_unless(self::canChangeOwnPassword($user), 403);
+        $this->validate([
+            'currentPassword' => ['required', 'string'],
+            'newPassword' => ['required', 'string', 'confirmed', 'different:currentPassword', \Illuminate\Validation\Rules\Password::min(12)->letters()->numbers()],
+        ], ['newPassword.different' => 'The new password must be different from the current one.'], ['currentPassword' => 'current password', 'newPassword' => 'new password']);
+        if (! \Illuminate\Support\Facades\Hash::check($this->currentPassword, $user->password)) {
+            $this->addError('currentPassword', 'The current password is not correct.');
+
+            return;
+        }
+        $user->forceFill(['password' => \Illuminate\Support\Facades\Hash::make($this->newPassword)])->save();
+        // The mobile and desktop apps sign in again with the new password; this browser stays signed in.
+        $user->tokens()->delete();
+        $audit->record('user.password_changed_self', $user);
+        \App\Services\Notifier::send($user, 'PasswordChanged', $user->id, 'You changed your login password on '.now()->format('d M Y, h:i A').'. The mobile and desktop apps will ask you to sign in again. If this was not you, contact the administrator.', route('account.profile', [], false));
+        $this->reset('currentPassword', 'newPassword', 'newPassword_confirmation');
+        $this->toast('Password changed. Use the new password next time you sign in (also in the mobile and desktop apps).');
+    }
+
     /** Turns the e-mailed sign-in code on or off for this person's own account. */
     public function toggleTwoFactor(AuditLogger $audit, \App\Services\TwoFactorService $twoFactor): void
     {

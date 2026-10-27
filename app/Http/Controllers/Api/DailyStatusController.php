@@ -65,7 +65,10 @@ class DailyStatusController extends ApiController
         $statuses = DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', '>=', $from->toDateString())->whereDate('work_date', '<=', $to->toDateString())->get();
         $written = $statuses->map(fn ($s) => $s->work_date->toDateString());
 
-        return ['days_at_work' => $worked->count(), 'submitted' => $statuses->count(), 'missed' => $worked->diff($written)->values()->all(),
+        // Days when it was not compulsory for this person (Who must write it) are not "missed".
+        $missed = $worked->diff($written)->filter(fn ($d) => \App\Support\DailyStatusRule::required($employee, $d))->values();
+
+        return ['days_at_work' => $worked->count(), 'submitted' => $statuses->count(), 'missed' => $missed->all(), 'required' => \App\Support\DailyStatusRule::required($employee),
             'late' => $statuses->filter(fn ($s) => $s->submitted_at && $s->submitted_at->toDateString() > $s->work_date->toDateString())->count(),
             'blockers' => $statuses->filter(fn ($s) => filled($s->blockers))->count()];
     }

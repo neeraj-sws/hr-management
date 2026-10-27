@@ -64,7 +64,10 @@ class Oct13BatchBTest extends TestCase
 
     public function test_employee_can_no_longer_change_their_own_password(): void
     {
-        $this->assertFalse(method_exists(\App\Livewire\Account\Profile::class, 'changePassword'), 'Self-service password change is removed');
+        // Employees still cannot change their own password (only admins and HR can; see OwnPasswordChangeTest).
+        $employee = \App\Models\User::factory()->create();
+        $employee->assignRole('Employee');
+        $this->assertFalse(\App\Livewire\Account\Profile::canChangeOwnPassword($employee), 'Self-service password change stays off for employees');
     }
 
     public function test_attendance_correction_notifies_an_admin_with_the_permission(): void

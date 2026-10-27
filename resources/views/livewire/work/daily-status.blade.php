@@ -13,6 +13,7 @@
         <div><h1>Daily Work Status</h1><p>{{ $canSeeTeam ? 'Track team progress, what they worked on, and any blockers.' : 'Write what you worked on today; your manager sees it.' }}</p></div>
         <div class="actions">
             <div class="ds-date-chip"><x-icon name="calendar" class="icon-sm" />{{ $day->format('D, d M Y') }}</div>
+            @if($canSetRules)<button type="button" class="btn" wire:click="openRules"><x-icon name="settings" class="icon-sm" />Who must write it</button>@endif
             @if($own)<button type="button" class="btn btn-primary" wire:click="openStatusForm"><x-icon name="{{ $savedToday ? 'edit' : 'plus' }}" class="icon-sm" />{{ $savedToday ? "Edit today's status" : "Add today's status" }}</button>@endif
         </div>
     </div>
@@ -244,5 +245,43 @@
                 </div>
             </aside>
         </div>
+    @endif
+    {{-- Who must write it: per person, from today. Compulsory people missing it are listed and reminded; others never. --}}
+    @if($rules)
+        <x-modal title="Daily status: who must write it" size="lg" close="closeRules">
+            <div class="modal-body">
+                <p class="small" style="margin-top:0"><strong>Compulsory + 6:15 PM reminder</strong>: listed as missing, reminded automatically. <strong>Compulsory, no automatic reminder</strong>: listed as missing; the Remind button still works. <strong>Not compulsory</strong>: may write it; never missing, never reminded, no penalty. A change applies from today; past days keep their rule.</p>
+                <div class="dsr-default">
+                    <label class="field"><span>Company default (everyone without their own choice, and new employees)</span>
+                        <select wire:change="setDefaultRule($event.target.value)">@foreach(\App\Support\DailyStatusRule::MODES as $key => $label)<option value="{{ $key }}" @selected($rules['default'] === $key)>{{ $label }}</option>@endforeach</select></label>
+                </div>
+                <div class="toolbar dsr-tools" style="padding:10px 0">
+                    <label class="field grow"><span class="sr-only">Search</span><input type="search" wire:model.live.debounce.300ms="rulesSearch" placeholder="Search name, ID or department"></label>
+                    <span class="small muted">Set everyone listed to:</span>
+                    @foreach(\App\Support\DailyStatusRule::MODES as $key => $label)
+                        <button type="button" class="btn btn-sm" wire:click="setRuleForAll('{{ $key }}')" wire:confirm="Set all {{ $rules['people']->count() }} people listed to &quot;{{ $label }}&quot; from today?">{{ $label }}</button>
+                    @endforeach
+                </div>
+                <div class="table-wrap dsr-list"><table class="table" data-no-sort>
+                    <thead><tr><th>Employee</th><th>Department</th><th>Daily status</th></tr></thead>
+                    <tbody>
+                    @forelse($rules['people'] as $row)
+                        @php($e = $row['employee'])
+                        <tr wire:key="dsr-{{ $e->id }}">
+                            <td><strong>{{ $e->name }}</strong><small>{{ $e->employee_code }}</small></td>
+                            <td>{{ $e->department?->name ?? '—' }}</td>
+                            <td><select class="dsr-select dsr-{{ $row['mode'] }}" wire:change="setRule({{ $e->id }}, $event.target.value)" aria-label="Daily status for {{ $e->name }}">
+                                    <option value="default" @selected(! $row['own'])>Company default ({{ \App\Support\DailyStatusRule::MODES[$rules['default']] }})</option>
+                                    @foreach(\App\Support\DailyStatusRule::MODES as $key => $label)<option value="{{ $key }}" @selected($row['own'] && $row['mode'] === $key)>{{ $label }}</option>@endforeach
+                                </select></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="3"><x-empty title="Nobody matches" icon="users" /></td></tr>
+                    @endforelse
+                    </tbody>
+                </table></div>
+            </div>
+            <div class="modal-foot"><span class="small muted">{{ $rules['people']->where('mode', '!=', 'optional')->count() }} compulsory · {{ $rules['people']->where('mode', 'required_reminder')->count() }} with reminder · {{ $rules['people']->where('mode', 'optional')->count() }} not compulsory</span><button type="button" class="btn" wire:click="closeRules">Done</button></div>
+        </x-modal>
     @endif
 </div>

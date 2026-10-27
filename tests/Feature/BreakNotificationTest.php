@@ -109,4 +109,21 @@ class BreakNotificationTest extends TestCase
         $attendance->endBreak($this->employee, 'web');
         $this->assertSame(0, $this->bossUser->notifications()->count());
     }
+
+    public function test_hr_and_admins_also_get_break_alerts(): void
+    {
+        $hr = User::factory()->create(['email' => 'hr@company.test']);
+        $hr->assignRole('HR');
+        $admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $attendance = app(AttendanceService::class);
+        Carbon::setTestNow('2026-10-27 10:00:00');
+        $attendance->checkIn($this->employee, 'web');
+        Carbon::setTestNow('2026-10-27 13:15:00');
+        $attendance->startBreak($this->employee, 'web');
+
+        foreach ([$this->bossUser, $hr, $admin] as $who) {
+            $this->assertSame(1, $who->notifications()->where('data->kind', 'AttendanceBreak')->count(), $who->email.' is told once');
+        }
+        $this->assertSame(0, $this->user->notifications()->count(), 'The employee is not told about their own break');
+    }
 }

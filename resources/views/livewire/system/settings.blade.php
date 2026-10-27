@@ -143,7 +143,7 @@
                     <span class="small muted">Photos are stored privately; managers and HR see them in Team Attendance and Attendance records.</span></div>
                 <label class="check"><input type="checkbox" wire:model="alertsEnabled"> Late and absence alerts (employee, manager and HR)</label>
                 <x-field label="Absent alert after" name="absentAfter" hint="if not checked in by this time"><input type="time" wire:model="absentAfter"></x-field>
-                <label class="check"><input type="checkbox" wire:model="breakAlerts"> Break alerts to the manager (break started, back from break)</label>
+                <label class="check"><input type="checkbox" wire:model="breakAlerts"> Break alerts to the manager, HR and admins (break started, back from break)</label>
                 <x-field label="Long break alert after (minutes)" name="longBreakMinutes" hint="the employee and their manager are told once per break · 0 = off"><input type="number" min="0" max="600" wire:model="longBreakMinutes"></x-field>
                 <label class="check full"><input type="checkbox" wire:model="applyHoursToAll"> Also set every active employee's daily hours (and their current salary record) to this value</label>
             </div>
