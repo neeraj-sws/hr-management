@@ -8,6 +8,9 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
+    /** Notification kinds that open as a popup on the website (not only a toast). */
+    private const URGENT = ['DailyStatusReminder'];
+
     /**
      * Live bell (every 30 seconds): the unread count, the bell panel again, and the titles of notifications
      * that arrived after ?since= (the newest one the page already had), for the popup and the sound.
@@ -26,6 +29,8 @@ class NotificationController extends Controller
             'since' => optional($user->notifications()->latest()->value('created_at'))->toIso8601String(),
             'sound' => (bool) (($user->notification_preferences ?? [])['web_sound'] ?? true),
             'new' => collect($presenter->present($new))->pluck('title')->filter()->values()->all(),
+            // Reminders that must be seen (daily status at 6:15 PM): shown as a popup that stays until closed.
+            'urgent' => $new->filter(fn ($n) => in_array($n->data['kind'] ?? null, self::URGENT, true))->map(fn ($n) => ['title' => (string) ($n->data['message'] ?? ''), 'url' => route('system.notifications.open', $n->id, false)])->values()->all(),
             'panel' => view('partials.bell-panel', compact('unreadCount', 'bellItems'))->render(),
         ]);
     }

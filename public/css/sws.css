@@ -1282,3 +1282,9 @@ div.tm-card{cursor:default}
 .why-less .wl-table .num{text-align:right;font-variant-numeric:tabular-nums}
 .why-less .wl-table td small{display:block;color:#8a96aa;font-size:11px}
 .why-less .wl-total{border-top:2px solid #E9C98F;font-weight:700;color:#13254F;font-size:14px}
+
+/* ---------- Important reminder popup ---------- */
+.nf-urgent{position:fixed;right:20px;bottom:20px;z-index:80;width:320px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #F0D7A8;border-left:4px solid #854F0B;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:14px 16px}
+.nf-urgent strong{color:#854F0B;font-size:14px}
+.nf-urgent p{margin:4px 0 10px;color:#334258;font-size:13.5px}
+.nf-urgent-actions{display:flex;gap:8px}

@@ -281,6 +281,7 @@
                 </dl>
                 <form class="stack" wire:submit="saveEmail">
                     <label class="check"><input type="checkbox" wire:model="emailEnabled"> Send e-mail notifications (in-app notifications are always on)</label>
+                    <x-field label="End-of-day summary also to" name="dailySummaryTo" hint="every person's 8:30 PM daily summary is also e-mailed here (besides the person and their manager) · several addresses: separate with commas · blank = nobody else" full><input type="text" wire:model="dailySummaryTo" placeholder="e.g. swstask@gmail.com"></x-field>
                     <div><button class="btn btn-primary">Save</button></div>
                 </form>
                 <form class="toolbar" wire:submit="sendTestEmail">

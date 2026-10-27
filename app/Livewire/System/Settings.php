@@ -69,6 +69,8 @@ class Settings extends Component
 
     // E-mail
     public bool $emailEnabled = true;
+    /** Settings > E-mail: also send every end-of-day summary to these addresses (comma-separated). */
+    public string $dailySummaryTo = '';
     public string $testEmail = '';
 
     // Offboarding correction window
@@ -167,7 +169,7 @@ class Settings extends Component
         $this->fill([
             'offWeeks' => \App\Support\WorkCalendar::offWeeksForForm((array) ($calendar['off_weeks'] ?? [])),
             'shifts' => array_values((array) ($calendar['shifts'] ?? [])),
-            'emailEnabled' => (bool) ($email['enabled'] ?? true),
+            'emailEnabled' => (bool) ($email['enabled'] ?? true), 'dailySummaryTo' => (string) ($email['daily_summary_to'] ?? ''),
             'testEmail' => (string) $this->user()->email,
             'twoFactorMode' => app(\App\Services\TwoFactorService::class)->settings()['mode'],
             'webAccessMode' => ($web = app(\App\Services\WebAccessService::class)->settings())['mode'],
@@ -539,7 +541,15 @@ class Settings extends Component
     public function saveEmail(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        $people->setPolicy('notifications.email', 'notifications', 'E-mail notifications', ['enabled' => $this->emailEnabled], null, auth()->id(), today()->toDateString());
+        $this->resetValidation('dailySummaryTo');
+        $addresses = collect(preg_split('/[\s,;]+/', trim($this->dailySummaryTo)))->filter()->values();
+        if ($bad = $addresses->first(fn ($a) => ! filter_var($a, FILTER_VALIDATE_EMAIL))) {
+            $this->addError('dailySummaryTo', "\"{$bad}\" is not an e-mail address.");
+
+            return;
+        }
+        $this->dailySummaryTo = $addresses->join(', ');
+        $people->setPolicy('notifications.email', 'notifications', 'E-mail notifications', ['enabled' => $this->emailEnabled, 'daily_summary_to' => $this->dailySummaryTo], null, auth()->id(), today()->toDateString());
         $this->toast($this->emailEnabled ? 'E-mail notifications are on.' : 'E-mail notifications are off; people still get in-app notifications.');
     }
 

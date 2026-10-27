@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, Empty, formatDate, money, Notice, Screen } from '../components/ui';
 import { ApiError, get } from '../lib/api';
-import type { SalaryMonth } from '../lib/types';
+import type { SalaryMonth, Shortfall } from '../lib/types';
 
 const navy = '#13254F';
 const brown = '#854F0B';
@@ -105,6 +105,7 @@ function MonthCard({ month: m, open, onToggle }: { month: SalaryMonth; open: boo
 
       {open ? (
         <View style={styles.details}>
+          {m.shortfall ? <WhyLess s={m.shortfall} /> : null}
           <View style={styles.attHead}>
             <Text style={styles.attLabel}>Attendance</Text>
             <Text style={styles.attLabel}>{daysPaid}/{m.days.working} days</Text>
@@ -140,6 +141,50 @@ function MonthCard({ month: m, open, onToggle }: { month: SalaryMonth; open: boo
   );
 }
 
+/** Why the month's salary is less than full: same as the website and the payslip. */
+function WhyLess({ s }: { s: Shortfall }) {
+  const cuts = s.late.length || s.lines.length;
+  const count = (d: number) => (Math.abs(d - Math.round(d)) < 0.001 ? `${Math.round(d)} ${Math.round(d) === 1 ? 'day' : 'days'} × ${rupees(s.rate)}` : Math.abs(d * 2 - Math.round(d * 2)) < 0.001 ? `${Math.round(d * 2)} × half day (${rupees(s.rate / 2)} each)` : '');
+  return (
+    <View style={styles.why}>
+      <Text style={styles.whyTitle}>{cuts ? 'Why the salary is less than full' : 'Full salary — nothing cut'}</Text>
+      {s.estimate ? <Text style={styles.whyNote}>This month so far · final after month end</Text> : null}
+      <WhyRow label={s.full_label} note={`${rupees(s.rate)} a day${s.hourly ? ` · ${s.day_hours} a day = ${rupees(s.hourly)} an hour` : ''}`} amount={rupees(s.full)} />
+      {s.late.length ? (
+        <View style={styles.whyBlock}>
+          <WhyRow label="Came after the late check-in time — paid only for the hours worked" note={`${s.late.length} ${s.late.length === 1 ? 'day' : 'days'}`} amount={`−${rupees(s.late_cut)}`} negative />
+          {s.late.map((l) => (
+            <View key={l.date} style={styles.whyLate}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.whyLateDate}>{l.day}, {l.date} · came {l.in}</Text>
+                <Text style={styles.whyNote}>Worked {l.worked} of {l.of} · paid {rupees(l.paid)}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.whyNeg}>−{rupees(l.cut)}</Text>
+                <Text style={styles.whyNote}>{l.short} short</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {s.lines.map((l) => <WhyRow key={l.label} label={l.label} note={[l.detail, count(l.days)].filter(Boolean).join(' · ')} amount={`−${rupees(l.amount)}`} negative />)}
+      <WhyRow label="Salary for days worked" amount={rupees(s.earned)} strong />
+    </View>
+  );
+}
+
+function WhyRow({ label, note, amount, negative, strong }: { label: string; note?: string | null; amount: string; negative?: boolean; strong?: boolean }) {
+  return (
+    <View style={[styles.whyRow, strong && styles.whyTotal]}>
+      <View style={{ flex: 1, paddingRight: 8 }}>
+        <Text style={[styles.whyLabel, strong && styles.bold]}>{label}</Text>
+        {note ? <Text style={styles.whyNote}>{note}</Text> : null}
+      </View>
+      <Text style={[styles.whyAmount, negative && styles.whyNeg, strong && styles.bold]}>{amount}</Text>
+    </View>
+  );
+}
+
 function Pill({ text, bg, fg }: { text: string; bg: string; fg: string }) {
   return <View style={[styles.pill, { backgroundColor: bg }]}><Text style={[styles.pillText, { color: fg }]}>{text}</Text></View>;
 }
@@ -161,6 +206,17 @@ function Line({ label, amount, note, negative, strong }: { label: string; amount
 }
 
 const styles = StyleSheet.create({
+  why: { backgroundColor: '#FFFBF2', borderWidth: 1, borderColor: '#F0D7A8', borderRadius: 12, padding: 12, marginBottom: 12 },
+  whyTitle: { color: brown, fontWeight: '800', fontSize: 14 },
+  whyBlock: { borderTopWidth: 1, borderTopColor: '#F0E1C4', borderStyle: 'dashed' },
+  whyRow: { flexDirection: 'row', paddingVertical: 7, borderTopWidth: 1, borderTopColor: '#F0E1C4' },
+  whyTotal: { borderTopWidth: 2, borderTopColor: '#E9C98F' },
+  whyLabel: { color: colors.ink2 ?? '#334258', fontSize: 13 },
+  whyNote: { color: colors.faint, fontSize: 11.5, marginTop: 1 },
+  whyAmount: { color: navy, fontSize: 13, fontVariant: ['tabular-nums'] },
+  whyNeg: { color: '#A32D2D', fontVariant: ['tabular-nums'] },
+  whyLate: { flexDirection: 'row', backgroundColor: colors.white, borderWidth: 1, borderColor: '#F0E1C4', borderRadius: 8, padding: 8, marginBottom: 6 },
+  whyLateDate: { color: navy, fontSize: 12.5, fontWeight: '600' },
   band: { backgroundColor: navy, height: 70 },
   body: { paddingHorizontal: 16, marginTop: -58, gap: 12, paddingBottom: 16 },
   summary: { backgroundColor: colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.line },

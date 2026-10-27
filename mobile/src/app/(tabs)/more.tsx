@@ -24,8 +24,8 @@ export default function More() {
     const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
     if (result.canceled || !result.assets.length) return;
     const asset = result.assets[0];
-    const tooBig = asset.base64 ? asset.base64.length * 0.75 > 3 * 1024 * 1024 : !!asset.fileSize && asset.fileSize > 3 * 1024 * 1024;
-    if (tooBig) { setPhotoNote({ tone: 'error', text: 'The photo is larger than 3 MB. Choose a smaller one, or crop it closer.' }); return; }
+    const tooBig = asset.base64 ? asset.base64.length * 0.75 > 5 * 1024 * 1024 : !!asset.fileSize && asset.fileSize > 5 * 1024 * 1024;
+    if (tooBig) { setPhotoNote({ tone: 'error', text: 'The photo is larger than 5 MB. Choose a smaller one, or crop it closer.' }); return; }
     setPhotoBusy(true);
     setPhotoNote(null);
     try {

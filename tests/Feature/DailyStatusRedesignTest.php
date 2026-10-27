@@ -97,4 +97,35 @@ class DailyStatusRedesignTest extends TestCase
         $this->assertStringContainsString('Khushboo Verma', $mail->subject);
         $this->assertStringContainsString('worked 01:00:00', implode(' ', $mail->introLines));
     }
+
+    public function test_end_of_day_summary_also_goes_to_the_address_in_settings(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+        $this->artisan('work:daily-status-summary')->assertSuccessful();
+        $before = count(\Illuminate\Support\Facades\Notification::sentNotifications()[\App\Support\MailRecipient::class] ?? []);
+        $this->assertSame(0, $before);
+
+        Livewire::actingAs($this->admin)->test(\App\Livewire\System\Settings::class)->set('tab', 'email')
+            ->set('dailySummaryTo', 'not-an-email')->call('saveEmail')->assertHasErrors('dailySummaryTo')
+            ->set('dailySummaryTo', 'swstask@gmail.com')->call('saveEmail')->assertHasNoErrors()->assertSee('End-of-day summary also to');
+
+        \Illuminate\Support\Facades\Notification::fake();
+        $this->artisan('work:daily-status-summary')->assertSuccessful();
+        $statuses = \App\Models\DailyWorkStatus::whereDate('work_date', today())->count();
+        $extra = collect(\Illuminate\Support\Facades\Notification::sentNotifications()[\App\Support\MailRecipient::class] ?? [])->flatten(2);
+        $this->assertGreaterThan(0, $statuses);
+        $this->assertCount($statuses, $extra, 'One copy of every summary to swstask@gmail.com');
+        $this->assertStringContainsString('and to swstask@gmail.com', collect(\App\Support\Instructions::sections())->firstWhere('key', 'work')['items'][1][1]);
+    }
+
+    public function test_daily_status_reminder_pops_up_on_the_website(): void
+    {
+        $user = User::factory()->create(['email' => 'popup@company.test']);
+        $user->assignRole('Employee');
+        $since = now()->subMinute()->toIso8601String();
+        $user->notify(new \App\Notifications\ApprovalRequested('DailyStatusReminder', 1, 'Please submit your daily work status for 21 Oct.', '/work/daily-status'));
+        $data = $this->actingAs($user)->getJson(route('system.notifications.live', ['since' => $since]))->assertOk()->json();
+        $this->assertSame('Please submit your daily work status for 21 Oct.', $data['urgent'][0]['title']);
+        $this->actingAs($user)->get(route('dashboard'))->assertSee('nf-urgent', false);
+    }
 }

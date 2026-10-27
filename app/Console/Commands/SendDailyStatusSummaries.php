@@ -19,7 +19,10 @@ class SendDailyStatusSummaries extends Command
     {
         $date = $this->option('date') ?: today()->toDateString();
         $sent = 0;
-        DailyWorkStatus::with(['employee.user', 'employee.manager.user'])->whereDate('work_date', $date)->get()->each(function (DailyWorkStatus $status) use ($attendance, $date, &$sent) {
+        // Settings > E-mail: a mailbox that also gets every summary (e.g. swstask@gmail.com).
+        $extra = collect(preg_split('/[\s,;]+/', (string) (app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'notifications.email', $date, [])['daily_summary_to'] ?? '')))
+            ->filter(fn ($a) => filter_var($a, FILTER_VALIDATE_EMAIL))->unique()->values();
+        DailyWorkStatus::with(['employee.user', 'employee.manager.user'])->whereDate('work_date', $date)->get()->each(function (DailyWorkStatus $status) use ($attendance, $date, $extra, &$sent) {
             $employee = $status->employee;
             if (! $employee) return;
             $sessions = AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $date)->orderBy('check_in')->get();
@@ -36,6 +39,11 @@ class SendDailyStatusSummaries extends Command
             foreach (collect([$employee->user, $employee->manager?->user])->filter()->unique('id') as $user) {
                 if (! ($user->is_active ?? true)) continue;
                 rescue(fn () => $user->notify(new DailyStatusSummary($status, $timing)), null, true);
+                $sent++;
+            }
+            foreach ($extra as $address) {
+                if (collect([$employee->user?->email, $employee->manager?->user?->email])->contains(fn ($e) => $e && strcasecmp($e, $address) === 0)) continue;
+                rescue(fn () => (new \App\Support\MailRecipient($address))->notify(new DailyStatusSummary($status, $timing)), null, true);
                 $sent++;
             }
         });

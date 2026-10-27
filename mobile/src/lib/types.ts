@@ -80,6 +80,13 @@ export type SalaryMonth = {
   days: { working: number; present: number; paid_leave: number; unpaid_leave: number };
   monthly_salary: number; earnings: [string, number, string | null][]; deductions: [string, number, string | null][];
   gross: number; deductions_total: number; net: number; paid: number; remaining: number; payslip_id: number | null; payslip_url?: string | null; per_day_rate?: number; days_paid?: number;
+  shortfall?: Shortfall | null;
+};
+/** "Why the salary is less than full": full salary, late check-ins (hours and rupees), other cuts, salary for days worked. */
+export type Shortfall = {
+  rate: number; working: number; full: number; full_label: string; earned: number; estimate: boolean; hourly: number | null; day_hours: string | null; late_cut: number;
+  late: { date: string; day: string; in: string; worked: string; of: string; short: string; paid: number; cut: number }[];
+  lines: { label: string; detail: string | null; days: number; amount: number }[];
 };
 export type Notification = { id: string; kind: string | null; message: string; read_at: string | null; created_at: string };
 /** A notification as the server presents it (same icons and colours as the website). */

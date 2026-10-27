@@ -47,13 +47,14 @@ class Instructions
         $types = LeaveType::where('is_active', true)->orderByDesc('paid')->orderBy('name')->get()
             ->map(fn ($t) => $t->name.' ('.($t->paid ? 'paid' : 'unpaid').((float) $t->annual_allowance > 0 ? ', '.(float) $t->annual_allowance.' days a year' : '').')')->join(', ');
         $hoursText = rtrim(rtrim(number_format($dailyHours, 2), '0'), '.');
+        $summaryTo = (string) ($policies->forEmployee(null, 'notifications.email', $today, [])['daily_summary_to'] ?? '');
 
         return [
             ['key' => 'attendance', 'title' => 'Daily attendance', 'icon' => 'clock', 'items' => [
                 ['Working days', "{$week}. Holidays are on the Holidays page."],
                 ['Working hours', "{$start} to {$end} — a working day is {$hoursText} hours."],
                 ['Check in', "Check in as soon as you start work: desktop app (office computer), website or mobile app. Late after {$start}".($grace ? " + {$grace} min grace" : '').'.'],
-                ['Not checked in', "If you have not checked in by {$absentAfter}, you, your manager and HR get an alert. Check in, or apply for leave."],
+                ['Not checked in', "If you have not checked in by {$absentAfter}, your manager and HR get an alert (and you get a reminder). Check in, or apply for leave."],
                 ['Check out', 'Check out when you finish. If you forget, the desktop app asks at the end of the shift and checks you out at the time the computer was last used.'],
                 ['Every day counts', 'A working day with no check-in and no approved leave is Absent and is not paid.'],
             ]],
@@ -67,7 +68,7 @@ class Instructions
                 ['Time at work', 'Check-out time − check-in time − breaks taken. Idle time and meetings are not taken off.'],
                 ['Half day', "Less than {$half} at work in a day = Half day: ½ day's salary. {$half} or more is a full day."],
                 ['Late check-in', $lateOn ? "Checking in after {$lateAfter}: that day is paid only for the hours at work (hours at work ÷ {$hoursText}, at most one day). Example: in at 1:30 PM, 6 h at work = ".rtrim(rtrim(number_format(6 / max(1, $dailyHours), 2), '0'), '.').' day.' : 'Coming late is marked as Late on your attendance.'],
-                ['Planned half day', 'If you know you will work only half a day, apply for a half-day leave in advance. An approved paid half-day leave keeps the day fully paid.'],
+                ['Planned half day', 'If you know you will work only half a day, apply for a half-day leave in advance. Approved with a paid leave type: the leave half is paid from your leave balance. With an unpaid leave type: only the half you work is paid.'],
                 ['Festival half day', 'On a half-day holiday the office closes early: coming in = full day; not coming = ½ day (when the holiday is paid).'],
             ]],
             ['key' => 'leave', 'title' => 'Leave', 'icon' => 'calendar', 'items' => [
@@ -87,8 +88,8 @@ class Instructions
                 ['Questions', 'If something looks wrong, ask HR within 5 days of the payslip. A correction for a paid month is made in the next month as an arrear.'],
             ]],
             ['key' => 'work', 'title' => 'Daily status and tasks', 'icon' => 'edit', 'items' => [
-                ['Daily status', 'Fill in your daily status every working day before you leave (plan, done, blockers). You get a reminder at 6:15 PM.'],
-                ['End-of-day e-mail', 'At 8:30 PM a summary of your day (tasks, status, timing) is e-mailed to you and your manager.'],
+                ['Daily status', 'Fill in your daily status every working day before you leave (plan, done, blockers). At 6:15 PM a reminder pops up (website, and phone if the app is installed) if it is not filled in.'],
+                ['End-of-day e-mail', 'At 8:30 PM a summary of your day (what you planned, finished, task times, check-in, check-out, breaks) is e-mailed to you and your manager'.($summaryTo ? ', and to '.$summaryTo : '').'.'],
                 ['Tasks', 'Start the timer on the task you work on, and update its status. Overdue tasks are reminded at 9:45 AM.'],
             ]],
             ['key' => 'emails', 'title' => 'E-mails and notifications', 'icon' => 'mail', 'items' => [
@@ -102,7 +103,7 @@ class Instructions
             ['key' => 'apps', 'title' => 'Mobile app and desktop app', 'icon' => 'monitor', 'items' => [
                 ['Desktop app', 'Office computer: keep the SWS HR desktop app running while you work. Do not close it; it shows when screen capture is on.'],
                 ['Mobile app', 'For check-in on the move, leave, salary, payslips and notifications. Install updates when HR shares a new version (install over the old app; your sign-in stays).'],
-                ['Profile photo', 'Change your photo from My profile (website) or More (app).'],
+                ['Profile photo', 'Change your photo in the mobile app (More > Change photo). HR can also change it on the website.'],
             ]],
             ['key' => 'corrections', 'title' => 'Mistakes and corrections', 'icon' => 'search', 'items' => [
                 ['Wrong attendance', 'Forgot to check in/out or wrong time: raise an Attendance correction for that date with the reason. Your manager approves it.'],

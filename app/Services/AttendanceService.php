@@ -753,14 +753,16 @@ class AttendanceService
             // A leave only counts on working days: a weekly off / 3rd Saturday / holiday inside a leave stays an off day
             // (as in payroll, which never charges leave for those days).
             $onLeave = $leaveToday !== null && $workday;
+            // A half-day or short leave is meant to go with work that day: no clash, and the day is not a "half day".
+            $partLeave = $onLeave && $session !== null && $leaveToday->duration !== 'full';
             $mark = $session === null && ! $onLeave ? $marks->get($date) : null;
-            $conflict = $session !== null && $onLeave ? ($resolutions[$date] ?? 'open') : null;
+            $conflict = $session !== null && $onLeave && ! $partLeave ? ($resolutions[$date] ?? 'open') : null;
             $status = match (true) {
                 $conflict === 'open' => 'leave_conflict',
                 $conflict === 'leave' => 'on_leave',
                 // Worked on a weekly off / 3rd Saturday / holiday, or HR settled a leave day as extra working.
                 $session !== null && (! $workday || $conflict === 'extra') => 'extra_work',
-                $session !== null && $this->isHalfDay($session) => 'half_day',
+                $session !== null && ! $partLeave && $this->isHalfDay($session) => 'half_day',
                 $session !== null && $this->isLate($session) => 'late',
                 $session !== null => 'present',
                 $onLeave => 'on_leave',
@@ -773,6 +775,7 @@ class AttendanceService
             };
             $halfHoliday = $workday ? \App\Support\WorkCalendar::halfDayHoliday($calendar, $date) : null;
             $label = match (true) {
+                $partLeave => ($leaveToday->duration === 'half' ? 'Half-day leave' : 'Short leave').' · '.($leaveToday->leaveType?->name ?? 'Leave').($leaveToday->leaveType?->paid ? ' (paid)' : ' (unpaid)'),
                 $mark !== null => $mark->label,
                 $halfHoliday !== null && in_array($status, ['present', 'late', 'absent', 'upcoming'], true) => 'Half-day holiday ('.$halfHoliday['name'].') · closes '.Carbon::parse($halfHoliday['closes_at'])->format('g:i A'),
                 $status === 'on_leave' => $leaveToday?->leaveType?->name,

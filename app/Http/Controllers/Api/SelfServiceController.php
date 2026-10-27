@@ -51,7 +51,7 @@ class SelfServiceController extends ApiController
             'category' => ['required', 'string', 'in:'.implode(',', array_keys(EmployeeDocumentService::employeeCategories()))],
             'file' => $request->input('category') === EmployeeDocumentService::PHOTO ? EmployeePhotoService::RULES : EmployeeDocumentService::FILE_RULES,
             'expires_on' => ['nullable', 'date'],
-        ], ['file.mimes' => 'Upload a PDF, JPG, PNG or Word file (a photo: JPG, PNG or WebP).', 'file.max' => 'The file is too large (max 10 MB, a photo 3 MB).']);
+        ], ['file.mimes' => 'Upload a PDF, JPG, PNG or Word file (a photo: JPG, PNG or WebP).', 'file.max' => 'The file is too large (max 10 MB, a photo 5 MB).']);
         $document = $service->store($employee, $data['category'], $request->file('file'), $this->apiUser($request), $data['expires_on'] ?? null);
 
         return response()->json(['data' => ['id' => $document?->id, 'checklist' => $service->checklist($employee->fresh())], 'message' => 'Uploaded — HR has been told.'], 201);

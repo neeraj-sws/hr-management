@@ -25,6 +25,17 @@
            by the same rule as the desktop and phone apps. Use: x-data="swsLive(...figures as JSON...)" and x-text="hms(v.worked)". */
         /* Live bell: asks the server every 30 seconds (only while the tab is visible) for anything new.
            The sound is made in the browser (no file); browsers allow it only after the first click on the page. */
+        /* Viewing the site as someone else is read only: a blocked click says so in a toast, not Livewire's full-screen error page. */
+        document.addEventListener('livewire:init', () => {
+            Livewire.hook('request', ({ fail }) => {
+                fail(({ status, content, preventDefault }) => {
+                    if (status === 403 && String(content || '').includes('View only')) {
+                        preventDefault();
+                        window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'View only: nothing can be saved or changed while you are viewing as an employee.', type: 'error' } }));
+                    }
+                });
+            });
+        });
         window.swsBell = function (c) {
             let audio = null;
             const unlock = () => { try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); } catch (e) {} };
@@ -41,7 +52,7 @@
                 } catch (e) {}
             };
             return {
-                count: c.count, since: c.since, sound: c.sound, busy: false,
+                count: c.count, since: c.since, sound: c.sound, busy: false, urgent: null,
                 init() {
                     ['pointerdown', 'keydown'].forEach((e) => window.addEventListener(e, unlock, { once: true }));
                     setInterval(() => this.check(), 30000);
@@ -57,6 +68,7 @@
                         this.count = d.count; this.sound = d.sound;
                         if (d.since) this.since = d.since;
                         if (d.panel && this.$refs.panel) this.$refs.panel.innerHTML = d.panel;
+                        if (d.urgent && d.urgent.length) this.urgent = d.urgent[0];
                         if (d.new && d.new.length) {
                             if (this.sound) ding();
                             const message = d.new.length === 1 ? d.new[0] : d.new.length + ' new notifications';
@@ -276,6 +288,14 @@
                         <div class="nf-live" x-ref="panel">@include('partials.bell-panel')</div>
                         <a class="nf-panel-foot" href="{{ route('system.notifications') }}">View all notifications <x-icon name="arrow-right" class="icon-sm" /></a>
                     </div>
+                    {{-- An important reminder (e.g. daily status at 6:15 PM) opens here and stays until it is closed. --}}
+                    <template x-if="urgent">
+                        <div class="nf-urgent" role="alertdialog" aria-live="assertive">
+                            <strong>Reminder</strong>
+                            <p x-text="urgent.title"></p>
+                            <div class="nf-urgent-actions"><a class="btn btn-primary btn-sm" :href="urgent.url">Open</a><button type="button" class="btn btn-sm" x-on:click="urgent = null">Later</button></div>
+                        </div>
+                    </template>
                 </details>
                 <details class="menu">
                     <summary class="profile-chip"><x-avatar :employee="$user->employeeProfile" :name="$user->name" /><span class="profile-copy"><strong>{{ $user->name }}</strong><x-person-badges :user="$user" class="header-badges" /></span></summary>

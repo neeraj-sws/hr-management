@@ -1,7 +1,8 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState, type ComponentProps } from 'react';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { AddButton, FormSheet } from '../components/FormSheet';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, formatDate, H2, Muted, Notice, Row, Screen } from '../components/ui';
@@ -9,7 +10,7 @@ import { ApiError, api, get, upload } from '../lib/api';
 
 type Document = { id: number; name: string; category: string; expires_on: string | null; expired: boolean; url: string; view_url?: string | null; file_type?: 'pdf' | 'image' | 'other'; can_delete: boolean };
 // Limits the server checks too; checked here first so a big file never starts uploading.
-const MAX_BYTES = { photo: 3 * 1024 * 1024, file: 10 * 1024 * 1024 };
+const MAX_BYTES = { photo: 5 * 1024 * 1024, file: 10 * 1024 * 1024 };
 type Asset = { id: number; tag: string; name: string; status: string; assigned_on: string | null; returned_on: string | null };
 type ChecklistItem = { key: string; label: string; done: boolean; count: number };
 type UploadType = { key: string; label: string };
@@ -167,9 +168,9 @@ export default function DocumentsScreen() {
           <Row key={d.id} title={d.name} subtitle={`${d.category}${d.expires_on ? ` · expires ${formatDate(d.expires_on)}` : ''}`} onPress={() => open(d.id, !!d.view_url)}
             right={<View style={styles.rowRight}>
               {d.expired ? <Badge label="expired" tone="red" /> : null}
-              {d.view_url ? <Text style={styles.action} onPress={() => open(d.id, true)} accessibilityRole="button" accessibilityLabel={`View ${d.name}`}>View</Text> : null}
-              <Text style={styles.action} onPress={() => open(d.id)} accessibilityRole="button" accessibilityLabel={`Download ${d.name}`}>Download</Text>
-              {d.can_delete ? <Text style={styles.delete} onPress={() => remove(d)}>Delete</Text> : null}
+              {d.view_url ? <IconButton icon="eye-outline" label={`View ${d.name}`} onPress={() => open(d.id, true)} /> : null}
+              <IconButton icon="download-outline" label={`Download ${d.name}`} onPress={() => open(d.id)} />
+              {d.can_delete ? <IconButton icon="trash-can-outline" label={`Delete ${d.name}`} onPress={() => remove(d)} danger /> : null}
             </View>} />
         )) : <Empty text={loaded ? 'No documents yet' : 'Loading…'} />}
       </Card>
@@ -184,7 +185,7 @@ export default function DocumentsScreen() {
         {formError ? <Notice tone="error" text={formError} /> : null}
         <Muted>Document</Muted>
         <Chips options={types.map((t) => ({ label: t.label, value: t.key }))} value={category} onChange={(value) => { setCategory(value); setPicked(null); }} />
-        <Muted style={{ marginTop: 10 }}>{isPhoto ? 'A photo for your file: JPG, PNG or WebP, max 3 MB. (Your profile picture is changed on the More tab.)' : 'PDF, Word or a photo, max 10 MB.'}</Muted>
+        <Muted style={{ marginTop: 10 }}>{isPhoto ? 'A photo for your file: JPG, PNG or WebP, max 5 MB. (Your profile picture is changed on the More tab.)' : 'PDF, Word or a photo, max 10 MB.'}</Muted>
         <View style={styles.pickRow}>
           <View style={{ flex: 1 }}><Button title={isPhoto ? 'Choose photo' : 'Choose file'} onPress={chooseFile} /></View>
           {Platform.OS !== 'web' ? <View style={{ flex: 1 }}><Button title="Take photo" onPress={takePhoto} /></View> : null}
@@ -206,8 +207,23 @@ const styles = StyleSheet.create({
   markDone: { backgroundColor: '#16a34a' },
   markText: { color: colors.white, fontWeight: '800' },
   checkTitle: { fontWeight: '700', color: colors.ink },
-  rowRight: { alignItems: 'flex-end', gap: 4 },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   delete: { color: colors.red, fontWeight: '700', fontSize: 13 },
   pickRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   picked: { marginTop: 8, color: colors.ink },
+});
+
+/** A small square button with an icon (view, download, delete). */
+function IconButton({ icon, label, onPress, danger }: { icon: ComponentProps<typeof MaterialCommunityIcons>['name']; label: string; onPress: () => void; danger?: boolean }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={6}
+      style={({ pressed }) => [iconStyles.box, danger && iconStyles.danger, pressed && { opacity: 0.6 }]}>
+      <MaterialCommunityIcons name={icon} size={18} color={danger ? '#A32D2D' : '#2B5BD7'} />
+    </Pressable>
+  );
+}
+
+const iconStyles = StyleSheet.create({
+  box: { width: 34, height: 34, borderRadius: 8, borderWidth: 1, borderColor: '#D5E2F5', backgroundColor: '#F2F7FE', alignItems: 'center', justifyContent: 'center' },
+  danger: { borderColor: '#F3C3C3', backgroundColor: '#FFF5F5' },
 });

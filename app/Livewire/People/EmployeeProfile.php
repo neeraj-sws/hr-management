@@ -57,7 +57,7 @@ class EmployeeProfile extends Component
 
     public function updatedPhoto(\App\Services\EmployeePhotoService $photos): void
     {
-        $this->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.mimes' => 'Choose a JPG, PNG or WebP picture.', 'photo.max' => 'The picture must be 3 MB or smaller.']);
+        $this->validate(['photo' => \App\Services\EmployeePhotoService::RULES], ['photo.mimes' => 'Choose a JPG, PNG or WebP picture.', 'photo.max' => 'The picture must be 5 MB or smaller.']);
         $photos->save($this->employee, $this->photo, $this->user());
         $this->reloadWith('Photo updated.');
     }

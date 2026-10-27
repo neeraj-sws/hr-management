@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Storage;
 /** Saves and removes employee photos (private disk; served only to signed-in users). */
 class EmployeePhotoService
 {
-    public const RULES = ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:3072'];
+    public const RULES = ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'];
 
     public function __construct(private readonly AuditLogger $audit) {}
 
