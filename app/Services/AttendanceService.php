@@ -182,7 +182,7 @@ class AttendanceService
     {
         $this->guardSource($employee, $source);
 
-        return DB::transaction(function () use ($employee, $source, $at) {
+        $session = DB::transaction(function () use ($employee, $source, $at) {
             $now = $at ? $this->local($at) : now();
             $session = $this->lockedOpenSession($employee, $now);
             if ($session->status === 'on_break') throw ValidationException::withMessages(['break' => 'A break is already active.']);
@@ -195,6 +195,20 @@ class AttendanceService
 
             return $session->fresh();
         });
+        $this->tellManagerBreakStarted($employee, $session, $at ? $this->local($at) : now());
+
+        return $session;
+    }
+
+    /**
+     * Break started: the manager gets a bell notification and a phone push (no e-mail). A break sent in late by
+     * an offline phone (more than 15 minutes ago) is not announced, so nobody is told about a break already over.
+     */
+    private function tellManagerBreakStarted(AttendanceEmployee $employee, AttendanceSession $session, CarbonInterface $at): void
+    {
+        $manager = $employee->manager?->user;
+        if (! $manager || ! ($manager->is_active ?? true) || $manager->id === $employee->user_id || $at->lt(now()->subMinutes(15))) return;
+        rescue(fn () => $manager->notify(new \App\Notifications\ApprovalRequested('AttendanceBreak', $session->id, "{$employee->name} started a break at {$at->format('h:i A')}.", route('attendance.dashboard', [], false), false)), null, true);
     }
 
     public function endBreak(AttendanceEmployee $employee, string $source = 'web', ?CarbonInterface $at = null): AttendanceSession
