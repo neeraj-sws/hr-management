@@ -72,6 +72,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
 
     Route::get('/daily-status', [DailyStatusController::class, 'index'])->name('api.daily-status.index');
     Route::post('/daily-status', [DailyStatusController::class, 'store'])->name('api.daily-status.store');
+    Route::post('/daily-status/remind/{employee}', [DailyStatusController::class, 'remind'])->name('api.daily-status.remind');
 
     Route::get('/announcements', [CompanyController::class, 'announcements'])->name('api.announcements');
     Route::get('/celebrations', [CompanyController::class, 'celebrations'])->name('api.celebrations');

@@ -137,4 +137,34 @@ class DailyStatusRedesignTest extends TestCase
         $this->assertSame('Please submit your daily work status for 21 Oct.', $data['urgent'][0]['title']);
         $this->actingAs($user)->get(route('dashboard'))->assertSee('nf-urgent', false);
     }
+
+    public function test_app_gets_today_card_month_numbers_missed_days_and_team(): void
+    {
+        $userA = User::factory()->create(['email' => 'ds-app@company.test']);
+        $userA->assignRole('Employee');
+        $this->a->update(['user_id' => $userA->id]);
+        // Worked 19 Oct with no status (missed), 20 Oct status written on 21 Oct (late), today in at 10:00.
+        foreach (['2026-10-19', '2026-10-20'] as $d) \App\Models\AttendanceSession::create(['employee_id' => $this->a->id, 'work_date' => $d, 'check_in' => "$d 10:00:00", 'check_out' => "$d 18:30:00", 'status' => 'completed']);
+        \App\Models\AttendanceSession::create(['employee_id' => $this->a->id, 'work_date' => '2026-10-21', 'check_in' => '2026-10-21 10:00:00', 'status' => 'working']);
+        DailyWorkStatus::where('employee_id', $this->a->id)->whereDate('work_date', '2026-10-20')->update(['submitted_at' => '2026-10-21 09:00:00']);
+
+        \Laravel\Sanctum\Sanctum::actingAs($userA);
+        $r = $this->getJson('/api/daily-status?month=2026-10')->assertOk()->json();
+        $this->assertSame('10:00 AM', $r['today_info']['check_in']);
+        $this->assertSame(['2026-10-19'], $r['month_summary']['missed']);
+        $this->assertSame(1, $r['month_summary']['late']);
+        $this->assertTrue(collect($r['data'])->firstWhere('work_date', '2026-10-20')['late']);
+        $this->assertSame([], $r['team'], 'Not a manager: no team list');
+
+        // The manager sees the team today and can remind someone; another employee cannot.
+        $boss = AttendanceEmployee::where('employee_code', 'DS-M')->firstOrFail();
+        \Laravel\Sanctum\Sanctum::actingAs($this->managerUser);
+        $team = collect($this->getJson('/api/daily-status')->assertOk()->json('team'));
+        $this->assertSame(['Fahad Shaikh', 'Khushboo Verma'], $team->pluck('name')->all());
+        $this->assertSame('Minor UI issue in mobile view', $team->firstWhere('name', 'Khushboo Verma')['blocker']);
+        $this->postJson("/api/daily-status/remind/{$this->b->id}")->assertOk();
+        \Laravel\Sanctum\Sanctum::actingAs($userA);
+        $this->postJson("/api/daily-status/remind/{$this->b->id}")->assertForbidden();
+        $this->assertNotNull($boss);
+    }
 }
