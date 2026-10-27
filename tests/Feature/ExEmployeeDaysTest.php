@@ -35,4 +35,21 @@ class ExEmployeeDaysTest extends TestCase
             ->assertViewHas('dayRows', fn ($rows) => $rows[0]['date'] === '2026-09-30' && count($rows) === 30)
             ->assertSee('After leaving the company');
     }
+
+    public function test_employee_dropdown_hides_ex_employees_and_trainees(): void
+    {
+        $this->seed();
+        $admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $staff = AttendanceEmployee::create(['employee_code' => 'DD-1', 'name' => 'Current Staff', 'is_active' => true, 'joined_at' => '2026-01-01']);
+        $trainee = AttendanceEmployee::create(['employee_code' => 'DD-2', 'name' => 'New Trainee', 'is_active' => true, 'joined_at' => '2026-01-01', 'employment_type' => 'trainee']);
+        $ex = AttendanceEmployee::create(['employee_code' => 'DD-3', 'name' => 'Gone Person', 'is_active' => false, 'joined_at' => '2026-01-01', 'exit_date' => '2026-09-12', 'employment_type' => 'ex_employee']);
+
+        $names = fn ($test) => $test->viewData('employees')->pluck('name')->all();
+        $list = $names(Livewire::actingAs($admin)->test(Records::class));
+        $this->assertContains('Current Staff', $list);
+        $this->assertNotContains('New Trainee', $list);
+        $this->assertNotContains('Gone Person', $list);
+        // Opened from a link with the ex-employee chosen: still listed, so the filter shows who it is.
+        $this->assertContains('Gone Person', $names(Livewire::actingAs($admin)->test(Records::class, ['employee' => $ex->id])));
+    }
 }

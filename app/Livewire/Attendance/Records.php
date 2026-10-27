@@ -174,7 +174,13 @@ class Records extends Component
             'calendarMonth' => $calMonth = Carbon::parse($this->from)->startOfMonth(),
             'calendarDays' => $dayEmployee && $this->view === 'calendar' ? $attendance->days($dayEmployee, $calMonth->copy(), $calMonth->copy()->endOfMonth()) : collect(),
             'attendance' => $attendance,
-            'employees' => AttendanceEmployee::inCodeOrder()->get(['id', 'name', 'employee_code']),
+            // Current staff only: no ex-employees and no trainees (one already chosen, e.g. from a link, stays listed).
+            'employees' => AttendanceEmployee::where(fn ($q) => $q
+                    ->where(fn ($q) => $q->where('is_active', true)->onPayroll()
+                        ->where(fn ($q) => $q->whereNull('employment_type')->orWhere('employment_type', '!=', \App\Services\EmployeeService::EX_EMPLOYEE))
+                        ->where(fn ($q) => $q->whereNull('exit_date')->orWhereDate('exit_date', '>=', today())))
+                    ->when($this->employee, fn ($q, $id) => $q->orWhere('id', $id)))
+                ->inCodeOrder()->get(['id', 'name', 'employee_code']),
             'departments' => Department::orderBy('name')->get(),
             'summary' => $this->todaySummary($attendance),
             'detailSession' => $detail,
