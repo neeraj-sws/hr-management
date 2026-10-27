@@ -165,7 +165,7 @@ class SalarySummaryService
             $worked = (int) ($h['seconds'] ?? 0);
             $standard = (int) ($h['standard'] ?? ($share > 0 ? round($worked / $share) : 0));
             if ($share >= 0.9999) continue; // worked a full day's hours: nothing cut, nothing to explain
-            $late[] = ['date' => $fmtDate($d), 'day' => Carbon::parse($d)->format('D'), 'in' => Carbon::parse($h['check_in'] ?? '00:00')->format('g:i A'),
+            $late[] = ['date' => $fmtDate($d), 'day' => Carbon::parse($d)->format('D'), 'in' => Carbon::parse($h['check_in'] ?? '00:00')->format('g:i A'), 'leave' => $h['leave'] ?? null,
                 'worked' => Duration::hm($worked), 'of' => Duration::hm($standard), 'short' => Duration::hm(max(0, $standard - $worked)),
                 'paid' => round($share * $rate, 2), 'cut' => round((1 - $share) * $rate, 2)];
             $left -= 1 - $share;

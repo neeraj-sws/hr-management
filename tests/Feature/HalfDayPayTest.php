@@ -120,7 +120,7 @@ class HalfDayPayTest extends TestCase
             ->assertSee('Back on the computer')->assertSee('Working on the computer')->assertDontSee('Screen state');
     }
 
-    public function test_paid_half_day_leave_keeps_it_a_full_day_and_unpaid_does_not(): void
+    public function test_approved_half_day_leave_pays_only_the_hours_worked(): void
     {
         $paid = LeaveType::create(['name' => 'Casual', 'annual_allowance' => 12, 'paid' => true, 'is_active' => true]);
         $unpaid = LeaveType::create(['name' => 'Unpaid', 'annual_allowance' => 0, 'paid' => false, 'is_active' => true]);
@@ -130,9 +130,16 @@ class HalfDayPayTest extends TestCase
         LeaveRequest::create(['employee_id' => $this->employee->id, 'leave_type_id' => $paid->id, 'starts_on' => '2026-10-14', 'ends_on' => '2026-10-14', 'duration' => 'half', 'days' => 0.5, 'reason' => 'Doctor', 'status' => 'approved']);
         LeaveRequest::create(['employee_id' => $this->employee->id, 'leave_type_id' => $unpaid->id, 'starts_on' => '2026-10-15', 'ends_on' => '2026-10-15', 'duration' => 'half', 'days' => 0.5, 'reason' => 'Personal', 'status' => 'approved']);
         $item = $this->item();
-        // 13 Oct: 4 h at work = not a half day (limit is under 4 h). 14 Oct: paid half leave = full. 15 Oct: unpaid = half.
-        $this->assertSame(['2026-10-15'], $item->calculation_breakdown['half_days']);
-        $this->assertEqualsWithDelta(2500, (float) $item->calculation_breakdown['base_salary'], 0.01);
+        // 13 Oct: 4 h at work = a full day (limit is under 4 h). 14 and 15 Oct: approved half-day leave (paid or
+        // unpaid type) = only the 3 h worked are paid: 3 ÷ 8 × 1,000 = 375 each.
+        $this->assertSame([], $item->calculation_breakdown['half_days']);
+        $this->assertSame(['2026-10-14', '2026-10-15'], array_keys($item->calculation_breakdown['hours_paid_days']));
+        $this->assertSame('Half-day leave · Casual', $item->calculation_breakdown['hours_paid_days']['2026-10-14']['leave']);
+        $this->assertEqualsWithDelta(1750, (float) $item->calculation_breakdown['base_salary'], 0.01);
+
+        // Settings > Payroll switch off: as before (a paid half-day leave = full day, an unpaid one = half day).
+        app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_leave_hours_only' => false], null, $this->admin->id, '2026-01-01');
+        $this->assertEqualsWithDelta(2500, (float) $this->item()->calculation_breakdown['base_salary'], 0.01);
     }
 
     public function test_days_before_the_start_date_and_the_switch_off_pay_as_before(): void

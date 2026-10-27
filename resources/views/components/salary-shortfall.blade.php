@@ -8,10 +8,11 @@
 
     @if($s['late'])
         <div class="wl-block">
-            <div class="wl-row wl-title"><span>Came after the late check-in time — paid only for the hours worked<small>{{ count($s['late']) }} {{ count($s['late']) === 1 ? 'day' : 'days' }}</small></span><b class="wl-neg">−{{ $rs($s['late_cut']) }}</b></div>
+            @php($leaveRows = collect($s['late'])->whereNotNull('leave')->count())
+            <div class="wl-row wl-title"><span>{{ $leaveRows === count($s['late']) ? 'Half-day leave — paid only for the hours worked' : ($leaveRows ? 'Paid only for the hours worked (late check-in or half-day leave)' : 'Came after the late check-in time — paid only for the hours worked') }}<small>{{ count($s['late']) }} {{ count($s['late']) === 1 ? 'day' : 'days' }}</small></span><b class="wl-neg">−{{ $rs($s['late_cut']) }}</b></div>
             <div class="table-wrap"><table class="wl-table">
                 <thead><tr><th>Date</th><th>Came in</th><th>Worked</th><th class="num">Paid</th><th class="num">Not paid</th></tr></thead>
-                <tbody>@foreach($s['late'] as $l)<tr><td class="nowrap">{{ $l['day'] }}, {{ $l['date'] }}</td><td class="nowrap">{{ $l['in'] }}</td><td class="nowrap">{{ $l['worked'] }} <span class="muted">of {{ $l['of'] }}</span></td><td class="num">{{ $rs($l['paid']) }}</td><td class="num wl-neg">−{{ $rs($l['cut']) }}<small>{{ $l['short'] }} short</small></td></tr>@endforeach</tbody>
+                <tbody>@foreach($s['late'] as $l)<tr><td class="nowrap">{{ $l['day'] }}, {{ $l['date'] }}</td><td class="nowrap">{{ $l['in'] }}@if(! empty($l['leave']))<small>{{ $l['leave'] }}</small>@endif</td><td class="nowrap">{{ $l['worked'] }} <span class="muted">of {{ $l['of'] }}</span></td><td class="num">{{ $rs($l['paid']) }}</td><td class="num wl-neg">−{{ $rs($l['cut']) }}<small>{{ $l['short'] }} short</small></td></tr>@endforeach</tbody>
             </table></div>
         </div>
     @endif

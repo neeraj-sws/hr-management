@@ -236,6 +236,7 @@
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="halfDayPay"> <span><strong>Half day pays half a day</strong> <span class="muted small">— a day marked "Half day" in attendance (check-in to check-out less breaks below the half-day limit in Work hours &amp; attendance; idle and meetings are not taken off) is paid as ½ day. An approved paid half-day or short leave that day keeps it a full day. Untick to pay every day present in full, as before.</span></span></label>
                 <x-field label="Half-day pay applies from" name="halfDayPayFrom" hint="also for the late check-in rule below · days before this date are paid as before · approved or locked payroll never changes"><input type="date" wire:model="halfDayPayFrom"></x-field>
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="lateCheckinPay"> <span><strong>Late check-in: pay by hours at work</strong> <span class="muted small">— checking in after the time below, that day is paid as hours at work ÷ the working day (at most one day) instead of a full or half day. Hours at work = check-out − check-in − breaks taken; idle and meetings are not taken off. Attendance still shows Late / Half day as usual. Not for afternoon / night shifts that start after this time.</span></span></label>
+                <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="halfLeaveHoursOnly"> <span><strong>Approved half-day / short leave: pay only the hours worked</strong> <span class="muted small">— on a day with an approved half-day or short leave, only the hours actually at work are paid (hours at work ÷ the working day), whatever the leave type. Not at work at all that day = not paid. Untick: a paid half-day leave makes the day a full day, as before.</span></span></label>
                 <x-field label="Late check-in after" name="lateCheckinAfter" hint="e.g. 12:00 — check-in at 12:01 or later"><input type="time" wire:model="lateCheckinAfter"></x-field>
                 <label class="check"><input type="checkbox" wire:model="shortHoursDeduction"> Deduct short hours: on days present, time worked below the employee's working day is deducted at the hourly rate</label>
                 <x-field label="Short-hours grace per month (hours)" name="shortHoursGrace" hint="not deducted"><input type="number" step="0.25" min="0" max="200" wire:model="shortHoursGrace"></x-field>
@@ -281,7 +282,11 @@
                 </dl>
                 <form class="stack" wire:submit="saveEmail">
                     <label class="check"><input type="checkbox" wire:model="emailEnabled"> Send e-mail notifications (in-app notifications are always on)</label>
-                    <x-field label="End-of-day summary also to" name="dailySummaryTo" hint="every person's 8:30 PM daily summary is also e-mailed here (besides the person and their manager) · several addresses: separate with commas · blank = nobody else" full><input type="text" wire:model="dailySummaryTo" placeholder="e.g. swstask@gmail.com"></x-field>
+                    <div class="field"><span class="label">End-of-day summary (8:30 PM) goes to</span>
+                        <label class="check"><input type="checkbox" wire:model="dailySummaryPerson"> The employee</label>
+                        <label class="check"><input type="checkbox" wire:model="dailySummaryManager"> Their manager</label>
+                    </div>
+                    <x-field label="End-of-day summary also to" name="dailySummaryTo" hint="every person's 8:30 PM daily summary is e-mailed here too · several addresses: separate with commas · blank = nobody else" full><input type="text" wire:model="dailySummaryTo" placeholder="e.g. swstask@gmail.com"></x-field>
                     <div><button class="btn btn-primary">Save</button></div>
                 </form>
                 <form class="toolbar" wire:submit="sendTestEmail">

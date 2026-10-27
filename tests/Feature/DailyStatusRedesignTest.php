@@ -115,7 +115,16 @@ class DailyStatusRedesignTest extends TestCase
         $extra = collect(\Illuminate\Support\Facades\Notification::sentNotifications()[\App\Support\MailRecipient::class] ?? [])->flatten(2);
         $this->assertGreaterThan(0, $statuses);
         $this->assertCount($statuses, $extra, 'One copy of every summary to swstask@gmail.com');
-        $this->assertStringContainsString('and to swstask@gmail.com', collect(\App\Support\Instructions::sections())->firstWhere('key', 'work')['items'][1][1]);
+        $this->assertStringContainsString('is e-mailed to you, your manager and swstask@gmail.com.', collect(\App\Support\Instructions::sections())->firstWhere('key', 'work')['items'][1][1]);
+
+        // Only to swstask@gmail.com: the employee and the manager unticked.
+        Livewire::actingAs($this->admin)->test(\App\Livewire\System\Settings::class)->set('tab', 'email')
+            ->set('dailySummaryPerson', false)->set('dailySummaryManager', false)->call('saveEmail')->assertHasNoErrors();
+        \Illuminate\Support\Facades\Notification::fake();
+        $this->artisan('work:daily-status-summary')->assertSuccessful();
+        $sent = \Illuminate\Support\Facades\Notification::sentNotifications();
+        $this->assertSame([\App\Support\MailRecipient::class], array_keys($sent), 'Nobody but swstask@gmail.com');
+        $this->assertStringContainsString('is e-mailed to swstask@gmail.com.', collect(\App\Support\Instructions::sections())->firstWhere('key', 'work')['items'][1][1]);
     }
 
     public function test_daily_status_reminder_pops_up_on_the_website(): void

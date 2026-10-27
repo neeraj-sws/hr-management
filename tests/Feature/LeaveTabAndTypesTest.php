@@ -76,7 +76,7 @@ class LeaveTabAndTypesTest extends TestCase
         // A planned half-day leave with work that day: not "worked on leave", not a "half day"; says which leave.
         $day21 = app(AttendanceService::class)->days($this->employee, Carbon::parse('2026-10-21'), Carbon::parse('2026-10-21'))->first();
         $this->assertNotContains($day21['status'], ['leave_conflict', 'half_day']);
-        $this->assertSame('Half-day leave · Casual Leave (paid)', $day21['label']);
+        $this->assertSame('Half-day leave · Casual Leave · paid for hours worked', $day21['label']);
 
         // HR records 22 Oct as paid leave: approved at once, the day is on leave, no "needs review" message.
         $page->call('openRecordLeave', '2026-10-22')->set('recordTypeId', $casual->id)->set('recordDuration', 'full')->set('recordNote', 'Informed HR on phone: fever')->call('recordLeave')->assertHasNoErrors();

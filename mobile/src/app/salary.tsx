@@ -152,11 +152,11 @@ function WhyLess({ s }: { s: Shortfall }) {
       <WhyRow label={s.full_label} note={`${rupees(s.rate)} a day${s.hourly ? ` · ${s.day_hours} a day = ${rupees(s.hourly)} an hour` : ''}`} amount={rupees(s.full)} />
       {s.late.length ? (
         <View style={styles.whyBlock}>
-          <WhyRow label="Came after the late check-in time — paid only for the hours worked" note={`${s.late.length} ${s.late.length === 1 ? 'day' : 'days'}`} amount={`−${rupees(s.late_cut)}`} negative />
+          <WhyRow label={s.late.every((l) => l.leave) ? 'Half-day leave — paid only for the hours worked' : s.late.some((l) => l.leave) ? 'Paid only for the hours worked (late check-in or half-day leave)' : 'Came after the late check-in time — paid only for the hours worked'} note={`${s.late.length} ${s.late.length === 1 ? 'day' : 'days'}`} amount={`−${rupees(s.late_cut)}`} negative />
           {s.late.map((l) => (
             <View key={l.date} style={styles.whyLate}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.whyLateDate}>{l.day}, {l.date} · came {l.in}</Text>
+                <Text style={styles.whyLateDate}>{l.day}, {l.date} · came {l.in}{l.leave ? ` · ${l.leave}` : ''}</Text>
                 <Text style={styles.whyNote}>Worked {l.worked} of {l.of} · paid {rupees(l.paid)}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>

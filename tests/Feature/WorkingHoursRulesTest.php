@@ -112,7 +112,7 @@ class WorkingHoursRulesTest extends TestCase
         $this->assertSame(9.0, (float) $item->present_days, 'Attendance count separate: 9 days present');
     }
 
-    public function test_afternoon_shift_and_paid_half_day_leave_are_not_paid_by_hours(): void
+    public function test_afternoon_shift_is_not_paid_by_hours_and_half_day_leave_pays_hours_worked(): void
     {
         $afternoon = $this->person('WH-2', '14:00', '22:30');
         $this->day($afternoon, '2026-10-05', '14:05', '22:30', 30);
@@ -124,8 +124,9 @@ class WorkingHoursRulesTest extends TestCase
         $items = $this->payroll();
         $this->assertSame([], $items->get($afternoon->id)->calculation_breakdown['hours_paid_days'], 'Own day starts after 12:00: normal day');
         $this->assertEqualsWithDelta(1020, (float) $items->get($afternoon->id)->calculation_breakdown['base_salary'], 0.01);
-        $this->assertSame([], $items->get($leaveTaker->id)->calculation_breakdown['hours_paid_days'], 'Approved paid half-day leave covers the morning');
-        $this->assertEqualsWithDelta(1020, (float) $items->get($leaveTaker->id)->calculation_breakdown['base_salary'], 0.01);
+        // Approved half-day leave (morning off), at work 2:00–7:00 PM = 5 h of 8 h 30 m: only those hours are paid.
+        $this->assertSame(['2026-10-05'], array_keys($items->get($leaveTaker->id)->calculation_breakdown['hours_paid_days']));
+        $this->assertEqualsWithDelta(1020 * 0.5882, (float) $items->get($leaveTaker->id)->calculation_breakdown['base_salary'], 0.01);
     }
 
     public function test_late_check_in_rule_can_be_switched_off_or_moved(): void
@@ -153,7 +154,7 @@ class WorkingHoursRulesTest extends TestCase
         $this->assertSame(22.0, (float) $s['working']);
         $this->assertEqualsWithDelta(22 * 1020, $s['full'], 0.01);
         // Late check-in in hours and rupees, never as a fraction of a day: 6h 30m of 8h 30m, ₹780 paid, ₹240 not paid.
-        $this->assertSame([['date' => '09 Oct', 'day' => 'Fri', 'in' => '12:30 PM', 'worked' => '6h 30m', 'of' => '8h 30m', 'short' => '2h 00m', 'paid' => 779.99, 'cut' => 240.01]], $s['late']);
+        $this->assertSame([['date' => '09 Oct', 'day' => 'Fri', 'in' => '12:30 PM', 'leave' => null, 'worked' => '6h 30m', 'of' => '8h 30m', 'short' => '2h 00m', 'paid' => 779.99, 'cut' => 240.01]], $s['late']);
         $this->assertSame(120.0, $s['hourly'], '₹1,020 a day ÷ 8h 30m');
         $labels = array_column($s['lines'], 'label');
         $this->assertSame(['Half day — 07 Oct', 'Absent, no leave — 12 days', 'Days still to come — 5 days'], $labels);

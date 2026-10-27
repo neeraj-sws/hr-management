@@ -364,12 +364,20 @@ class HrWorkflowService
         $leaveRequests = LeaveRequest::with('leaveType')->where('employee_id',$employee->id)->where('status','approved')->whereDate('starts_on','<=',$end)->whereDate('ends_on','>=',$start)->get();
         $conflictRule = (string) ($this->policyConfiguration($employee, 'attendance.rules', $endDate->toDateString(), [])['leave_conflict'] ?? 'attendance');
         $resolved = \App\Models\LeaveConflictResolution::where('employee_id',$employee->id)->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->get()->mapWithKeys(fn ($r) => [$r->work_date->toDateString() => $r->resolution])->all();
+        // Approved half-day / short leave (Settings > Payroll, on by default, from the half-day pay date): only the
+        // hours actually worked that day are paid, whatever the leave type; the leave itself is not paid.
+        $partLeaveHoursOnly = (bool) ($payrollPolicy['half_leave_hours_only'] ?? true);
+        $partLeaveFrom = (string) ($payrollPolicy['half_day_pay_from'] ?? self::HALF_DAY_PAY_FROM);
         foreach ($leaveRequests as $leave) {
             $from = max($startDate->toDateString(), $leave->starts_on->toDateString());
             $to = min($endDate->toDateString(), $leave->ends_on->toDateString());
             for ($day = now()->parse($from); $day->lte(now()->parse($to)); $day->addDay()) {
                 if (! $this->isConfiguredWorkday($day->toDateString(),$calendar)) continue;
                 $date = $day->toDateString();
+                if ($partLeaveHoursOnly && $leave->duration !== 'full' && $date >= $partLeaveFrom) {
+                    if (! isset($presentSet[$date])) $unpaidLeaveSet[$date] = true; // not at work at all: nothing to pay
+                    continue; // at work: paid for the hours worked (below)
+                }
                 if (isset($presentSet[$date])) {
                     // Worked on a leave day. HR may decide per day (Leave conflicts): "worked" = a normal working day
                     // (the leave is not taken), "leave" = the leave counts and the work is ignored. Otherwise a full-day
@@ -405,9 +413,20 @@ class HrWorkflowService
             $halfRules = app(AttendanceService::class);
             $halfSessions = AttendanceSession::with('employee')->where('employee_id', $employee->id)->whereDate('work_date', '>=', max($start, $halfDayFrom))->whereDate('work_date', '<=', $end)->get()->keyBy(fn ($s) => $s->work_date->toDateString());
             $paidPartLeave = $leaveRequests->filter(fn ($l) => in_array($l->duration, ['half', 'short'], true) && $l->leaveType?->paid)->mapWithKeys(fn ($l) => [$l->starts_on->toDateString() => true])->all();
+            $partLeaveOn = $leaveRequests->filter(fn ($l) => in_array($l->duration, ['half', 'short'], true))->mapWithKeys(fn ($l) => [$l->starts_on->toDateString() => $l])->all();
             foreach (array_keys($presentSet) as $date) {
-                if ($date < $halfDayFrom || isset($paidPartLeave[$date])) continue;
                 $daySession = $halfSessions->get($date);
+                if ($partLeaveHoursOnly && isset($partLeaveOn[$date]) && $date >= $partLeaveFrom) {
+                    // Approved half-day / short leave and some work: paid for the hours worked only.
+                    if ($daySession && $daySession->check_in && $daySession->check_out) {
+                        $net = (int) $halfRules->officeSeconds($daySession);
+                        $standard = max(1, (int) round($halfRules->dailyHours($employee, $date) * 3600));
+                        $hoursPaidSet[$date] = ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'standard' => $standard, 'check_in' => $daySession->check_in->format('H:i'),
+                            'leave' => ($partLeaveOn[$date]->duration === 'half' ? 'Half-day leave' : 'Short leave').' · '.($partLeaveOn[$date]->leaveType?->name ?? 'Leave')];
+                    }
+                    continue;
+                }
+                if ($date < $halfDayFrom || isset($paidPartLeave[$date])) continue;
                 if (! $daySession) continue;
                 if ($lateHoursPay && ($late = $this->lateCheckInPay($employee, $daySession, $lateAfter, $calendar))) {
                     $hoursPaidSet[$date] = $late;

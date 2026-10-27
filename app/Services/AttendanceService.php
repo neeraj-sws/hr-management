@@ -775,7 +775,7 @@ class AttendanceService
             };
             $halfHoliday = $workday ? \App\Support\WorkCalendar::halfDayHoliday($calendar, $date) : null;
             $label = match (true) {
-                $partLeave => ($leaveToday->duration === 'half' ? 'Half-day leave' : 'Short leave').' · '.($leaveToday->leaveType?->name ?? 'Leave').($leaveToday->leaveType?->paid ? ' (paid)' : ' (unpaid)'),
+                $partLeave => ($leaveToday->duration === 'half' ? 'Half-day leave' : 'Short leave').' · '.($leaveToday->leaveType?->name ?? 'Leave').' · paid for hours worked',
                 $mark !== null => $mark->label,
                 $halfHoliday !== null && in_array($status, ['present', 'late', 'absent', 'upcoming'], true) => 'Half-day holiday ('.$halfHoliday['name'].') · closes '.Carbon::parse($halfHoliday['closes_at'])->format('g:i A'),
                 $status === 'on_leave' => $leaveToday?->leaveType?->name,

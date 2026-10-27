@@ -71,6 +71,8 @@ class Settings extends Component
     public bool $emailEnabled = true;
     /** Settings > E-mail: also send every end-of-day summary to these addresses (comma-separated). */
     public string $dailySummaryTo = '';
+    public bool $dailySummaryPerson = true;
+    public bool $dailySummaryManager = true;
     public string $testEmail = '';
 
     // Offboarding correction window
@@ -123,6 +125,8 @@ class Settings extends Component
     public string $halfDayPayFrom = \App\Services\HrWorkflowService::HALF_DAY_PAY_FROM;
     /** Check-in after this time: that day is paid by the hours at work. */
     public bool $lateCheckinPay = true;
+    /** Approved half-day / short leave: only the hours worked that day are paid. */
+    public bool $halfLeaveHoursOnly = true;
     public string $lateCheckinAfter = '12:00';
     /** Work on a weekly off / 3rd Saturday / holiday / full-day leave is paid as extra working, automatically. */
     public bool $extraWorkAuto = true;
@@ -169,7 +173,7 @@ class Settings extends Component
         $this->fill([
             'offWeeks' => \App\Support\WorkCalendar::offWeeksForForm((array) ($calendar['off_weeks'] ?? [])),
             'shifts' => array_values((array) ($calendar['shifts'] ?? [])),
-            'emailEnabled' => (bool) ($email['enabled'] ?? true), 'dailySummaryTo' => (string) ($email['daily_summary_to'] ?? ''),
+            'emailEnabled' => (bool) ($email['enabled'] ?? true), 'dailySummaryTo' => (string) ($email['daily_summary_to'] ?? ''), 'dailySummaryPerson' => (bool) ($email['daily_summary_person'] ?? true), 'dailySummaryManager' => (bool) ($email['daily_summary_manager'] ?? true),
             'testEmail' => (string) $this->user()->email,
             'twoFactorMode' => app(\App\Services\TwoFactorService::class)->settings()['mode'],
             'webAccessMode' => ($web = app(\App\Services\WebAccessService::class)->settings())['mode'],
@@ -197,7 +201,7 @@ class Settings extends Component
             'graceMinutes' => (string) ($rules['grace_minutes'] ?? 0), 'halfDayHours' => (string) ($rules['half_day_hours'] ?? 4),
             'otEnabled' => (bool) ($ot['enabled'] ?? true), 'otMultiplier' => (string) ($ot['multiplier'] ?? ''), 'otMaxPerDay' => (string) ($ot['max_minutes_per_day'] ?? ''), 'otHolidayMultiplier' => (string) ($ot['holiday_multiplier'] ?? ''), 'otMaxPerMonthHours' => isset($ot['max_minutes_per_month']) ? (string) round($ot['max_minutes_per_month'] / 60, 2) : '',
             'workingDaysPerMonth' => (string) ($payroll['working_days_per_month'] ?? 22),
-            'attendanceProration' => (bool) ($payroll['attendance_proration'] ?? true), 'includePaidLeave' => (bool) ($payroll['include_paid_leave'] ?? true), 'shortHoursDeduction' => (bool) ($payroll['short_hours_deduction'] ?? false), 'halfDayPay' => (bool) ($payroll['half_day_pay'] ?? true), 'halfDayPayFrom' => (string) ($payroll['half_day_pay_from'] ?? \App\Services\HrWorkflowService::HALF_DAY_PAY_FROM), 'lateCheckinPay' => (bool) ($payroll['late_checkin_hours_pay'] ?? true), 'lateCheckinAfter' => (string) ($payroll['late_checkin_after'] ?? '12:00'), 'extraWorkAuto' => (bool) ($payroll['extra_work_auto'] ?? true), 'salaryDivisor' => ($payroll['divisor'] ?? 'fixed') === 'calendar' ? 'calendar' : 'fixed', 'shortHoursGrace' => (string) ($payroll['short_hours_grace'] ?? 0), 'hourlyRateHours' => isset($payroll['hourly_rate_hours']) ? (string) (float) $payroll['hourly_rate_hours'] : '',
+            'attendanceProration' => (bool) ($payroll['attendance_proration'] ?? true), 'includePaidLeave' => (bool) ($payroll['include_paid_leave'] ?? true), 'shortHoursDeduction' => (bool) ($payroll['short_hours_deduction'] ?? false), 'halfDayPay' => (bool) ($payroll['half_day_pay'] ?? true), 'halfDayPayFrom' => (string) ($payroll['half_day_pay_from'] ?? \App\Services\HrWorkflowService::HALF_DAY_PAY_FROM), 'lateCheckinPay' => (bool) ($payroll['late_checkin_hours_pay'] ?? true), 'halfLeaveHoursOnly' => (bool) ($payroll['half_leave_hours_only'] ?? true), 'lateCheckinAfter' => (string) ($payroll['late_checkin_after'] ?? '12:00'), 'extraWorkAuto' => (bool) ($payroll['extra_work_auto'] ?? true), 'salaryDivisor' => ($payroll['divisor'] ?? 'fixed') === 'calendar' ? 'calendar' : 'fixed', 'shortHoursGrace' => (string) ($payroll['short_hours_grace'] ?? 0), 'hourlyRateHours' => isset($payroll['hourly_rate_hours']) ? (string) (float) $payroll['hourly_rate_hours'] : '',
             'advanceLeaveMax' => (string) ($advance['max_days'] ?? 5),
             'encashmentEnabled' => (bool) ($settlement['leave_encashment_enabled'] ?? false), 'encashmentRate' => (string) ($settlement['rate_per_day'] ?? 0),
             'statutoryJson' => json_encode($statutory['components'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
@@ -549,7 +553,7 @@ class Settings extends Component
             return;
         }
         $this->dailySummaryTo = $addresses->join(', ');
-        $people->setPolicy('notifications.email', 'notifications', 'E-mail notifications', ['enabled' => $this->emailEnabled, 'daily_summary_to' => $this->dailySummaryTo], null, auth()->id(), today()->toDateString());
+        $people->setPolicy('notifications.email', 'notifications', 'E-mail notifications', ['enabled' => $this->emailEnabled, 'daily_summary_to' => $this->dailySummaryTo, 'daily_summary_person' => $this->dailySummaryPerson, 'daily_summary_manager' => $this->dailySummaryManager], null, auth()->id(), today()->toDateString());
         $this->toast($this->emailEnabled ? 'E-mail notifications are on.' : 'E-mail notifications are off; people still get in-app notifications.');
     }
 
@@ -608,7 +612,7 @@ class Settings extends Component
         $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0'], 'hourlyRateHours' => ['nullable', 'numeric', 'gt:0', 'max:24'], 'halfDayPayFrom' => ['required', 'date'], 'lateCheckinAfter' => ['required', 'date_format:H:i']], [], ['halfDayPayFrom' => 'half-day pay start date', 'lateCheckinAfter' => 'late check-in time']);
         $ot = array_filter(['multiplier' => $this->otMultiplier === '' ? null : (float) $this->otMultiplier, 'max_minutes_per_day' => $this->otMaxPerDay === '' ? null : (int) $this->otMaxPerDay, 'holiday_multiplier' => $this->otHolidayMultiplier === '' ? null : (float) $this->otHolidayMultiplier, 'max_minutes_per_month' => $this->otMaxPerMonthHours === '' ? null : (int) round((float) $this->otMaxPerMonthHours * 60)], fn ($v) => $v !== null);
         $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['enabled' => $this->otEnabled, ...$ot], null, auth()->id(), today()->toDateString());
-        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'half_day_pay' => $this->halfDayPay, 'half_day_pay_from' => \Illuminate\Support\Carbon::parse($this->halfDayPayFrom)->toDateString(), 'late_checkin_hours_pay' => $this->lateCheckinPay, 'late_checkin_after' => $this->lateCheckinAfter, 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace, ...($this->hourlyRateHours !== '' ? ['hourly_rate_hours' => (float) $this->hourlyRateHours] : [])], null, auth()->id(), today()->toDateString());
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'half_day_pay' => $this->halfDayPay, 'half_day_pay_from' => \Illuminate\Support\Carbon::parse($this->halfDayPayFrom)->toDateString(), 'late_checkin_hours_pay' => $this->lateCheckinPay, 'half_leave_hours_only' => $this->halfLeaveHoursOnly, 'late_checkin_after' => $this->lateCheckinAfter, 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace, ...($this->hourlyRateHours !== '' ? ['hourly_rate_hours' => (float) $this->hourlyRateHours] : [])], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.advance_limit', 'leave', 'Advance leave limit', ['max_days' => (float) $this->advanceLeaveMax], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.final_settlement', 'leave', 'Final settlement leave encashment', ['leave_encashment_enabled' => $this->encashmentEnabled, 'rate_per_day' => (float) $this->encashmentRate], null, auth()->id(), today()->toDateString());
         $this->toast($this->otEnabled ? 'Payroll, overtime and leave policies saved.' : 'Payroll and leave policies saved.');
