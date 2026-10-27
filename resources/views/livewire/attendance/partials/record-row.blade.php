@@ -32,6 +32,7 @@
         @else
             <span class="muted small" title="Idle and screen time come from the SWS HR desktop app; it has not reported for this day">no desktop app</span>
         @endif
+        <button type="button" class="ar-activity" wire:click="openDetail({{ $s->id }}, 'timeline')">@php($activityCount = $s->activity_count ?? $s->events()->whereIn('event_type', ['screen_state', 'break_start', 'away_worked'])->count())View activity{{ $activityCount ? ' ('.$activityCount.')' : '' }}</button>
     </td>
     <td data-col="late" data-label="Late by" @class(['num', 'ar-red' => $late])>{{ $late ? \App\Support\Duration::fromMinutes($late) : '—' }}</td>
     <td data-col="source" data-label="Source" class="small">{{ $s->device?->computer_name ? 'Desktop' : 'Web / mobile' }}@if($s->device?->computer_name)<small class="muted">{{ $s->device->computer_name }}</small>@endif</td>

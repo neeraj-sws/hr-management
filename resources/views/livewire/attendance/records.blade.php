@@ -130,70 +130,122 @@
         @endif
     </section>
 
-    {{-- View details: everything about one day's attendance, incl. the full screen-time activity. --}}
-    @if($detailSession)
+    {{-- Screen activity details: a right-side panel with the day's timeline, apps and websites, screenshots and check-in details. --}}
+    @if($detailSession && $activity)
         @php($d = $detailSession)
         @php($f = $attendance->liveFigures($d))
+        @php($t = $f['screen'] ?? ['active' => 0, 'idle' => 0, 'meeting' => 0, 'corrected' => 0, 'untracked' => 0])
+        @php($tTotal = $t['active'] + $t['idle'] + $t['meeting'] + $t['corrected'])
+        @php($icons = ['work' => ['monitor', 'sa-green'], 'meeting' => ['message', 'sa-blue'], 'idle' => ['alert', 'sa-red'], 'break' => ['coffee', 'sa-amber'], 'away_work' => ['user', 'sa-blue'], 'untracked' => ['clock', 'sa-gray']])
         <div class="ds-drawer-backdrop" wire:click.self="closeDetail" wire:keydown.escape.window="closeDetail">
-            <aside class="ds-drawer ar-drawer" role="dialog" aria-modal="true" aria-label="Attendance of {{ $d->employee?->name }}" x-data="swsLive(@js($f))">
-                <header class="ds-drawer-head">
-                    <div class="ds-drawer-who">
+            <aside class="ds-drawer sa-panel" role="dialog" aria-modal="true" aria-label="Screen activity of {{ $d->employee?->name }}" x-data="swsLive(@js($f))">
+                <header class="sa-head">
+                    <div class="sa-title"><h2>Screen activity details</h2><button type="button" class="btn btn-sm btn-ghost" wire:click="closeDetail" aria-label="Close"><x-icon name="x" class="icon-sm" /></button></div>
+                    <div class="sa-who">
                         <x-avatar :employee="$d->employee" size="lg" />
-                        <div><h2>{{ $d->employee?->name }}</h2><p>{{ collect([$d->employee?->designation, $d->employee?->department?->name, $d->employee?->employee_code])->filter()->join(' · ') }}</p>
-                            <p class="ar-drawer-date">{{ $d->work_date->format('l, d M Y') }} · <x-badge :status="$attendance->isHalfDay($d) ? 'half_day' : ($attendance->isLate($d) ? 'late' : $d->status)" /></p></div>
+                        <div class="sa-who-text"><strong>{{ $d->employee?->name }}</strong><span>{{ collect([$d->employee?->department?->name, $d->employee?->employee_code])->filter()->join(' · ') }}</span></div>
+                        <div class="sa-day">
+                            <span>{{ $d->work_date->format('d M Y') }} <small>({{ $d->work_date->format('D') }})</small></span>
+                            <button type="button" class="sa-nav" @if($activity['prev']) wire:click="openDetail({{ $activity['prev'] }})" @else disabled @endif aria-label="Previous day"><x-icon name="chevron-left" class="icon-sm" /></button>
+                            <button type="button" class="sa-nav" @if($activity['next']) wire:click="openDetail({{ $activity['next'] }})" @else disabled @endif aria-label="Next day"><x-icon name="chevron-right" class="icon-sm" /></button>
+                        </div>
                     </div>
-                    <div class="ds-drawer-nav"><button type="button" class="btn btn-sm" wire:click="closeDetail" aria-label="Close"><x-icon name="x" class="icon-sm" /></button></div>
+                    <nav class="sa-tabs" role="tablist">
+                        @foreach(['timeline' => 'Timeline', 'apps' => 'Apps & Websites', 'screenshots' => 'Screenshots', 'details' => 'Day details'] as $key => $label)
+                            <button type="button" role="tab" @class(['sa-tab', 'on' => $detailTab === $key]) wire:click="$set('detailTab', '{{ $key }}')">{{ $label }}@if($key === 'screenshots' && $activity['shots']->count()) <small>{{ $activity['shots']->count() }}</small>@endif</button>
+                        @endforeach
+                    </nav>
                 </header>
-                <div class="ar-drawer-body">
-                    <div class="ar-tiles">
-                        <div><span>Worked</span><strong x-text="hms(v.worked)">@hms($f['worked'])</strong>@if($d->check_out)<small>at work @hms($attendance->officeSeconds($d))</small>@endif</div>
-                        <div><span>Idle</span><strong x-text="hms(v.idle)">@hms($f['idle'])</strong>@if(! ($f['idle_deducted'] ?? true))<small>field / mobile: not taken off</small>@endif</div>
-                        <div><span>Break</span><strong x-text="hms(v.brk)">@hms($f['break'])</strong></div>
-                        <div><span>Late by</span><strong @class(['ar-red' => $attendance->lateMinutes($d)])>{{ $attendance->lateMinutes($d) ? \App\Support\Duration::fromMinutes($attendance->lateMinutes($d)) : '—' }}</strong></div>
+
+                <div class="sa-body">
+                    <div class="sa-tiles">
+                        <div class="sa-tile sa-t-blue"><span>Total in use</span><strong x-text="hms(v.active)">@hms($t['active'])</strong></div>
+                        <div class="sa-tile sa-t-gray"><span>Meetings</span><strong x-text="hms(v.meeting)">@hms($t['meeting'])</strong></div>
+                        <div class="sa-tile sa-t-amber"><span>Idle time</span><strong x-text="hms(v.sIdle)">@hms($t['idle'])</strong></div>
+                        <div class="sa-tile sa-t-violet"><span>Active</span><strong>@if($tTotal > 0)<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $tTotal) }}</span>%@else — @endif</strong></div>
                     </div>
 
-                    <section class="ar-box">
-                        <h3>Check-in &amp; check-out</h3>
-                        <dl class="kv">
-                            <dt>Check-in</dt><dd><strong>{{ $d->check_in?->format('h:i A') ?? '—' }}</strong>@if($d->check_in_photo_path) · <a href="{{ route('attendance.photo', [$d, 'in']) }}" target="_blank" rel="noopener">selfie</a>@endif
-                                @if($d->check_in_latitude !== null)<small>{{ $d->checkInOffice ? 'at '.$d->checkInOffice->name : ($d->check_in_distance_meters !== null ? number_format($d->check_in_distance_meters).' m from office' : 'location shared') }} ({{ $d->check_in_latitude }}, {{ $d->check_in_longitude }})</small>@endif
-                                @if($d->check_in_ip)<small class="muted">IP {{ $d->check_in_ip }}</small>@endif</dd>
-                            <dt>Check-out</dt><dd><strong>{{ $d->check_out?->format('h:i A') ?? '—' }}</strong>@if($d->check_out_photo_path) · <a href="{{ route('attendance.photo', [$d, 'out']) }}" target="_blank" rel="noopener">selfie</a>@endif
-                                @if($d->autoCheckedOut())<small>auto check-out (left the computer after the shift)</small>@endif
-                                @if($d->check_out_latitude !== null)<small>{{ $d->checkOutOffice ? 'at '.$d->checkOutOffice->name : ($d->check_out_distance_meters !== null ? number_format($d->check_out_distance_meters).' m from office' : 'location shared') }} ({{ $d->check_out_latitude }}, {{ $d->check_out_longitude }})</small>@endif
-                                @if($d->check_out_ip)<small class="muted">IP {{ $d->check_out_ip }}</small>@endif</dd>
-                            <dt>In–out</dt><dd x-text="hms(v.inOut)">@hms($f['in_out'])</dd>
-                            <dt>Source</dt><dd>{{ $d->device?->computer_name ? 'Desktop · '.$d->device->computer_name : 'Web / mobile' }}</dd>
-                            <dt>Session</dt><dd>{{ str_replace('_', ' ', ucfirst($d->status)) }}</dd>
-                        </dl>
-                    </section>
-
-                    <section class="ar-box">
-                        <h3>Screen time (desktop app)</h3>
-                        <div class="ar-screen-full">@include('livewire.attendance.partials.screen-time', ['s' => $d, 'f' => $f])</div>
-                    </section>
-
-                    @php($labels = ['check_in' => 'Checked in', 'check_out' => 'Checked out', 'auto_check_out' => 'Checked out automatically', 'break_start' => 'Break started', 'break_end' => 'Back from break', 'away' => 'Away from the computer', 'away_worked' => 'Away, but working', 'idle' => 'Idle', 'meeting' => 'In a meeting', 'correction' => 'Attendance corrected'])
-                    @php($events = $d->events->whereIn('event_type', array_keys($labels))->values())
-                    <section class="ar-box">
-                        <h3>Activity ({{ $events->count() }})</h3>
-                        @if($events->isEmpty())
-                            <p class="small muted">No activity recorded for this day.</p>
+                    @if($detailTab === 'timeline')
+                        @if(! $activity['timeline'])
+                            <x-empty title="No activity recorded for this day" icon="clock" />
                         @else
-                            <ol class="ar-timeline">
-                                @foreach($events->take(80) as $ev)
-                                    <li class="ar-ev ar-ev-{{ $ev->event_type }}"><time>{{ $ev->event_time?->format('h:i A') }}</time>
-                                        <div><strong>{{ $labels[$ev->event_type] }}</strong>@if($ev->duration_seconds)<small>@hms($ev->duration_seconds)</small>@endif @if($ev->metadata['note'] ?? null)<small>{{ $ev->metadata['note'] }}</small>@endif @if($ev->metadata['reason'] ?? null)<small>{{ $ev->metadata['reason'] }}</small>@endif</div></li>
+                            <ol class="sa-timeline">
+                                @foreach($activity['timeline'] as $seg)
+                                    @php([$icon, $tone] = $icons[$seg['kind']] ?? ['clock', 'sa-gray'])
+                                    <li class="sa-seg {{ $tone }}">
+                                        <span class="sa-dot"></span>
+                                        <span class="sa-ico"><x-icon :name="$icon" class="icon-sm" /></span>
+                                        <div class="sa-seg-text"><small>{{ $seg['start']->format('h:i A') }} – {{ $seg['end']->format('h:i A') }}</small><strong>{{ $seg['kind'] === 'away_work' && $seg['note'] ? 'Working away: '.$seg['note'] : ($seg['kind'] === 'break' && $seg['note'] ? 'Break · '.$seg['note'] : $seg['label']) }}</strong></div>
+                                        <span class="sa-dur">@hms($seg['seconds'])</span>
+                                    </li>
                                 @endforeach
                             </ol>
-                            @if($events->count() > 80)<p class="small muted">Showing the first 80 of {{ $events->count() }}.</p>@endif
+                            <p class="small muted sa-note">From the desktop app's in-use / idle / meeting changes, breaks and "I was working" answers. Which apps were used is under Apps &amp; Websites.</p>
                         @endif
-                    </section>
-
-                    <div class="ar-drawer-links">
-                        @if($d->employee)<a class="btn btn-sm" href="{{ route('people.employees.show', $d->employee) }}"><x-icon name="user" class="icon-sm" />Employee profile</a>
-                        <a class="btn btn-sm" href="{{ route('attendance.records', ['employee' => $d->employee_id, 'from' => $d->work_date->copy()->startOfMonth()->toDateString(), 'to' => $d->work_date->copy()->endOfMonth()->min(today())->toDateString()]) }}"><x-icon name="calendar" class="icon-sm" />Whole month</a>@endif
-                    </div>
+                    @elseif($detailTab === 'apps')
+                        @if(! $activity['canMonitor'])
+                            <x-empty title="Apps and websites are visible to people with monitoring access" icon="lock" />
+                        @elseif($activity['apps']->isEmpty())
+                            <x-empty title="No app usage recorded for this day" icon="monitor" />
+                            <p class="small muted sa-note">App usage is recorded only when it is turned on for this person (profile &gt; Settings &amp; monitoring) and the desktop app is running.</p>
+                        @else
+                            @php($appTotal = max(1, (int) $activity['apps']->sum('seconds')))
+                            <div class="sa-apps">
+                                @foreach($activity['apps'] as $app)
+                                    <div class="sa-app"><div class="sa-app-row"><strong>{{ $app->app_name }}</strong><span>@hms($app->seconds) · {{ round($app->seconds * 100 / $appTotal) }}%</span></div><div class="sa-bar"><i style="width: {{ max(2, round($app->seconds * 100 / $appTotal)) }}%"></i></div></div>
+                                @endforeach
+                            </div>
+                            @if($activity['titles']->isNotEmpty())
+                                <h3 class="sa-sub">Windows and websites</h3>
+                                <div class="sa-titles">
+                                    @foreach($activity['titles'] as $row)
+                                        <div class="sa-title-row"><div><strong>{{ $row->title }}</strong><small>{{ $row->app_name }}</small></div><span>@hms($row->seconds)</span></div>
+                                    @endforeach
+                                </div>
+                            @endif
+                        @endif
+                    @elseif($detailTab === 'screenshots')
+                        @if($activity['shots']->isEmpty())
+                            <x-empty title="No screenshots for this day" icon="image" />
+                            <p class="small muted sa-note">Screenshots are taken only when screen capture is on for this person and they accepted the notice in the desktop app.</p>
+                        @else
+                            <div class="sa-shots">
+                                @foreach($activity['shots'] as $shot)
+                                    <a class="sa-shot" href="{{ route('monitoring.screenshot', $shot) }}" target="_blank" rel="noopener"><img src="{{ route('monitoring.screenshot', $shot) }}" alt="Screenshot at {{ $shot->captured_at->format('h:i A') }}" loading="lazy"><span>{{ $shot->captured_at->format('h:i A') }}</span></a>
+                                @endforeach
+                            </div>
+                        @endif
+                    @else
+                        <div class="ar-tiles">
+                            <div><span>Worked</span><strong x-text="hms(v.worked)">@hms($f['worked'])</strong>@if($d->check_out)<small>at work @hms($attendance->officeSeconds($d))</small>@endif</div>
+                            <div><span>Idle</span><strong x-text="hms(v.idle)">@hms($f['idle'])</strong>@if(! ($f['idle_deducted'] ?? true))<small>field / mobile: not taken off</small>@endif</div>
+                            <div><span>Break</span><strong x-text="hms(v.brk)">@hms($f['break'])</strong></div>
+                            <div><span>Late by</span><strong @class(['ar-red' => $attendance->lateMinutes($d)])>{{ $attendance->lateMinutes($d) ? \App\Support\Duration::fromMinutes($attendance->lateMinutes($d)) : '—' }}</strong></div>
+                        </div>
+                        <section class="ar-box">
+                            <h3>Check-in &amp; check-out · <x-badge :status="$attendance->isHalfDay($d) ? 'half_day' : ($attendance->isLate($d) ? 'late' : $d->status)" /></h3>
+                            <dl class="kv">
+                                <dt>Check-in</dt><dd><strong>{{ $d->check_in?->format('h:i A') ?? '—' }}</strong>@if($d->check_in_photo_path) · <a href="{{ route('attendance.photo', [$d, 'in']) }}" target="_blank" rel="noopener">selfie</a>@endif
+                                    @if($d->check_in_latitude !== null)<small>{{ $d->checkInOffice ? 'at '.$d->checkInOffice->name : ($d->check_in_distance_meters !== null ? number_format($d->check_in_distance_meters).' m from office' : 'location shared') }} ({{ $d->check_in_latitude }}, {{ $d->check_in_longitude }})</small>@endif
+                                    @if($d->check_in_ip)<small class="muted">IP {{ $d->check_in_ip }}</small>@endif</dd>
+                                <dt>Check-out</dt><dd><strong>{{ $d->check_out?->format('h:i A') ?? '—' }}</strong>@if($d->check_out_photo_path) · <a href="{{ route('attendance.photo', [$d, 'out']) }}" target="_blank" rel="noopener">selfie</a>@endif
+                                    @if($d->autoCheckedOut())<small>auto check-out (left the computer after the shift)</small>@endif
+                                    @if($d->check_out_latitude !== null)<small>{{ $d->checkOutOffice ? 'at '.$d->checkOutOffice->name : ($d->check_out_distance_meters !== null ? number_format($d->check_out_distance_meters).' m from office' : 'location shared') }} ({{ $d->check_out_latitude }}, {{ $d->check_out_longitude }})</small>@endif
+                                    @if($d->check_out_ip)<small class="muted">IP {{ $d->check_out_ip }}</small>@endif</dd>
+                                <dt>In–out</dt><dd x-text="hms(v.inOut)">@hms($f['in_out'])</dd>
+                                <dt>Source</dt><dd>{{ $d->device?->computer_name ? 'Desktop · '.$d->device->computer_name : 'Web / mobile' }}</dd>
+                                <dt>Session</dt><dd>{{ str_replace('_', ' ', ucfirst($d->status)) }}</dd>
+                            </dl>
+                        </section>
+                        <section class="ar-box">
+                            <h3>Screen time (desktop app)</h3>
+                            <div class="ar-screen-full">@include('livewire.attendance.partials.screen-time', ['s' => $d, 'f' => $f])</div>
+                        </section>
+                        <div class="ar-drawer-links">
+                            @if($d->employee)<a class="btn btn-sm" href="{{ route('people.employees.show', $d->employee) }}"><x-icon name="user" class="icon-sm" />Employee profile</a>
+                            <a class="btn btn-sm" href="{{ route('attendance.records', ['employee' => $d->employee_id, 'from' => $d->work_date->copy()->startOfMonth()->toDateString(), 'to' => $d->work_date->copy()->endOfMonth()->min(today())->toDateString()]) }}"><x-icon name="calendar" class="icon-sm" />Whole month</a>@endif
+                        </div>
+                    @endif
                 </div>
             </aside>
         </div>
