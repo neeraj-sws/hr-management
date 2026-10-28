@@ -74,6 +74,7 @@ class DesktopApp:
         self.auto_checkout_open = False
         self.auto_checkout_skip: datetime | None = None  # the idle stretch the employee said "still working" for
         self.meeting_reason: str | None = None  # why the last poll counted as a meeting
+        self.last_meeting_at: datetime | None = None  # last moment a meeting was seen (counts as activity)
         self.app_usage: dict[str, float] = {}  # app name -> seconds not yet sent
         self.app_usage_on = False
         self.window_titles: dict[tuple[str, str], float] = {}  # (app, title) -> seconds not yet sent
@@ -385,6 +386,13 @@ class DesktopApp:
             self.meeting_reason = presence.meeting_reason() if working and not locked else None
             if self.meeting_reason:
                 idle_for = 0.0
+                self.last_meeting_at = now
+            elif working and getattr(self, "last_meeting_at", None) and not locked:
+                # A meeting is activity: after a listen-only call (no typing or clicking), idle counts from
+                # the end of the call, not from the last key press before it. So no "Are you sitting idle?"
+                # for the meeting itself, and the meeting time is never taken as idle or away.
+                since_meeting = max(0.0, (now - self.last_meeting_at).total_seconds())
+                idle_for = min(idle_for, since_meeting)
             previous = self.last_presence_poll
             if working and previous is None:
                 # First check of a working stretch: count from when it began (check-in, break end, app start).
@@ -446,8 +454,8 @@ class DesktopApp:
             if working and not self.away_prompt_open:
                 period = self.away_tracker.feed(now, idle_for, locked)
                 if period and period.reason == "asleep":
-                    # The server records gaps in the app's reports as a break by itself (see AttendanceService).
-                    self._flash(f"Computer was off/asleep {period.start.strftime('%I:%M %p')}-{period.end.strftime('%I:%M %p')}: recorded as a break. Ask for a correction if you were working.", AMBER)
+                    # The server counts gaps in the app's reports as idle by itself (see AttendanceService).
+                    self._flash(f"Computer was off/asleep {period.start.strftime('%I:%M %p')}-{period.end.strftime('%I:%M %p')}: counted as idle. Ask for a correction if you were working.", AMBER)
                     self.root.after(35_000, self.refresh)
                 elif period and asks:
                     if self.idle_answered_until and period.start < self.idle_answered_until:

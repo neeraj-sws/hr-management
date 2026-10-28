@@ -65,10 +65,18 @@ def foreground_app() -> str | None:
     if sys.platform != "win32":
         return None
     try:
-        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
-        hwnd = user32.GetForegroundWindow()
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
         if not hwnd:
             return None
+    except Exception:
+        return None
+    return _app_for_window(hwnd)
+
+
+def _app_for_window(hwnd) -> str | None:
+    """Display name of the app that owns a window, from its executable name."""
+    try:
+        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
         pid = ctypes.c_uint(0)
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         if not pid.value:
@@ -207,14 +215,25 @@ def _any_app_using(winreg, key, depth: int = 0) -> bool:
             continue
 
 
-def is_meeting_window(app: str | None, title: str | None) -> bool:
-    """True when the window in front is an online meeting (not just the chat or calendar of the app)."""
+# The panes of the Teams main window ("Chat | Microsoft Teams", "Calendar | Microsoft Teams" ...): not a meeting.
+_TEAMS_PANES = {"activity", "chat", "teams", "calendar", "calls", "files", "apps", "onedrive", "assignments", "help", "settings",
+                "microsoft teams", "notifications", "communities", "copilot", "people", "search", "planner", "approvals", "home"}
+
+
+def is_meeting_window(app: str | None, title: str | None, in_front: bool = True) -> bool:
+    """True when the window is an online meeting (not just the chat or calendar of the app). in_front=False is for
+    windows behind others: only clear meeting titles count there, so a chat window left open is never a meeting."""
     title = (title or "").strip()
     low = title.lower()
     if app == "Zoom":
         return "meeting" in low  # "Zoom Meeting"; the home window ("Zoom Workplace") is not a meeting
     if app == "Microsoft Teams":
-        return any(word in low for word in ("meeting", "call with", "| call", "meet now"))
+        if any(word in low for word in ("meeting", "call with", "| call", "meet now", "compact meeting view")):
+            return True
+        # A scheduled meeting's window is titled after the meeting: "Weekly sync | Microsoft Teams" (one separator,
+        # first part not one of the main window's panes). Chats are "Chat | Name | Microsoft Teams".
+        parts = [x.strip() for x in low.split(" | ")]
+        return in_front and len(parts) == 2 and parts[1] == "microsoft teams" and parts[0] not in _TEAMS_PANES
     if app in ("Webex", "Cisco Webex Meetings", "Ciscocollabhost"):
         return True
     if app in _BROWSERS:
@@ -233,9 +252,44 @@ def meeting_reason() -> str | None:
     try:
         if is_meeting_window(foreground_app(), foreground_window_title()):
             return "meeting window"
+        # Sharing the screen or working in another window during a call: the meeting window is behind.
+        if any(is_meeting_window(app, title, in_front=False) for app, title in open_windows()):
+            return "meeting window"
     except Exception:
         pass
     return None
+
+
+def open_windows() -> list[tuple[str | None, str]]:
+    """(app, title) of the visible top-level windows of meeting apps (Windows only). Titles are only compared here,
+    never stored or sent."""
+    if sys.platform != "win32":
+        return []
+    found: list[tuple[str | None, str]] = []
+    user32 = ctypes.windll.user32
+    proto = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    def visit(hwnd, _):
+        try:
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            app = _app_for_window(hwnd)
+            if app in ("Microsoft Teams", "Zoom", "Webex") or app in _BROWSERS:
+                found.append((app, buf.value.strip()))
+        except Exception:
+            pass
+        return True
+
+    try:
+        user32.EnumWindows(proto(visit), 0)
+    except Exception:
+        return []
+    return found
 
 
 def is_locked() -> bool:

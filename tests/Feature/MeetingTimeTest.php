@@ -135,9 +135,10 @@ class MeetingTimeTest extends TestCase
         $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 2700, 'screen_idle_seconds' => 240])->assertOk()
             ->assertJsonPath('data.break_seconds', 0)->assertJsonPath('data.screen_active_seconds', 3000);
 
-        // The computer was really off for 30 minutes: the app reports nothing for that time -> a break.
+        // The computer was really off / asleep for 30 minutes: the app reports nothing for that time -> idle (not a break).
         Carbon::setTestNow('2026-10-23 11:24:00');
-        $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 20])->assertOk()->assertJsonPath('data.break_seconds', 1800);
+        $r = $this->postJson('/api/attendance/heartbeat', ['screen_active_seconds' => 20])->assertOk()->assertJsonPath('data.break_seconds', 0);
+        $this->assertGreaterThanOrEqual(1800, (int) \App\Models\AttendanceSession::latest('id')->first()->screen_idle_seconds);
     }
     public function test_live_figures_count_the_reported_state_the_same_everywhere(): void
     {

@@ -182,6 +182,15 @@
                 <div class="form-actions"><button class="btn btn-primary">Save rules</button></div>
             </form>
         </section>
+        <section class="card">
+            <div class="card-head"><div><h2>Application usage and window titles for everyone</h2><p>Which apps people use (time per app), and optionally the window / tab titles (website, document or e-mail subject: more detail, more sensitive). Recorded by the desktop app while checked in and working. One person: their profile &gt; Settings &amp; monitoring.</p></div></div>
+            <form class="card-body form-grid" wire:submit="saveUsagePolicy">
+                <label class="check full"><input type="checkbox" wire:model="usageEveryone"> Record application usage for everyone</label>
+                <label class="check full"><input type="checkbox" wire:model="titlesEveryone"> Also record window / tab titles for everyone</label>
+                <label class="check full"><input type="checkbox" wire:model="usageOverride"> <span>Also replace each person's own choice <span class="muted small">— otherwise people switched on or off on their profile keep that</span></span></label>
+                <div class="form-actions full"><span class="small muted">{{ $usageCounts['apps'] }} people record apps · {{ $usageCounts['titles'] }} record titles now</span><button class="btn btn-primary">Save</button></div>
+            </form>
+        </section>
         @endif
     @elseif($tab === 'locations')
         <section class="card">

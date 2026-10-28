@@ -84,6 +84,10 @@ class Settings extends Component
 
     // Screen capture (off by default)
     public bool $captureEnabled = false;
+    /** Application usage / window titles for everyone (Settings > Screen capture); each profile can still differ. */
+    public bool $usageEveryone = false;
+    public bool $titlesEveryone = false;
+    public bool $usageOverride = false;
     public string $captureInterval = '10';
     public bool $captureActiveOnly = true;
     public string $captureWindowStart = '';
@@ -167,6 +171,8 @@ class Settings extends Component
         $idle = $policies->forEmployee(null, 'attendance.idle', $today, ['away_prompt_minutes' => 10]);
         $location = $policies->forEmployee(null, 'attendance.location', $today, []);
         $capture = $policies->forEmployee(null, 'monitoring.screenshots', $today, []);
+        $this->usageEveryone = (bool) ($policies->forEmployee(null, 'monitoring.app_usage', $today, [])['enabled'] ?? false);
+        $this->titlesEveryone = (bool) ($policies->forEmployee(null, 'monitoring.window_titles', $today, [])['enabled'] ?? false);
         $this->structureRows = collect($policies->forEmployee(null, 'payroll.salary_structure', $today, ['components' => []])['components'] ?? [])
             ->map(fn ($c) => ['name' => (string) ($c['name'] ?? ''), 'type' => (string) ($c['type'] ?? 'earning'), 'value' => (string) ($c['type'] === 'deduction' ? ($c['amount'] ?? '') : ($c['percent'] ?? ''))])->all();
 
@@ -702,6 +708,24 @@ class Settings extends Component
         $this->toast($this->captureEnabled ? 'Screen capture is on for all employees.' : 'Saved. Capture runs only for employees you switch on below.');
     }
 
+    /** Company-wide app usage and window titles; "replace" also clears each person's own choice (from today). */
+    public function saveUsagePolicy(PeopleOperationsService $people): void
+    {
+        abort_unless($this->user()->can('monitoring.manage'), 403);
+        $titles = $this->titlesEveryone && $this->usageEveryone;
+        $people->setPolicy('monitoring.app_usage', 'monitoring', 'Application usage', ['enabled' => $this->usageEveryone], null, auth()->id(), today()->toDateString());
+        $people->setPolicy('monitoring.window_titles', 'monitoring', 'Window titles', ['enabled' => $titles], null, auth()->id(), today()->toDateString());
+        if ($this->usageOverride) {
+            \App\Models\EmployeePolicyOverride::whereIn('rule_key', ['monitoring.app_usage', 'monitoring.window_titles'])
+                ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', today()))
+                ->get()->each(fn ($o) => $o->effective_from && $o->effective_from->gte(today()) ? $o->delete() : $o->update(['effective_until' => today()->subDay()->toDateString()]));
+        }
+        app(AuditLogger::class)->record('monitoring.usage_everyone', null, ['app_usage' => $this->usageEveryone, 'window_titles' => $titles, 'replaced_personal' => $this->usageOverride]);
+        $this->titlesEveryone = $titles;
+        $this->usageOverride = false;
+        $this->toast($this->usageEveryone ? 'Application usage'.($titles ? ' and window titles' : '').' recorded for everyone from now (the desktop app picks it up within a few minutes).' : 'Application usage is off for everyone except people switched on in their profile.');
+    }
+
     public function saveLocationPolicy(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
@@ -729,6 +753,12 @@ class Settings extends Component
 
         return $this->page('livewire.system.settings', [
             'leaveTypes' => LeaveType::orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed())), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
+            'usageCounts' => $this->tab === 'capture' ? (function () {
+                $usage = app(\App\Services\AppUsageService::class);
+                $people = \App\Models\AttendanceEmployee::where('is_active', true)->get();
+
+                return ['apps' => $people->filter(fn ($e) => $usage->enabledFor($e))->count(), 'titles' => $people->filter(fn ($e) => $usage->enabledFor($e) && $usage->titlesEnabledFor($e))->count()];
+            })() : ['apps' => 0, 'titles' => 0],
             'allEmployees' => $this->tab === 'calendar' ? \App\Models\AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']) : collect(),
             'calendarOverrides' => $calendarOverrides,
             'security' => $this->tab === 'security' ? $this->securityData() : null,

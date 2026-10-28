@@ -127,7 +127,7 @@ class HardCasesTest extends TestCase
         $this->assertTrue(AuditLog::where('action', 'attendance.auto_checked_out')->exists());
     }
 
-    public function test_1c_and_4_desktop_off_becomes_a_break_and_open_break_is_closed_next_day(): void
+    public function test_1c_and_4_desktop_off_becomes_idle_and_open_break_is_closed_next_day(): void
     {
         $this->at('2026-10-07 09:30:00');
         $this->attendance->checkIn($this->employee, 'desktop');
@@ -135,7 +135,8 @@ class HardCasesTest extends TestCase
         $this->attendance->heartbeat($this->employee, 25, 5);
         $this->at('2026-10-07 18:00:00'); // laptop back on after a shutdown
         $session = $this->attendance->heartbeat($this->employee, 25, 5);
-        $this->assertSame(5 * 3600, (int) $session->fresh()->break_seconds, '13:00→18:00 recorded as a break, not work');
+        $this->assertSame(0, (int) $session->fresh()->break_seconds, 'Not a break');
+        $this->assertGreaterThanOrEqual(5 * 3600, (int) $session->fresh()->screen_idle_seconds, '13:00→18:00 (computer off / asleep) counted as idle');
         $this->assertSame(3.5, round($this->attendance->workedSeconds($session->fresh()) / 3600, 2));
 
         // Harder: break started, app closed, next day.

@@ -189,6 +189,13 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(presence.is_meeting_window("Microsoft Edge", "Google Meet and 2 more pages - Work - Microsoft Edge"))
         self.assertFalse(presence.is_meeting_window("Google Chrome", "Inbox (3) - Gmail - Google Chrome"))
         self.assertFalse(presence.is_meeting_window(None, None))
+        # A scheduled meeting's window is titled after the meeting; the main window's panes and chats are not meetings.
+        self.assertTrue(presence.is_meeting_window("Microsoft Teams", "Weekly sync | Microsoft Teams"))
+        self.assertFalse(presence.is_meeting_window("Microsoft Teams", "Calendar | Microsoft Teams"))
+        self.assertFalse(presence.is_meeting_window("Microsoft Teams", "Chat | Microsoft Teams"))
+        # Behind other windows only clear meeting titles count (a chat window left open is never a meeting).
+        self.assertFalse(presence.is_meeting_window("Microsoft Teams", "Weekly sync | Microsoft Teams", in_front=False))
+        self.assertTrue(presence.is_meeting_window("Microsoft Teams", "Daily stand-up | Meeting | Microsoft Teams", in_front=False))
 
     def test_meeting_time_is_counted_apart_from_idle_and_never_asks_about_away(self):
         from datetime import datetime, timedelta
@@ -223,7 +230,16 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(app.screen_idle, 0.0)
         self.assertEqual(app.meeting_reason, "microphone in use")
         app._ask_about_away.assert_not_called()
-        # Same, without a meeting: idle.
+        # The call just ended, still no typing (listened only): not idle, no "Are you sitting idle?" for the call.
+        app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
+        with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
+                patch.object(presence, "meeting_reason", return_value=None):
+            app._watch_presence()
+        self.assertEqual(app.screen_idle, 0.0)
+        app._ask_if_idle.assert_not_called()
+        app._ask_about_away.assert_not_called()
+        # Same, with no meeting at all: idle.
+        app.last_meeting_at = None
         app.last_presence_poll = datetime.now().astimezone() - timedelta(seconds=5)
         with patch.object(presence, "seconds_since_input", return_value=1200.0), patch.object(presence, "is_locked", return_value=False), \
                 patch.object(presence, "meeting_reason", return_value=None):

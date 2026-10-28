@@ -507,14 +507,17 @@ class AttendanceService
         if ($reportedSeconds >= 0.5 * $gapStart->diffInSeconds(now())) return null;
         if (($last = $session->events()->max('event_time')) && Carbon::parse($last)->gt($gapStart)) return null;
 
-        try {
-            $session = $this->recordAway($employee, $gapStart, now(), 'offline', 'desktop');
-            $session->employee?->user?->notify(new \App\Notifications\ApprovalRequested('AttendanceSession', $session->id, 'The SWS HR desktop app was off from '.$gapStart->format('h:i A').' to '.now()->format('h:i A').'. That time was recorded as a break. Ask for a correction if you were working.', route('attendance.corrections', ['date' => $session->work_date->toDateString()], false)));
+        // Computer asleep / off / app closed for longer than the away limit: that time is IDLE (not a break),
+        // and it stays idle — later reports only add to it. The employee can ask for a correction.
+        $seconds = (int) $gapStart->diffInSeconds(now());
+        $session->update(['screen_idle_seconds' => (int) $session->screen_idle_seconds + $seconds, 'screen_reported_at' => now()]);
+        $this->event($session, 'screen_state', $gapStart, 0, ['state' => 'idle', 'reason' => 'computer_off_or_asleep']);
+        $this->event($session, 'desktop_gap', now(), $seconds, ['from' => $gapStart->toDateTimeString(), 'to' => now()->toDateTimeString(), 'counted_as' => 'idle']);
+        \Illuminate\Support\Facades\Cache::forget(self::screenStateKey($session));
+        $this->audit->record('attendance.desktop_gap_idle', $session, ['from' => $gapStart->toDateTimeString(), 'minutes' => intdiv($seconds, 60)]);
+        rescue(fn () => $session->employee?->user?->notify(new \App\Notifications\ApprovalRequested('AttendanceSession', $session->id, 'The computer was asleep or off (SWS HR desktop app not running) from '.$gapStart->format('h:i A').' to '.now()->format('h:i A').'. That time was counted as idle. Ask for a correction if you were working.', route('attendance.corrections', ['date' => $session->work_date->toDateString()], false))), null, false);
 
-            return $session;
-        } catch (ValidationException) {
-            return null;
-        }
+        return $session->fresh();
     }
 
     /**
