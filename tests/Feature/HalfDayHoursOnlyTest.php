@@ -113,6 +113,6 @@ class HalfDayHoursOnlyTest extends TestCase
         $this->day('2026-10-13', '12:30', '22:30'); // in after 12:00, 10 h at work on an 8 h day
         $this->assertSame(1.0, (float) $this->item()->calculation_breakdown['hours_paid_days']['2026-10-13']['share'], 'Never more than one day');
         \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $this->employee])
-            ->assertSee('paid full day (8h 00m max)')->assertDontSee('paid for 10h 00m');
+            ->assertSee('paid 8h 00m (max) · +2h 00m extra, not paid')->assertDontSee('paid for 10h 00m');
     }
 }
