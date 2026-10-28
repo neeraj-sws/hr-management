@@ -15,7 +15,9 @@ class SendAttendanceReminders extends Command
         $before = $reminders->beforeShift();
         $checkout = $reminders->forgotCheckout();
         $breaks = app(\App\Services\AttendanceAlertService::class)->longBreaks();
-        $this->info("Reminders sent: {$before} before shift, {$checkout} still checked in, {$breaks} long breaks.");
+        // Forgot to check out and the desktop app could not do it (computer off / asleep / app closed).
+        $autoOut = app(\App\Services\AttendanceService::class)->autoCheckOutIdleSessions();
+        $this->info("Reminders sent: {$before} before shift, {$checkout} still checked in, {$breaks} long breaks; {$autoOut} checked out automatically.");
 
         return self::SUCCESS;
     }

@@ -518,6 +518,60 @@ class AttendanceService
     }
 
     /**
+     * Server-side "forgot to check out" (runs every 5 minutes with the attendance reminders): the same rule as the
+     * desktop app, for when the app could not do it itself (computer switched off or asleep, app closed, or a
+     * microphone held open). After the shift + the set minutes (Settings > Work hours, default 30), a working
+     * session whose computer has not been used for those minutes is checked out at the last use.
+     * Only days with desktop data; field / mobile staff and people on a break are left alone.
+     */
+    public function autoCheckOutIdleSessions(?CarbonInterface $now = null): int
+    {
+        $now = $now ? Carbon::instance($now) : now();
+        $done = 0;
+        $sessions = AttendanceSession::with('employee')->whereNull('check_out')->where('status', 'working')
+            ->where(fn ($q) => $q->whereNotNull('screen_reported_at')->orWhereHas('events', fn ($e) => $e->where('event_type', 'screen_state')))
+            ->whereDate('work_date', '>=', $now->copy()->subDay()->toDateString())->get();
+        foreach ($sessions as $session) {
+            $employee = $session->employee;
+            if (! $employee || $session->isFieldWork()) continue;
+            $policy = $this->autoCheckoutPolicy($employee);
+            if (! $policy['enabled'] || ! in_array('desktop', $this->allowedSources($employee), true)) continue;
+            $shiftEnd = $this->expectedEnd($employee, $session->work_date->toDateString());
+            if (! $shiftEnd || $now->lt($shiftEnd->copy()->addMinutes($policy['idle_minutes']))) continue;
+            $lastUse = $this->lastComputerUse($session, $now);
+            if (! $lastUse || $lastUse->gt($now->copy()->subMinutes($policy['idle_minutes']))) continue;
+            try {
+                $this->autoCheckOut($employee, $lastUse);
+                $done++;
+            } catch (ValidationException) {
+                // Already checked out, on a break, or too long ago (16-hour close handles that).
+            }
+        }
+
+        return $done;
+    }
+
+    /**
+     * When the computer was last used, from what the desktop app reported: the start of an idle stretch it is
+     * still in, or its last report when it stopped reporting (off / asleep / closed). Null while it is in use or
+     * in a meeting.
+     */
+    private function lastComputerUse(AttendanceSession $session, Carbon $now): ?Carbon
+    {
+        $lastState = $session->events()->where('event_type', 'screen_state')->latest('event_time')->latest('id')->first();
+        $state = \Illuminate\Support\Facades\Cache::get(self::screenStateKey($session)) ?? ($lastState->metadata['state'] ?? null);
+        $idleAfter = max(1, (int) ($this->policies->forEmployee($session->employee, 'attendance.idle', $session->work_date->toDateString(), ['idle_after_minutes' => 5])['idle_after_minutes'] ?? 5));
+        $idleStart = $lastState && ($lastState->metadata['state'] ?? null) === 'idle'
+            ? $lastState->event_time->copy()->subMinutes($idleAfter)->max($session->check_in)
+            : null;
+        $reported = $session->screen_reported_at ?? $session->last_sync_at;
+        // The app stopped reporting: the computer was last used no later than its last report.
+        if (! $reported || $reported->lt($now->copy()->subMinutes(5))) return $idleStart ?? $reported?->copy();
+        // Still reporting: only an idle stretch counts (in use or in a meeting = still working).
+        return $state === 'idle' ? $idleStart : null;
+    }
+
+    /**
      * Closes sessions nobody checked out of (scheduled). The check-out is set to
      * the last sign of activity (heartbeat or action), never "now", so a
      * forgotten check-out cannot turn into 24 paid hours. Open breaks end there too.

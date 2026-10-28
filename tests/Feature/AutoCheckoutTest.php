@@ -75,4 +75,50 @@ class AutoCheckoutTest extends TestCase
         Livewire::actingAs($this->admin)->test(\App\Livewire\Attendance\Records::class)->assertSee('auto check-out (left the computer)');
         Livewire::actingAs($this->user)->test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('auto check-out (left the computer)');
     }
+
+    public function test_server_checks_out_when_the_app_could_not(): void
+    {
+        $session = AttendanceSession::firstOrFail();
+        $service = app(\App\Services\AttendanceService::class);
+        // In use all day; the app reports "idle" at 19:20 (5 min idle limit: last used 19:15) and keeps running.
+        $session->update(['screen_reported_at' => '2026-10-23 19:50:00', 'last_sync_at' => '2026-10-23 19:50:00']);
+        $session->events()->create(['event_type' => 'screen_state', 'event_time' => '2026-10-23 10:00:30', 'metadata' => ['state' => 'active']]);
+        $session->events()->create(['event_type' => 'screen_state', 'event_time' => '2026-10-23 19:20:00', 'metadata' => ['state' => 'idle']]);
+
+        // 19:30 = shift end 19:00 + 30 min, but only 15 min unused: nothing yet.
+        $this->assertSame(0, $service->autoCheckOutIdleSessions(Carbon::parse('2026-10-23 19:30:00')));
+        $this->assertNull($session->fresh()->check_out);
+        // 19:50: unused for 35 min → checked out at the last use, 19:15.
+        Carbon::setTestNow('2026-10-23 19:50:00');
+        $this->artisan('attendance:reminders')->assertSuccessful();
+        $this->assertSame('2026-10-23 19:15:00', $session->fresh()->check_out->toDateTimeString());
+        $this->assertTrue($this->user->notifications()->where('data->kind', 'AutoCheckout')->exists());
+    }
+
+    public function test_server_checks_out_when_the_computer_was_switched_off(): void
+    {
+        $session = AttendanceSession::firstOrFail();
+        // The app's last report was at 18:40 (computer switched off), still "in use" then.
+        $session->update(['screen_reported_at' => '2026-10-23 18:40:00', 'last_sync_at' => '2026-10-23 18:40:00']);
+        $session->events()->create(['event_type' => 'screen_state', 'event_time' => '2026-10-23 10:00:30', 'metadata' => ['state' => 'active']]);
+        $service = app(\App\Services\AttendanceService::class);
+        $this->assertSame(0, $service->autoCheckOutIdleSessions(Carbon::parse('2026-10-23 19:20:00')), 'Before shift end + 30 min');
+        Carbon::setTestNow('2026-10-23 19:35:00');
+        $this->assertSame(1, $service->autoCheckOutIdleSessions());
+        $this->assertSame('2026-10-23 18:40:00', $session->fresh()->check_out->toDateTimeString());
+    }
+
+    public function test_server_leaves_people_who_are_still_working_or_in_a_meeting(): void
+    {
+        $session = AttendanceSession::firstOrFail();
+        Carbon::setTestNow('2026-10-23 20:30:00');
+        $session->update(['screen_reported_at' => now(), 'last_sync_at' => now()]);
+        $session->events()->create(['event_type' => 'screen_state', 'event_time' => '2026-10-23 19:00:00', 'metadata' => ['state' => 'meeting']]);
+        $this->assertSame(0, app(\App\Services\AttendanceService::class)->autoCheckOutIdleSessions());
+        // A mobile-only day (no desktop data at all) is never closed this way.
+        $session->events()->delete();
+        $session->update(['screen_reported_at' => null]);
+        $this->assertSame(0, app(\App\Services\AttendanceService::class)->autoCheckOutIdleSessions());
+        $this->assertNull($session->fresh()->check_out);
+    }
 }
