@@ -114,5 +114,9 @@ class HalfDayHoursOnlyTest extends TestCase
         $this->assertSame(1.0, (float) $this->item()->calculation_breakdown['hours_paid_days']['2026-10-13']['share'], 'Never more than one day');
         \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $this->employee])
             ->assertSee('paid 8h 00m (max) · +2h 00m extra, not paid')->assertDontSee('paid for 10h 00m');
+        // The same words in the mobile app's day list.
+        \Laravel\Sanctum\Sanctum::actingAs($this->employee->user);
+        $days = collect($this->getJson('/api/attendance/history?from=2026-10-13&to=2026-10-13')->assertOk()->json('data'));
+        $this->assertSame('paid 8h 00m (max) · +2h 00m extra, not paid', $days->firstWhere('date', '2026-10-13')['pay_note']);
     }
 }

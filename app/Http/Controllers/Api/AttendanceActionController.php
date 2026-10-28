@@ -85,7 +85,20 @@ class AttendanceActionController extends ApiController
             'date' => $day['date'],
             'status' => $day['status'],
             'session' => $day['session'] ? (new AttendanceSessionResource($day['session']))->resolve() : null,
+            'pay_note' => $day['session'] ? $this->payNote($employee, $day['session']) : null,
         ])->values()]);
+    }
+
+    /** Same words as the website calendar: a late day is paid by the hours, at most one full working day. */
+    private function payNote($employee, AttendanceSession $session): ?string
+    {
+        $pay = app(\App\Services\HrWorkflowService::class)->lateCheckInPay($employee, $session);
+        if (! $pay) return null;
+        $hm = fn (int $s) => \App\Support\Duration::hm($s);
+        if ($pay['seconds'] < $pay['standard']) return 'paid for '.$hm($pay['seconds']).' of '.$hm($pay['standard']);
+        $extra = $pay['seconds'] - $pay['standard'];
+
+        return 'paid '.$hm($pay['standard']).' (max)'.($extra >= 60 ? ' · +'.$hm($extra).' extra, not paid' : '');
     }
 
     /** Position sent by the phone at check-in/out (validated in AttendanceService::locate). */
