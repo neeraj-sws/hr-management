@@ -695,6 +695,23 @@ class ReviewRoundThreeTest extends TestCase
             ->set('leave', 'taken')->assertViewHas('records', fn ($r) => $r->pluck('name')->all() === ['Asha']);
     }
 
+    public function test_legacy_import_links_rows_saved_before_the_person_was_added_and_first_names_of_ex_employees(): void
+    {
+        foreach (['Vijay Choudhary', 'Risha Gangrade'] as $i => $n) $this->employee('EMP-'.(70 + $i), ['name' => $n]);
+        // A row imported earlier, when "Khushboo Verma" was not an employee yet: saved without a link.
+        \App\Models\LegacySalaryRecord::create(['payroll_month' => '2026-04', 'name' => 'Khushboo Verma', 'name_key' => 'khushboo verma', 'employee_id' => null, 'basic_salary' => 999]);
+        $khushboo = $this->employee('EMP-72', ['name' => 'Khushboo Verma Sharma', 'is_active' => false, 'exit_date' => '2026-09-30']);
+
+        $path = tempnam(sys_get_temp_dir(), 'leg').'.csv';
+        file_put_contents($path, $this->actingAs($this->admin)->get(route('imports.template', ['legacy-salary', 'format' => 'csv']))->getContent());
+        $r = app(\App\Services\LegacySalaryImport::class)->import(new \Illuminate\Http\UploadedFile($path, 'flat.csv', null, null, true), $this->admin->id);
+
+        $row = \App\Models\LegacySalaryRecord::where('name_key', 'khushboo verma')->where('payroll_month', '2026-04')->first();
+        $this->assertSame($khushboo->id, $row->employee_id, 'Kept row is linked now; "Khushboo Verma" matches the only (ex-)employee whose name starts with it');
+        $this->assertEquals(999, (float) $row->basic_salary, 'Nothing else changed on the kept row');
+        $this->assertStringContainsString('linked to their employee now', implode(' ', $r['notes']));
+    }
+
     public function test_legacy_salary_template_csv_and_flat_month_column(): void
     {
         foreach (['Khushboo Verma', 'Vijay Choudhary', 'Risha Gangrade'] as $i => $n) $this->employee('EMP-'.(60 + $i), ['name' => $n]);

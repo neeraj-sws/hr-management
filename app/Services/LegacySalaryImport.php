@@ -122,7 +122,7 @@ class LegacySalaryImport
             return $this->summary(errors: [$e->getMessage()]);
         }
 
-        $created = $updated = $kept = $read = 0;
+        $created = $updated = $kept = $read = $linked = 0;
         $errors = $notes = [];
         $months = [];
         $matchedBy = ['code' => 0, 'name' => 0, 'none' => []];
@@ -175,7 +175,13 @@ class LegacySalaryImport
                 $values += ['source_file' => $file->getClientOriginalName(), 'source_sheet' => $sheet['name'], 'source_row' => $rowNumber, 'imported_by' => $actorId];
 
                 $existing = LegacySalaryRecord::where('payroll_month', $values['payroll_month'])->where('name_key', $values['name_key'])->first();
-                if ($existing && ! $updateExisting) { $kept++; continue; }
+                if ($existing && ! $updateExisting) {
+                    // Kept as imported, but a row saved before the person was added gets linked to them now
+                    // (only the link; amounts and the rest stay exactly as they were).
+                    if (! $existing->employee_id) { $existing->update(['employee_id' => $employee->id, 'employee_code' => $employee->employee_code]); $linked++; }
+                    $kept++;
+                    continue;
+                }
                 if ($existing) { $existing->update($values); $updated++; } else { LegacySalaryRecord::create($values); $created++; }
                 $months[$values['payroll_month']] = true;
             }
@@ -184,6 +190,7 @@ class LegacySalaryImport
         foreach ($matchedBy['none'] as $name => $where) {
             $errors[] = "\"{$name}\" is not an HRMS employee — ".count($where).' row(s) not imported ('.implode(', ', array_slice($where, 0, 6)).(count($where) > 6 ? ' …' : '').'). Add them on the Employees page, or put their Employee ID in an "Employee ID" column, then import again.';
         }
+        if ($linked) $notes[] = "{$linked} row(s) imported earlier were linked to their employee now (nothing else changed).";
         if ($kept) $notes[] = "{$kept} row(s) already imported for that month were kept — tick \"Replace rows that already exist\" to overwrite them.";
 
         $this->audit->record('salary.legacy_imported', null, ['file' => $file->getClientOriginalName(), 'created' => $created, 'updated' => $updated, 'kept' => $kept, 'skipped' => count($errors), 'months' => array_keys($months)]);
@@ -296,9 +303,13 @@ class LegacySalaryImport
         $all = AttendanceEmployee::get(['id', 'name', 'employee_code', 'is_active']);
         $exact = $all->filter(fn ($e) => self::nameKey($e->name) === $key);
         if ($exact->count() === 1) return $exact->first();
-        $starts = $all->filter(fn ($e) => $e->is_active && str_starts_with(self::nameKey($e->name).' ', $key.' '));
+        // A first name only ("Lalit"): the one person whose name starts with it — current staff first, then
+        // ex-employees too (old salary sheets are mostly about people who have left).
+        $starts = $all->filter(fn ($e) => str_starts_with(self::nameKey($e->name).' ', $key.' '));
+        $active = $starts->where('is_active', true);
+        if ($active->count() === 1) return $active->first();
 
-        return $starts->count() === 1 ? $starts->first() : null;
+        return $active->isEmpty() && $starts->count() === 1 ? $starts->first() : null;
     }
 
     /** The row as written: header text => cell value (unrounded formula results, Excel date serials). */
