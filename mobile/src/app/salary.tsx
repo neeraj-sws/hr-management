@@ -169,6 +169,11 @@ function WhyLess({ s }: { s: Shortfall }) {
       ) : null}
       {s.lines.map((l) => <WhyRow key={l.label} label={l.label} note={[l.detail, count(l.days)].filter(Boolean).join(' · ')} amount={`−${rupees(l.amount)}`} negative />)}
       <WhyRow label="Salary for days worked" amount={rupees(s.earned)} strong />
+      {s.extra ? <WhyRow label="+ Extra working on off days" note={`${s.extra.days} ${s.extra.days === 1 ? 'day' : 'days'} · ${s.extra.hours} · ${s.extra.dates}`} amount={`+${rupees(s.extra.amount)}`} /> : null}
+      {(s.after ?? []).map((d, i) => <WhyRow key={`a${i}`} label={`− ${d.label}`} note={d.detail ?? undefined} amount={`−${rupees(d.amount)}`} negative />)}
+      {(s.added ?? []).map((d, i) => <WhyRow key={`p${i}`} label={`+ ${d.label}`} note={d.detail ?? undefined} amount={`+${rupees(d.amount)}`} />)}
+      {s.net !== undefined ? <WhyRow label={s.estimate ? 'Net salary so far' : 'Net salary'} amount={rupees(s.net)} strong /> : null}
+      {(s.pending_fines ?? []).length ? <Text style={styles.whyNote}>Fines waiting for approval (not cut yet): {(s.pending_fines ?? []).map((f) => `${f.label} ${rupees(f.amount)} (${f.detail})`).join(' · ')}</Text> : null}
     </View>
   );
 }

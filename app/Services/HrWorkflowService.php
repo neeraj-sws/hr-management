@@ -195,6 +195,8 @@ class HrWorkflowService
             if ($notify) Notifier::send(Notifier::withPermission('leave.manage')->push($approverId ? \App\Models\User::find($approverId) : null), 'LeaveRequest', $leave->id, "A leave request from {$employee->name} needs review: {$type?->name}, {$range} ({$days} day/s).", route('leave.requests', ['tab' => 'approvals'], false), $employee->user_id);
             $this->audit->record('leave.requested', $leave, ['days' => $days]);
             if ($notify) app(\App\Services\WhatsAppNotifier::class)->leaveApplied($leave->load(['employee.manager', 'leaveType']));
+            // Asked for too late (Compliance > Leave applied late): a pending fine. Not for leave HR records or imports.
+            if ($notify) app(PeopleOperationsService::class)->lateLeaveFine($leave);
             return $leave;
         });
     }
@@ -202,9 +204,13 @@ class HrWorkflowService
     /** $notify = false for bulk history (attendance import): no message per imported day. */
     public function decideLeave(LeaveRequest $leave, int $approverId, bool $approve, ?string $note = null, bool $notify = true): LeaveRequest
     {
-        return DB::transaction(function () use ($leave, $approverId, $approve, $note, $notify) {
+        $decided = DB::transaction(function () use ($leave, $approverId, $approve, $note, $notify) {
             $leave = LeaveRequest::whereKey($leave->id)->lockForUpdate()->firstOrFail();
             if ($leave->status !== 'pending') throw ValidationException::withMessages(['leave' => 'This request has already been decided.'])->status(409);
+            // Leave asked for a day already gone: approving it needs a reason, kept with the decision.
+            if ($approve && $leave->isBackdated() && trim((string) $note) === '') {
+                throw ValidationException::withMessages(['decisionNote' => 'This leave is for a past date (asked on '.$leave->created_at->format('d M').' for '.$leave->starts_on->format('d M').'). Write why it is approved.']);
+            }
             $carry = $approve && app(PayrollLockGuard::class)->changedOrCarry($leave->employee_id, $leave->starts_on->toDateString(), 'leave', $leave->ends_on->toDateString());
             $leave->update(['status' => $approve ? 'approved' : 'rejected', 'decided_by' => $approverId, 'decided_at' => now(), 'decision_note' => $note]);
             ApprovalRequest::where('approvable_type', LeaveRequest::class)->where('approvable_id', $leave->id)->where('status', 'pending')->update(['approver_id' => $approverId, 'status' => $approve ? 'approved' : 'rejected', 'decided_at' => now(), 'comment' => $note]);
@@ -230,6 +236,16 @@ class HrWorkflowService
             if ($notify) Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, $approve ? "{$by} approved your leave ({$range})." : "{$by} rejected your leave ({$range})".($note ? ": {$note}" : '.'));
             return $leave->fresh();
         });
+        // Past days of the leave: fines follow the decision (approved = no absence fine; rejected = absent, fined if
+        // the rule says so). Today and later are checked by the nightly assessment as usual.
+        if ($decided->employee) {
+            $people = app(PeopleOperationsService::class);
+            for ($day = $decided->starts_on->copy(); $day->lte($decided->ends_on) && $day->lt(today()); $day->addDay()) {
+                $people->reassessDay($decided->employee, $day->toDateString(), $approverId, 'leave '.($approve ? 'approved' : 'rejected'));
+            }
+        }
+
+        return $decided;
     }
 
     public function calculatePayroll(string $start, string $end, int $userId): PayrollRun
@@ -276,7 +292,7 @@ class HrWorkflowService
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
                     'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
-                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'hours_paid_days'=>$hoursPaidSet,'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
+                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'hours_paid_days'=>$hoursPaidSet,'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'penalty_lines'=>$penaltyLines,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
                 foreach ($claims as $claim) $claim->update(['payroll_item_id'=>$item->id]);
@@ -609,7 +625,10 @@ class HrWorkflowService
         // estimate and the draft show the same amount. A real calculation frees them first (the draft's rows are replaced).
         $draftItemIds = $forUpdate ? [] : PayrollItem::where('employee_id', $employee->id)->whereHas('run', fn ($q) => $q->where('status', 'draft'))->pluck('id')->all();
         $unclaimed = fn ($q) => $q->where(fn ($q) => $q->whereNull('payroll_item_id')->when($draftItemIds, fn ($q) => $q->orWhereIn('payroll_item_id', $draftItemIds)));
-        $penalties = (float)EmployeePenalty::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->where($unclaimed)->sum('amount');
+        $penaltyRows = EmployeePenalty::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->where($unclaimed)->orderBy('effective_on')->get();
+        $penalties = (float) $penaltyRows->sum('amount');
+        // Each approved fine with its date and reason, so the salary page and payslip can list them one by one.
+        $penaltyLines = $penaltyRows->map(fn ($p) => ['date' => $p->effective_on->toDateString(), 'reason' => (string) $p->reason, 'amount' => round((float) $p->amount, 2)])->values()->all();
         // One-off adjustments in the period are claimed by this run; recurring ones apply in every month
         // they cover (never claimed). Increments are not paid here: they already raised the salary.
         $adjustments = SalaryAdjustment::where('employee_id',$employee->id)->where('status','approved')->where('is_recurring',false)->where('kind','!=','increment')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->where($unclaimed)->get();
@@ -657,7 +676,7 @@ class HrWorkflowService
             'breakdown' => [
                 'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
                 'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],
-                'penalties' => (float) $f['penalties'], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
+                'penalties' => (float) $f['penalties'], 'penalty_lines' => $f['penaltyLines'] ?? [], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
             ],
         ];
     }

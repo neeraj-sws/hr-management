@@ -26,6 +26,22 @@
         <div class="wl-row"><span>+ Extra working on off days (paid by the hours worked)<small>{{ $s['extra']['days'] }} {{ $s['extra']['days'] === 1 ? 'day' : 'days' }} · {{ $s['extra']['hours'] }} · {{ $s['extra']['dates'] }}</small></span><b class="wl-pos">+{{ $rs($s['extra']['amount']) }}</b></div>
         <div class="wl-row wl-total"><span>Total (before additions and deductions)</span><b>{{ $rs($s['earned'] + $s['extra']['amount']) }}</b></div>
     @endif
-    <p class="why-note">Bonus and reimbursements are added, and advance recovery, penalties and TDS taken off, after this.</p>
+    @if(isset($s['net']))
+        {{-- Every cut after the salary for days worked, one line each, then what is added, then the net salary. --}}
+        @foreach($s['after'] ?? [] as $d)
+            <div class="wl-row"><span>− {{ $d['label'] }}@if($d['detail'])<small>{{ $d['detail'] }}</small>@endif</span><b class="wl-neg">−{{ $rs($d['amount']) }}</b></div>
+        @endforeach
+        @foreach($s['added'] ?? [] as $a)
+            <div class="wl-row"><span>+ {{ $a['label'] }}@if($a['detail'])<small>{{ $a['detail'] }}</small>@endif</span><b class="wl-pos">+{{ $rs($a['amount']) }}</b></div>
+        @endforeach
+        <div class="wl-row wl-total"><span>{{ ($s['estimate'] ?? false) ? 'Net salary so far' : 'Net salary' }}</span><b>{{ $rs($s['net']) }}</b></div>
+        @if(! empty($s['pending_fines']))
+            <div class="wl-pending"><strong>Fines waiting for approval (not cut yet)</strong>
+                @foreach($s['pending_fines'] as $p)<div class="wl-row"><span>{{ $p['label'] }}<small>{{ $p['detail'] }}</small></span><b class="muted">{{ $rs($p['amount']) }}</b></div>@endforeach
+            </div>
+        @endif
+    @else
+        <p class="why-note">Bonus and reimbursements are added, and advance recovery, penalties and TDS taken off, after this.</p>
+    @endif
 </div>
 @endif

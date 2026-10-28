@@ -19,4 +19,10 @@ class LeaveRequest extends Model
     public function decider(): BelongsTo { return $this->belongsTo(User::class, 'decided_by'); }
     /** Days of this leave that HR settled because the employee also worked (Leave conflicts). */
     public function conflictResolutions(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(LeaveConflictResolution::class, 'leave_request_id'); }
+
+    /** Asked for after its first day had already passed (an "old date" leave). */
+    public function isBackdated(): bool
+    {
+        return $this->starts_on && $this->created_at && $this->starts_on->lt($this->created_at->copy()->startOfDay());
+    }
 }

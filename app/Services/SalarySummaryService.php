@@ -30,7 +30,7 @@ class SalarySummaryService
         $estimate = $this->payroll->payEstimate($employee, $start->toDateString(), $today->toDateString());
         if (! $estimate) return null;
 
-        $month = $this->fromBreakdown($start->format('Y-m'), 'estimate', 'so far', [...$estimate['breakdown'], '_days' => $this->dayList($employee, $start, $today)], $estimate['gross'], $estimate['net'], 0.0, [
+        $month = $this->fromBreakdown($start->format('Y-m'), 'estimate', 'so far', [...$estimate['breakdown'], '_days' => $this->dayList($employee, $start, $today), '_employee_id' => $employee->id], $estimate['gross'], $estimate['net'], 0.0, [
             'working' => $estimate['working_days'], 'present' => $estimate['present_days'], 'paid_leave' => $estimate['paid_leave_days'], 'unpaid_leave' => $estimate['unpaid_leave_days'],
         ], $estimate);
         $month['up_to'] = $today->toDateString();
@@ -67,6 +67,7 @@ class SalarySummaryService
     {
         $b = (array) $item->calculation_breakdown;
         if ($item->employee && empty($b['old_sheet'])) $b['_days'] = $this->dayList($item->employee, $item->run->period_starts_on->copy(), $item->run->period_ends_on->copy());
+        $b['_employee_id'] = $item->employee_id;
         $paid = round((float) $item->payments->sum('amount') + (float) ($b['old_sheet']['paid'] ?? 0), 2);
 
         return [...$this->fromBreakdown($item->run->period_starts_on->format('Y-m'), 'payroll', $item->run->status, $b, (float) $item->gross_amount, (float) $item->net_amount, $paid, [
@@ -102,10 +103,24 @@ class SalarySummaryService
             if (($c['type'] ?? '') === 'earning') $earnings[] = [$c['name'], $money($c['amount']), null]; else $deductions[] = [$c['name'], $money($c['amount']), null];
         }
         if ((float) ($b['short_hours']['amount'] ?? 0) > 0) $deductions[] = ['Short working hours', $money($b['short_hours']['amount']), Duration::hms((int) ($b['short_hours']['short_seconds'] ?? 0)).' below your working hours'];
-        if ((float) ($b['penalties'] ?? 0) > 0) $deductions[] = ['Penalties', $money($b['penalties']), null];
+        // Fines, one line each (date and reason); older breakdowns without the list show one total.
+        if ($lines = (array) ($b['penalty_lines'] ?? [])) {
+            foreach ($lines as $line) $deductions[] = ['Fine: '.($line['reason'] ?? 'penalty'), $money($line['amount'] ?? 0), isset($line['date']) ? Carbon::parse($line['date'])->format('d M') : null];
+        } elseif ((float) ($b['penalties'] ?? 0) > 0) {
+            $deductions[] = ['Penalties', $money($b['penalties']), null];
+        }
         if ((float) ($b['advance_recovery'] ?? 0) > 0) $deductions[] = ['Salary advance recovery', $money($b['advance_recovery']), null];
         foreach ((array) ($b['fixed_deductions'] ?? []) as $d) if ((float) ($d['amount'] ?? 0) > 0) $deductions[] = [$d['name'] ?? 'Fixed deduction', $money($d['amount']), 'every month'];
         if ($days['unpaid_leave'] > 0) $deductions[] = ['Unpaid leave', 0.0, $days['unpaid_leave'].' days not paid (already left out of the salary for days worked)'];
+        // "Why the salary is less than full" goes on to the net salary: every cut after "Salary for days worked"
+        // (fines with date and reason, advance recovery, adjustments, fixed and statutory deductions), what is
+        // added (reimbursements, plus adjustments), and fines still waiting for approval (not cut yet).
+        if ($shortfall) {
+            $shortfall['after'] = array_values(array_map(fn ($d) => ['label' => $d[0], 'amount' => (float) $d[1], 'detail' => $d[2] ?? null], array_filter($deductions, fn ($d) => (float) $d[1] > 0)));
+            $shortfall['added'] = array_values(array_map(fn ($e) => ['label' => $e[0], 'amount' => (float) $e[1], 'detail' => $e[2] ?? null], array_filter($earnings, fn ($e) => ! in_array($e[0], ['Salary for days worked', 'Extra working (off days)', 'Overtime'], true) && (float) $e[1] > 0)));
+            $shortfall['net'] = $money($net);
+            $shortfall['pending_fines'] = $this->pendingFines($b['_employee_id'] ?? null, $month);
+        }
         if ((float) ($b['reimbursements'] ?? 0) > 0) $earnings[] = ['Expense reimbursements', $money($b['reimbursements']), 'approved claims, paid on top'];
 
         return ['month' => $month, 'label' => Carbon::parse($month.'-01')->format('F Y'), 'source' => $source, 'status' => $status, 'days' => $days,
@@ -118,6 +133,18 @@ class SalarySummaryService
             'earnings' => $earnings, 'deductions' => $deductions,
             'gross' => $money($gross), 'deductions_total' => $money(array_sum(array_column($deductions, 1))), 'net' => $money($net),
             'paid' => $money($paid), 'remaining' => $money(max(0, $net - $paid)), 'payslip_id' => null];
+    }
+
+    /** Fines for the month still waiting for approval: shown for information, not cut until approved. */
+    private function pendingFines(?int $employeeId, string $month): array
+    {
+        if (! $employeeId) return [];
+        $from = Carbon::parse($month.'-01');
+
+        return \App\Models\EmployeePenalty::where('employee_id', $employeeId)->where('status', 'pending')
+            ->whereDate('effective_on', '>=', $from->toDateString())->whereDate('effective_on', '<=', $from->copy()->endOfMonth()->toDateString())
+            ->orderBy('effective_on')->get()
+            ->map(fn ($p) => ['label' => 'Fine: '.$p->reason, 'amount' => round((float) $p->amount, 2), 'detail' => $p->effective_on->format('d M').' · waiting for approval'])->values()->all();
     }
 
     /** Past working days absent with no leave, and working days still to come, in a period (for the reasons). */

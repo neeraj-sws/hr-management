@@ -95,7 +95,7 @@
                             <td data-label="Employee"><div class="ar-person"><x-avatar :employee="$dayEmployee" /><div><strong>{{ $dayEmployee?->name }}</strong><small>{{ $dayEmployee?->department?->name }}</small></div></div></td>
                             <td colspan="8" class="small muted ar-dayinfo" style="text-align:left">{{ ['on_leave' => 'On leave', 'weekend' => 'Weekly off', 'holiday' => 'Holiday', 'absent' => 'No attendance', 'upcoming' => 'Upcoming', 'not_joined' => 'Before joining', 'left' => 'After leaving the company'][$day['status']] ?? '' }}@if($day['label']) · <strong>{{ $day['label'] }}</strong>@endif</td>
                             <td data-col="status" data-label="Status">@if($day['status'] === 'weekend')<x-badge tone="violet">{{ $day['label'] ?: 'Weekly off' }}</x-badge>@elseif($day['status'] === 'on_leave')<x-badge status="on_leave">{{ $day['label'] ?: 'On leave' }}</x-badge>@else<x-badge :status="$day['status']" />@endif</td>
-                            <td class="ar-act"></td></tr>
+                            <td class="ar-act">@if($canEditTime && in_array($day['status'], ['absent', 'on_leave', 'weekend', 'holiday'], true))<button type="button" class="ar-more" wire:click="openEdit({{ $dayEmployee->id }}, '{{ $day['date'] }}')" title="Add check-in / check-out for this day (with a reason)"><x-icon name="clock-edit" class="icon-sm" /></button>@endif</td></tr>
                     @endif
                 @empty
                     <tr><td colspan="12"><x-empty :title="$dayEmployee?->exit_date ? $dayEmployee->name.' left the company on '.$dayEmployee->exit_date->format('d M Y').': no days to show after '.$dayEmployee->exit_date->format('F Y').'.' : 'No days in this range'" icon="calendar" /></td></tr>
@@ -242,6 +242,7 @@
                             <div class="ar-screen-full">@include('livewire.attendance.partials.screen-time', ['s' => $d, 'f' => $f])</div>
                         </section>
                         <div class="ar-drawer-links">
+                            @if($canEditTime)<button type="button" class="btn btn-sm btn-primary" wire:click="openEdit({{ $d->employee_id }}, '{{ $d->work_date->toDateString() }}')"><x-icon name="clock-edit" class="icon-sm" />Change time</button>@endif
                             @if($d->employee)<a class="btn btn-sm" href="{{ route('people.employees.show', $d->employee) }}"><x-icon name="user" class="icon-sm" />Employee profile</a>
                             <a class="btn btn-sm" href="{{ route('attendance.records', ['employee' => $d->employee_id, 'from' => $d->work_date->copy()->startOfMonth()->toDateString(), 'to' => $d->work_date->copy()->endOfMonth()->min(today())->toDateString()]) }}"><x-icon name="calendar" class="icon-sm" />Whole month</a>@endif
                         </div>
@@ -249,5 +250,21 @@
                 </div>
             </aside>
         </div>
+    @endif
+
+    {{-- Change time (HR / admin): the day's check-in, check-out or break, with a compulsory reason. --}}
+    @if($editPerson)
+        <x-modal title="Change time · {{ $editPerson->name }} · {{ \Illuminate\Support\Carbon::parse($editDate)->format('D, d M Y') }}" close="closeEdit">
+            <form wire:submit="saveEdit"><div class="modal-body">
+                <p class="small" style="margin-top:0">Saved straight away (no approval needed) and written in the audit log. {{ $editPerson->name }} is told what changed and why. A locked payroll is not changed: the difference goes into the next payroll.</p>
+                <div class="form-grid">
+                    <x-field label="Check-in" name="editIn"><input type="time" wire:model="editIn"></x-field>
+                    <x-field label="Check-out" name="editOut" hint="empty = still checked in"><input type="time" wire:model="editOut"></x-field>
+                    <x-field label="Break (minutes)" name="editBreak" hint="empty = keep as is"><input type="number" min="0" max="720" wire:model="editBreak"></x-field>
+                    <x-field label="Reason (compulsory)" name="editReason" full><textarea wire:model="editReason" rows="2" placeholder="e.g. Forgot to check out; left at 7:00 PM (confirmed by manager)"></textarea></x-field>
+                </div>
+            </div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeEdit">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Save change</button></div></form>
+        </x-modal>
     @endif
 </div>

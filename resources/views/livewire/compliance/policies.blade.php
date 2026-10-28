@@ -22,6 +22,9 @@
                         @if($field === 'salary_rate')
                             {{-- How much a minute costs: a fixed amount, or the employee's own salary per minute (salary ÷ working days ÷ hours ÷ 60). --}}
                             <x-field label="Deduction per minute" :name="'values.'.$ruleSlot.'.'.$field"><select wire:model.live="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)><option value="0">Fixed amount (below)</option><option value="1">Employee's salary per minute</option></select></x-field>
+                        @elseif($field === 'also_fine')
+                            {{-- An absent day is already not paid; the fine is a second cut, so it is a choice. --}}
+                            <x-field label="The absent day is already not paid" :name="'values.'.$ruleSlot.'.'.$field"><select wire:model="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)><option value="0">No fine: the unpaid day is enough (one cut)</option><option value="1">Also fine on top of the unpaid day (two cuts)</option></select></x-field>
                         @elseif($field === 'auto_deduct')
                             {{-- A workday with no attendance and no leave request: deduct straight away, or let HR approve each one. --}}
                             <x-field label="When it happens" :name="'values.'.$ruleSlot.'.'.$field"><select wire:model="values.{{ $ruleSlot }}.{{ $field }}" @disabled(!$canConfigure)><option value="1">Deduct automatically (no HR approval)</option><option value="0">Wait for HR approval</option></select></x-field>

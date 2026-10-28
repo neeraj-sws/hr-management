@@ -86,6 +86,11 @@ export type SalaryMonth = {
 export type Shortfall = {
   rate: number; working: number; full: number; full_label: string; earned: number; estimate: boolean; hourly: number | null; day_hours: string | null; late_cut: number;
   late_title?: string;
+  extra?: { amount: number; days: number; hours: string; dates: string } | null;
+  after?: { label: string; amount: number; detail: string | null }[];
+  added?: { label: string; amount: number; detail: string | null }[];
+  net?: number;
+  pending_fines?: { label: string; amount: number; detail: string }[];
   late: { date: string; day: string; in: string; leave?: string | null; worked: string; of: string; short: string; paid: number; cut: number }[];
   lines: { label: string; detail: string | null; days: number; amount: number }[];
 };

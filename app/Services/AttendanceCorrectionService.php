@@ -22,7 +22,7 @@ class AttendanceCorrectionService
     public function __construct(private readonly AuditLogger $audit) {}
 
     /** $checkIn / $checkOut are "H:i" on $workDate; a check-out earlier than the check-in means the next morning. */
-    public function request(AttendanceEmployee $employee, string $workDate, ?string $checkIn, ?string $checkOut, string $reason, ?int $breakMinutes = null): AttendanceCorrection
+    public function request(AttendanceEmployee $employee, string $workDate, ?string $checkIn, ?string $checkOut, string $reason, ?int $breakMinutes = null, bool $notify = true): AttendanceCorrection
     {
         $date = Carbon::parse($workDate)->startOfDay();
         if ($date->gt(today())) throw ValidationException::withMessages(['workDate' => 'You can only correct today or an earlier day.']);
@@ -64,8 +64,28 @@ class AttendanceCorrectionService
         $what = collect([$correction->requested_check_in ? 'in '.$correction->requested_check_in->format('h:i A') : null, $correction->requested_check_out ? 'out '.$correction->requested_check_out->format('h:i A') : null, $correction->requested_break_minutes !== null ? 'break '.\App\Support\Duration::fromMinutes($correction->requested_break_minutes) : null])->filter()->join(', ');
         $approverId = ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->value('approver_id');
         $approvers = $this->reviewers()->push($approverId ? User::find($approverId) : null);
-        Notifier::send($approvers,'AttendanceCorrection', $correction->id, "An attendance correction from {$employee->name} for {$correction->work_date->format('d M Y')} ({$what}) needs review. Reason: ".\Illuminate\Support\Str::limit($reason, 120), route('attendance.corrections', ['tab' => 'approvals'], false), $employee->user_id);
-        Notifier::send($employee->user, 'AttendanceCorrection', $correction->id, "Your attendance correction for {$correction->work_date->format('d M Y')} was sent for approval.", route('attendance.corrections', [], false));
+        if ($notify) Notifier::send($approvers,'AttendanceCorrection', $correction->id, "An attendance correction from {$employee->name} for {$correction->work_date->format('d M Y')} ({$what}) needs review. Reason: ".\Illuminate\Support\Str::limit($reason, 120), route('attendance.corrections', ['tab' => 'approvals'], false), $employee->user_id);
+        if ($notify) Notifier::send($employee->user, 'AttendanceCorrection', $correction->id, "Your attendance correction for {$correction->work_date->format('d M Y')} was sent for approval.", route('attendance.corrections', [], false));
+
+        return $correction;
+    }
+
+    /**
+     * HR / an admin sets a day's check-in, check-out or break directly (Attendance records > View details >
+     * Day details > Change time). A reason is compulsory. It is recorded as a correction approved at once, so the
+     * payroll lock, arrears, fines and the audit log work exactly as for an approved employee correction, and
+     * the employee is told what was changed and why.
+     */
+    public function adminChange(AttendanceEmployee $employee, string $workDate, ?string $checkIn, ?string $checkOut, ?int $breakMinutes, string $reason, User $actor): AttendanceCorrection
+    {
+        abort_unless($actor->canAny(['attendance.correct', 'hr.manage', 'employees.manage']) || \App\Support\Access::isAdmin($actor), 403, 'Only HR or an administrator can change attendance time.');
+        $reason = trim($reason);
+        if (mb_strlen($reason) < 5) throw ValidationException::withMessages(['editReason' => 'Write why the time is changed (at least 5 characters).']);
+        $pending = AttendanceCorrection::where('employee_id', $employee->id)->whereDate('work_date', $workDate)->where('status', 'pending')->first();
+        if ($pending) throw ValidationException::withMessages(['editReason' => $employee->name.' has a correction waiting for this day: approve or reject it first (Attendance > Corrections).']);
+        $correction = $this->request($employee, $workDate, $checkIn, $checkOut, 'Changed by '.$actor->name.': '.$reason, $breakMinutes, false);
+        $correction = $this->decide($correction, $actor->id, true, 'Changed by '.$actor->name.': '.$reason);
+        $this->audit->record('attendance.changed_by_admin', $correction, ['work_date' => $correction->work_date->toDateString(), 'reason' => $reason, 'by' => $actor->id]);
 
         return $correction;
     }
@@ -79,6 +99,8 @@ class AttendanceCorrectionService
             if (! $approve && ! trim((string) $note)) throw ValidationException::withMessages(['decisionNote' => 'Add a reason when rejecting.']);
 
             if ($approve) $correction->attendance_session_id = $this->apply($correction, $approverId)->id;
+            // The day changed: its late / early / absence fines are checked again (after this transaction).
+            if ($approve) DB::afterCommit(fn () => $correction->employee && app(PeopleOperationsService::class)->reassessDay($correction->employee, $correction->work_date->toDateString(), $approverId, 'attendance correction approved'));
             $correction->fill(['status' => $approve ? 'approved' : 'rejected', 'decided_by' => $approverId, 'decided_at' => now(), 'decision_note' => $note])->save();
             ApprovalRequest::where('approvable_type', AttendanceCorrection::class)->where('approvable_id', $correction->id)->where('status', 'pending')
                 ->update(['approver_id' => $approverId, 'status' => $approve ? 'approved' : 'rejected', 'decided_at' => now(), 'comment' => $note]);

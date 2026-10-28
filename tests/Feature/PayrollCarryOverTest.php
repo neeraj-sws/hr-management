@@ -75,7 +75,7 @@ class PayrollCarryOverTest extends TestCase
         // Paid leave for the absent Thursday, asked and approved after the lock.
         $annual = LeaveType::where('name', 'Annual Leave')->firstOrFail();
         $leave = $workflow->requestLeave($this->employee, ['leave_type_id' => $annual->id, 'duration' => 'full', 'starts_on' => Carbon::parse('2026-09-10'), 'ends_on' => Carbon::parse('2026-09-10'), 'reason' => 'Fever']);
-        $this->assertSame('approved', $workflow->decideLeave($leave, $this->managerUser->id, true)->status);
+        $this->assertSame('approved', $workflow->decideLeave($leave, $this->managerUser->id, true, 'Was ill, informed by phone')->status);
         // A forgotten check-in on the absent Friday, corrected after the lock.
         $corrections = app(AttendanceCorrectionService::class);
         $correction = $corrections->request($this->employee, '2026-09-11', '09:00', '17:00', 'Forgot to check in');
@@ -103,7 +103,7 @@ class PayrollCarryOverTest extends TestCase
         // Worked on Mon 14 Sep, but it was really an unpaid leave day counted as leave.
         $workflow = app(HrWorkflowService::class);
         $leave = $workflow->requestLeave($this->employee, ['leave_type_id' => $unpaid->id, 'duration' => 'full', 'starts_on' => Carbon::parse('2026-09-14'), 'ends_on' => Carbon::parse('2026-09-14'), 'reason' => 'Personal']);
-        $workflow->decideLeave($leave, $this->managerUser->id, true);
+        $workflow->decideLeave($leave, $this->managerUser->id, true, 'Informed by phone');
         app(\App\Services\LeaveConflictService::class)->resolve($leave, '2026-09-14', 'leave', $this->admin->id);
 
         $carried = SalaryAdjustment::where('carried_from_payroll_item_id', $item->id)->get();

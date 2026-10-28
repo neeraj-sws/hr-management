@@ -50,7 +50,9 @@
 @endforeach
 @foreach(($b['fixed_deductions'] ?? []) as $d)@php($deductions->push([$d['name'], (float) $d['amount']]))@endforeach
 @if((float) ($b['short_hours']['amount'] ?? 0) > 0)@php($deductions->push(['Short hours ('.\App\Support\Duration::hms($b['short_hours']['short_seconds']).')', (float) $b['short_hours']['amount']]))@endif
-@if((float) $item->penalties_amount > 0)@php($deductions->push(['Penalties', (float) $item->penalties_amount]))@endif
+@if(! empty($b['penalty_lines']))
+    @foreach($b['penalty_lines'] as $p)@php($deductions->push(['Fine '.\Illuminate\Support\Carbon::parse($p['date'])->format('d M').': '.\Illuminate\Support\Str::limit((string) $p['reason'], 60), (float) $p['amount']]))@endforeach
+@elseif((float) $item->penalties_amount > 0)@php($deductions->push(['Penalties', (float) $item->penalties_amount]))@endif
 @if((float) $item->recovery_amount > 0)@php($deductions->push(['Advance recovery', (float) $item->recovery_amount]))@endif
 @php($rows = max($earnings->count(), $deductions->count(), 1))
 <div class="slip">

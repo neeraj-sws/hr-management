@@ -20,16 +20,18 @@ class Policies extends Component
 
     public const RULES = [
         'attendance.late_penalty' => ['Late attendance', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per late minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
-        'attendance.unauthorized_absence' => ['Unauthorized absence (no leave mail)', ['amount_per_day' => 'Amount per absent workday', 'auto_deduct' => 'Deduct automatically']],
+        'attendance.unauthorized_absence' => ['Unauthorized absence (no leave mail)', ['amount_per_day' => 'Amount per absent workday', 'also_fine' => 'Also fine on top of the unpaid day', 'auto_deduct' => 'Deduct automatically']],
         'task.late_penalty' => ['Late / overdue tasks', ['amount_per_day' => 'Amount per overdue workday', 'max_amount' => 'Maximum per task']],
         'attendance.early_checkout' => ['Early check-out', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per early minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
         'task.missing_entry' => ['No task entered for a worked day', ['amount_per_day' => 'Amount per day']],
         'task.late_entry' => ['Task entered late (after the day it was for)', ['amount' => 'Amount per late task', 'grace_hours' => 'Grace hours after the day ends']],
         'daily_status.missing' => ['Daily status not submitted', ['amount_per_day' => 'Amount per day', 'grace_hours' => 'Grace hours after the day ends']],
+        // Leave asked for too late: fewer days before it than the notice (a past day is always late). Pending: needs approval.
+        'leave.late_application' => ['Leave applied late (short notice or after the day)', ['amount' => 'Amount per late leave request', 'notice_days' => 'Days of notice needed (0 = only past days)']],
     ];
 
     /** Values a field starts with when the rule has never been saved with it. */
-    public const DEFAULTS = ['auto_deduct' => '1'];
+    public const DEFAULTS = ['auto_deduct' => '1', 'also_fine' => '0'];
 
     /** Rules that can also be set per team or per employee (compliance rules plus OT, leave advance and screen capture). */
     public const OVERRIDABLE = self::RULES + [

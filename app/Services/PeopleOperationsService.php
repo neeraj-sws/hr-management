@@ -160,6 +160,77 @@ class PeopleOperationsService
      * payroll run it is taken out and the run must be recalculated; a penalty
      * in an approved or locked run cannot be waived.
      */
+    /**
+     * The day is already paid only for the hours at work - a half day, a check-in after the cut-off, or an approved
+     * half-day / short leave - so its late arrival or early leaving is already cut from the salary.
+     */
+    public function paidByHours(AttendanceEmployee $employee, \App\Models\AttendanceSession $session): bool
+    {
+        if (! $session->check_out) return false;
+        $date = $session->work_date->toDateString();
+        $payroll = $this->policy($employee, 'payroll.calculation', [], $date);
+        $attendance = app(AttendanceService::class);
+        if (($payroll['half_day_pay'] ?? true) && $attendance->isHalfDay($session)) return true;
+        if (($payroll['late_checkin_hours_pay'] ?? true) && app(HrWorkflowService::class)->lateCheckInPay($employee, $session) !== null) return true;
+
+        return (bool) ($payroll['half_leave_hours_only'] ?? true) && LeaveRequest::where('employee_id', $employee->id)->where('status', 'approved')
+            ->whereIn('duration', ['half', 'short'])->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists();
+    }
+
+    /**
+     * A day changed after its fines were made (attendance correction, HR edit, leave approved or rejected): the
+     * day's late / early / absence fines that no longer apply are waived, and the day is checked again for fines
+     * that now apply. Fines inside a locked payroll are left alone (waiving them is refused there).
+     */
+    public function reassessDay(AttendanceEmployee $employee, string $date, int $actor, string $why): void
+    {
+        $session = \App\Models\AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $date)->whereNotNull('check_in')->latest('id')->first();
+        $open = EmployeePenalty::where('employee_id', $employee->id)->whereDate('effective_on', $date)->whereIn('status', ['pending', 'approved'])
+            ->where(fn ($q) => $q->where('source_key', 'like', "late:{$employee->id}:{$date}%")->orWhere('source_key', 'like', "early:{$employee->id}:{$date}%")->orWhere('source_key', 'like', "absence:{$employee->id}:{$date}%"))->get();
+        foreach ($open as $penalty) {
+            $kind = strtok((string) $penalty->source_key, ':');
+            $stillApplies = match ($kind) {
+                'absence' => $session === null && ! LeaveRequest::where('employee_id', $employee->id)->whereIn('status', ['approved', 'pending'])->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists(),
+                'late' => $session !== null && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->lateMinutes($session) > 0,
+                'early' => $session !== null && $session->check_out && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->earlyMinutes($session) > 0,
+                default => true,
+            };
+            if ($stillApplies) continue;
+            rescue(fn () => $this->waivePenalty($penalty, $actor, 'No longer applies: '.$why), null, false);
+        }
+        // Fines that now apply (e.g. a rejected leave leaves the day absent). Existing fines are never duplicated.
+        if (Carbon::parse($date)->lt(today())) rescue(fn () => $this->assessCompliance($date, $date, $actor, $employee->id), null, false);
+    }
+
+    /**
+     * Leave asked for too late (Compliance > "Leave applied late"): fewer days before the leave than the notice
+     * needed, or after the day itself. A pending fine: nothing is cut until it is approved. Once per leave request.
+     */
+    public function lateLeaveFine(LeaveRequest $leave): ?EmployeePenalty
+    {
+        $employee = $leave->employee;
+        if (! $employee) return null;
+        $asked = ($leave->created_at ?? now())->copy()->startOfDay();
+        $config = $this->policy($employee, 'leave.late_application', [], $asked->toDateString());
+        $amount = max(0, (float) ($config['amount'] ?? 0));
+        if ($amount <= 0) return null;
+        $notice = max(0, (int) ($config['notice_days'] ?? 0));
+        $daysBefore = (int) $asked->diffInDays($leave->starts_on->copy()->startOfDay(), false);
+        if ($daysBefore >= 0 && $daysBefore >= $notice) return null;
+        $reason = $daysBefore < 0
+            ? 'Leave for '.$leave->starts_on->format('d M').' asked on '.$asked->format('d M').' (after the day)'
+            : 'Leave for '.$leave->starts_on->format('d M').' asked '.$daysBefore.' day(s) before (needs '.$notice.')';
+        $rule = PolicyRule::where('rule_key', 'leave.late_application')->where('is_active', true)->first();
+        $penalty = EmployeePenalty::firstOrCreate(['source_key' => "late_leave:{$leave->id}"], ['employee_id' => $employee->id, 'policy_rule_id' => $rule?->id, 'effective_on' => $asked->toDateString(), 'amount' => round($amount, 2), 'reason' => $reason, 'requested_by' => $employee->user_id ?? User::role('Master Admin')->value('id'), 'status' => 'pending']);
+        if ($penalty->wasRecentlyCreated) {
+            $this->approval(EmployeePenalty::class, $penalty->id);
+            $this->audit->record('compliance.late_leave_assessed', $penalty, ['leave_id' => $leave->id, 'days_before' => $daysBefore]);
+            $employee->user?->notify(new ApprovalRequested('EmployeePenalty', $penalty->id, $reason.' — a penalty is pending review.'));
+        }
+
+        return $penalty;
+    }
+
     public function waivePenalty(EmployeePenalty $penalty, int $actor, string $note): EmployeePenalty
     {
         return DB::transaction(function () use ($penalty, $actor, $note) {
@@ -278,14 +349,18 @@ class PeopleOperationsService
         return (float) $profile->monthly_salary / max(1, $days) / max(0.5, $hours) / 60;
     }
 
-    public function assessCompliance(string $start,string $end,int $actor):int
+    /** $onlyEmployeeId: re-check one person (after a correction, leave decision or HR change); null = everyone. */
+    public function assessCompliance(string $start,string $end,int $actor,?int $onlyEmployeeId=null):int
     {
         if($end<$start)throw ValidationException::withMessages(['period'=>'The end date must be on or after the start date.']);
         $rule=PolicyRule::where('rule_key','attendance.late_penalty')->where('is_active',true)->first();
         $created=0;
-        foreach(\App\Models\AttendanceSession::with('employee')->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->whereNotNull('check_in')->get() as $session){
+        foreach(\App\Models\AttendanceSession::with('employee')->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->whereNotNull('check_in')->when($onlyEmployeeId,fn($q,$id)=>$q->where('employee_id',$id))->get() as $session){
             $employee=$session->employee;
             if(!$employee)continue;
+            // Never cut twice: a day already paid only for the hours at work (half day, check-in after the cut-off,
+            // half-day / short leave) has its lateness cut by that; no per-minute late fine on top.
+            if($this->paidByHours($employee,$session))continue;
             // Extra working on an off day is never late.
             if(!app(AttendanceService::class)->isScheduledDay($employee,$session->work_date->toDateString()))continue;
             $workStart=app(AttendanceService::class)->rules($employee,$session->work_date->toDateString())['work_start'];
@@ -301,15 +376,18 @@ class PeopleOperationsService
             if($penalty->wasRecentlyCreated){$this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.late_penalty_assessed',$penalty,['late_minutes'=>$late]);$created++;}
         }
         $taskRule=PolicyRule::where('rule_key','task.late_penalty')->where('is_active',true)->first();
-        foreach(\App\Models\Task::with('assignee')->whereNotNull('due_on')->whereDate('due_on','>=',$start)->whereDate('due_on','<=',$end)->where('status','!=','completed')->get() as $task){
+        foreach(\App\Models\Task::with('assignee')->whereNotNull('due_on')->whereDate('due_on','>=',$start)->whereDate('due_on','<=',$end)->where('status','!=','completed')->when($onlyEmployeeId,fn($q,$id)=>$q->where('assignee_id',$id))->get() as $task){
             $employee=$task->assignee;if(!$employee)continue;$config=$this->policy($employee,'task.late_penalty',$taskRule?->configuration??[],$end);$perDay=max(0,(float)($config['amount_per_day']??0));if($perDay<=0)continue;
             if(Carbon::parse($task->due_on)->gte(Carbon::parse($end)))continue;$days=$this->configuredWorkdays(Carbon::parse($task->due_on)->addDay(),Carbon::parse($end),$employee,$end);if($days===0)continue;$amount=$this->capped($perDay*$days,$config);
             $penalty=EmployeePenalty::firstOrCreate(['source_key'=>"late_task:{$task->id}".($taskRule?":{$taskRule->id}":'')],['employee_id'=>$employee->id,'policy_rule_id'=>$taskRule?->id,'effective_on'=>$task->due_on,'amount'=>$amount,'reason'=>"Task #{$task->id} was overdue by {$days} working days",'requested_by'=>$actor,'status'=>'pending']);
             if($penalty->wasRecentlyCreated){$this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.late_task_assessed',$penalty,['task_id'=>$task->id,'late_workdays'=>$days]);$created++;}
         }
         $absenceRule=PolicyRule::where('rule_key','attendance.unauthorized_absence')->where('is_active',true)->first();
-        foreach(AttendanceEmployee::where('is_active',true)->get() as $employee){
+        foreach(AttendanceEmployee::where('is_active',true)->when($onlyEmployeeId,fn($q,$id)=>$q->whereKey($id))->get() as $employee){
                 $config=$this->policy($employee,'attendance.unauthorized_absence',$absenceRule?->configuration??[],$end);$amount=max(0,(float)($config['amount_per_day']??0));if($amount<=0)continue;
+                // Never cut twice: an absent day is already not paid. The fine (for no leave request) comes on top only
+                // when the admin chose "Also fine on top of the unpaid day" (Compliance > Unauthorized absence).
+                if(empty($config['also_fine']))continue;
                 for($day=Carbon::parse($start)->startOfDay();$day->lte(Carbon::parse($end)->startOfDay());$day->addDay()){
                     $date=$day->toDateString();$calendar=$this->policy($employee,'calendar.working_days',['days'=>[1,2,3,4,5],'holidays'=>[]],$date);if(!$this->isConfiguredWorkday($date,$calendar)||$day->gte(today())||($employee->joined_at&&$day->lt(Carbon::parse($employee->joined_at))))continue;
                     if(\App\Models\AttendanceSession::where('employee_id',$employee->id)->whereDate('work_date',$date)->whereNotNull('check_in')->exists())continue;
@@ -333,7 +411,7 @@ class PeopleOperationsService
                     }
                 }
         }
-        $created += $this->assessWorkCompliance($start, $end, $actor);
+        $created += $this->assessWorkCompliance($start, $end, $actor, $onlyEmployeeId);
 
         return $created;
     }
@@ -343,7 +421,7 @@ class PeopleOperationsService
      * missing daily status. Every finding is a *pending* penalty: nothing is
      * deducted until someone approves it (and it can be reduced or waived).
      */
-    private function assessWorkCompliance(string $start, string $end, int $actor): int
+    private function assessWorkCompliance(string $start, string $end, int $actor, ?int $onlyEmployeeId = null): int
     {
         $created = 0;
         $attendance = app(AttendanceService::class);
@@ -360,15 +438,16 @@ class PeopleOperationsService
         };
         $now = now();
 
-        $sessions = \App\Models\AttendanceSession::with('employee')->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->whereNotNull('check_in')->get();
+        $sessions = \App\Models\AttendanceSession::with('employee')->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->whereNotNull('check_in')->when($onlyEmployeeId, fn ($q, $id) => $q->where('employee_id', $id))->get();
         foreach ($sessions as $session) {
             $employee = $session->employee;
             if (! $employee) continue;
             $date = $session->work_date->toDateString();
             $dayEnd = Carbon::parse($date)->endOfDay();
 
-            // Early check-out (an auto-closed session is a missed check-out, not an early one).
-            if ($session->check_out && ! $session->closed_automatically) {
+            // Early check-out (an auto-closed session is a missed check-out, not an early one). Never cut twice:
+            // a day already paid only for the hours at work has its early leaving cut by that.
+            if ($session->check_out && ! $session->closed_automatically && ! $this->paidByHours($employee, $session)) {
                 $config = $this->policy($employee, 'attendance.early_checkout', [], $date);
                 $early = max(0, $attendance->earlyMinutes($session) - (int) ($config['grace_minutes'] ?? 0));
                 if ($early > 0) $raise($employee, 'attendance.early_checkout', "early:{$employee->id}:{$date}", $date, $this->capped($early * $this->penaltyRatePerMinute($employee, $config, $date), $config), "Checked out {$early} minutes early", ['early_minutes' => $early]);
@@ -391,7 +470,7 @@ class PeopleOperationsService
         }
 
         // Tasks entered after the day they were for (plus grace hours).
-        $tasks = \App\Models\Task::with('assignee')->whereNotNull('work_date')->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->get();
+        $tasks = \App\Models\Task::with('assignee')->whereNotNull('work_date')->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->when($onlyEmployeeId, fn ($q, $id) => $q->where('assignee_id', $id))->get();
         foreach ($tasks as $task) {
             $employee = $task->assignee;
             if (! $employee || $task->created_by !== $employee->user_id) continue; // only self-entered tasks

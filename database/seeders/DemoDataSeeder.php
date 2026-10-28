@@ -107,11 +107,11 @@ class DemoDataSeeder extends Seeder
         Auth::setUser($sana->user);
         $sickLeave = $workflow->requestLeave($sana, ['leave_type_id' => $sick->id, 'starts_on' => $leaveDate(10), 'ends_on' => $leaveDate(10), 'reason' => 'Fever']);
         Auth::setUser($mgr2->user);
-        $workflow->decideLeave($sickLeave, $mgr2->user_id, true);
+        $workflow->decideLeave($sickLeave, $mgr2->user_id, true, 'Doctor note received');
         Auth::setUser($dev->user);
         $unpaidLeave = $workflow->requestLeave($dev, ['leave_type_id' => $unpaid->id, 'starts_on' => $leaveDate(12), 'ends_on' => $leaveDate(12), 'reason' => 'Personal errand']);
         Auth::setUser($mgr2->user);
-        $workflow->decideLeave($unpaidLeave, $mgr2->user_id, true);
+        $workflow->decideLeave($unpaidLeave, $mgr2->user_id, true, 'Personal work, informed in advance');
         Auth::setUser($karan->user);
         $rejected = $workflow->requestLeave($karan, ['leave_type_id' => $annual->id, 'starts_on' => today()->addWeekdays(3), 'ends_on' => today()->addWeekdays(4), 'reason' => 'Short trip']);
         Auth::setUser($mgr1->user);

@@ -177,7 +177,7 @@ class ProductionReadinessTest extends TestCase
         $type = LeaveType::create(['name' => 'Compliance PTO', 'annual_allowance' => 10, 'monthly_accrual' => 0, 'carry_forward' => false, 'carry_forward_limit' => 0, 'allow_advance' => false, 'paid' => true, 'is_active' => true]);
         LeaveRequest::create(['employee_id' => $employee->id, 'leave_type_id' => $type->id, 'starts_on' => '2026-09-02', 'ends_on' => '2026-09-02', 'days' => 1, 'reason' => 'approved absence', 'status' => 'approved']);
         PolicyRule::create(['rule_key' => 'task.late_penalty', 'category' => 'compliance', 'name' => 'Late task', 'configuration' => ['amount_per_day' => 20], 'is_active' => true]);
-        PolicyRule::create(['rule_key' => 'attendance.unauthorized_absence', 'category' => 'compliance', 'name' => 'Unauthorized absence', 'configuration' => ['amount_per_day' => 15], 'is_active' => true]);
+        PolicyRule::create(['rule_key' => 'attendance.unauthorized_absence', 'category' => 'compliance', 'name' => 'Unauthorized absence', 'configuration' => ['amount_per_day' => 15, 'also_fine' => 1], 'is_active' => true]);
         $service = app(PeopleOperationsService::class);
         $this->assertSame(2, $service->assessCompliance('2026-09-01', '2026-09-02', $admin->id));
         $this->assertSame(0, $service->assessCompliance('2026-09-01', '2026-09-02', $admin->id));
@@ -195,7 +195,7 @@ class ProductionReadinessTest extends TestCase
         $type = LeaveType::create(['name' => 'Mail PTO', 'annual_allowance' => 10, 'monthly_accrual' => 0, 'carry_forward' => false, 'carry_forward_limit' => 0, 'allow_advance' => false, 'paid' => true, 'is_active' => true]);
         // 2 Sep: leave mail sent, not yet approved: no fine.
         LeaveRequest::create(['employee_id' => $employee->id, 'leave_type_id' => $type->id, 'starts_on' => '2026-09-02', 'ends_on' => '2026-09-02', 'days' => 1, 'reason' => 'sent', 'status' => 'pending']);
-        PolicyRule::create(['rule_key' => 'attendance.unauthorized_absence', 'category' => 'compliance', 'name' => 'Unauthorized absence', 'configuration' => ['amount_per_day' => 500], 'is_active' => true]);
+        PolicyRule::create(['rule_key' => 'attendance.unauthorized_absence', 'category' => 'compliance', 'name' => 'Unauthorized absence', 'configuration' => ['amount_per_day' => 500, 'also_fine' => 1], 'is_active' => true]);
         $service = app(PeopleOperationsService::class);
 
         // 1 Sep: absent, no leave mail: 500 deducted straight away (approved), and the employee is told.
@@ -208,7 +208,7 @@ class ProductionReadinessTest extends TestCase
         $this->assertTrue($user->notifications()->get()->contains(fn ($n) => str_contains($n->data['message'] ?? '', 'will be deducted in payroll')));
 
         // "Wait for HR approval" chosen: the next one stays pending.
-        $service->setPolicy('attendance.unauthorized_absence', 'compliance', 'Unauthorized absence', ['amount_per_day' => 500, 'auto_deduct' => 0], null, $admin->id, '2026-09-01');
+        $service->setPolicy('attendance.unauthorized_absence', 'compliance', 'Unauthorized absence', ['amount_per_day' => 500, 'auto_deduct' => 0, 'also_fine' => 1], null, $admin->id, '2026-09-01');
         $this->assertSame(1, $service->assessCompliance('2026-09-03', '2026-09-03', $admin->id));
         $this->assertSame('pending', \App\Models\EmployeePenalty::where('employee_id', $employee->id)->whereDate('effective_on', '2026-09-03')->sole()->status);
     }

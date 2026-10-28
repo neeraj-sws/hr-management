@@ -30,6 +30,13 @@ class Records extends Component
     /** The session open in the Screen activity details panel, and its tab. */
     public ?int $detail = null;
     public string $detailTab = 'timeline';
+    /** Change time (HR / admin): one day of one employee, with a compulsory reason. */
+    public ?int $editEmployee = null;
+    public string $editDate = '';
+    public string $editIn = '';
+    public string $editOut = '';
+    public string $editBreak = '';
+    public string $editReason = '';
 
     public function mount(): void
     {
@@ -78,6 +85,48 @@ class Records extends Component
     public function closeDetail(): void
     {
         $this->detail = null;
+    }
+
+    private function canEditTime(): bool
+    {
+        return $this->user()->canAny(['attendance.correct', 'hr.manage', 'employees.manage']) || \App\Support\Access::isAdmin($this->user());
+    }
+
+    /** Opens "Change time" for a day (filled in with the day's times when there is attendance). */
+    public function openEdit(int $employeeId, string $date): void
+    {
+        abort_unless($this->canEditTime(), 403);
+        $session = AttendanceSession::where('employee_id', $employeeId)->whereDate('work_date', $date)->latest('id')->first();
+        $this->fill(['editEmployee' => $employeeId, 'editDate' => Carbon::parse($date)->toDateString(), 'editIn' => (string) $session?->check_in?->format('H:i'), 'editOut' => (string) $session?->check_out?->format('H:i'),
+            'editBreak' => $session ? (string) intdiv((int) $session->break_seconds, 60) : '', 'editReason' => '']);
+        $this->resetValidation();
+    }
+
+    public function closeEdit(): void
+    {
+        $this->editEmployee = null;
+    }
+
+    public function saveEdit(\App\Services\AttendanceCorrectionService $corrections): void
+    {
+        abort_unless($this->canEditTime() && $this->editEmployee, 403);
+        \App\Services\ImpersonationService::block();
+        $this->validate([
+            'editIn' => ['nullable', 'date_format:H:i'], 'editOut' => ['nullable', 'date_format:H:i'],
+            'editBreak' => ['nullable', 'integer', 'min:0', 'max:720'], 'editReason' => ['required', 'string', 'min:5', 'max:1000'],
+        ], ['editReason.required' => 'Write why the time is changed.'], ['editIn' => 'check-in', 'editOut' => 'check-out', 'editBreak' => 'break minutes', 'editReason' => 'reason']);
+        $employee = AttendanceEmployee::findOrFail($this->editEmployee);
+        try {
+            $corrections->adminChange($employee, $this->editDate, $this->editIn ?: null, $this->editOut ?: null, $this->editBreak === '' ? null : (int) $this->editBreak, $this->editReason, $this->user());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // The service names fields like the employee form (checkIn, workDate ...): show them on this form.
+            $map = ['checkIn' => 'editIn', 'checkOut' => 'editOut', 'breakMinutes' => 'editBreak', 'workDate' => 'editReason'];
+            foreach ($e->errors() as $field => $messages) $this->addError($map[$field] ?? $field, $messages[0]);
+
+            return;
+        }
+        $this->toast("{$employee->name}: time for ".Carbon::parse($this->editDate)->format('d M')." changed. They were told; salary follows on the next payroll calculation.");
+        $this->editEmployee = null;
     }
 
     /**
@@ -185,6 +234,8 @@ class Records extends Component
             'summary' => $this->todaySummary($attendance),
             'detailSession' => $detail,
             'activity' => $activity,
+            'canEditTime' => $this->canEditTime(),
+            'editPerson' => $this->editEmployee ? AttendanceEmployee::find($this->editEmployee) : null,
         ], 'Attendance');
     }
 }

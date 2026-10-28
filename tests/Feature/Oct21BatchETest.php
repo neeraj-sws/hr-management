@@ -81,13 +81,18 @@ class Oct21BatchETest extends TestCase
         $this->assertSame([8562.96, 8562.96, 0.0], [$row['payable'], $row['paid'], $row['balance']]);
     }
 
-    public function test_leave_cannot_be_requested_for_a_past_day(): void
+    public function test_leave_for_a_past_day_only_back_to_last_month_and_marked_old_date(): void
     {
         $e = $this->employee('LP-1');
         $type = \App\Models\LeaveType::where('is_active', true)->firstOrFail();
         \Laravel\Sanctum\Sanctum::actingAs($e->user, ['*']);
-        $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => '2026-10-15', 'ends_on' => '2026-10-16', 'reason' => 'Trip'])
+        // Older than the start of last month: ask HR.
+        $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => today()->subMonthsNoOverflow(2)->startOfMonth()->toDateString(), 'ends_on' => today()->subMonthsNoOverflow(2)->startOfMonth()->toDateString(), 'reason' => 'Trip'])
             ->assertStatus(422)->assertJsonValidationErrors('starts_on');
+        // A recent past day: allowed, marked "old date".
+        $past = today()->subDays(3)->isWeekend() ? today()->subDays(5) : today()->subDays(3);
+        $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => $past->toDateString(), 'ends_on' => $past->toDateString(), 'reason' => 'Fever'])
+            ->assertCreated()->assertJsonPath('data.backdated', true);
         $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => '2026-10-22', 'ends_on' => '2026-10-23', 'reason' => 'Trip'])
             ->assertCreated();
     }

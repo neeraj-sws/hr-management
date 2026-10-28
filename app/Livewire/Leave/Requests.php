@@ -98,11 +98,12 @@ class Requests extends Component
         $this->validate([
             'leaveTypeId' => ['required', 'exists:leave_types,id'],
             'duration' => ['required', 'in:full,half,short'],
-            // Employees ask for leave for today or later; past days are settled by HR (corrections, imports).
-            'startsOn' => ['required', 'date', 'after_or_equal:today'],
+            // A past day can be asked for too (back to the start of last month): it is marked "Old date", the
+            // approver must give a reason, and a "Leave applied late" fine may apply (Compliance).
+            'startsOn' => ['required', 'date', 'after_or_equal:'.today()->subMonthNoOverflow()->startOfMonth()->toDateString()],
             'endsOn' => ['required', 'date', 'after_or_equal:startsOn'],
             'reason' => ['required', 'string', 'max:2000'],
-        ], ['startsOn.after_or_equal' => 'Leave can be requested for today or a later date, not for a past day.'], ['leaveTypeId' => 'leave type', 'startsOn' => 'start date', 'endsOn' => 'end date']);
+        ], ['startsOn.after_or_equal' => 'Leave can be asked for back to '.today()->subMonthNoOverflow()->startOfMonth()->format('d M Y').' at the earliest; for older days ask HR.'], ['leaveTypeId' => 'leave type', 'startsOn' => 'start date', 'endsOn' => 'end date']);
         if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
         $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'duration' => $this->duration, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
         $this->showForm = false;
