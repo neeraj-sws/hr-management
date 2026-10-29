@@ -6,6 +6,7 @@ use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\ApprovalRequest;
 use App\Models\AttendanceEmployee;
 use App\Models\EmployeePenalty;
+use App\Models\PenaltyAppeal;
 use App\Services\ApprovalInbox;
 use App\Services\PeopleOperationsService;
 use Livewire\Attributes\Url;
@@ -26,6 +27,13 @@ class Penalties extends Component
     public string $acting = '';
     public string $actAmount = '';
     public string $actNote = '';
+    /** The employee's reason for a fine. */
+    public ?int $appealingId = null;
+    public string $appealReason = '';
+    /** HR / admin deciding an employee's reason. */
+    public ?int $reviewingId = null;
+    public bool $reviewAccept = true;
+    public string $reviewNote = '';
 
     private function canManage(): bool
     {
@@ -82,16 +90,52 @@ class Penalties extends Component
         $this->actingId = null;
     }
 
+    public function openAppeal(int $id): void
+    {
+        $penalty = EmployeePenalty::with('appeal')->where('employee_id', $this->ownEmployee()?->id ?? 0)->findOrFail($id);
+        abort_unless($penalty->canAppeal(), 403);
+        $this->fill(['appealingId' => $id, 'appealReason' => '']);
+        $this->resetValidation();
+    }
+
+    public function saveAppeal(PeopleOperationsService $people): void
+    {
+        $this->validate(['appealReason' => ['required', 'string', 'min:5', 'max:1000']], ['appealReason.min' => 'Write the reason (at least 5 characters).'], ['appealReason' => 'reason']);
+        $people->appealPenalty(EmployeePenalty::with('employee')->findOrFail($this->appealingId), $this->user(), $this->appealReason);
+        $this->appealingId = null;
+        $this->toast('Reason sent to HR. If it is accepted, the fine is removed.');
+    }
+
+    /** accept = the fine is removed; reject = it stays (a note is required). */
+    public function openReview(int $appealId, bool $accept): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->fill(['reviewingId' => $appealId, 'reviewAccept' => $accept, 'reviewNote' => '']);
+        $this->resetValidation();
+    }
+
+    public function saveReview(ApprovalInbox $inbox): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->validate(['reviewNote' => [$this->reviewAccept ? 'nullable' : 'required', 'string', 'max:1000']], ['reviewNote.required' => 'Say why the reason is not accepted.'], ['reviewNote' => 'note']);
+        $approval = ApprovalRequest::where('approvable_type', PenaltyAppeal::class)->where('approvable_id', $this->reviewingId)->where('status', 'pending')->firstOrFail();
+        $inbox->decide($this->user(), $approval, $this->reviewAccept, trim($this->reviewNote) ?: null);
+        $this->reviewingId = null;
+        $this->toast($this->reviewAccept ? 'Reason accepted: the fine is removed.' : 'Reason not accepted: the fine stays.');
+    }
+
     public function closeModal(): void
     {
         $this->showForm = false;
         $this->actingId = null;
+        $this->appealingId = null;
+        $this->reviewingId = null;
     }
 
     public function render(ApprovalInbox $inbox)
     {
         $own = $this->ownEmployee();
-        $query = EmployeePenalty::with(['employee', 'policyRule', 'payrollItem.run'])
+        $query = EmployeePenalty::with(['employee', 'policyRule', 'payrollItem.run', 'appeal.decider', 'decider'])
             ->when(! $this->canManage(), fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($this->status, fn ($q, $s) => $q->where('status', $s))
             ->when($this->canManage() && $this->employee, fn ($q) => $q->where('employee_id', $this->employee));
@@ -100,7 +144,9 @@ class Penalties extends Component
             'penalties' => (clone $query)->latest('id')->paginate(20),
             'totals' => ['pending' => (float) (clone $query)->where('status', 'pending')->sum('amount'), 'approved' => (float) (clone $query)->where('status', 'approved')->sum('amount')],
             'canManage' => $this->canManage(),
+            'ownId' => $own?->id,
             'decidable' => $inbox->pending($this->user(), EmployeePenalty::class)->pluck('approvable_id')->all(),
+            'reviewable' => $inbox->pending($this->user(), PenaltyAppeal::class)->pluck('approvable_id')->all(),
             'employees' => $this->canManage() ? AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
         ], 'Penalties');
     }

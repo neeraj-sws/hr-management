@@ -187,6 +187,48 @@ class WorkService
      * daily status was submitted, with the project-wise lines. Sent once per day
      * per person; later edits the same day do not send it again.
      */
+    /** A missed day's daily status can still be written up to this many days back (with a reason). */
+    public const MISSED_DAYS_BACK = 2;
+
+    /** Days in the last MISSED_DAYS_BACK days the person checked in, had to write a status and did not: newest first. */
+    public function missedStatusDays(AttendanceEmployee $employee): array
+    {
+        $from = today()->subDays(self::MISSED_DAYS_BACK)->toDateString();
+        $worked = \App\Models\AttendanceSession::where('employee_id', $employee->id)->whereNotNull('check_in')->whereDate('work_date', '>=', $from)->whereDate('work_date', '<', today())->pluck('work_date')->map(fn ($d) => $d->toDateString())->unique();
+        $written = \App\Models\DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', '>=', $from)->pluck('work_date')->map(fn ($d) => $d->toDateString())->all();
+
+        return $worked->reject(fn ($d) => in_array($d, $written, true) || ! \App\Support\DailyStatusRule::required($employee, $d))->sortDesc()->values()->all();
+    }
+
+    /**
+     * Writes a missed day's status later: the reason first (why it was not written that day), then the status. Its
+     * "not submitted" fine is removed at once; the employee, manager and HR are told, and the day's e-mail goes out now.
+     */
+    public function writeMissedStatus(AttendanceEmployee $employee, string $date, string $reason, array $fields, User $user): \App\Models\DailyWorkStatus
+    {
+        $reason = trim($reason);
+        if (! in_array($date, $this->missedStatusDays($employee), true)) {
+            throw ValidationException::withMessages(['date' => 'A missed daily status can be written only for a day in the last '.self::MISSED_DAYS_BACK.' days you were at work and did not write it.']);
+        }
+        if (mb_strlen($reason) < 5) throw ValidationException::withMessages(['late_reason' => 'First write why the status was not written that day (at least 5 characters).']);
+        if (mb_strlen(trim((string) ($fields['summary'] ?? ''))) < 5) throw ValidationException::withMessages(['summary' => 'Write what you completed that day.']);
+        $keep = array_intersect_key($fields, array_flip(['summary', 'plan', 'blockers', 'notes', 'pending', 'tomorrow_plan']));
+
+        $status = DB::transaction(fn () => \App\Models\DailyWorkStatus::create([...$keep, 'employee_id' => $employee->id, 'work_date' => $date, 'submitted_at' => now(), 'submitted_by' => $user->id, 'late_reason' => mb_substr($reason, 0, 1000), 'server_version' => 1]));
+        $this->audit->record('work_status.written_late', $status, ['reason' => $reason]);
+        $removed = app(PeopleOperationsService::class)->removeStatusFine($employee, $date, $reason, $user->id);
+        $day = $status->work_date->format('d M');
+        $fine = $removed ? ' The fine of '.number_format((float) $removed->amount, 2).' was removed.' : '';
+        Notifier::send($employee->user, 'DailyStatusSubmitted', $status->id, "Your daily status for {$day} is saved.{$fine}", route('work.daily-status', [], false));
+        $others = collect([$employee->manager?->user])->merge(Notifier::withPermission('penalties.manage'))->filter()->unique('id')->reject(fn ($u) => $u->id === $employee->user_id);
+        Notifier::send($others, 'DailyStatusSubmitted', $status->id, "{$employee->name} wrote the missed daily status for {$day}. Why it was late: \"{$reason}\".{$fine}", route('work.daily-status', ['employee' => $employee->id, 'date' => $date], false), $user->id);
+        $this->notifyBlocker($employee, $status);
+        // The 8:30 PM e-mail for that day has gone already: this status is e-mailed now.
+        rescue(fn () => \App\Console\Commands\SendDailyStatusSummaries::send($status->fresh(['employee.user', 'employee.manager.user'])), 0, true);
+
+        return $status;
+    }
+
     public function notifyDailyStatus(AttendanceEmployee $employee, \App\Models\DailyWorkStatus $status): void
     {
         $projectIds = collect((array) ($status->project_updates ?? []))->pluck('project_id')->filter()->all();

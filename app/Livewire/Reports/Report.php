@@ -30,6 +30,18 @@ class Report extends Component
     #[Url] public string $day = '';
     /** Month picker: "2026-10" shows that whole month (this month: up to today); "custom" shows From / To. */
     #[Url] public string $month = '';
+    /** Column the whole report is sorted by (all pages, not only the one on screen); dir 'asc' | 'desc'. */
+    #[Url] public string $sort = '';
+    #[Url] public string $dir = 'asc';
+
+    /** A heading click: first ascending, next descending; page 1 then starts at the top of the whole list. */
+    public function sortBy(string $column, ReportService $reports): void
+    {
+        if (! in_array($column, $reports->columns($this->type), true)) return;
+        $this->dir = $this->sort === $column && $this->dir === 'asc' ? 'desc' : 'asc';
+        $this->sort = $column;
+        $this->resetPage();
+    }
 
     public function mount(string $type, ReportService $reports): void
     {
@@ -92,7 +104,7 @@ class Report extends Component
             'label' => $reports->label($this->type),
             'columns' => $columns = $reports->columns($this->type),
             'headings' => collect($columns)->mapWithKeys(fn ($column) => [$column => $reports->heading($this->type, $column)])->all(),
-            'rows' => $this->paginateCollection($rows->take(self::PREVIEW_LIMIT)->values(), self::PER_PAGE),
+            'rows' => $this->paginateCollection($this->sorted($rows->take(self::PREVIEW_LIMIT), $columns)->values(), self::PER_PAGE),
             'truncated' => $rows->count() > self::PREVIEW_LIMIT,
             'exportUrl' => route('hr.reports.export', ['type' => $this->type, ...$filters]),
             'exportUrlExcel' => route('hr.reports.export', ['type' => $this->type, 'format' => 'xlsx', ...$filters]),
@@ -105,6 +117,45 @@ class Report extends Component
             // Existing values to pick from in the Search box (actions for Audit, titles / names elsewhere).
             'suggestions' => $this->searchSuggestions($scopeIds),
         ], $reports->label($this->type).' report');
+    }
+
+    /** Sorts every row (before paging) the way the list headings sort: dates, times and numbers by value, empty cells last. */
+    private function sorted(\Illuminate\Support\Collection $rows, array $columns): \Illuminate\Support\Collection
+    {
+        if (! in_array($this->sort, $columns, true)) return $rows;
+        $dir = $this->dir === 'desc' ? -1 : 1;
+        $keyed = $rows->values()->map(fn ($row, $i) => [$row, $i, self::sortValue($row[$this->sort] ?? null)])->all();
+        usort($keyed, function ($x, $y) use ($dir) {
+            [$a, $b] = [$x[2], $y[2]];
+            if ($a[0] === 0 || $b[0] === 0) return $a[0] === $b[0] ? $x[1] <=> $y[1] : ($a[0] === 0 ? 1 : -1);
+            $c = $a[0] !== $b[0] ? $a[0] <=> $b[0] : ($a[0] === 1 ? $a[1] <=> $b[1] : strnatcasecmp($a[1], $b[1]));
+
+            return $c === 0 ? $x[1] <=> $y[1] : $dir * $c;
+        });
+
+        return collect(array_column($keyed, 0));
+    }
+
+    /** [kind, value]: kind 0 = empty, 1 = number (dates, times, durations, money), 2 = text. Same rules as public/js/table-sort.js. */
+    private static function sortValue(mixed $value): array
+    {
+        if (is_int($value) || is_float($value)) return [1, (float) $value];
+        if (is_bool($value)) return [1, (float) $value];
+        if (! is_scalar($value)) return [0, ''];
+        $text = trim(preg_replace('/\s+/', ' ', (string) $value));
+        if ($text === '' || $text === '—' || $text === '-') return [0, ''];
+        if (preg_match('/^[−-]?\s*(\d{1,3}):(\d{2})(?::(\d{2}))?\s*(am|pm)?\b/i', $text, $m)) {
+            $h = (int) $m[1];
+            if (! empty($m[4])) $h = $h % 12 + (strtolower($m[4]) === 'pm' ? 12 : 0);
+
+            return [1, $h * 3600 + (int) $m[2] * 60 + (int) ($m[3] ?? 0)];
+        }
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $text, $m)) return [1, (float) gmmktime(0, 0, 0, (int) $m[2], (int) $m[3], (int) $m[1])];
+        if (preg_match('#^(\d{1,2})[-/](\d{1,2})[-/](\d{4})#', $text, $m)) return [1, (float) gmmktime(0, 0, 0, (int) $m[2], (int) $m[1], (int) $m[3])];
+        if (($t = strtotime($text)) !== false && preg_match('/^(?:[A-Za-z]{3},?\s+)?\d{1,2}\s+[A-Za-z]{3}|^[A-Za-z]{3}[a-z]*\s+\d{4}$/', $text)) return [1, (float) $t];
+        if (preg_match('/^[₹$+−\-\d\s,.%]/u', $text) && preg_match('/^-?\d+(\.\d+)?/', str_replace(['₹', '$', ',', '%', '+', ' ', '−'], ['', '', '', '', '', '', '-'], $text), $m)) return [1, (float) $m[0]];
+
+        return [2, mb_strtolower($text)];
     }
 
     /** @return array<int, string> */

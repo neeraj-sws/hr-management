@@ -11,7 +11,7 @@ import { enqueue } from '../lib/queue';
 import { todayYmd } from '../components/DateField';
 
 type DayInfo = { check_in: string | null; check_out: string | null; worked_seconds: number; break_seconds: number; task_count: number; task_seconds: number; tasks?: { id: number; title: string; status: string; seconds: number }[] };
-type Status = { id: number; work_date: string; yesterday: string | null; plan: string | null; summary: string; blockers: string | null; notes: string | null; submitted_at: string | null; late?: boolean; day?: DayInfo };
+type Status = { id: number; work_date: string; yesterday: string | null; plan: string | null; summary: string; blockers: string | null; notes: string | null; submitted_at: string | null; late_reason?: string | null; late?: boolean; day?: DayInfo };
 type MonthSummary = { days_at_work: number; submitted: number; missed: string[]; late: number; blockers: number };
 type TeamRow = { id: number; name: string; checked_in: boolean; submitted: boolean; blocker: string | null };
 
@@ -53,12 +53,27 @@ export default function DailyStatusScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const closeForm = useCallback(() => setFormOpen(false), []);
   useCloseOnSuccess(busy, message, closeForm);
+  // A missed day (last 2 days at work, no status): step 1 the reason, step 2 the status; its fine is then removed.
+  const [missedWritable, setMissedWritable] = useState<string[]>([]);
+  const [missedDate, setMissedDate] = useState<string | null>(null);
+  const [missedStep, setMissedStep] = useState<1 | 2>(1);
+  const [lateReason, setLateReason] = useState('');
+  const [mPlan, setMPlan] = useState('');
+  const [mDone, setMDone] = useState('');
+  const [mBlockers, setMBlockers] = useState('');
+  const [mNotes, setMNotes] = useState('');
+  const [mErrors, setMErrors] = useState<Record<string, string>>({});
+  const [mBusy, setMBusy] = useState(false);
+  const [mMessage, setMMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+  const closeMissed = useCallback(() => setMissedDate(null), []);
+  useCloseOnSuccess(mBusy, mMessage, closeMissed);
 
   const [month, setMonth] = useMonth();
   const load = useCallback(async () => {
     try {
-      const response = await get<{ data: Status[]; today: Status | null; today_info?: DayInfo; month_summary?: MonthSummary; team?: TeamRow[]; reminder_at?: string }>(`/daily-status?month=${month}`);
+      const response = await get<{ data: Status[]; today: Status | null; today_info?: DayInfo; month_summary?: MonthSummary; team?: TeamRow[]; reminder_at?: string; missed_writable?: string[] }>(`/daily-status?month=${month}`);
       setHistory(response.data);
+      setMissedWritable(response.missed_writable ?? []);
       setTodayStatus(response.today);
       setTodayInfo(response.today_info ?? null);
       if (response.reminder_at) setReminderAt(response.reminder_at);
@@ -137,6 +152,33 @@ export default function DailyStatusScreen() {
     }
   };
 
+  const openMissed = (date: string) => {
+    setMissedDate(date); setMissedStep(1); setLateReason(''); setMPlan(''); setMDone(''); setMBlockers(''); setMNotes(''); setMErrors({}); setMMessage(null);
+  };
+  const missedNext = () => {
+    if (lateReason.trim().length < 5) { setMErrors({ late_reason: 'First write why the status was not written that day (at least 5 characters).' }); return; }
+    setMErrors({}); setMissedStep(2);
+  };
+  const saveMissed = async () => {
+    if (!missedDate) return;
+    if (mDone.trim().length < 5) { setMErrors({ summary: 'Write what you completed that day.' }); return; }
+    setMBusy(true); setMMessage(null); setMErrors({});
+    try {
+      await post('/daily-status/missed', { work_date: missedDate, late_reason: lateReason.trim(), summary: mDone.trim(), plan: mPlan || null, blockers: mBlockers || null, notes: mNotes || null });
+      setMMessage({ tone: 'success', text: `Daily status for ${formatDate(missedDate)} saved. Any fine for that day is removed.` });
+      setMessage({ tone: 'success', text: `Daily status for ${formatDate(missedDate)} saved. Any fine for that day is removed.` });
+      await load();
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setMErrors(Object.fromEntries(Object.entries(e.errors).map(([k, v]) => [k, v[0]])));
+        if (e.errors.late_reason) setMissedStep(1);
+        setMMessage({ tone: 'error', text: e.firstMessage });
+      }
+    } finally {
+      setMBusy(false);
+    }
+  };
+
   // History: written days and missed days (no status) together, newest first.
   const missed = (summary?.missed ?? []).filter((d) => !history.some((s) => s.work_date === d));
   const sorted: ({ kind: 'status'; s: Status } | { kind: 'missed'; date: string })[] = [
@@ -170,6 +212,15 @@ export default function DailyStatusScreen() {
         {!written ? <Text style={[styles.meta, { color: amber.fg }]}>Write it before you leave · a reminder comes at {reminderAt}</Text> : null}
         <View style={{ marginTop: 10 }}><Button title={written ? "Edit today's status" : "Write today's status"} tone={written ? 'default' : 'primary'} onPress={() => setFormOpen(true)} /></View>
       </View>
+
+      {/* Missed days that can still be written (last 2 days): reason first, then the status; the fine is removed. */}
+      {missedWritable.map((d) => (
+        <View key={`w${d}`} style={[styles.today, { borderColor: red.line, backgroundColor: red.bg }]}>
+          <Text style={[styles.dayLine, { color: red.fg }]}>Not written · {new Date(`${d}T00:00:00`).toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short' })}</Text>
+          <Text style={[styles.meta, { color: red.fg }]}>Give the reason and write it now — any fine for that day is then removed.</Text>
+          <View style={{ marginTop: 8 }}><Button title="Write the missed day" tone="primary" onPress={() => openMissed(d)} /></View>
+        </View>
+      ))}
 
       {/* Month in numbers */}
       {summary ? (
@@ -225,11 +276,33 @@ export default function DailyStatusScreen() {
             {open === c.s.id ? <Text style={styles.body}>Completed: {c.s.summary}</Text> : null}
             {c.s.blockers ? <Text style={[styles.meta, { color: red.fg }]} numberOfLines={open === c.s.id ? undefined : 1}><MaterialCommunityIcons name="alert-outline" size={13} /> Blocker: {c.s.blockers}</Text> : null}
             {open === c.s.id && c.s.notes ? <Text style={styles.meta}>Notes: {c.s.notes}</Text> : null}
+            {open === c.s.id && c.s.late_reason ? <Text style={[styles.meta, { color: amber.fg }]}>Written late · why: {c.s.late_reason}</Text> : null}
             {open === c.s.id && c.s.day?.check_in ? <Text style={styles.meta}>In {c.s.day.check_in}{c.s.day.check_out ? ` · out ${c.s.day.check_out}` : ''} · break {hm(c.s.day.break_seconds)}</Text> : null}
           </View>
           <MaterialCommunityIcons name={open === c.s.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.faint} />
         </Pressable>
       )) : <Empty text={loaded ? (onlyBlockers ? 'No blockers this month' : 'No updates this month') : 'Loading…'} />}
+
+      <FormSheet visible={!!missedDate} title={missedDate ? `Missed status · ${formatDate(missedDate)}` : 'Missed status'} onClose={closeMissed}>
+        {mMessage?.tone === 'error' ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={mMessage.text} /></View> : null}
+        {missedStep === 1 ? (
+          <>
+            <Text style={[styles.meta, { marginBottom: 8 }]}>Step 1 of 2 · First say why the status was not written that day. Your manager and HR see it.</Text>
+            <Field label="Why was it not written that day?" value={lateReason} onChangeText={setLateReason} multiline placeholder="e.g. Left early for a doctor's visit and forgot" error={mErrors.late_reason} />
+            <Button title="Next: write the status" tone="primary" onPress={missedNext} />
+          </>
+        ) : (
+          <>
+            <Text style={[styles.meta, { marginBottom: 8 }]}>Step 2 of 2 · Reason: “{lateReason.trim()}”</Text>
+            <View style={{ marginBottom: 10, alignSelf: 'flex-start' }}><Button small title="Change the reason" onPress={() => setMissedStep(1)} /></View>
+            <Field label="🎯 Plan" value={mPlan} onChangeText={setMPlan} multiline placeholder="What you planned that day" />
+            <Field label="✅ Completed" value={mDone} onChangeText={setMDone} multiline placeholder="What you finished or moved forward that day" error={mErrors.summary} />
+            <Field label="⚠️ Blockers" value={mBlockers} onChangeText={setMBlockers} multiline placeholder="Anything that stopped you" />
+            <Field label="📝 Notes" value={mNotes} onChangeText={setMNotes} multiline placeholder="Optional" />
+            <Button title="Save status" tone="primary" onPress={saveMissed} loading={mBusy} />
+          </>
+        )}
+      </FormSheet>
 
       <FormSheet visible={formOpen} title="Today's status" onClose={closeForm}>
         {message?.tone === 'error' ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={message.text} /></View> : null}

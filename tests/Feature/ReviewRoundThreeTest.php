@@ -129,7 +129,7 @@ class ReviewRoundThreeTest extends TestCase
         $this->assertCount(0, $this->kinds($this->admin, 'EmployeePenalty'), 'The person who raised it is not notified');
 
         $people->decideFinancialRequest(\App\Models\EmployeePenalty::class, $penalty->id, ($other ?? $this->admin)->id, true);
-        $this->assertStringContainsString('Your penalty of 250.00 was approved', $this->kinds($e->user, 'EmployeePenalty')->first()->data['message']);
+        $this->assertMatchesRegularExpression('/Your penalty of 250.00 for .+ was approved/', $this->kinds($e->user, 'EmployeePenalty')->first()->data['message']);
     }
 
     public function test_overtime_can_be_switched_off_and_goes_to_admins_when_the_manager_is_away(): void

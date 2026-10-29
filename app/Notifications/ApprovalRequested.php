@@ -25,6 +25,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'SalaryAdjustment' => 'payroll.salary',
         'SalaryAdvance' => 'payroll.advances',
         'EmployeePenalty' => 'compliance.penalties',
+        'PenaltyAppeal' => 'approvals.center',
         'PayrollRun' => 'payroll.payslips',
         'SalaryPayment' => 'payroll.payslips',
         'TaskAssignment' => 'work.my-tasks',

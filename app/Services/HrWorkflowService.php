@@ -598,7 +598,11 @@ class HrWorkflowService
         // Short hours (optional, Settings > Payroll): on the days the employee was present, the time
         // worked below their working day (less any half-day/short leave that day) is deducted at the
         // hourly rate, after a monthly grace. Absent days are already handled by proration above.
-        $short = ['enabled' => ! empty($payrollPolicy['short_hours_deduction']), 'required_seconds' => 0, 'actual_seconds' => 0, 'short_seconds' => 0, 'grace_seconds' => 0, 'amount' => 0.0];
+        // Also for chosen people only: their late rule (Compliance > Late attendance, e.g. an employee-specific rule)
+        // says "Also cut the hours not worked" - then only the days that rule covers are counted.
+        $everyone = ! empty($payrollPolicy['short_hours_deduction']);
+        $hoursCutOn = fn (string $date) => $everyone || ! empty($policyResolver->forEmployee($employee, 'attendance.late_penalty', $date, [])['hours_cut']);
+        $short = ['enabled' => $everyone || collect(array_keys($presentSet))->contains($hoursCutOn), 'required_seconds' => 0, 'actual_seconds' => 0, 'short_seconds' => 0, 'grace_seconds' => 0, 'amount' => 0.0];
         if ($short['enabled']) {
             $partLeave = LeaveRequest::where('employee_id',$employee->id)->where('status','approved')->whereIn('duration',['half','short'])->whereDate('starts_on','>=',$start)->whereDate('starts_on','<=',$end)->get()
                 ->groupBy(fn ($l) => $l->starts_on->toDateString())->map(fn ($g) => min(1, (float) $g->sum('days')));
@@ -607,11 +611,14 @@ class HrWorkflowService
             $missing = 0;
             foreach (array_keys($presentSet) as $date) {
                 if (isset($halfDaySet[$date]) || isset($hoursPaidSet[$date]) || \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) continue; // never cut twice / office closed early
+                if (! $hoursCutOn($date)) continue;
                 $daySession = $daySessions->get($date);
                 // Only finished days: a day still in progress (not checked out yet) is not short.
                 if (! $daySession || ! $daySession->check_out) continue;
                 $required = (int) round($standardDailyHours * 3600 * (1 - (float) ($partLeave[$date] ?? 0)));
-                $worked = $attendanceService->workedSeconds($daySession);
+                // "At work" (check-in to check-out less breaks), like the half-day check: idle is shown for
+                // productivity only and never cuts the salary.
+                $worked = (int) $attendanceService->officeSeconds($daySession);
                 $short['required_seconds'] += $required;
                 $short['actual_seconds'] += $worked;
                 $missing += max(0, $required - $worked);

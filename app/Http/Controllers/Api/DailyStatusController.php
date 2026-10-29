@@ -35,7 +35,20 @@ class DailyStatusController extends ApiController
             // Month tiles and the "Missed" cards: days at work with no status written.
             'month_summary' => $this->monthSummary($employee, $from, $to->min(today())),
             'team' => $this->team($request, $employee),
+            // Missed days that can still be written (reason first): the last 2 days at work with no status.
+            'missed_writable' => app(WorkService::class)->missedStatusDays($employee),
         ]);
+    }
+
+    /** A missed day written later: the reason why it was not written that day, then the status. Its fine is removed. */
+    public function missed(Request $request, WorkService $work): JsonResponse
+    {
+        $employee = $this->apiEmployee($request);
+        $data = $request->validate(['work_date' => ['required', 'date_format:Y-m-d'], 'late_reason' => ['required', 'string', 'min:5', 'max:1000'], 'summary' => ['required', 'string', 'min:5', 'max:4000'], 'plan' => ['nullable', 'string', 'max:4000'], 'blockers' => ['nullable', 'string', 'max:2000'], 'notes' => ['nullable', 'string', 'max:2000']],
+            ['late_reason.required' => 'First write why the status was not written that day.', 'late_reason.min' => 'First write why the status was not written that day (at least 5 characters).']);
+        $status = $work->writeMissedStatus($employee, $data['work_date'], $data['late_reason'], $data, $this->apiUser($request));
+
+        return response()->json(['data' => [...$this->present($status), 'late' => true]], 201);
     }
 
     /** Check-in, worked and break for a day, and (for today) the tasks with their timer time. */
@@ -127,6 +140,6 @@ class DailyStatusController extends ApiController
 
     private function present(DailyWorkStatus $s): array
     {
-        return ['id' => $s->id, 'work_date' => $s->work_date->toDateString(), 'yesterday' => $s->yesterday, 'plan' => $s->plan, 'summary' => $s->summary, 'blockers' => $s->blockers, 'notes' => $s->notes, 'pending' => $s->pending, 'tomorrow_plan' => $s->tomorrow_plan, 'submitted_at' => $s->submitted_at?->toIso8601String(), 'server_version' => (int) $s->server_version];
+        return ['id' => $s->id, 'work_date' => $s->work_date->toDateString(), 'yesterday' => $s->yesterday, 'plan' => $s->plan, 'summary' => $s->summary, 'blockers' => $s->blockers, 'notes' => $s->notes, 'pending' => $s->pending, 'tomorrow_plan' => $s->tomorrow_plan, 'submitted_at' => $s->submitted_at?->toIso8601String(), 'late_reason' => $s->late_reason, 'server_version' => (int) $s->server_version];
     }
 }

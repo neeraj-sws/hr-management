@@ -86,6 +86,7 @@ export default function More() {
     ] },
     { title: 'Money & documents', tiles: [
       { label: 'My salary', icon: '📊', href: '/salary' },
+      { label: 'My fines', icon: '⚠️', href: '/fines' },
       { label: 'Payslips', icon: '💰', href: '/payslips' },
       { label: 'Expenses', icon: '🧾', href: '/expenses' },
       { label: 'Documents', icon: '📁', href: '/documents' },

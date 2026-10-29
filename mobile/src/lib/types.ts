@@ -103,6 +103,12 @@ export type NotificationItem = Notification & {
 };
 export type Approval = { id: number; type: string; label: string; summary: string; created_at: string };
 export type Paginated<T> = { data: T[]; total: number; current_page: number; last_page: number };
+/** A fine, with the employee's reason and HR / admin's decision on it. */
+export type Fine = {
+  id: number; date: string; amount: number; reason: string; status: string; late_fine: boolean; can_give_reason: boolean;
+  decision_note: string | null; decided_by: string | null; decided_at: string | null;
+  my_reason: { reason: string; sent_at: string | null; status: string; decided_by: string | null; decided_at: string | null; note: string | null; paid_back_next_payroll: boolean } | null;
+};
 export type Correction = { id: number; work_date: string; check_in: string | null; check_out: string | null; reason: string; status: string; decision_note: string | null };
 export type ExpenseClaim = { id: number; category: string; spent_on: string; amount: number; description: string; has_receipt: boolean; status: string; decision_note: string | null };
 export type Announcement = { id: number; title: string; body: string; pinned: boolean; published_at: string; author: string | null };

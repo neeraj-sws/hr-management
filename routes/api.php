@@ -71,10 +71,13 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/my/assets', [SelfServiceController::class, 'assets'])->name('api.my.assets');
     Route::get('/my/performance', [SelfServiceController::class, 'performance'])->name('api.my.performance');
     Route::get('/my/salary', [SelfServiceController::class, 'salary'])->name('api.my.salary');
+    Route::get('/my/fines', [\App\Http\Controllers\Api\FineController::class, 'index'])->name('api.my.fines');
+    Route::post('/my/fines/{penalty}/reason', [\App\Http\Controllers\Api\FineController::class, 'reason'])->name('api.my.fines.reason');
     Route::get('/team/today', [SelfServiceController::class, 'team'])->name('api.team.today');
 
     Route::get('/daily-status', [DailyStatusController::class, 'index'])->name('api.daily-status.index');
     Route::post('/daily-status', [DailyStatusController::class, 'store'])->name('api.daily-status.store');
+    Route::post('/daily-status/missed', [DailyStatusController::class, 'missed'])->name('api.daily-status.missed');
     Route::post('/daily-status/remind/{employee}', [DailyStatusController::class, 'remind'])->name('api.daily-status.remind');
 
     Route::get('/notes', [\App\Http\Controllers\Api\NoteController::class, 'index'])->name('api.notes.index');

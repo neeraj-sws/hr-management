@@ -41,6 +41,14 @@ class DailyStatus extends Component
     /** Today's status form opens from the "Add today's status" button (?write=1 opens it straight away). */
     public bool $showStatusForm = false;
     public string $viewTab = 'work';
+    /** Writing a missed day (?missed=YYYY-MM-DD from the next-day notification): step 1 the reason, step 2 the status. */
+    #[Url] public string $missed = '';
+    public int $missedStep = 1;
+    public string $lateReason = '';
+    public string $missedSummary = '';
+    public string $missedPlan = '';
+    public string $missedBlockers = '';
+    public string $missedNotes = '';
 
     public function mount(): void
     {
@@ -135,6 +143,31 @@ class DailyStatus extends Component
     public function closeModal(): void
     {
         $this->showStatusForm = false;
+        $this->missed = '';
+    }
+
+    public function openMissed(string $date): void
+    {
+        abort_unless($this->ownEmployee(), 403);
+        $this->resetValidation();
+        $this->fill(['missed' => $date, 'missedStep' => 1, 'lateReason' => '', 'missedSummary' => '', 'missedPlan' => '', 'missedBlockers' => '', 'missedNotes' => '']);
+    }
+
+    /** Step 1 -> 2: the reason comes first; only then the status can be written. */
+    public function missedNext(): void
+    {
+        $this->validate(['lateReason' => ['required', 'string', 'min:5', 'max:1000']], ['lateReason.required' => 'First write why the status was not written that day.', 'lateReason.min' => 'First write why the status was not written that day (at least 5 characters).'], ['lateReason' => 'reason']);
+        $this->missedStep = 2;
+    }
+
+    public function saveMissed(\App\Services\WorkService $work): void
+    {
+        $employee = $this->requireEmployee();
+        $this->validate(['lateReason' => ['required', 'string', 'min:5', 'max:1000'], 'missedSummary' => ['required', 'string', 'min:5', 'max:4000'], 'missedPlan' => ['nullable', 'string', 'max:4000'], 'missedBlockers' => ['nullable', 'string', 'max:2000'], 'missedNotes' => ['nullable', 'string', 'max:2000']],
+            ['missedSummary.required' => 'Write what you completed that day.'], ['missedSummary' => 'completed work']);
+        $status = $work->writeMissedStatus($employee, $this->missed, $this->lateReason, ['summary' => $this->missedSummary, 'plan' => $this->missedPlan ?: null, 'blockers' => $this->missedBlockers ?: null, 'notes' => $this->missedNotes ?: null], $this->user());
+        $this->missed = '';
+        $this->toast('Daily status for '.$status->work_date->format('d M').' saved. Any fine for that day is removed.');
     }
 
     /** "Edit my status" in View details: close the drawer, open the form. */
@@ -396,6 +429,8 @@ class DailyStatus extends Component
         return $this->page('livewire.work.daily-status', [
             'rules' => $rules,
             'canSetRules' => $this->canSetRules(),
+            // Missed days still writable (last 2 days at work with no status), newest first.
+            'missedDays' => $own ? app(\App\Services\WorkService::class)->missedStatusDays($own) : [],
             'statuses' => $statuses,
             'own' => $own,
             'canSeeTeam' => $canSeeTeam,

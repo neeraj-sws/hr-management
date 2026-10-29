@@ -26,6 +26,7 @@ class ApprovalInbox
         SalaryAdjustment::class => ['Salary adjustment', ['salary.adjust']],
         SalaryAdvance::class => ['Salary advance', ['salary.advance']],
         EmployeePenalty::class => ['Penalty', ['penalties.manage']],
+        \App\Models\PenaltyAppeal::class => ['Fine reason', ['penalties.manage']],
         PayrollRun::class => ['Payroll run', ['payroll.approve']],
         EmployeeFinalSettlement::class => ['Final settlement', ['payroll.approve']],
         AttendanceCorrection::class => ['Attendance correction', ['attendance.correct', 'approvals.manage']],
@@ -150,6 +151,7 @@ class ApprovalInbox
             $subject instanceof PayrollRun => $approve ? $this->workflow->approvePayroll($subject, $user->id) : $this->workflow->rejectPayroll($subject, $user->id, $note),
             $subject instanceof EmployeeFinalSettlement => $approve ? $this->settlements->approve($subject, $user->id) : $this->settlements->reject($subject, $user->id, $note),
             $subject instanceof \App\Models\MonitoringRequest => app(TeamMonitoringService::class)->decideRequest($subject, $user, $approve, $note),
+            $subject instanceof \App\Models\PenaltyAppeal => $this->people->decideAppeal($subject, $user->id, $approve, $note),
             default => $this->people->decideFinancialRequest($subject::class, $subject->id, $user->id, $approve, $note, $amount),
         };
     }
@@ -171,6 +173,7 @@ class ApprovalInbox
             $subject instanceof SalaryAdjustment => "{$who} · ".$subject->label().' '.number_format((float) $subject->amount, 2).($subject->is_recurring ? ' / month'.($subject->recurring_until ? ' until '.$subject->recurring_until->format('M Y') : '') : ''),
             $subject instanceof SalaryAdvance => "{$who} · ".number_format((float) $subject->amount, 2).' (recover '.number_format((float) $subject->installment_amount, 2).'/run)',
             $subject instanceof EmployeePenalty => "{$who} · ".number_format((float) $subject->amount, 2).' · '.$subject->reason,
+            $subject instanceof \App\Models\PenaltyAppeal => "{$who} · fine ".number_format((float) $subject->penalty?->amount, 2).' on '.$subject->penalty?->effective_on?->format('d M Y').' ('.$subject->penalty?->reason.') · reason: '.$subject->reason.' · accept = fine removed',
             $subject instanceof AttendanceCorrection => "{$who} · {$subject->work_date->format('d M Y')} · ".collect(['in '.$subject->requested_check_in?->format('h:i A'), 'out '.$subject->requested_check_out?->format('h:i A')])->filter(fn ($part) => strlen($part) > 4)->join(', '),
             $subject instanceof ExpenseClaim => "{$who} · {$subject->category} · ".number_format((float) $subject->amount, 2).' · '.$subject->spent_on->format('d M Y'),
             $subject instanceof PayrollRun => "Period {$subject->period_starts_on->format('d M')}–{$subject->period_ends_on->format('d M Y')} · {$subject->items()->count()} employees",

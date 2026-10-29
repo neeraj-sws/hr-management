@@ -17,6 +17,10 @@
             @if($own)<button type="button" class="btn btn-primary" wire:click="openStatusForm"><x-icon name="{{ $savedToday ? 'edit' : 'plus' }}" class="icon-sm" />{{ $savedToday ? "Edit today's status" : "Add today's status" }}</button>@endif
         </div>
     </div>
+    {{-- A missed day (last 2 days): give the reason, then write it - its fine is removed. --}}
+    @foreach($missedDays as $md)
+        <div class="ds-nudge" style="border-color:var(--red);background:var(--red-soft, #ffedf0)"><x-icon name="alert" class="icon-sm" /><span>You did not write the daily status for <b>{{ \Illuminate\Support\Carbon::parse($md)->format('D, d M') }}</b>. Give the reason and write it now - any fine for that day is then removed.</span><button type="button" class="btn btn-sm btn-primary" wire:click="openMissed('{{ $md }}')">Write the missed day</button></div>
+    @endforeach
     @if($own && ! $savedToday && ! $canSeeTeam)
         <div class="ds-nudge"><x-icon name="message-plus" class="icon-sm" /><span>You haven't written today's status yet.</span><button type="button" class="btn btn-sm btn-primary" wire:click="openStatusForm">Add today's status</button></div>
     @endif
@@ -132,6 +136,23 @@
         @endif
     </div>
 
+    @if($missed && $own && in_array($missed, $missedDays, true))
+        <x-modal title="Missed daily status · {{ \Illuminate\Support\Carbon::parse($missed)->format('D, d M Y') }}">
+            <form wire:submit="{{ $missedStep === 1 ? 'missedNext' : 'saveMissed' }}"><div class="modal-body"><x-errors /><div class="form-grid">
+                @if($missedStep === 1)
+                    <p class="small muted" style="grid-column:1/-1;margin:0">Step 1 of 2 · First say why the status was not written that day. Your manager and HR see it.</p>
+                    <x-field label="Why was it not written that day?" name="lateReason" full><textarea rows="3" wire:model="lateReason" placeholder="e.g. Left early for a doctor's visit and forgot"></textarea></x-field>
+                @else
+                    <p class="small muted" style="grid-column:1/-1;margin:0">Step 2 of 2 · Reason: "{{ $lateReason }}" <button type="button" class="btn btn-sm" wire:click="$set('missedStep', 1)">Change</button></p>
+                    <x-field label="Plan" name="missedPlan" full><textarea rows="2" wire:model="missedPlan"></textarea></x-field>
+                    <x-field label="Completed" name="missedSummary" full><textarea rows="4" wire:model="missedSummary" placeholder="What you finished or moved forward that day"></textarea></x-field>
+                    <x-field label="Blockers" name="missedBlockers" full><textarea rows="2" wire:model="missedBlockers"></textarea></x-field>
+                    <x-field label="Notes" name="missedNotes" full><textarea rows="2" wire:model="missedNotes"></textarea></x-field>
+                @endif
+            </div></div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">{{ $missedStep === 1 ? 'Next: write the status' : 'Save status' }}</button></div></form>
+        </x-modal>
+    @endif
     @if($showStatusForm && $own)
         <x-modal title="Today's status · {{ today()->format('d M Y') }}" size="lg">
             <div class="ds-form-modal">@include('livewire.work.partials.daily-status-form')</div>

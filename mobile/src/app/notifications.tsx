@@ -19,6 +19,7 @@ function screenFor(n: NotificationItem): Href | null {
   if (n.needs_action) return '/approvals';
   const kind = n.kind ?? '';
   if (kind === 'AttendanceCorrection') return '/corrections';
+  if (kind === 'EmployeePenalty' || kind === 'PenaltyAppeal') return '/fines';
   if (kind === 'LeaveRequest' || kind === 'LeaveBalance' || kind === 'OvertimeRequest') return '/(tabs)/leave';
   if (kind.startsWith('DailyStatus')) return '/daily-status';
   if (kind.startsWith('Task') || kind.startsWith('Project')) return n.record_id && kind.startsWith('Task') ? { pathname: '/task', params: { id: String(n.record_id) } } : '/(tabs)/tasks';

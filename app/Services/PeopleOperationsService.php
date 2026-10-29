@@ -13,6 +13,7 @@ use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\OvertimeRequest;
+use App\Models\PenaltyAppeal;
 use App\Models\PolicyRule;
 use App\Models\SalaryAdjustment;
 use App\Models\SalaryAdvance;
@@ -143,6 +144,7 @@ class PeopleOperationsService
             if ($approve && $record->effective_on) app(PayrollLockGuard::class)->changed($record->employee_id, $record->effective_on->toDateString(), $modelClass === EmployeePenalty::class ? 'penalty' : 'salary adjustment', $record instanceof SalaryAdjustment && ($record->is_recurring || $record->isIncrement()) ? ($record->recurring_until?->copy()->endOfMonth()->toDateString() ?? '2999-12-31') : null);
             if ($approve && $record instanceof SalaryAdjustment && $record->isIncrement()) $this->applyIncrement($record, $approver);
             $changes = ['status'=>$approve?'approved':'rejected','decided_by'=>$approver,'decided_at'=>now()];
+            if ($modelClass === EmployeePenalty::class && trim((string) $note) !== '') $changes['decision_note'] = mb_substr(trim($note), 0, 1000);
             if ($approve && $amount !== null && $modelClass === EmployeePenalty::class) {
                 if ($amount <= 0 || $amount > (float) $record->amount) throw ValidationException::withMessages(['amount'=>'A penalty can only be reduced, to an amount above zero.']);
                 $changes['amount'] = round($amount, 2);
@@ -164,6 +166,21 @@ class PeopleOperationsService
      * The day is already paid only for the hours at work - a half day, a check-in after the cut-off, or an approved
      * half-day / short leave - so its late arrival or early leaving is already cut from the salary.
      */
+    /**
+     * A person given "fixed late fine + also cut the hours not worked" (e.g. Rs 500, an employee-specific rule) chose both
+     * cuts: the fine is made also on a day paid by the hours (check-in after the late check-in time, half day). Not on a
+     * day with an approved half-day / short leave: being away then was allowed.
+     */
+    public function lateFineOnTop(AttendanceEmployee $employee, \App\Models\AttendanceSession $session): bool
+    {
+        $date = $session->work_date->toDateString();
+        $config = $this->policy($employee, 'attendance.late_penalty', [], $date);
+        if ((float) ($config['fixed_amount'] ?? 0) <= 0 || empty($config['hours_cut'])) return false;
+
+        return ! LeaveRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereIn('duration', ['half', 'short'])
+            ->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists();
+    }
+
     public function paidByHours(AttendanceEmployee $employee, \App\Models\AttendanceSession $session): bool
     {
         if (! $session->check_out) return false;
@@ -191,7 +208,7 @@ class PeopleOperationsService
             $kind = strtok((string) $penalty->source_key, ':');
             $stillApplies = match ($kind) {
                 'absence' => $session === null && ! LeaveRequest::where('employee_id', $employee->id)->whereIn('status', ['approved', 'pending'])->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists(),
-                'late' => $session !== null && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->lateMinutes($session) > 0,
+                'late' => $session !== null && (! $this->paidByHours($employee, $session) || $this->lateFineOnTop($employee, $session)) && app(AttendanceService::class)->lateMinutes($session) > 0,
                 'early' => $session !== null && $session->check_out && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->earlyMinutes($session) > 0,
                 default => true,
             };
@@ -231,17 +248,122 @@ class PeopleOperationsService
         return $penalty;
     }
 
-    public function waivePenalty(EmployeePenalty $penalty, int $actor, string $note): EmployeePenalty
+    /** Approves a new fine at once. When that day's payroll is locked it waits for an admin (Master Admin) instead. */
+    private function autoApprove(EmployeePenalty $penalty, AttendanceEmployee $employee, int $actor, string $note): void
     {
-        return DB::transaction(function () use ($penalty, $actor, $note) {
+        try {
+            $this->decideFinancialRequest(EmployeePenalty::class, $penalty->id, $actor, true, $note);
+        } catch (ValidationException) {
+            $admin = User::role('Master Admin')->where('is_active', true)->orderBy('id')->first();
+            if ($admin) {
+                ApprovalRequest::where('approvable_type', EmployeePenalty::class)->where('approvable_id', $penalty->id)->where('status', 'pending')->update(['approver_id' => $admin->id]);
+                Notifier::send(User::role('Master Admin')->get(), 'EmployeePenalty', $penalty->id, 'Penalty of '.number_format((float) $penalty->amount, 2)." for {$employee->name} ({$penalty->reason}) needs admin approval: that payroll is already locked.");
+            }
+        }
+    }
+
+    /**
+     * The employee gives a reason for a fine - late, absence, daily status, task, … (once per fine). HR / admin then accept it (the fine is removed)
+     * or not (it stays). Allowed while the fine is waiting for approval or already approved.
+     */
+    public function appealPenalty(EmployeePenalty $penalty, User $user, string $reason): PenaltyAppeal
+    {
+        $reason = trim($reason);
+        if ($penalty->employee?->user_id !== $user->id) abort(403);
+        if (! in_array($penalty->status, ['pending', 'approved'], true)) throw ValidationException::withMessages(['reason' => 'This fine is already removed.']);
+        if ($penalty->appeal()->exists()) throw ValidationException::withMessages(['reason' => 'A reason was already given for this fine.']);
+        if (mb_strlen($reason) < 5) throw ValidationException::withMessages(['reason' => 'Write the reason (at least 5 characters).']);
+
+        return DB::transaction(function () use ($penalty, $user, $reason) {
+            $appeal = PenaltyAppeal::create(['employee_penalty_id' => $penalty->id, 'employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'pending']);
+            ApprovalRequest::create(['approvable_type' => PenaltyAppeal::class, 'approvable_id' => $appeal->id, 'approver_id' => null, 'status' => 'pending']);
+            $this->audit->record('penalty.appealed', $penalty, ['appeal_id' => $appeal->id]);
+            Notifier::send(Notifier::withPermission('penalties.manage'), 'PenaltyAppeal', $appeal->id,
+                "{$penalty->employee?->name} gave a reason for the fine of ".number_format((float) $penalty->amount, 2).' on '.$penalty->effective_on->format('d M')." ({$penalty->reason}): \"{$appeal->reason}\". Accept to remove the fine.",
+                route('approvals.center', [], false), $user->id);
+
+            return $appeal;
+        });
+    }
+
+    /** Accepted: the fine is removed (a locked payroll gets it back in the next payroll). Not accepted: it stays. */
+    public function decideAppeal(PenaltyAppeal $appeal, int $approver, bool $approve, ?string $note = null): PenaltyAppeal
+    {
+        $note = trim((string) $note);
+        if (! $approve && $note === '') throw ValidationException::withMessages(['note' => 'Say why the reason is not accepted.']);
+
+        return DB::transaction(function () use ($appeal, $approver, $approve, $note) {
+            $appeal = PenaltyAppeal::whereKey($appeal->id)->lockForUpdate()->firstOrFail();
+            if ($appeal->status !== 'pending') throw ValidationException::withMessages(['approval' => 'This request has already been decided.'])->status(409);
+            $penalty = $appeal->penalty()->with('employee.user')->firstOrFail();
+            $amount = number_format((float) $penalty->amount, 2);
+            $day = $penalty->effective_on->format('d M');
+            $changes = ['status' => $approve ? 'approved' : 'rejected', 'decided_by' => $approver, 'decided_at' => now(), 'decision_note' => $note ?: null];
+            $message = "Your reason for the fine of {$day} was not accepted: the fine of {$amount} stays.".($note ? " Note: {$note}" : '');
+            if ($approve) {
+                $message = "Your reason for the fine of {$day} was accepted: the fine of {$amount} is removed.";
+                if (in_array($penalty->status, ['pending', 'approved'], true)) {
+                    try {
+                        $this->waivePenalty($penalty, $approver, 'Late reason accepted: '.$appeal->reason, false);
+                    } catch (ValidationException $e) {
+                        if (! array_key_exists('payroll', $e->errors())) throw $e;
+                        // That payroll is already approved / locked: the fine is paid back in the next payroll.
+                        $refund = SalaryAdjustment::create(['employee_id' => $penalty->employee_id, 'effective_on' => today(), 'amount' => $penalty->amount, 'kind' => 'arrear', 'is_recurring' => false, 'status' => 'approved',
+                            'reason' => "Fine of {$day} paid back (reason accepted)", 'requested_by' => $approver, 'decided_by' => $approver, 'decided_at' => now()]);
+                        app(PayrollLockGuard::class)->flagDrafts(today()->toDateString());
+                        $changes['refund_adjustment_id'] = $refund->id;
+                        $message = "Your reason for the fine of {$day} was accepted: the fine of {$amount} is paid back in the next payroll.";
+                    }
+                }
+            }
+            $appeal->update($changes);
+            $this->decideApproval(PenaltyAppeal::class, $appeal->id, $approver, $approve, $note ?: null);
+            $this->audit->record($approve ? 'penalty.appeal_accepted' : 'penalty.appeal_rejected', $penalty, ['appeal_id' => $appeal->id, 'note' => $note]);
+            Notifier::send($penalty->employee?->user, 'PenaltyAppeal', $appeal->id, $message, route('compliance.penalties', [], false), $approver);
+
+            return $appeal->fresh();
+        });
+    }
+
+    /**
+     * A missed day's daily status was written later with a reason: its "not submitted" fine is removed at once (no HR
+     * decision), kept on record as a reason accepted automatically. A locked payroll pays it back in the next payroll.
+     */
+    public function removeStatusFine(AttendanceEmployee $employee, string $date, string $reason, int $actor): ?EmployeePenalty
+    {
+        $penalty = EmployeePenalty::where('employee_id', $employee->id)->where('source_key', 'like', "no_status:{$employee->id}:{$date}%")
+            ->whereIn('status', ['pending', 'approved'])->first();
+        if (! $penalty) return null;
+
+        return DB::transaction(function () use ($penalty, $reason, $actor) {
+            $note = 'Removed automatically: the missed daily status was written with a reason.';
+            $appeal = PenaltyAppeal::updateOrCreate(['employee_penalty_id' => $penalty->id], ['employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'approved', 'decided_by' => null, 'decided_at' => now(), 'decision_note' => $note]);
+            try {
+                $this->waivePenalty($penalty, $actor, 'Daily status written later. Reason: '.$reason, false);
+            } catch (ValidationException $e) {
+                if (! array_key_exists('payroll', $e->errors())) throw $e;
+                $refund = SalaryAdjustment::create(['employee_id' => $penalty->employee_id, 'effective_on' => today(), 'amount' => $penalty->amount, 'kind' => 'arrear', 'is_recurring' => false, 'status' => 'approved',
+                    'reason' => 'Daily status fine of '.$penalty->effective_on->format('d M').' paid back (status written with a reason)', 'requested_by' => $actor, 'decided_by' => $actor, 'decided_at' => now()]);
+                app(PayrollLockGuard::class)->flagDrafts(today()->toDateString());
+                $appeal->update(['refund_adjustment_id' => $refund->id]);
+            }
+            $this->audit->record('penalty.removed_status_written', $penalty, ['appeal_id' => $appeal->id]);
+
+            return $penalty->fresh();
+        });
+    }
+
+    public function waivePenalty(EmployeePenalty $penalty, int $actor, string $note, bool $notify = true): EmployeePenalty
+    {
+        return DB::transaction(function () use ($penalty, $actor, $note, $notify) {
             $penalty = EmployeePenalty::whereKey($penalty->id)->lockForUpdate()->firstOrFail();
             if (! in_array($penalty->status, ['pending', 'approved'], true)) throw ValidationException::withMessages(['penalty'=>'Only pending or approved penalties can be waived.'])->status(409);
             if (trim($note) === '') throw ValidationException::withMessages(['note'=>'Say why the penalty is waived.']);
             app(PayrollLockGuard::class)->changed($penalty->employee_id, $penalty->effective_on->toDateString(), 'penalty');
-            $penalty->update(['status'=>'waived','payroll_item_id'=>null,'decided_by'=>$actor,'decided_at'=>now()]);
+            $penalty->update(['status'=>'waived','payroll_item_id'=>null,'decided_by'=>$actor,'decided_at'=>now(),'decision_note'=>mb_substr(trim($note),0,1000)]);
             ApprovalRequest::where('approvable_type',EmployeePenalty::class)->where('approvable_id',$penalty->id)->where('status','pending')->update(['approver_id'=>$actor,'status'=>'rejected','decided_at'=>now(),'comment'=>'Waived: '.$note]);
             $this->audit->record('penalty.waived', $penalty, ['amount'=>(float)$penalty->amount,'note'=>$note]);
-            $penalty->employee?->user?->notify(new ApprovalRequested('EmployeePenalty',$penalty->id,'A penalty of '.number_format((float)$penalty->amount,2).' was waived.'));
+            if ($notify) $penalty->employee?->user?->notify(new ApprovalRequested('EmployeePenalty',$penalty->id,'A penalty of '.number_format((float)$penalty->amount,2).' was waived. Reason: '.trim($note)));
             return $penalty->fresh();
         });
     }
@@ -311,6 +433,40 @@ class PeopleOperationsService
         $this->audit->record('policy.updated', null, ['rule_key'=>$key,'employee_id'=>$employeeId,'effective_from'=>$effectiveFrom,'effective_until'=>$effectiveUntil]);
     }
 
+    /**
+     * Stops an employee's (or team's) own rule from a date: from then on the global rule applies again. Days before keep
+     * the rule (and their fines); a rule that would only have started on or after that date is removed.
+     */
+    public function stopOverride(\App\Models\EmployeePolicyOverride|\App\Models\TeamPolicyOverride $override, string $from, int $actor): void
+    {
+        if (strtotime($from) === false) throw ValidationException::withMessages(['stopFrom' => 'Choose a valid date.']);
+        $from = Carbon::parse($from)->toDateString();
+        $rows = $override instanceof \App\Models\TeamPolicyOverride
+            ? collect([$override])
+            : \App\Models\EmployeePolicyOverride::where('employee_id', $override->employee_id)->where('rule_key', $override->rule_key)->get();
+        DB::transaction(function () use ($rows, $from) {
+            foreach ($rows as $row) {
+                if ($row->effective_from && $row->effective_from->toDateString() >= $from) $row->delete();
+                elseif (! $row->effective_until || $row->effective_until->toDateString() >= $from) $row->update(['effective_until' => Carbon::parse($from)->subDay()->toDateString()]);
+            }
+        });
+        $this->audit->record('policy.override_stopped', null, ['rule_key' => $override->rule_key, 'employee_id' => $override->employee_id ?? null, 'team_id' => $override->team_id ?? null, 'from' => $from, 'by' => $actor]);
+    }
+
+    /** Changes an employee's (or team's) own rule in place: its values and start date. */
+    public function updateOverride(\App\Models\EmployeePolicyOverride|\App\Models\TeamPolicyOverride $override, array $config, string $from, int $actor): void
+    {
+        if (strtotime($from) === false) throw ValidationException::withMessages(['overrideFrom' => 'Choose a valid date.']);
+        $from = Carbon::parse($from)->toDateString();
+        if ($override instanceof \App\Models\EmployeePolicyOverride && \App\Models\EmployeePolicyOverride::where('employee_id', $override->employee_id)->where('rule_key', $override->rule_key)->whereDate('effective_from', $from)->whereKeyNot($override->id)->exists()) {
+            throw ValidationException::withMessages(['overrideFrom' => 'This employee already has this rule from that date. Edit that one instead.']);
+        }
+        if ($override->effective_until && $override->effective_until->toDateString() < $from) throw ValidationException::withMessages(['overrideFrom' => 'This rule was stopped on '.$override->effective_until->format('d M Y').'. Choose an earlier start date.']);
+        $before = $override->configuration;
+        $override->update(['configuration' => $config, 'effective_from' => $from, 'configured_by' => $actor]);
+        $this->audit->record('policy.override_edited', null, ['rule_key' => $override->rule_key, 'employee_id' => $override->employee_id ?? null, 'team_id' => $override->team_id ?? null, 'from' => $from, 'before' => $before, 'after' => $config]);
+    }
+
     public function setTeamPolicy(string $key, array $config, int $teamId, int $actor, ?string $effectiveFrom = null): void
     {
         $record = \App\Models\TeamPolicyOverride::updateOrCreate(['team_id' => $teamId, 'rule_key' => $key], ['configuration' => $config, 'effective_from' => $effectiveFrom, 'configured_by' => $actor]);
@@ -360,20 +516,29 @@ class PeopleOperationsService
             if(!$employee)continue;
             // Never cut twice: a day already paid only for the hours at work (half day, check-in after the cut-off,
             // half-day / short leave) has its lateness cut by that; no per-minute late fine on top.
-            if($this->paidByHours($employee,$session))continue;
+            if($this->paidByHours($employee,$session)&&!$this->lateFineOnTop($employee,$session))continue;
             // Extra working on an off day is never late.
             if(!app(AttendanceService::class)->isScheduledDay($employee,$session->work_date->toDateString()))continue;
             $workStart=app(AttendanceService::class)->rules($employee,$session->work_date->toDateString())['work_start'];
             if(!$workStart)continue;
             $config=$this->policy($employee,'attendance.late_penalty',$rule?->configuration??[],$session->work_date->toDateString());
-            $perMinute=$this->penaltyRatePerMinute($employee,$config,$session->work_date->toDateString());if($perMinute<=0)continue;
+            // A fixed amount per late day (e.g. 500) takes the place of the per-minute amount.
+            $fixed=max(0,(float)($config['fixed_amount']??0));
+            $perMinute=$fixed>0?0.0:$this->penaltyRatePerMinute($employee,$config,$session->work_date->toDateString());if($fixed<=0&&$perMinute<=0)continue;
             $expected=Carbon::parse($session->work_date->toDateString().' '.$workStart);
-            $late=max(0,(int)ceil($expected->diffInMinutes($session->check_in)- (float)($config['grace_minutes']??0)));
-            $amount=$this->capped($late*$perMinute,$config);
+            $grace=(float)($config['grace_minutes']??0);
+            $late=max(0,(int)ceil($expected->diffInMinutes($session->check_in)-$grace));
+            $amount=$fixed>0?round($fixed,2):$this->capped($late*$perMinute,$config);
             if($late<=0||$amount<=0)continue;
             $source="late:{$employee->id}:{$session->work_date->toDateString()}".($rule?":{$rule->id}":'');
-            $penalty=EmployeePenalty::firstOrCreate(['source_key'=>$source],['employee_id'=>$employee->id,'policy_rule_id'=>$rule?->id,'effective_on'=>$session->work_date,'amount'=>$amount,'reason'=>"Late by {$late} minutes",'requested_by'=>$actor,'status'=>'pending']);
-            if($penalty->wasRecentlyCreated){$this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.late_penalty_assessed',$penalty,['late_minutes'=>$late]);$created++;}
+            $why=$fixed>0?'Late: came '.$session->check_in->format('h:i A').' (start '.$expected->format('h:i A').' + '.(int)$grace.' min allowed)':"Late by {$late} minutes";
+            $penalty=EmployeePenalty::firstOrCreate(['source_key'=>$source],['employee_id'=>$employee->id,'policy_rule_id'=>$rule?->id,'effective_on'=>$session->work_date,'amount'=>$amount,'reason'=>$why,'requested_by'=>$actor,'status'=>'pending']);
+            if($penalty->wasRecentlyCreated){
+                $this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.late_penalty_assessed',$penalty,['late_minutes'=>$late]);$created++;
+                // "Deduct automatically": approved at once (the employee is told why); otherwise HR approves it first.
+                if(!empty($config['deduct_now']))$this->autoApprove($penalty,$employee,$actor,'Deducted automatically. If you had a valid reason, give it on the Penalties page (Give reason).');
+                else Notifier::send($employee->user,'EmployeePenalty',$penalty->id,'Late fine of '.number_format($amount,2).' for '.$session->work_date->format('d M').': '.$why.'. It waits for HR approval. If you had a valid reason, give it on the Penalties page (Give reason).',route('compliance.penalties',[],false));
+            }
         }
         $taskRule=PolicyRule::where('rule_key','task.late_penalty')->where('is_active',true)->first();
         foreach(\App\Models\Task::with('assignee')->whereNotNull('due_on')->whereDate('due_on','>=',$start)->whereDate('due_on','<=',$end)->where('status','!=','completed')->when($onlyEmployeeId,fn($q,$id)=>$q->where('assignee_id',$id))->get() as $task){
@@ -397,17 +562,7 @@ class PeopleOperationsService
                     if($penalty->wasRecentlyCreated){
                         $this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.unauthorized_absence_assessed',$penalty);$created++;
                         // "Deduct automatically" (the default): approved at once, so payroll deducts it; HR can still waive it.
-                        if(($config['auto_deduct']??1)){
-                            try{$this->decideFinancialRequest(EmployeePenalty::class,$penalty->id,$actor,true,'Deducted automatically: absent with no leave request.');}
-                            catch(ValidationException){
-                                // The payroll for that day is locked: it waits for an admin (Master Admin) to approve.
-                                $admin=User::role('Master Admin')->where('is_active',true)->orderBy('id')->first();
-                                if($admin){
-                                    ApprovalRequest::where('approvable_type',EmployeePenalty::class)->where('approvable_id',$penalty->id)->where('status','pending')->update(['approver_id'=>$admin->id]);
-                                    Notifier::send(User::role('Master Admin')->get(),'EmployeePenalty',$penalty->id,"Penalty of ".number_format((float)$penalty->amount,2)." for {$employee->name} ({$penalty->reason}) needs admin approval: that payroll is already locked.");
-                                }
-                            }
-                        }
+                        if(($config['auto_deduct']??1))$this->autoApprove($penalty,$employee,$actor,'Deducted automatically: absent with no leave request. If you had a valid reason, give it on the Penalties page (Give reason).');
                     }
                 }
         }
@@ -432,7 +587,7 @@ class PeopleOperationsService
             if ($penalty->wasRecentlyCreated) {
                 $this->approval(EmployeePenalty::class, $penalty->id);
                 $this->audit->record('compliance.'.str_replace('.', '_', $key).'_assessed', $penalty, $meta);
-                $employee->user?->notify(new ApprovalRequested('EmployeePenalty', $penalty->id, $reason.' — a penalty is pending review.'));
+                $employee->user?->notify(new ApprovalRequested($meta['kind'] ?? 'EmployeePenalty', $penalty->id, $meta['message'] ?? ($reason.' — a penalty is pending review.'), $meta['url'] ?? null));
                 $created++;
             }
         };
@@ -464,8 +619,14 @@ class PeopleOperationsService
             $config = $this->policy($employee, 'daily_status.missing', [], $date);
             if ((float) ($config['amount_per_day'] ?? 0) > 0 && $dayEnd->copy()->addHours((int) ($config['grace_hours'] ?? 0))->lt($now) && \App\Support\DailyStatusRule::required($employee, $date)) {
                 $status = \App\Models\DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', $date)->first();
-                $late = $status && $status->submitted_at && $status->submitted_at->gt($dayEnd->copy()->addHours((int) ($config['grace_hours'] ?? 0)));
-                if (! $status || $late) $raise($employee, 'daily_status.missing', "no_status:{$employee->id}:{$date}", $date, (float) $config['amount_per_day'], ($status ? 'Daily status submitted late for ' : 'No daily status for ').Carbon::parse($date)->format('d M'), []);
+                // Written later with a reason (Daily status > Write a missed day): no fine.
+                $late = $status && ! $status->late_reason && $status->submitted_at && $status->submitted_at->gt($dayEnd->copy()->addHours((int) ($config['grace_hours'] ?? 0)));
+                $writable = ! $status && Carbon::parse($date)->gte(today()->subDays(WorkService::MISSED_DAYS_BACK));
+                if (! $status || $late) $raise($employee, 'daily_status.missing', "no_status:{$employee->id}:{$date}", $date, (float) $config['amount_per_day'], ($status ? 'Daily status submitted late for ' : 'No daily status for ').Carbon::parse($date)->format('d M'), $writable ? [
+                    // The next morning: the fine, and how to undo it - give the reason, then write that day's status.
+                    'message' => 'You did not write your daily status for '.Carbon::parse($date)->format('d M').': a fine of '.number_format((float) $config['amount_per_day'], 2).' is made. Give the reason and write it now (Daily status > Write the missed day) - the fine is then removed.',
+                    'kind' => 'DailyStatusMissed', 'url' => route('work.daily-status', ['missed' => $date], false),
+                ] : []);
             }
         }
 
@@ -641,11 +802,11 @@ class PeopleOperationsService
     {
         $record->loadMissing('employee.user');
         $amount = number_format((float) $record->amount, 2);
-        $what = match (true) { $record instanceof EmployeePenalty => "penalty of {$amount}", $record instanceof SalaryAdvance => "salary advance of {$amount}", default => 'salary adjustment ('.$record->label()." {$amount})" };
+        $what = match (true) { $record instanceof EmployeePenalty => "penalty of {$amount} for ".$record->effective_on?->format('d M')." ({$record->reason})", $record instanceof SalaryAdvance => "salary advance of {$amount}", default => 'salary adjustment ('.$record->label()." {$amount})" };
         $verdict = $approve ? 'approved' : 'rejected';
         $suffix = ($note ? " Note: {$note}" : '');
         $kind = class_basename($record);
-        Notifier::send($record->employee?->user, $kind, $record->id, 'Your '.$what.' was '.$verdict.($record instanceof EmployeePenalty && $approve ? ' and will be deducted in payroll' : '').'.'.$suffix, null, $approver);
+        Notifier::send($record->employee?->user, $kind, $record->id, 'Your '.$what.' was '.$verdict.($record instanceof EmployeePenalty && $approve ? ' and will be deducted in payroll' : '').'.'.$suffix.($record instanceof EmployeePenalty && $approve && ! str_contains((string) $note, 'Give reason') && ! $record->appeal()->exists() ? ' If you had a valid reason, give it on the Penalties page (Give reason).' : ''), $record instanceof EmployeePenalty ? route('compliance.penalties', [], false) : null, $approver);
         $requester = $record->requested_by ? User::find($record->requested_by) : null;
         if ($requester && $requester->id !== $approver && $requester->id !== $record->employee?->user_id) {
             Notifier::send($requester, $kind, $record->id, ucfirst($what).' for '.$record->employee?->name.' was '.$verdict.'.'.$suffix, route('approvals.center', [], false), $approver);
