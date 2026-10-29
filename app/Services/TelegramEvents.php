@@ -63,7 +63,7 @@ class TelegramEvents
         $leave->loadMissing(['employee', 'leaveType']);
         $title = ['applied' => 'New leave request', 'approved' => 'Leave approved', 'rejected' => 'Leave rejected', 'cancelled' => 'Leave cancelled'][$what] ?? 'Leave updated';
         $event = ['applied' => 'leave_applied', 'cancelled' => 'leave_cancelled'][$what] ?? 'leave_decided';
-        $this->telegram->toAdmin($event, "leave:{$leave->id}:{$what}".($what === 'applied' ? '' : ':'.$leave->decided_at?->timestamp), TelegramNotificationService::format($title, [...self::who($leave->employee), 'Leave Type' => $leave->leaveType?->name ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
+        $this->telegram->toAdmin($event, "leave:{$leave->id}:{$what}".($what === 'applied' ? '' : ':'.$leave->decided_at?->timestamp), TelegramNotificationService::format($title, [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
             'Days' => rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.'), 'Reason' => $what === 'applied' ? $leave->reason : null, 'Status' => $what === 'applied' ? 'Pending Approval' : ucfirst($what), 'Note' => $what !== 'applied' ? $leave->decision_note : null]));
     }
 
@@ -71,7 +71,7 @@ class TelegramEvents
     public function leavePendingUrgent(LeaveRequest $leave): void
     {
         $leave->loadMissing(['employee', 'leaveType']);
-        $this->telegram->toAdmin('leave_pending', "leave:{$leave->id}:pending-urgent", TelegramNotificationService::format('Leave not decided', [...self::who($leave->employee), 'Leave Type' => $leave->leaveType?->name ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'), 'Asked on' => $leave->created_at?->format('d F Y'), 'Status' => 'Pending Approval - please approve or reject']));
+        $this->telegram->toAdmin('leave_pending', "leave:{$leave->id}:pending-urgent", TelegramNotificationService::format('Leave not decided', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'), 'Asked on' => $leave->created_at?->format('d F Y'), 'Status' => 'Pending Approval - please approve or reject']));
     }
 
     public function correction(AttendanceCorrection $c): void

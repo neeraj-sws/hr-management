@@ -12,7 +12,7 @@
                 <tr wire:key="conf-{{ $c['employee_id'] }}-{{ $c['date'] }}">
                     <td><strong>{{ $c['leave']->employee?->name }}</strong><small>{{ $c['leave']->employee?->employee_code }}</small></td>
                     <td class="nowrap">{{ \Illuminate\Support\Carbon::parse($c['date'])->format('D d M Y') }}</td>
-                    <td>{{ $c['leave']->leaveType?->name }}<small>{{ $c['leave']->leaveType?->paid ? 'paid' : 'unpaid' }} · {{ $c['leave']->starts_on->format('d M') }}–{{ $c['leave']->ends_on->format('d M') }}</small></td>
+                    <td>{{ $c['leave']->typeName() }}<small>{{ $c['leave']->leaveType?->paid ? 'paid' : 'unpaid' }} · {{ $c['leave']->starts_on->format('d M') }}–{{ $c['leave']->ends_on->format('d M') }}</small></td>
                     <td class="nowrap">{{ $c['session']->check_in?->format('h:i A') }} – {{ $c['session']->check_out?->format('h:i A') ?? 'open' }}</td>
                     <td><div class="row-actions">
                         <button class="btn btn-sm btn-primary" wire:click="resolve({{ $c['leave']->id }}, '{{ $c['date'] }}', 'worked')" wire:confirm="Count as a working day and give the leave day back?">Worked</button>
@@ -31,7 +31,7 @@
             <div class="card-head"><div><h2>Recently resolved</h2></div></div>
             <div class="list">
                 @foreach($resolved as $r)
-                    <div class="list-row"><div><strong>{{ $r->employee?->name }} · {{ $r->work_date->format('d M Y') }}</strong><small>{{ $r->leaveRequest?->leaveType?->name }} · by {{ $r->resolver?->name ?? 'system' }} · {{ $r->created_at->diffForHumans() }}</small></div><x-badge :tone="$r->resolution === 'worked' ? 'green' : 'violet'">{{ $r->resolution }}</x-badge></div>
+                    <div class="list-row"><div><strong>{{ $r->employee?->name }} · {{ $r->work_date->format('d M Y') }}</strong><small>{{ $r->leaveRequest?->typeName() }} · by {{ $r->resolver?->name ?? 'system' }} · {{ $r->created_at->diffForHumans() }}</small></div><x-badge :tone="$r->resolution === 'worked' ? 'green' : 'violet'">{{ $r->resolution }}</x-badge></div>
                 @endforeach
                 {{ $resolved->links() }}
             </div>

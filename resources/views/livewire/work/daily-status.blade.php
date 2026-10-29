@@ -232,7 +232,7 @@
                                 @break
                             @case('leaves')
                                 <table class="table ds-mini-table" data-no-sort><thead><tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th></tr></thead><tbody>
-                                    @forelse($detail['tab'] as $leave)<tr><td>{{ $leave->leaveType?->name }}</td><td>{{ $leave->starts_on->format('d M') }}</td><td>{{ $leave->ends_on->format('d M') }}</td><td>{{ (float) $leave->days }}</td><td><x-badge :status="$leave->status" /></td></tr>
+                                    @forelse($detail['tab'] as $leave)<tr><td>{{ $leave->typeName() }}</td><td>{{ $leave->starts_on->format('d M') }}</td><td>{{ $leave->ends_on->format('d M') }}</td><td>{{ (float) $leave->days }}</td><td><x-badge :status="$leave->status" /></td></tr>
                                     @empty<tr><td colspan="5"><x-empty title="No leave in the last 2 months" icon="calendar" /></td></tr>@endforelse
                                 </tbody></table>
                                 @break

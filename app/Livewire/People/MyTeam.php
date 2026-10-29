@@ -38,7 +38,7 @@ class MyTeam extends Component
             $today = match (true) {
                 $s && $attendance->isLate($s) => ['late', 'In '.$s->check_in->format('h:i A')],
                 (bool) $s => [$s->check_out ? 'completed' : $s->status, 'In '.$s->check_in->format('h:i A').($s->check_out ? ' · out '.$s->check_out->format('h:i A') : '')],
-                $onLeave->has($e->id) => ['on_leave', $onLeave[$e->id]->leaveType?->name],
+                $onLeave->has($e->id) => ['on_leave', $onLeave[$e->id]->typeName()],
                 default => ['not_in', null],
             };
 

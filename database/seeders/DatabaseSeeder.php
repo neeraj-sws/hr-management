@@ -55,6 +55,8 @@ class DatabaseSeeder extends Seeder
 
         LeaveType::firstOrCreate(['name' => 'Annual Leave'], ['annual_allowance' => 20, 'carry_forward' => true, 'carry_forward_limit' => 5, 'paid' => true, 'is_active' => true]);
         LeaveType::firstOrCreate(['name' => 'Unpaid Leave'], ['annual_allowance' => 0, 'carry_forward' => false, 'carry_forward_limit' => 0, 'paid' => false, 'is_active' => true]);
+        // "Others": the employee writes the kind (e.g. Exam); unpaid unless HR changes it.
+        LeaveType::firstOrCreate(['name' => 'Others'], ['annual_allowance' => 0, 'carry_forward' => false, 'carry_forward_limit' => 0, 'paid' => false, 'is_active' => true, 'is_other' => true]);
 
         // Employer-configurable defaults; adjust under Settings. No statutory rates are seeded.
         PolicyRule::firstOrCreate(['rule_key' => 'overtime.multiplier'], ['category' => 'overtime', 'name' => 'Overtime multiplier', 'configuration' => ['multiplier' => 1.5], 'is_active' => true]);

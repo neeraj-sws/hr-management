@@ -27,6 +27,9 @@ export default function Leave() {
   const [startsOn, setStartsOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
   const [reason, setReason] = useState('');
+  // "Others": the employee writes the kind of leave (e.g. Exam / Educational).
+  const [otherType, setOtherType] = useState('');
+  const isOther = (id: number | null) => !!types.find((t) => t.id === id)?.is_other;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,6 +70,7 @@ export default function Leave() {
     const endDate = several ? endsOn : startsOn;
     const local: Record<string, string> = {};
     if (!typeId) local.leave_type_id = 'Choose a leave type.';
+    if (isOther(typeId) && otherType.trim().length < 2) local.other_type = 'Write what kind of leave it is (e.g. Exam).';
     if (!startsOn) local.starts_on = 'Choose the first day of leave.';
     if (several && !endsOn) local.ends_on = 'Choose the last day of leave.';
     else if (several && startsOn && endsOn < startsOn) local.ends_on = 'End date must be on or after the start date.';
@@ -77,7 +81,7 @@ export default function Leave() {
     setMessage(null);
     setFormError(null);
     try {
-      const created = await post<{ data: LeaveRequest }>('/leave/requests', { leave_type_id: typeId, duration, starts_on: startsOn, ends_on: endDate, reason });
+      const created = await post<{ data: LeaveRequest }>('/leave/requests', { leave_type_id: typeId, other_type: isOther(typeId) ? otherType.trim() : null, duration, starts_on: startsOn, ends_on: endDate, reason });
       // Show the new request immediately; balances refresh in the background.
       setRequests((current) => [created.data, ...current.filter((r) => r.id !== created.data.id)]);
       setMessage({ tone: 'success', text: `Leave request for ${formatDate(startsOn)} submitted for approval.` });
@@ -88,7 +92,7 @@ export default function Leave() {
       load();
     } catch (e) {
       if (e instanceof ApiError && e.isNetwork) {
-        await enqueue({ type: 'leave.request', payload: { leave_type_id: typeId, duration, starts_on: startsOn, ends_on: endDate, reason }, label: `Leave ${formatDate(startsOn)}${several ? ` – ${formatDate(endDate)}` : ''}` });
+        await enqueue({ type: 'leave.request', payload: { leave_type_id: typeId, other_type: isOther(typeId) ? otherType.trim() : null, duration, starts_on: startsOn, ends_on: endDate, reason }, label: `Leave ${formatDate(startsOn)}${several ? ` – ${formatDate(endDate)}` : ''}` });
         setMessage({ tone: 'info', text: 'You are offline. The request is saved on this phone and will be sent for approval automatically.' });
         setStartsOn(''); setEndsOn(''); setReason(''); setDayChoice('one');
         setFormOpen(false);
@@ -113,16 +117,17 @@ export default function Leave() {
   const [editing, setEditing] = useState<LeaveRequest | null>(null);
   const [editType, setEditType] = useState<number | null>(null);
   const [editReason, setEditReason] = useState('');
+  const [editOther, setEditOther] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const openEdit = (r: LeaveRequest) => {
-    setEditing(r); setEditType(r.leave_type_id ?? types.find((t) => t.name === r.leave_type)?.id ?? null); setEditReason(r.reason ?? ''); setEditError(null);
+    setEditing(r); setEditType(r.leave_type_id ?? types.find((t) => t.name === r.leave_type)?.id ?? null); setEditReason(r.reason ?? ''); setEditOther(r.other_type ?? ''); setEditError(null);
   };
   const saveEdit = async () => {
     if (!editing || !editType) return;
     setEditBusy(true); setEditError(null);
     try {
-      await api('PATCH', `/leave/requests/${editing.id}`, { leave_type_id: editType, reason: editReason.trim() || null });
+      await api('PATCH', `/leave/requests/${editing.id}`, { leave_type_id: editType, reason: editReason.trim() || null, other_type: isOther(editType) ? editOther.trim() : null });
       setEditing(null);
       setMessage({ tone: 'success', text: 'Leave request changed. Your approver is told.' });
       await load();
@@ -163,6 +168,7 @@ export default function Leave() {
         {editing ? <Muted style={{ marginBottom: 10 }}>{formatDate(editing.starts_on)}{editing.ends_on !== editing.starts_on ? ` – ${formatDate(editing.ends_on)}` : ''} · {editing.days} day(s) · now {editing.leave_type}</Muted> : null}
         {editError ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={editError} /></View> : null}
         <Chips value={editType} onChange={setEditType} options={types.map((t) => ({ label: t.paid ? t.name : `${t.name} (unpaid)`, value: t.id }))} />
+        {isOther(editType) ? <Field label="What kind of leave?" value={editOther} onChangeText={setEditOther} placeholder="e.g. Exam / Educational" maxLength={100} /> : null}
         <Field label="Reason" value={editReason} onChangeText={setEditReason} multiline />
         <Muted style={{ marginBottom: 12 }}>Only while it waits for a decision. To change the dates, cancel and apply again.</Muted>
         <Button title="Save" tone="primary" onPress={saveEdit} loading={editBusy} />
@@ -171,6 +177,7 @@ export default function Leave() {
         {formError ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={formError} /></View> : null}
         <Muted style={{ marginBottom: 6 }}>Leave type</Muted>
         <Chips value={typeId} onChange={setTypeId} options={types.map((t) => ({ label: t.paid ? t.name : `${t.name} (unpaid)`, value: t.id }))} />
+        {isOther(typeId) ? <Field label="What kind of leave?" value={otherType} onChangeText={setOtherType} placeholder="e.g. Exam / Educational" maxLength={100} error={errors.other_type} /> : null}
         {errors.leave_type_id ? <Muted style={{ color: '#bd3446', marginTop: -6, marginBottom: 8 }}>{errors.leave_type_id}</Muted> : null}
         <Muted style={{ marginBottom: 6 }}>Duration</Muted>
         <Chips<'one' | 'several' | 'half' | 'short'> value={dayChoice} onChange={setDayChoice} options={[{ label: 'One day', value: 'one' }, { label: 'Several days', value: 'several' }, { label: 'Half day', value: 'half' }, { label: 'Short leave', value: 'short' }]} />

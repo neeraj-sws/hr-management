@@ -26,6 +26,9 @@ class Requests extends Component
 
     public bool $showForm = false;
     public ?int $leaveTypeId = null;
+    /** "Others" leave: the kind written by the employee (e.g. Exam). */
+    public string $otherType = '';
+    public string $editOtherType = '';
     public string $duration = 'full';
     /** one = a single full day (one date), several = From/To, half / short = part of one day. */
     public string $dayChoice = 'one';
@@ -58,7 +61,7 @@ class Requests extends Component
     public function create(): void
     {
         $this->requireEmployee();
-        $this->reset('leaveTypeId', 'startsOn', 'endsOn', 'reason');
+        $this->reset('leaveTypeId', 'otherType', 'startsOn', 'endsOn', 'reason');
         $this->duration = 'full';
         $this->dayChoice = 'one';
         $this->resetValidation();
@@ -105,7 +108,13 @@ class Requests extends Component
             'reason' => ['required', 'string', 'max:2000'],
         ], ['startsOn.after_or_equal' => 'Leave can be asked for back to '.today()->subMonthNoOverflow()->startOfMonth()->format('d M Y').' at the earliest; for older days ask HR.'], ['leaveTypeId' => 'leave type', 'startsOn' => 'start date', 'endsOn' => 'end date']);
         if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
-        $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'duration' => $this->duration, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
+        try {
+            $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'other_type' => $this->otherType, 'duration' => $this->duration, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            if (isset($e->errors()['other_type'])) throw \Illuminate\Validation\ValidationException::withMessages(['otherType' => $e->errors()['other_type'][0]]);
+            throw $e;
+        }
+        $this->otherType = '';
         $this->showForm = false;
         $this->toast('Leave request submitted for approval.');
     }
@@ -148,7 +157,7 @@ class Requests extends Component
     public function openEdit(int $id): void
     {
         $leave = LeaveRequest::where('employee_id', $this->requireEmployee()->id)->where('status', 'pending')->findOrFail($id);
-        $this->fill(['editingId' => $leave->id, 'editTypeId' => $leave->leave_type_id, 'editReason' => (string) $leave->reason]);
+        $this->fill(['editingId' => $leave->id, 'editTypeId' => $leave->leave_type_id, 'editOtherType' => (string) $leave->other_type, 'editReason' => (string) $leave->reason]);
         $this->resetValidation();
     }
 
@@ -157,12 +166,12 @@ class Requests extends Component
         $this->validate(['editTypeId' => ['required', 'integer'], 'editReason' => ['required', 'string', 'min:3', 'max:1000']], [], ['editTypeId' => 'leave type', 'editReason' => 'reason']);
         $employee = $this->requireEmployee();
         try {
-            $leave = $workflow->changeLeaveType(LeaveRequest::findOrFail($this->editingId), $employee, (int) $this->editTypeId, $this->editReason, $this->user()->id);
+            $leave = $workflow->changeLeaveType(LeaveRequest::findOrFail($this->editingId), $employee, (int) $this->editTypeId, $this->editReason, $this->user()->id, $this->editOtherType);
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw \Illuminate\Validation\ValidationException::withMessages(['editTypeId' => collect($e->errors())->flatten()->first()]);
         }
         $this->editingId = null;
-        $this->toast('Leave request changed to '.$leave->leaveType?->name.'. Your approver is told.');
+        $this->toast('Leave request changed to '.$leave->typeName().'. Your approver is told.');
     }
 
     /** HR / administrator: change a decided leave (approved or rejected by mistake), with a reason. */

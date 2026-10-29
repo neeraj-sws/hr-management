@@ -154,7 +154,7 @@ class ReportService
             'leave' => LeaveRequest::with(['employee', 'leaveType'])->whereIn('employee_id', $ids)
                 ->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->orderByDesc('starts_on')
                 ->when($limit, fn ($q) => $q->limit($limit))->get()
-                ->map(fn ($r) => ['id' => $r->id, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'leave_type' => $r->leaveType?->name, 'paid' => $r->leaveType?->paid ? 'yes' : 'no', 'starts_on' => $r->starts_on?->toDateString(), 'ends_on' => $r->ends_on?->toDateString(), 'days' => (float) $r->days, 'status' => $r->status, 'decided_at' => $r->decided_at?->toDateTimeString()]),
+                ->map(fn ($r) => ['id' => $r->id, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'leave_type' => $r->typeName(), 'paid' => $r->leaveType?->paid ? 'yes' : 'no', 'starts_on' => $r->starts_on?->toDateString(), 'ends_on' => $r->ends_on?->toDateString(), 'days' => (float) $r->days, 'status' => $r->status, 'decided_at' => $r->decided_at?->toDateTimeString()]),
             'tasks' => Task::with(['assignee', 'project', 'timeEntries'])->whereIn('assignee_id', $ids)
                 ->where(fn ($q) => $q->whereBetween('due_on', [$from, $to])->orWhere(fn ($q) => $q->whereDate('created_at', '>=', $from)->whereDate('created_at', '<=', $to)))
                 ->when($filters['search'] ?? null, fn ($q, $term) => $q->where('title', 'like', "%{$term}%"))

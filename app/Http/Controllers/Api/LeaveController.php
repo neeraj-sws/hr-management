@@ -20,7 +20,7 @@ class LeaveController extends ApiController
     {
         $this->apiUser($request);
 
-        return response()->json(['data' => LeaveType::where('is_active', true)->orderBy('name')->get()->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'paid' => $t->paid, 'allow_advance' => $t->allow_advance, 'annual_allowance' => (float) $t->annual_allowance, 'monthly_accrual' => (float) $t->monthly_accrual])]);
+        return response()->json(['data' => LeaveType::where('is_active', true)->orderBy('name')->get()->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'paid' => $t->paid, 'is_other' => (bool) $t->is_other, 'allow_advance' => $t->allow_advance, 'annual_allowance' => (float) $t->annual_allowance, 'monthly_accrual' => (float) $t->monthly_accrual])]);
     }
 
     public function balances(Request $request, LeaveAccrualService $accrual): JsonResponse
@@ -50,9 +50,9 @@ class LeaveController extends ApiController
     public function store(Request $request, HrWorkflowService $workflow): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'duration' => ['nullable', 'in:full,half,short'], 'starts_on' => ['required', 'date', 'after_or_equal:'.today()->subMonthNoOverflow()->startOfMonth()->toDateString()], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000']], ['starts_on.after_or_equal' => 'Leave can be asked for back to '.today()->subMonthNoOverflow()->startOfMonth()->format('d M Y').' at the earliest; for older days ask HR.']);
+        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'duration' => ['nullable', 'in:full,half,short'], 'starts_on' => ['required', 'date', 'after_or_equal:'.today()->subMonthNoOverflow()->startOfMonth()->toDateString()], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000'], 'other_type' => ['nullable', 'string', 'max:100']], ['starts_on.after_or_equal' => 'Leave can be asked for back to '.today()->subMonthNoOverflow()->startOfMonth()->format('d M Y').' at the earliest; for older days ask HR.']);
         return $this->once($request, function () use ($workflow, $employee, $data) {
-            $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'duration' => $data['duration'] ?? 'full', 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
+            $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'other_type' => $data['other_type'] ?? null, 'duration' => $data['duration'] ?? 'full', 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
 
             return response()->json(['data' => $this->present($leave->load('leaveType'))], 201);
         });
@@ -77,14 +77,14 @@ class LeaveController extends ApiController
     public function update(Request $request, LeaveRequest $leave, HrWorkflowService $workflow): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $data = $request->validate(['leave_type_id' => ['required', 'integer'], 'reason' => ['nullable', 'string', 'max:1000']]);
-        $leave = $workflow->changeLeaveType($leave, $employee, (int) $data['leave_type_id'], $data['reason'] ?? null, $this->apiUser($request)->id);
+        $data = $request->validate(['leave_type_id' => ['required', 'integer'], 'reason' => ['nullable', 'string', 'max:1000'], 'other_type' => ['nullable', 'string', 'max:100']]);
+        $leave = $workflow->changeLeaveType($leave, $employee, (int) $data['leave_type_id'], $data['reason'] ?? null, $this->apiUser($request)->id, $data['other_type'] ?? null);
 
         return response()->json(['data' => $this->present($leave)]);
     }
 
     private function present(LeaveRequest $leave): array
     {
-        return ['id' => $leave->id, 'leave_type' => $leave->leaveType?->name, 'leave_type_id' => $leave->leave_type_id, 'duration' => $leave->duration, 'starts_on' => $leave->starts_on->toDateString(), 'ends_on' => $leave->ends_on->toDateString(), 'days' => (float) $leave->days, 'reason' => $leave->reason, 'status' => $leave->status, 'decision_note' => $leave->decision_note, 'decided_at' => $leave->decided_at?->toIso8601String(), 'backdated' => $leave->isBackdated()];
+        return ['id' => $leave->id, 'leave_type' => $leave->typeName(), 'leave_type_id' => $leave->leave_type_id, 'other_type' => $leave->other_type, 'duration' => $leave->duration, 'starts_on' => $leave->starts_on->toDateString(), 'ends_on' => $leave->ends_on->toDateString(), 'days' => (float) $leave->days, 'reason' => $leave->reason, 'status' => $leave->status, 'decision_note' => $leave->decision_note, 'decided_at' => $leave->decided_at?->toIso8601String(), 'backdated' => $leave->isBackdated()];
     }
 }

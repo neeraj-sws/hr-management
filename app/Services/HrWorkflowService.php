@@ -185,6 +185,8 @@ class HrWorkflowService
                 $limit=$this->policyConfiguration($employee,'leave.advance_limit',$data['starts_on']->toDateString(),['max_days'=>5]);
                 if ($deficit > (float)($limit['max_days']??5)) throw ValidationException::withMessages(['leave'=>'Requested leave exceeds the advance leave limit.']);
             }
+            // "Others": the employee writes the kind of leave (e.g. Exam); other types keep none.
+            $data['other_type'] = self::otherType($leaveType, $data['other_type'] ?? null);
             $leave = LeaveRequest::create(['employee_id' => $employee->id, ...$data, 'days' => $days, 'status' => 'pending']);
             $approverId = ApprovalInbox::approverFor($employee); // admins/HR when the manager is unavailable
             ApprovalRequest::create(['approvable_type' => LeaveRequest::class, 'approvable_id' => $leave->id, 'approver_id' => $approverId, 'status' => 'pending']);
@@ -207,16 +209,27 @@ class HrWorkflowService
      * Casual -> Sick. The new type's balance is checked as for a new request; the approver is told. A decided leave
      * cannot be changed here (HR uses "Change decision").
      */
-    public function changeLeaveType(LeaveRequest $leave, AttendanceEmployee $employee, int $leaveTypeId, ?string $reason, int $userId): LeaveRequest
+    /** The written kind of an "Others" leave (required, 2-100 characters); null for every other type. */
+    public static function otherType(LeaveType $type, ?string $written): ?string
+    {
+        if (! $type->is_other) return null;
+        $written = trim((string) $written);
+        if (mb_strlen($written) < 2) throw ValidationException::withMessages(['other_type' => 'Write what kind of leave it is (e.g. Exam, Educational).']);
+
+        return mb_substr($written, 0, 100);
+    }
+
+    public function changeLeaveType(LeaveRequest $leave, AttendanceEmployee $employee, int $leaveTypeId, ?string $reason, int $userId, ?string $otherType = null): LeaveRequest
     {
         if ($leave->employee_id !== $employee->id) abort(403);
 
-        return DB::transaction(function () use ($leave, $employee, $leaveTypeId, $reason, $userId) {
+        return DB::transaction(function () use ($leave, $employee, $leaveTypeId, $reason, $userId, $otherType) {
             $leave = LeaveRequest::with('leaveType')->whereKey($leave->id)->lockForUpdate()->firstOrFail();
             if ($leave->status !== 'pending') throw ValidationException::withMessages(['leave_type_id' => 'Only a request still waiting for a decision can be changed. Ask HR to change a decided leave.']);
             $type = LeaveType::where('is_active', true)->whereKey($leaveTypeId)->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
             $reason = trim((string) $reason) !== '' ? mb_substr(trim((string) $reason), 0, 1000) : $leave->reason;
-            if ($type->id === $leave->leave_type_id && $reason === $leave->reason) throw ValidationException::withMessages(['leave_type_id' => 'Nothing changed.']);
+            $other = self::otherType($type, $otherType ?? ($type->id === $leave->leave_type_id ? $leave->other_type : null));
+            if ($type->id === $leave->leave_type_id && $reason === $leave->reason && $other === $leave->other_type) throw ValidationException::withMessages(['leave_type_id' => 'Nothing changed.']);
             if ($type->id !== $leave->leave_type_id && $type->paid) {
                 $year = LeaveYear::of($leave->starts_on);
                 if (! LeaveBalance::where('employee_id', $employee->id)->where('leave_type_id', $type->id)->where('year', $year)->exists()) LeaveBalance::open($employee->id, $type, $year);
@@ -228,11 +241,12 @@ class HrWorkflowService
                     if ($deficit > (float) ($limit['max_days'] ?? 5)) throw ValidationException::withMessages(['leave_type_id' => 'This leave type would go over the advance leave limit.']);
                 }
             }
-            $old = $leave->leaveType?->name ?? 'Leave';
-            $leave->update(['leave_type_id' => $type->id, 'reason' => $reason]);
-            $this->audit->record('leave.type_changed', $leave, ['from' => $old, 'to' => $type->name, 'by' => $userId]);
+            $old = $leave->typeName() ?? 'Leave';
+            $leave->update(['leave_type_id' => $type->id, 'other_type' => $other, 'reason' => $reason]);
+            $now = $leave->fresh('leaveType')->typeName() ?? $type->name;
+            $this->audit->record('leave.type_changed', $leave, ['from' => $old, 'to' => $now, 'by' => $userId]);
             $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
-            $what = $old !== $type->name ? "from {$old} to {$type->name}" : 'its reason';
+            $what = $old !== $now ? "from {$old} to {$now}" : 'its reason';
             Notifier::send(collect([$employee->manager?->user])->merge(Notifier::withPermission('leave.manage')), 'LeaveRequest', $leave->id, "{$employee->name} changed their pending leave request ({$range}) {$what}. It still needs your decision.", route('leave.requests', ['tab' => 'approvals'], false), $userId);
 
             return $leave->fresh('leaveType');
@@ -294,7 +308,7 @@ class HrWorkflowService
             ApprovalRequest::where('approvable_type', LeaveRequest::class)->where('approvable_id', $leave->id)->latest('id')->limit(1)->update(['approver_id' => $actor->id, 'status' => $now, 'decided_at' => now(), 'comment' => mb_substr($note, 0, 1000)]);
             $this->audit->record('leave.decision_changed', $leave, ['from' => $from, 'to' => $now, 'reason' => $reason]);
             $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
-            if ($carry) app(PayrollCarryOver::class)->settle($leave->employee_id, $leave->starts_on->toDateString(), $leave->ends_on->toDateString(), ($leave->leaveType?->name ?? 'Leave')." {$range} (decision changed)", $actor->id);
+            if ($carry) app(PayrollCarryOver::class)->settle($leave->employee_id, $leave->starts_on->toDateString(), $leave->ends_on->toDateString(), ($leave->typeName() ?? 'Leave')." {$range} (decision changed)", $actor->id);
             Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, "{$actor->name} changed the decision on your leave ({$range}): it is now {$now}. Reason: {$reason}".($carry ? ' The salary already processed is corrected in your next salary.' : ''), null, $actor->id);
             Notifier::send(collect([$leave->employee?->manager?->user])->merge(Notifier::withPermission('leave.manage')), 'LeaveRequest', $leave->id, "{$actor->name} changed {$leave->employee?->name}'s leave ({$range}) from {$from} to {$now}. Reason: {$reason}", route('leave.requests', ['tab' => 'all'], false), $actor->id);
 
@@ -327,7 +341,7 @@ class HrWorkflowService
             $this->audit->record($approve ? 'leave.approved' : 'leave.rejected', $leave, ['approver_id' => $approverId]);
             $by = \App\Models\User::find($approverId)?->name ?? 'Your approver';
             $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
-            if ($carry) app(PayrollCarryOver::class)->settle($leave->employee_id, $leave->starts_on->toDateString(), $leave->ends_on->toDateString(), ($leave->leaveType?->name ?? 'Leave')." {$range}", $approverId);
+            if ($carry) app(PayrollCarryOver::class)->settle($leave->employee_id, $leave->starts_on->toDateString(), $leave->ends_on->toDateString(), ($leave->typeName() ?? 'Leave')." {$range}", $approverId);
             if ($notify) Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, $approve ? "{$by} approved your leave ({$range})." : "{$by} rejected your leave ({$range})".($note ? ": {$note}" : '.'));
             return $leave->fresh();
         });
@@ -536,7 +550,7 @@ class HrWorkflowService
                         $net = (int) $halfRules->officeSeconds($daySession);
                         $standard = max(1, (int) round($halfRules->dailyHours($employee, $date) * 3600));
                         $hoursPaidSet[$date] = ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'standard' => $standard, 'check_in' => $daySession->check_in->format('H:i'),
-                            'leave' => ($partLeaveOn[$date]->duration === 'half' ? 'Half-day leave' : 'Short leave').' · '.($partLeaveOn[$date]->leaveType?->name ?? 'Leave')];
+                            'leave' => ($partLeaveOn[$date]->duration === 'half' ? 'Half-day leave' : 'Short leave').' · '.($partLeaveOn[$date]->typeName() ?? 'Leave')];
                     }
                     continue;
                 }

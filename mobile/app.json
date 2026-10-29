@@ -2,7 +2,7 @@
   "expo": {
     "name": "SWS HR",
     "slug": "sws-hr",
-    "version": "1.1.24",
+    "version": "1.1.25",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.sws.hr",
-      "versionCode": 26,
+      "versionCode": 27,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",

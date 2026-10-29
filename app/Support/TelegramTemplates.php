@@ -60,7 +60,7 @@ class TelegramTemplates
                 if (! $leave || $leave->employee?->user_id !== $userId || ! in_array($leave->status, ['approved', 'rejected'], true) || ! preg_match('/(approved|rejected) your leave|it is now (approved|rejected)/i', $message)) return null;
                 $days = rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.');
 
-                return ['Leave '.$leave->status, [$hello, 'Your '.($leave->leaveType?->name ?? 'leave')." request for {$days} day(s) has been {$leave->status}.", 'Leave Type' => $leave->leaveType?->name, 'From' => self::date($leave->starts_on), 'To' => self::date($leave->ends_on), ucfirst($leave->status).' by' => $by($leave->decided_by), 'Note' => $leave->decision_note]];
+                return ['Leave '.$leave->status, [$hello, 'Your '.($leave->typeName() ?? 'leave')." request for {$days} day(s) has been {$leave->status}.", 'Leave Type' => $leave->typeName(), 'From' => self::date($leave->starts_on), 'To' => self::date($leave->ends_on), ucfirst($leave->status).' by' => $by($leave->decided_by), 'Note' => $leave->decision_note]];
             case 'Payslip':
                 $slip = Payslip::with(['employee', 'item.run'])->find($id);
                 if (! $slip || $slip->employee?->user_id !== $userId) return null;

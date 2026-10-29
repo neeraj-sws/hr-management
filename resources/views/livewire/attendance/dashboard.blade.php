@@ -81,7 +81,7 @@
                             <span class="muted small" title="Idle and screen time come from the SWS HR desktop app; it has not reported for this day">no desktop app</span>
                         @endif
                     </td>
-                    <td><x-badge :status="$row->state" />@if($row->leave)<small>{{ $row->leave->leaveType?->name }}</small>@endif</td>
+                    <td><x-badge :status="$row->state" />@if($row->leave)<small>{{ $row->leave->typeName() }}</small>@endif</td>
                     <td class="ta-act">
                         <div class="ta-actions">
                             @if($s && ! $s->check_out && $canClose)<button type="button" class="btn btn-sm" wire:click="openClose({{ $s->id }})">Check out</button>@endif

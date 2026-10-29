@@ -38,7 +38,7 @@ class LeaveHistory
             $session = $day['session'];
             if ($leave) {
                 $rows->push(['date' => $date, 'kind' => $leave->duration === 'full' ? 'full' : ($leave->duration === 'half' ? 'half' : 'short'),
-                    'what' => (self::DURATIONS[$leave->duration] ?? 'Leave').' leave', 'type' => $leave->leaveType?->name, 'paid' => (bool) $leave->leaveType?->paid,
+                    'what' => (self::DURATIONS[$leave->duration] ?? 'Leave').' leave', 'type' => $leave->typeName(), 'paid' => (bool) $leave->leaveType?->paid,
                     'status' => $leave->status, 'detail' => trim(($leave->reason ?: '').($leave->decider ? ' · '.($leave->status === 'approved' ? 'approved' : $leave->status).' by '.$leave->decider->name : ''), ' ·') ?: null,
                     'at_work' => $session && $session->check_out ? $attendance->officeSeconds($session) : null]);
             } elseif ($day['status'] === 'half_day') {

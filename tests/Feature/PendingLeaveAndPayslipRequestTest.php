@@ -63,7 +63,7 @@ class PendingLeaveAndPayslipRequestTest extends TestCase
 
     public function test_undecided_leave_reminder_escalation_urgent_once_each(): void
     {
-        $unpaid = LeaveType::where('paid', false)->first() ?? LeaveType::create(['name' => 'Unpaid Leave', 'annual_allowance' => 0, 'paid' => false, 'is_active' => true]);
+        $unpaid = LeaveType::where('paid', false)->where('is_other', false)->first() ?? LeaveType::create(['name' => 'Unpaid Leave', 'annual_allowance' => 0, 'paid' => false, 'is_active' => true]);
         $leave = app(HrWorkflowService::class)->requestLeave($this->employee, ['leave_type_id' => $unpaid->id, 'duration' => 'full', 'starts_on' => Carbon::parse('2026-10-21'), 'ends_on' => Carbon::parse('2026-10-21'), 'reason' => 'Family'], false);
 
         Artisan::call('leave:pending-reminders'); // 09:00: before the daily reminder time, not 24 h old, not its day yet

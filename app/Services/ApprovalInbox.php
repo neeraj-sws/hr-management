@@ -168,7 +168,7 @@ class ApprovalInbox
         $who = $this->subjectEmployee($subject)?->name;
 
         return match (true) {
-            $subject instanceof LeaveRequest => "{$who} · {$subject->leaveType?->name} · {$subject->starts_on->format('d M')}–{$subject->ends_on->format('d M Y')} ({$subject->days} days)".($subject->isBackdated() ? ' · OLD DATE: asked on '.$subject->created_at->format('d M').', give a reason to approve' : ''),
+            $subject instanceof LeaveRequest => "{$who} · {$subject->typeName()} · {$subject->starts_on->format('d M')}–{$subject->ends_on->format('d M Y')} ({$subject->days} days)".($subject->isBackdated() ? ' · OLD DATE: asked on '.$subject->created_at->format('d M').', give a reason to approve' : ''),
             $subject instanceof OvertimeRequest => "{$who} · {$subject->work_date->format('d M Y')} · {$subject->requested_minutes} min",
             $subject instanceof SalaryAdjustment => "{$who} · ".$subject->label().' '.number_format((float) $subject->amount, 2).($subject->is_recurring ? ' / month'.($subject->recurring_until ? ' until '.$subject->recurring_until->format('M Y') : '') : ''),
             $subject instanceof SalaryAdvance => "{$who} · ".number_format((float) $subject->amount, 2).' (recover '.number_format((float) $subject->installment_amount, 2).'/run)',

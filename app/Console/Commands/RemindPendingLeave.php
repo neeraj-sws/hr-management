@@ -34,7 +34,7 @@ class RemindPendingLeave extends Command
             $employee = $leave->employee;
             if (! $employee) continue;
             $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
-            $what = "{$employee->name}'s ".($leave->leaveType?->name ?? 'leave')." ({$range}, ".rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.').' day(s))';
+            $what = "{$employee->name}'s ".($leave->typeName() ?? 'leave')." ({$range}, ".rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.').' day(s))';
             $url = route('leave.requests', ['tab' => 'approvals'], false);
             $approverId = ApprovalRequest::where('approvable_type', LeaveRequest::class)->where('approvable_id', $leave->id)->where('status', 'pending')->value('approver_id');
             $approvers = collect([$approverId ? User::find($approverId) : null, $employee->manager?->user])->filter()->unique('id');

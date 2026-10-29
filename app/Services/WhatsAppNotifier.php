@@ -51,7 +51,7 @@ class WhatsAppNotifier
         }
         $from = Carbon::parse($leave->starts_on)->format('d M');
         $to = Carbon::parse($leave->ends_on)->format('d M Y');
-        $type = $leave->leaveType?->name ?? 'Leave';
+        $type = $leave->typeName() ?? 'Leave';
         $this->notify('leave_applied', $e, "🌴 *Leave request*\n{$e->name} ({$e->employee_code}) applied for {$type}: {$from} – {$to} ({$leave->days} day/s).\nReason: {$leave->reason}\nNeeds your approval.");
     }
 
@@ -61,7 +61,7 @@ class WhatsAppNotifier
         if (! $e) {
             return;
         }
-        $type = $leave->leaveType?->name ?? 'Leave';
+        $type = $leave->typeName() ?? 'Leave';
         $this->notify('leave_decided', $e, "📋 *Leave {$leave->status}*\n{$e->name}'s {$type} ({$leave->days} day/s) was {$leave->status}.", includeEmployee: true);
     }
 

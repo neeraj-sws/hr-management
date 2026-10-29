@@ -118,7 +118,7 @@ class LeaveDecisionChangeTest extends TestCase
     public function test_employee_changes_the_leave_type_of_a_pending_request(): void
     {
         $leave = $this->leave();
-        $unpaid = LeaveType::where('paid', false)->where('is_active', true)->first() ?? LeaveType::create(['name' => 'Unpaid Leave', 'annual_allowance' => 0, 'paid' => false, 'is_active' => true]);
+        $unpaid = LeaveType::where('paid', false)->where('is_active', true)->where('is_other', false)->first() ?? LeaveType::create(['name' => 'Unpaid Leave', 'annual_allowance' => 0, 'paid' => false, 'is_active' => true]);
 
         Livewire::actingAs($this->employee->user)->test(Requests::class, ['tab' => 'mine'])
             ->assertSee('Edit')->call('openEdit', $leave->id)->assertSee('Edit leave request')
@@ -144,5 +144,29 @@ class LeaveDecisionChangeTest extends TestCase
         $this->workflow->decideLeave($leave, $this->admin->id, false, 'Not now');
         \Laravel\Sanctum\Sanctum::actingAs($this->employee->user, ['*']);
         $this->patchJson("/api/leave/requests/{$leave->id}", ['leave_type_id' => $this->annual->id])->assertStatus(422);
+    }
+
+    public function test_others_leave_type_with_the_kind_written_by_the_employee(): void
+    {
+        $others = LeaveType::where('is_other', true)->firstOrFail();
+        $this->assertSame(['Others', false], [$others->name, (bool) $others->paid]);
+
+        // Website: "Others" needs the kind; then it shows as "Others: Exam" everywhere.
+        Livewire::actingAs($this->employee->user)->test(Requests::class, ['tab' => 'mine'])
+            ->call('create')->set('leaveTypeId', $others->id)->assertSee('What kind of leave?')
+            ->set('dayChoice', 'one')->set('startsOn', '2026-10-27')->set('reason', 'Semester exam')->call('submit')->assertHasErrors('otherType')
+            ->set('otherType', 'Exam / Educational')->call('submit')->assertHasNoErrors();
+        $leave = \App\Models\LeaveRequest::latest('id')->firstOrFail();
+        $this->assertSame(['Exam / Educational', 'Others: Exam / Educational'], [$leave->other_type, $leave->typeName()]);
+        $this->assertStringContainsString('Others: Exam / Educational', app(\App\Services\ApprovalInbox::class)->summary(\App\Models\ApprovalRequest::where('approvable_id', $leave->id)->firstOrFail()));
+
+        // App: the type list says which one is "Others"; a request without the kind is refused.
+        \Laravel\Sanctum\Sanctum::actingAs($this->employee->user, ['*']);
+        $this->assertTrue(collect($this->getJson('/api/leave/types')->json('data'))->firstWhere('id', $others->id)['is_other']);
+        $this->postJson('/api/leave/requests', ['leave_type_id' => $others->id, 'starts_on' => '2026-10-29', 'ends_on' => '2026-10-29', 'reason' => 'x'])->assertStatus(422)->assertJsonValidationErrors('other_type');
+        $this->postJson('/api/leave/requests', ['leave_type_id' => $others->id, 'other_type' => 'Moving house', 'starts_on' => '2026-10-29', 'ends_on' => '2026-10-29', 'reason' => 'Shifting'])->assertCreated()->assertJsonPath('data.leave_type', 'Others: Moving house');
+
+        // Changing to another type drops the written kind.
+        $this->patchJson("/api/leave/requests/{$leave->id}", ['leave_type_id' => $this->annual->id])->assertOk()->assertJsonPath('data.leave_type', 'Annual Leave')->assertJsonPath('data.other_type', null);
     }
 }
