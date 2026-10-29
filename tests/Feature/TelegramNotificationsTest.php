@@ -287,4 +287,11 @@ class TelegramNotificationsTest extends TestCase
         $this->assertStringNotContainsString('<a href', $text);
         $this->assertStringContainsString('Open SWS HRMS</a>', \App\Support\TelegramTemplates::forNotification('LeaveBalance', 1, 'x', $this->admin, 'https://hr.test/leave'));
     }
+
+    public function test_connect_works_after_many_app_calls(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs($this->employee->user, ['*']);
+        for ($i = 0; $i < 15; $i++) $this->getJson('/api/me/telegram')->assertOk();
+        $this->postJson('/api/me/telegram/connect')->assertOk();
+    }
 }

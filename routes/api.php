@@ -42,7 +42,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/me/profile', [MeController::class, 'profile'])->name('api.me.profile');
     Route::post('/me/profile', [MeController::class, 'saveProfile'])->name('api.me.profile.save');
     Route::get('/me/telegram', [\App\Http\Controllers\Api\TelegramController::class, 'show'])->name('api.me.telegram');
-    Route::post('/me/telegram/connect', [\App\Http\Controllers\Api\TelegramController::class, 'connect'])->middleware('throttle:10,1')->name('api.me.telegram.connect');
+    Route::post('/me/telegram/connect', [\App\Http\Controllers\Api\TelegramController::class, 'connect'])->name('api.me.telegram.connect');
     Route::post('/me/telegram/disconnect', [\App\Http\Controllers\Api\TelegramController::class, 'disconnect'])->name('api.me.telegram.disconnect');
     Route::post('/me/two-factor', [MeController::class, 'twoFactor'])->name('api.me.two-factor');
 

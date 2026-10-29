@@ -200,22 +200,19 @@ export default function Settings() {
 
       {prefs.length ? (
         <Section icon="bell-outline" title="Notifications" hint="Choose what reaches you. Important updates always show in the app.">
-          <View style={styles.prefHead}>
-            <Text style={[styles.prefCol, { flex: 1, textAlign: 'left' }]}>Type</Text>
-            <Text style={styles.prefCol}>In app</Text>
-            <Text style={styles.prefCol}>Phone</Text>
-            <Text style={styles.prefCol}>E-mail</Text>
-            {telegram?.available ? <Text style={styles.prefCol}>Telegram</Text> : null}
-          </View>
+          {/* Each kind: its name on a full line, then one switch per channel with its own small label (fits a phone). */}
           {prefs.map((p) => (
             <View key={p.group} style={styles.prefRow}>
               <Text style={styles.prefLabel}>{p.label}</Text>
-              <View style={styles.prefCell}>{p.can_mute ? <Switch value={p.in_app} onValueChange={() => togglePref(p.group, 'in_app')} /> : <Text style={styles.always}>always</Text>}</View>
-              <View style={styles.prefCell}><Switch value={p.push} onValueChange={() => togglePref(p.group, 'push')} /></View>
-              <View style={styles.prefCell}><Switch value={p.email} onValueChange={() => togglePref(p.group, 'email')} /></View>
-              {telegram?.available ? <View style={styles.prefCell}><Switch value={!!p.telegram} onValueChange={() => togglePref(p.group, 'telegram')} disabled={!telegram.connected} /></View> : null}
+              <View style={styles.prefSwitches}>
+                <View style={styles.prefCell}><Text style={styles.prefCol}>In app</Text>{p.can_mute ? <Switch value={p.in_app} onValueChange={() => togglePref(p.group, 'in_app')} /> : <Text style={styles.always}>always</Text>}</View>
+                <View style={styles.prefCell}><Text style={styles.prefCol}>Phone</Text><Switch value={p.push} onValueChange={() => togglePref(p.group, 'push')} /></View>
+                <View style={styles.prefCell}><Text style={styles.prefCol}>E-mail</Text><Switch value={p.email} onValueChange={() => togglePref(p.group, 'email')} /></View>
+                {telegram?.available ? <View style={styles.prefCell}><Text style={styles.prefCol}>Telegram</Text><Switch value={!!p.telegram} onValueChange={() => togglePref(p.group, 'telegram')} disabled={!telegram.connected} /></View> : null}
+              </View>
             </View>
           ))}
+          {telegram?.available && !telegram.connected ? <Muted style={{ marginTop: 8 }}>The Telegram switches work after you connect Telegram above.</Muted> : null}
           {!pushAvailable ? <View style={{ marginTop: 10 }}><Notice tone="info" text="Phone notifications are not switched on for the company yet. Your choice is kept for when they are." /></View> : null}
           {prefsNote ? <View style={{ marginTop: 10 }}><Notice tone={prefsNote.tone} text={prefsNote.text} /></View> : null}
           <View style={{ marginTop: 12 }}><Button title={prefsSaving ? 'Saving…' : 'Save notification choices'} tone="primary" onPress={savePrefs} loading={prefsSaving} /></View>
@@ -288,10 +285,10 @@ const styles = StyleSheet.create({
   kvValue: { color: colors.ink, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   switchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, marginBottom: 8 },
   switchLabel: { color: colors.ink2, fontSize: 14, fontWeight: '700' },
-  prefHead: { flexDirection: 'row', alignItems: 'center', paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.line },
-  prefCol: { width: 56, textAlign: 'center', fontSize: 11, fontWeight: '800', color: colors.muted, textTransform: 'uppercase' },
-  prefRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#eef1f6' },
-  prefLabel: { flex: 1, color: colors.ink2, fontSize: 13, fontWeight: '600', paddingRight: 6 },
-  prefCell: { width: 56, alignItems: 'center' },
+  prefCol: { textAlign: 'center', fontSize: 10, fontWeight: '800', color: colors.muted, textTransform: 'uppercase', marginBottom: 2 },
+  prefRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eef1f6' },
+  prefLabel: { color: colors.ink2, fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  prefSwitches: { flexDirection: 'row', justifyContent: 'space-between' },
+  prefCell: { flex: 1, alignItems: 'center' },
   always: { fontSize: 11, color: colors.faint },
 });
