@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormSheet, useCloseOnSuccess } from '../components/FormSheet';
@@ -66,6 +66,8 @@ export default function DailyStatusScreen() {
   const [mBusy, setMBusy] = useState(false);
   const [mMessage, setMMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const closeMissed = useCallback(() => setMissedDate(null), []);
+  // Opened from Home ("Daily status not written"): the missed day's form opens at once.
+  const params = useLocalSearchParams<{ missed?: string }>();
   useCloseOnSuccess(mBusy, mMessage, closeMissed);
 
   const [month, setMonth] = useMonth();
@@ -155,6 +157,10 @@ export default function DailyStatusScreen() {
   const openMissed = (date: string) => {
     setMissedDate(date); setMissedStep(1); setLateReason(''); setMPlan(''); setMDone(''); setMBlockers(''); setMNotes(''); setMErrors({}); setMMessage(null);
   };
+  useEffect(() => {
+    if (params.missed && /^\d{4}-\d{2}-\d{2}$/.test(params.missed) && missedWritable.includes(params.missed)) openMissed(params.missed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.missed, missedWritable]);
   const missedNext = () => {
     if (lateReason.trim().length < 5) { setMErrors({ late_reason: 'First write why the status was not written that day (at least 5 characters).' }); return; }
     setMErrors({}); setMissedStep(2);

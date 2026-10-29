@@ -58,7 +58,7 @@ class Profile extends Component
         $saved = (array) ($this->user()->notification_preferences ?? []);
         $this->webSound = (bool) ($saved['web_sound'] ?? true);
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => $definition) {
-            $this->prefs[$group] = ['in_app' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'in_app'), 'email' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'email'), 'push' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'push')];
+            $this->prefs[$group] = ['in_app' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'in_app'), 'email' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'email'), 'push' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'push'), 'telegram' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'telegram')];
         }
     }
 
@@ -78,12 +78,49 @@ class Profile extends Component
         \App\Services\ImpersonationService::block();
         $clean = [];
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => [, $mutable]) {
-            $clean[$group] = ['in_app' => $mutable ? (bool) ($this->prefs[$group]['in_app'] ?? true) : true, 'email' => (bool) ($this->prefs[$group]['email'] ?? false), 'push' => (bool) ($this->prefs[$group]['push'] ?? true)];
+            $clean[$group] = ['in_app' => $mutable ? (bool) ($this->prefs[$group]['in_app'] ?? true) : true, 'email' => (bool) ($this->prefs[$group]['email'] ?? false), 'push' => (bool) ($this->prefs[$group]['push'] ?? true), 'telegram' => (bool) ($this->prefs[$group]['telegram'] ?? false)];
         }
         $this->user()->forceFill(['notification_preferences' => [...$clean, 'web_sound' => $this->webSound]])->save();
         $this->prefs = $clean;
         $audit->record('profile.notification_preferences_updated', $this->user(), $clean);
         $this->toast('Notification preferences saved.');
+    }
+
+    /** Telegram link being made: the bot link (with its single-use token) shown until it is used or expires. */
+    public ?string $telegramUrl = null;
+    public ?string $telegramExpires = null;
+
+    public function connectTelegram(\App\Services\TelegramNotificationService $telegram): void
+    {
+        \App\Services\ImpersonationService::block();
+        abort_unless($telegram->enabled(), 403);
+        $link = $telegram->startLink($this->user());
+        if (! $link['url']) {
+            $this->addError('telegram', 'The Telegram bot is not set up yet. Ask the administrator.');
+
+            return;
+        }
+        $this->telegramUrl = $link['url'];
+        $this->telegramExpires = $link['expires_at']->format('h:i A');
+    }
+
+    public function disconnectTelegram(\App\Services\TelegramNotificationService $telegram): void
+    {
+        \App\Services\ImpersonationService::block();
+        $telegram->unlink($this->user());
+        $this->telegramUrl = null;
+        $this->toast('Telegram disconnected.');
+    }
+
+    /** "I have tapped Start": shows whether the link worked. */
+    public function checkTelegram(): void
+    {
+        if (\App\Notifications\Channels\TelegramChannel::linked($this->user()->id)) {
+            $this->telegramUrl = null;
+            $this->toast('Telegram connected.');
+        } else {
+            $this->addError('telegram', 'Not connected yet: open the link, tap Start in Telegram, then check again.');
+        }
     }
 
     public string $currentPassword = '';
@@ -141,6 +178,8 @@ class Profile extends Component
 
         $twoFactor = app(\App\Services\TwoFactorService::class);
 
-        return $this->page('livewire.account.profile', ['employee' => $employee, 'user' => $this->user(), 'twoFactorRequired' => $twoFactor->requiredFor($this->user()) && ! $this->user()->two_factor_enabled, 'maskedEmail' => $twoFactor->maskedEmail($this->user())], 'My profile');
+        return $this->page('livewire.account.profile', ['employee' => $employee, 'user' => $this->user(), 'twoFactorRequired' => $twoFactor->requiredFor($this->user()) && ! $this->user()->two_factor_enabled, 'maskedEmail' => $twoFactor->maskedEmail($this->user()),
+            'telegramOn' => app(\App\Services\TelegramNotificationService::class)->enabled(),
+            'telegramLink' => \App\Models\TelegramLink::where('user_id', $this->user()->id)->whereNotNull('chat_id')->first()], 'My profile');
     }
 }

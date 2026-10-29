@@ -1,0 +1,108 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\AttendanceCorrection;
+use App\Models\AttendanceEmployee;
+use App\Models\AttendanceSession;
+use App\Models\EmployeePenalty;
+use App\Models\LeaveRequest;
+use App\Models\Payslip;
+use App\Models\SalaryAdvance;
+use App\Models\SalaryPayment;
+use App\Models\Task;
+use App\Support\Duration;
+use Illuminate\Support\Carbon;
+
+/**
+ * The Telegram messages for HR events: the Super Admin's feed and, for check-in / check-out, the employee's own chat
+ * (everything else reaches the employee through their normal notifications). Each message has a fixed key, so the
+ * same event is never sent twice. Nothing here changes attendance, leave or payroll.
+ */
+class TelegramEvents
+{
+    public function __construct(private readonly TelegramNotificationService $telegram) {}
+
+    private static function money(float $amount): string
+    {
+        return 'Rs '.number_format($amount, 2);
+    }
+
+    private static function who(?AttendanceEmployee $e): array
+    {
+        return ['Employee' => $e?->name, 'Employee ID' => $e?->employee_code];
+    }
+
+    public function checkedIn(AttendanceSession $session): void
+    {
+        $e = $session->employee;
+        if (! $e || ! $session->check_in) return;
+        $late = rescue(fn () => app(AttendanceService::class)->isLate($session) ? app(AttendanceService::class)->lateMinutes($session) : 0, 0, false);
+        $status = $late > 0 ? "Late by {$late} min" : 'On time';
+        $this->telegram->toAdmin('check_in', "in:{$session->id}", TelegramNotificationService::format('Attendance started', [...self::who($e), 'Date' => $session->check_in->format('d F Y'), 'Time' => $session->check_in->format('h:i A'), 'Status' => $status]));
+        $this->telegram->toUser($e->user, 'check_in', "in:{$session->id}", TelegramNotificationService::format('Attendance started', ['Hello '.$e->name.', your attendance is recorded.', 'Date' => $session->check_in->format('d F Y'), 'Time' => $session->check_in->format('h:i A'), 'Status' => $status]));
+    }
+
+    public function checkedOut(AttendanceSession $session): void
+    {
+        $e = $session->employee;
+        if (! $e || ! $session->check_out) return;
+        $worked = rescue(fn () => Duration::hm(app(AttendanceService::class)->workedSeconds($session)), null, false);
+        $lines = ['Date' => $session->work_date->format('d F Y'), 'Check-in' => $session->check_in?->format('h:i A'), 'Checkout Time' => $session->check_out->format('h:i A'), 'Worked' => $worked];
+        $this->telegram->toAdmin('check_out', "out:{$session->id}", TelegramNotificationService::format('Checkout completed', [...self::who($e), ...$lines]));
+        $this->telegram->toUser($e->user, 'check_out', "out:{$session->id}", TelegramNotificationService::format('Checkout completed', ['Hello '.$e->name.', your checkout is recorded.', ...$lines]));
+    }
+
+    public function absent(AttendanceEmployee $e, string $date): void
+    {
+        $this->telegram->toAdmin('absent', "absent:{$e->id}:{$date}", TelegramNotificationService::format('Not checked in', [...self::who($e), 'Date' => Carbon::parse($date)->format('d F Y'), 'Not checked in and not on approved leave']));
+    }
+
+    public function leave(LeaveRequest $leave, string $what): void
+    {
+        $leave->loadMissing(['employee', 'leaveType']);
+        $title = ['applied' => 'New leave request', 'approved' => 'Leave approved', 'rejected' => 'Leave rejected', 'cancelled' => 'Leave cancelled'][$what] ?? 'Leave updated';
+        $event = ['applied' => 'leave_applied', 'cancelled' => 'leave_cancelled'][$what] ?? 'leave_decided';
+        $this->telegram->toAdmin($event, "leave:{$leave->id}:{$what}", TelegramNotificationService::format($title, [...self::who($leave->employee), 'Leave Type' => $leave->leaveType?->name ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
+            'Days' => rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.'), 'Reason' => $what === 'applied' ? $leave->reason : null, 'Status' => $what === 'applied' ? 'Pending Approval' : ucfirst($what), 'Note' => $what !== 'applied' ? $leave->decision_note : null]));
+    }
+
+    public function correction(AttendanceCorrection $c): void
+    {
+        $c->loadMissing('employee');
+        $this->telegram->toAdmin('correction_decided', "correction:{$c->id}:{$c->status}", TelegramNotificationService::format('Attendance correction '.$c->status, [...self::who($c->employee), 'Date' => $c->work_date?->format('d F Y'),
+            'Check-in' => $c->requested_check_in?->format('h:i A'), 'Check-out' => $c->requested_check_out?->format('h:i A'), 'Reason' => $c->reason, 'Note' => $c->decision_note]));
+    }
+
+    public function task(Task $task, string $what): void
+    {
+        $task->loadMissing(['assignee', 'project']);
+        $event = $what === 'completed' ? 'task_completed' : 'task_assigned';
+        $this->telegram->toAdmin($event, "task:{$task->id}:{$what}:".($what === 'assigned' ? $task->assignee_id : ''), TelegramNotificationService::format($what === 'completed' ? 'Task completed' : 'Task assigned', [...self::who($task->assignee), 'Task' => $task->title, 'Project' => $task->project?->name, 'Due' => $task->due_on?->format('d F Y'), 'Priority' => $task->priority ? ucfirst((string) $task->priority) : null]));
+    }
+
+    public function payslip(Payslip $payslip): void
+    {
+        $payslip->loadMissing(['employee', 'item.run']);
+        $run = $payslip->item?->run;
+        $this->telegram->toAdmin('payslip', "payslip:{$payslip->id}", TelegramNotificationService::format('Salary slip generated', [...self::who($payslip->employee), 'Period' => $run ? $run->period_starts_on?->format('d M').' – '.$run->period_ends_on?->format('d M Y') : null, 'Net' => $payslip->item ? self::money((float) $payslip->item->net_amount) : null, 'Reference' => $payslip->reference]));
+    }
+
+    public function salaryPayment(SalaryPayment $payment): void
+    {
+        $payment->loadMissing('payrollItem.employee');
+        $this->telegram->toAdmin('salary_payment', "salary_payment:{$payment->id}", TelegramNotificationService::format('Salary payment recorded', [...self::who($payment->payrollItem?->employee), 'Amount' => self::money((float) $payment->amount), 'Paid On' => $payment->paid_on ? Carbon::parse($payment->paid_on)->format('d F Y') : null, 'Method' => $payment->method]));
+    }
+
+    public function advancePaid(SalaryAdvance $advance, float $amount): void
+    {
+        $advance->loadMissing('employee');
+        $this->telegram->toAdmin('advance_paid', "advance:{$advance->id}:".number_format((float) $advance->disbursed_amount, 2, '.', ''), TelegramNotificationService::format('Advance payment recorded', [...self::who($advance->employee), 'Amount' => self::money($amount), 'Total advance' => self::money((float) $advance->amount), 'Recovery per payroll' => self::money((float) $advance->installment_amount)]));
+    }
+
+    public function fine(EmployeePenalty $penalty, string $what): void
+    {
+        $penalty->loadMissing('employee');
+        $this->telegram->toAdmin('fine', "fine:{$penalty->id}:{$what}", TelegramNotificationService::format($what === 'removed' ? 'Fine removed' : 'Fine made', [...self::who($penalty->employee), 'Date' => $penalty->effective_on?->format('d F Y'), 'Amount' => self::money((float) $penalty->amount), 'Why' => $penalty->reason, 'Note' => $what === 'removed' ? $penalty->decision_note : null]));
+    }
+}

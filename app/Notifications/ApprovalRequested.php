@@ -31,6 +31,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'TaskAssignment' => 'work.my-tasks',
         'TaskOverdue' => 'work.my-tasks',
         'TaskCompleted' => 'work.tasks',
+        'TaskUpdated' => 'work.my-tasks',
         'TaskComment' => 'work.my-tasks',
         'ProjectMember' => 'work.my-projects',
         'ProjectManager' => 'work.projects',
@@ -79,7 +80,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     ];
 
     private const KIND_GROUP = [
-        'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work', 'PerformanceGoal' => 'work', 'PerformanceFeedback' => 'work',
+        'TaskAssignment' => 'work', 'TaskOverdue' => 'work', 'TaskComment' => 'work', 'TaskCompleted' => 'work', 'TaskUpdated' => 'work', 'ProjectMember' => 'work', 'ProjectManager' => 'work', 'DailyStatusSubmitted' => 'work', 'DailyStatusRequested' => 'work', 'Interview' => 'work', 'TrainingAssignment' => 'work', 'PerformanceReview' => 'work', 'PerformanceGoal' => 'work', 'PerformanceFeedback' => 'work',
         'AttendanceLate' => 'attendance', 'AttendanceAbsent' => 'attendance', 'AttendanceBreak' => 'attendance', 'AttendanceLongBreak' => 'attendance',
         'DailyStatusReminder' => 'reminders', 'DailyStatus' => 'reminders', 'ShiftReminder' => 'reminders', 'CheckoutReminder' => 'reminders',
         'Announcement' => 'company', 'Celebration' => 'company', 'WeeklyOff' => 'attendance', 'Shift' => 'attendance',
@@ -92,6 +93,9 @@ class ApprovalRequested extends Notification implements ShouldQueue
      */
     public const EMAIL_DEFAULTS = ['important' => true, 'work' => true, 'attendance' => true, 'reminders' => false, 'company' => false];
 
+    /** Telegram (once the person has connected it in My profile): on for everything but company news. */
+    public const TELEGRAM_DEFAULTS = ['important' => true, 'work' => true, 'attendance' => true, 'reminders' => true, 'company' => false];
+
     public static function groupFor(string $kind): string
     {
         return self::KIND_GROUP[$kind] ?? 'important';
@@ -101,7 +105,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     public static function preference(?array $saved, string $group, string $channel): bool
     {
         if ($channel === 'in_app' && ! (self::GROUPS[$group][1] ?? true)) return true;
-        $default = $channel === 'email' ? (self::EMAIL_DEFAULTS[$group] ?? false) : true;
+        $default = match ($channel) { 'email' => self::EMAIL_DEFAULTS[$group] ?? false, 'telegram' => self::TELEGRAM_DEFAULTS[$group] ?? false, default => true };
 
         return (bool) (((array) ($saved[$group] ?? []))[$channel] ?? $default);
     }
@@ -127,6 +131,8 @@ class ApprovalRequested extends Notification implements ShouldQueue
         if (in_array('database', $channels, true) && self::preference($saved, $group, 'push') && ExpoPushChannel::enabled() && PushToken::where('user_id', $notifiable->getKey())->exists()) $channels[] = ExpoPushChannel::class;
         // E-mail never breaks the action that triggered it (see SafeMailChannel).
         if ($this->allowEmail && self::preference($saved, $group, 'email') && ! empty($notifiable->email) && ($notifiable->is_active ?? true) && SafeMailChannel::enabled()) $channels[] = SafeMailChannel::class;
+        // Telegram: only to the person's own linked chat (My profile > Connect Telegram).
+        if (self::preference($saved, $group, 'telegram') && ($notifiable->is_active ?? true) && \App\Notifications\Channels\TelegramChannel::enabled() && \App\Notifications\Channels\TelegramChannel::linked((int) $notifiable->getKey())) $channels[] = \App\Notifications\Channels\TelegramChannel::class;
 
         return $channels;
     }
@@ -135,7 +141,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
     public function viaConnections(): array
     {
         // Phone pushes go out at once too: a shift reminder that waits for a queue worker is useless.
-        return ['database' => 'sync', \App\Notifications\Channels\ExpoPushChannel::class => 'sync'];
+        return ['database' => 'sync', \App\Notifications\Channels\ExpoPushChannel::class => 'sync', \App\Notifications\Channels\TelegramChannel::class => 'sync'];
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -153,6 +159,12 @@ class ApprovalRequested extends Notification implements ShouldQueue
     public function toPush(object $notifiable): array
     {
         return ['title' => 'SWS HR', 'body' => \Illuminate\Support\Str::limit($this->message, 180), 'data' => ['kind' => $this->kind, 'record_id' => $this->recordId]];
+    }
+
+    /** The person's own Telegram message: "SWS HRMS | LEAVE APPROVED", "Hello Priya," and the details (see TelegramTemplates). */
+    public function toTelegram(object $notifiable): string
+    {
+        return \App\Support\TelegramTemplates::forNotification($this->kind, $this->recordId, $this->message, $notifiable, url($this->url ?? self::urlFor($this->kind, $this->message)));
     }
 
     public function toDatabase(object $notifiable): array

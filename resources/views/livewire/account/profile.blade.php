@@ -48,15 +48,35 @@
                 </section>
             @endif
         </div>
+        @if($telegramOn)
+            {{-- Telegram: the person links their own chat (single-use link, a few minutes); only their own notifications go there. --}}
+            <section class="card" id="telegram">
+                <div class="card-head"><div><h2>Telegram</h2><p>Get your own SWS HRMS notifications (leave, salary slip, payments, tasks, attendance) in your private Telegram chat with the SWS HRMS Notifications bot.</p></div>
+                    @if($telegramLink)<x-badge tone="green">Connected</x-badge>@else<x-badge tone="gray">Not connected</x-badge>@endif</div>
+                <div class="card-body stack">
+                    @error('telegram')<p class="error">{{ $message }}</p>@enderror
+                    @if($telegramLink)
+                        <p class="small">Connected{{ $telegramLink->telegram_username ? ' as @'.$telegramLink->telegram_username : '' }} on {{ $telegramLink->linked_at?->format('d M Y, h:i A') }}. Choose below which kinds of notification go to Telegram.</p>
+                        <div><button type="button" class="btn btn-danger btn-sm" wire:click="disconnectTelegram" wire:confirm="Stop SWS HRMS notifications on Telegram?">Disconnect Telegram</button></div>
+                    @elseif($telegramUrl)
+                        <ol class="small" style="margin:0;padding-left:18px"><li>Open the link below on the phone or computer where you use Telegram.</li><li>Tap <b>Start</b> in the bot. The link works once, until {{ $telegramExpires }}.</li><li>Come back and tap "I have tapped Start".</li></ol>
+                        <div class="actions" style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn btn-primary" href="{{ $telegramUrl }}" target="_blank" rel="noopener">Open SWS HRMS bot in Telegram</a><button type="button" class="btn" wire:click="checkTelegram">I have tapped Start</button></div>
+                    @else
+                        <div><button type="button" class="btn btn-primary" wire:click="connectTelegram">Connect Telegram</button></div>
+                    @endif
+                </div>
+            </section>
+        @endif
         <section class="card" id="notifications">
             <div class="card-head"><div><h2>Notifications</h2><p>Choose what reaches you in the app, on your phone (SWS HR mobile app) and by e-mail. Important updates always appear in the app.</p></div></div>
             <form class="card-body" wire:submit="savePreferences">
-                <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th>In the app</th><th>Phone push</th><th>E-mail</th></tr></thead><tbody>
+                <div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th>In the app</th><th>Phone push</th><th>E-mail</th>@if($telegramOn)<th>Telegram</th>@endif</tr></thead><tbody>
                     @foreach(\App\Notifications\ApprovalRequested::GROUPS as $group => [$label, $mutable])
                         <tr><td>{{ $label }}</td>
                             <td>@if($mutable)<input type="checkbox" wire:model="prefs.{{ $group }}.in_app" aria-label="{{ $label }} in the app">@else<span class="small muted">always</span>@endif</td>
                             <td><input type="checkbox" wire:model="prefs.{{ $group }}.push" aria-label="{{ $label }} as a phone notification"></td>
-                            <td><input type="checkbox" wire:model="prefs.{{ $group }}.email" aria-label="{{ $label }} by e-mail"></td></tr>
+                            <td><input type="checkbox" wire:model="prefs.{{ $group }}.email" aria-label="{{ $label }} by e-mail"></td>
+                            @if($telegramOn)<td><input type="checkbox" wire:model="prefs.{{ $group }}.telegram" aria-label="{{ $label }} on Telegram" @disabled(! $telegramLink)></td>@endif</tr>
                     @endforeach
                 </tbody></table></div>
                 <label class="check nf-sound-pref"><input type="checkbox" wire:model="webSound"> <span><strong>Sound on the website</strong> · play a short sound when a new notification arrives (the bell updates by itself every 30 seconds)</span></label>

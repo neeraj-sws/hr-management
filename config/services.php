@@ -59,6 +59,20 @@ return [
         'events' => array_filter(array_map('trim', explode(',', (string) env('WHATSAPP_EVENTS', 'check_in,check_out,leave_applied')))),
     ],
 
+    // Telegram Bot API (official, free): Super Admin alerts in one private chat, and each employee's own linked chat.
+    // The token stays here (never in code, the browser, API responses or logs).
+    'telegram' => [
+        'enabled' => (bool) env('TELEGRAM_NOTIFICATIONS_ENABLED', false),
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'bot_username' => env('TELEGRAM_BOT_USERNAME'),
+        'admin_chat_id' => env('TELEGRAM_ADMIN_CHAT_ID'),
+        // Telegram sends this back on every webhook call (X-Telegram-Bot-Api-Secret-Token); empty = derived from APP_KEY.
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        // Messages are queued here and sent by the scheduler's worker every minute (works on shared hosting too).
+        'queue_connection' => env('TELEGRAM_QUEUE_CONNECTION', 'database'),
+        'link_minutes' => (int) env('TELEGRAM_LINK_MINUTES', 10),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

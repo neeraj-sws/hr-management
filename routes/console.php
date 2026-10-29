@@ -28,4 +28,9 @@ Schedule::command('attendance:reminders')->everyFiveMinutes()->withoutOverlappin
 Schedule::command('attendance:absence-alerts')->everyFifteenMinutes()->between('09:00', '20:00')->withoutOverlapping();
 Schedule::command('work:reconcile-task-hours --fix')->dailyAt('01:30')->withoutOverlapping();
 Schedule::command('sheets:sync')->everyThirtyMinutes()->withoutOverlapping();
+// Telegram messages wait in the "telegram" queue: sent every minute by a short worker run (no background process
+// needed, so it works on shared hosting with the normal scheduler cron).
+if (config('services.telegram.queue_connection', 'database') !== 'sync') {
+    Schedule::command('queue:work '.config('services.telegram.queue_connection', 'database').' --queue=telegram --stop-when-empty --max-time=50 --tries=4')->everyMinute()->withoutOverlapping(5);
+}
 Schedule::command('hr:weekly-off-reminders')->dailyAt('17:00')->withoutOverlapping();

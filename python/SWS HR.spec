@@ -5,7 +5,7 @@ a = Analysis(
     ['sws_desktop_entry.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('sws_desktop/assets', 'sws_desktop/assets')],  # company logo for the window and tray
+    datas=[('sws_desktop/assets', 'sws_desktop/assets')],
     hiddenimports=['pystray._win32'],
     hookspath=[],
     hooksconfig={},
@@ -32,7 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='sws_desktop/assets/icon.ico',  # the exe's icon in Explorer, taskbar and shortcuts
+    icon=['sws_desktop/assets/icon.ico'],
 )
 coll = COLLECT(
     exe,

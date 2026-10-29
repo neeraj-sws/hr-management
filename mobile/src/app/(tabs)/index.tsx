@@ -54,6 +54,12 @@ export default function Home() {
     <Screen refreshing={refreshing} onRefresh={refresh}>
       <HomeHeader attendance={attendance} />
       {queued > 0 && <Card><Row title={`${queued} action(s) waiting to sync`} subtitle="They will be sent automatically when you are online." right={<Badge label="queued" />} onPress={() => router.push('/sync')} /></Card>}
+      {/* Daily status not written (last 2 days): straight to "Write the missed day" (reason first). */}
+      {(me?.missed_status_days ?? []).map((d) => (
+        <Card key={`missed-${d}`} style={{ backgroundColor: '#FCEBEB', borderColor: '#F3C3C3' }}>
+          <Row title={`Daily status not written · ${formatDate(d)}`} subtitle="Give the reason and write it now — any fine for that day is then removed." right={<Badge label="write now" tone="red" />} onPress={() => router.push({ pathname: '/daily-status', params: { missed: d } })} />
+        </Card>
+      ))}
       {me?.employee ? <AttendanceCard attendance={attendance} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         <Stat label="Open tasks" value={tasks.length} hint={`${tasks.filter((t) => t.overdue).length} overdue`} />

@@ -121,6 +121,7 @@ class AttendanceService
         }
         $this->stopStaleTimers($employee);
         app(\App\Services\WhatsAppNotifier::class)->checkedIn($employee, $session->check_in->format('h:i A'));
+        rescue(fn () => app(TelegramEvents::class)->checkedIn($session->loadMissing('employee.user')), null, true);
         // Late arrival: the employee and their manager are told straight away (Settings > late/absent alerts).
         rescue(fn () => app(AttendanceAlertService::class)->lateCheckIn($session), null, true);
         return $session;
@@ -230,6 +231,7 @@ class AttendanceService
             if ($photoPath) \Illuminate\Support\Facades\Storage::disk('local')->delete($photoPath);
             throw $error;
         }
+        rescue(fn () => app(TelegramEvents::class)->checkedOut($session->fresh(['employee.user'])), null, true);
         $w = $this->workedSeconds($session->fresh()); app(\App\Services\WhatsAppNotifier::class)->checkedOut($employee, now()->format('h:i A'), intdiv($w, 3600).'h '.intdiv($w % 3600, 60).'m');
         return $session;
     }

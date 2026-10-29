@@ -64,6 +64,7 @@ class AttendanceAlertService
 
         foreach ($absent as $employee) {
             Notifier::send($employee->user, 'AttendanceAbsent', $employee->id, 'You have not checked in today ('.$now->format('d M').'). You will be marked absent unless you check in or apply for leave.', route('attendance.my', [], false));
+            rescue(fn () => app(TelegramEvents::class)->absent($employee, $date), null, true);
             Notifier::send($employee->manager?->user, 'AttendanceAbsent', $employee->id, "{$employee->name} has not checked in today (".$now->format('d M').') and is not on approved leave.', route('attendance.dashboard', ['show' => 'absent'], false), $employee->user_id);
         }
         if ($absent->isNotEmpty()) {

@@ -130,5 +130,6 @@ return [
         ['label' => 'Notifications', 'route' => 'system.notifications', 'icon' => 'bell'],
         ['label' => 'Roles & Permissions', 'route' => 'system.roles', 'icon' => 'lock'],
         ['label' => 'Settings', 'route' => 'system.settings', 'icon' => 'settings'],
+        ['label' => 'Telegram', 'route' => 'system.telegram', 'icon' => 'bell'],
     ]],
 ];

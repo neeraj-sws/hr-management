@@ -45,6 +45,7 @@ export type Me = {
   } | null;
   today: AttendanceSession | null;
   unread_notifications: number;
+  missed_status_days?: string[];
   schedule: { shift: string | null; starts_at: string | null; grace_minutes: number } | null;
   policies: { location_required: boolean; selfie_required?: boolean; away_prompt_minutes: number; attendance_sources?: string[] };
 };

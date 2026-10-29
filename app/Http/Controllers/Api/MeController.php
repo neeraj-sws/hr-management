@@ -33,6 +33,8 @@ class MeController extends ApiController
             'employee' => $employee ? (new EmployeeResource($employee))->resolve() : null,
             'today' => $session ? array_merge((new AttendanceSessionResource($session))->resolve(), []) : null,
             'unread_notifications' => $user->unreadNotifications()->count(),
+            // Daily status not written on these days (last 2 days): the Home screen offers "Write the missed day".
+            'missed_status_days' => $employee ? app(\App\Services\WorkService::class)->missedStatusDays($employee) : [],
             'schedule' => $employee ? (fn ($rules) => ['shift' => $rules['shift'], 'starts_at' => $rules['work_start'] ? substr($rules['work_start'], 0, 5) : null, 'grace_minutes' => $rules['grace_minutes']])($attendance->rules($employee, today()->toDateString())) : null,
             'policies' => [
                 'location_required' => (bool) ($policies->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_mobile'] ?? false),

@@ -36,6 +36,11 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(CredentialVaultEntry::class,CredentialVaultEntryPolicy::class);
         Gate::policy(OvertimeRequest::class,OvertimeRequestPolicy::class);
 
+        // Telegram: the Super Admin's feed of HR events (after each save is committed; nothing is changed).
+        foreach ([\App\Models\LeaveRequest::class, \App\Models\AttendanceCorrection::class, \App\Models\Task::class, \App\Models\Payslip::class, \App\Models\SalaryPayment::class, \App\Models\SalaryAdvance::class, \App\Models\EmployeePenalty::class] as $model) {
+            $model::observe(\App\Observers\TelegramEventObserver::class);
+        }
+
         // Re-apply route access rules on every Livewire update request, not only the first page load.
         Livewire::addPersistentMiddleware([EnsureActiveAccount::class, EnsureAccess::class]);
 

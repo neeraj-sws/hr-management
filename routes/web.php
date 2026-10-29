@@ -168,5 +168,6 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/notifications/{id}/open', [NotificationController::class, 'open'])->name('system.notifications.open');
     Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->name('system.notifications.read-all');
     Route::get('/system/roles', Livewire\System\Roles::class)->middleware('access:roles.manage')->name('system.roles');
+    Route::get('/system/telegram', Livewire\System\Telegram::class)->middleware('access:roles.manage')->name('system.telegram');
     Route::get('/system/settings', Livewire\System\Settings::class)->middleware('access:policies.manage')->name('system.settings');
 });

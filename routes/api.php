@@ -28,6 +28,9 @@ use Illuminate\Support\Facades\Route;
 | 401 = missing/invalid token, 403 = not permitted, 422 = validation, 2xx = success.
 */
 
+// Telegram bot webhook (checked by its secret header; no sign-in).
+Route::post('/telegram/webhook', \App\Http\Controllers\TelegramWebhookController::class)->middleware('throttle:120,1')->name('api.telegram.webhook');
+
 Route::post('/auth/token', [AuthController::class, 'token'])->middleware('throttle:6,1')->name('api.auth.token');
 
 Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(function () {
