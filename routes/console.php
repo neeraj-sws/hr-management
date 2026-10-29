@@ -33,4 +33,6 @@ Schedule::command('sheets:sync')->everyThirtyMinutes()->withoutOverlapping();
 if (config('services.telegram.queue_connection', 'database') !== 'sync') {
     Schedule::command('queue:work '.config('services.telegram.queue_connection', 'database').' --queue=telegram --stop-when-empty --max-time=50 --tries=4')->everyMinute()->withoutOverlapping(5);
 }
+// Undecided leave: daily reminder to the approver (from 10:00), HR / admins after 24 hours, urgent on the leave day.
+Schedule::command('leave:pending-reminders')->hourly()->between('09:00', '21:00')->withoutOverlapping();
 Schedule::command('hr:weekly-off-reminders')->dailyAt('17:00')->withoutOverlapping();

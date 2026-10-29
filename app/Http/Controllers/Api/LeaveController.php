@@ -73,8 +73,18 @@ class LeaveController extends ApiController
         return response()->json(['data' => $this->present($leave->fresh('leaveType'))]);
     }
 
+    /** Own pending request: another leave type and / or reason (the approver is told). */
+    public function update(Request $request, LeaveRequest $leave, HrWorkflowService $workflow): JsonResponse
+    {
+        $employee = $this->apiEmployee($request);
+        $data = $request->validate(['leave_type_id' => ['required', 'integer'], 'reason' => ['nullable', 'string', 'max:1000']]);
+        $leave = $workflow->changeLeaveType($leave, $employee, (int) $data['leave_type_id'], $data['reason'] ?? null, $this->apiUser($request)->id);
+
+        return response()->json(['data' => $this->present($leave)]);
+    }
+
     private function present(LeaveRequest $leave): array
     {
-        return ['id' => $leave->id, 'leave_type' => $leave->leaveType?->name, 'duration' => $leave->duration, 'starts_on' => $leave->starts_on->toDateString(), 'ends_on' => $leave->ends_on->toDateString(), 'days' => (float) $leave->days, 'reason' => $leave->reason, 'status' => $leave->status, 'decision_note' => $leave->decision_note, 'decided_at' => $leave->decided_at?->toIso8601String(), 'backdated' => $leave->isBackdated()];
+        return ['id' => $leave->id, 'leave_type' => $leave->leaveType?->name, 'leave_type_id' => $leave->leave_type_id, 'duration' => $leave->duration, 'starts_on' => $leave->starts_on->toDateString(), 'ends_on' => $leave->ends_on->toDateString(), 'days' => (float) $leave->days, 'reason' => $leave->reason, 'status' => $leave->status, 'decision_note' => $leave->decision_note, 'decided_at' => $leave->decided_at?->toIso8601String(), 'backdated' => $leave->isBackdated()];
     }
 }

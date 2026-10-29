@@ -41,6 +41,9 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::delete('/me/photo', [MeController::class, 'deletePhoto'])->name('api.me.photo.delete');
     Route::get('/me/profile', [MeController::class, 'profile'])->name('api.me.profile');
     Route::post('/me/profile', [MeController::class, 'saveProfile'])->name('api.me.profile.save');
+    Route::get('/me/telegram', [\App\Http\Controllers\Api\TelegramController::class, 'show'])->name('api.me.telegram');
+    Route::post('/me/telegram/connect', [\App\Http\Controllers\Api\TelegramController::class, 'connect'])->middleware('throttle:10,1')->name('api.me.telegram.connect');
+    Route::post('/me/telegram/disconnect', [\App\Http\Controllers\Api\TelegramController::class, 'disconnect'])->name('api.me.telegram.disconnect');
     Route::post('/me/two-factor', [MeController::class, 'twoFactor'])->name('api.me.two-factor');
 
     Route::get('/employees', [EmployeeController::class, 'index'])->name('api.employees.index');
@@ -116,6 +119,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/leave/balances', [LeaveController::class, 'balances'])->name('api.leave.balances');
     Route::get('/leave/requests', [LeaveController::class, 'index'])->name('api.leave.index');
     Route::post('/leave/requests', [LeaveController::class, 'store'])->name('api.leave.store');
+    Route::patch('/leave/requests/{leave}', [LeaveController::class, 'update'])->name('api.leave.update');
     Route::post('/leave/requests/{leave}/cancel', [LeaveController::class, 'cancel'])->name('api.leave.cancel');
 
     Route::get('/overtime', [OvertimeController::class, 'index'])->name('api.overtime.index');
@@ -125,6 +129,8 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/approvals/{approval}/decision', [ApprovalController::class, 'decide'])->name('api.approvals.decide');
 
     Route::get('/payslips', [PayslipController::class, 'index'])->name('api.payslips.index');
+    Route::get('/payslip-requests', [\App\Http\Controllers\Api\PayslipRequestController::class, 'index'])->name('api.payslip-requests.index');
+    Route::post('/payslip-requests', [\App\Http\Controllers\Api\PayslipRequestController::class, 'store'])->name('api.payslip-requests.store');
     Route::get('/payslips/{payslip}', [PayslipController::class, 'show'])->name('api.payslips.show');
 
     Route::get('/desktop/latest', [\App\Http\Controllers\Api\DesktopReleaseController::class, 'latest'])->name('api.desktop.latest');

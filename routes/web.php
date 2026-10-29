@@ -27,6 +27,7 @@ Route::middleware('guest')->group(function () {
 Route::get('/files/documents/{document}', [HrFileController::class, 'signedDocument'])->middleware(['signed', 'throttle:30,1'])->name('files.document');
 Route::get('/files/documents/{document}/viewer', [HrFileController::class, 'documentViewer'])->middleware(['signed', 'throttle:30,1'])->name('files.document.viewer');
 Route::get('/files/payslips/{payslip}', [HrFileController::class, 'signedPayslip'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip');
+Route::get('/files/payslip-requests/{payslipRequest}', [\App\Http\Controllers\PayslipRequestController::class, 'signed'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip-request');
 
 Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -94,6 +95,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/payroll/approvals', Livewire\Payroll\Runs::class)->middleware('access:payroll.approve')->name('payroll.approvals');
     Route::get('/payroll/payslips', Livewire\Payroll\Payslips::class)->middleware('access:profile,payroll.manage,payroll.approve')->name('payroll.payslips');
     Route::get('/payroll/payslips/{payslip}', [PayslipController::class, 'show'])->name('hr.payslips.show');
+    Route::get('/payroll/payslip-requests/{payslipRequest}', [\App\Http\Controllers\PayslipRequestController::class, 'show'])->name('payslip-requests.show');
     Route::get('/payroll/advances', Livewire\Payroll\Advances::class)->middleware('access:profile,salary.advance,salary.adjust')->name('payroll.advances');
     Route::get('/payroll/payments', Livewire\Payroll\Payments::class)->middleware('access:payroll.manage,payroll.approve')->name('payroll.payments');
 

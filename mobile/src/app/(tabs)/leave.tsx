@@ -5,7 +5,7 @@ import { AddButton, FormSheet } from '../../components/FormSheet';
 import { DayFilter, MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
 import { DateField, toYmd, todayYmd } from '../../components/DateField';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen } from '../../components/ui';
-import { ApiError, get, post } from '../../lib/api';
+import { api, ApiError, get, post } from '../../lib/api';
 import { enqueue } from '../../lib/queue';
 import { store } from '../../lib/storage';
 import type { LeaveBalance, LeaveRequest, LeaveType, Paginated } from '../../lib/types';
@@ -109,6 +109,30 @@ export default function Leave() {
     if (!endsOn || endsOn < value) setEndsOn(value);
   };
 
+  // Edit a pending request: another leave type (e.g. Casual -> Sick) or reason; the approver is told.
+  const [editing, setEditing] = useState<LeaveRequest | null>(null);
+  const [editType, setEditType] = useState<number | null>(null);
+  const [editReason, setEditReason] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const openEdit = (r: LeaveRequest) => {
+    setEditing(r); setEditType(r.leave_type_id ?? types.find((t) => t.name === r.leave_type)?.id ?? null); setEditReason(r.reason ?? ''); setEditError(null);
+  };
+  const saveEdit = async () => {
+    if (!editing || !editType) return;
+    setEditBusy(true); setEditError(null);
+    try {
+      await api('PATCH', `/leave/requests/${editing.id}`, { leave_type_id: editType, reason: editReason.trim() || null });
+      setEditing(null);
+      setMessage({ tone: 'success', text: 'Leave request changed. Your approver is told.' });
+      await load();
+    } catch (e) {
+      if (e instanceof ApiError) setEditError(e.firstMessage);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
   const cancel = async (id: number) => {
     if (!(await confirmAction('Cancel leave request?', 'The request will be withdrawn.', 'Cancel request'))) return;
     try {
@@ -135,6 +159,14 @@ export default function Leave() {
           <Row key={b.leave_type.id} title={b.leave_type.name} subtitle={b.leave_type.paid ? `used ${b.used} · pending ${b.booked}${b.carried ? ` · carried ${b.carried}` : ''}` : 'Unpaid'} right={b.leave_type.paid ? <H2>{`${Math.round(b.remaining * 100) / 100}`}</H2> : undefined} />
         )) : <Empty text="No balances" />}
       </Card>
+      <FormSheet visible={!!editing} title="Edit leave request" onClose={() => setEditing(null)}>
+        {editing ? <Muted style={{ marginBottom: 10 }}>{formatDate(editing.starts_on)}{editing.ends_on !== editing.starts_on ? ` – ${formatDate(editing.ends_on)}` : ''} · {editing.days} day(s) · now {editing.leave_type}</Muted> : null}
+        {editError ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={editError} /></View> : null}
+        <Chips value={editType} onChange={setEditType} options={types.map((t) => ({ label: t.paid ? t.name : `${t.name} (unpaid)`, value: t.id }))} />
+        <Field label="Reason" value={editReason} onChangeText={setEditReason} multiline />
+        <Muted style={{ marginBottom: 12 }}>Only while it waits for a decision. To change the dates, cancel and apply again.</Muted>
+        <Button title="Save" tone="primary" onPress={saveEdit} loading={editBusy} />
+      </FormSheet>
       <FormSheet visible={formOpen} title="Request leave" onClose={() => setFormOpen(false)}>
         {formError ? <View style={{ marginBottom: 10 }}><Notice tone="error" text={formError} /></View> : null}
         <Muted style={{ marginBottom: 6 }}>Leave type</Muted>
@@ -155,7 +187,7 @@ export default function Leave() {
         <Chips value={statusFilter} onChange={setStatusFilter} options={[{ label: 'All', value: 'all' }, { label: 'Pending', value: 'pending' }, { label: 'Approved', value: 'approved' }, { label: 'Rejected', value: 'rejected' }]} />
         {shownRequests.length ? shownRequests.map((r) => (
           <Row key={r.id} title={`${r.leave_type} · ${r.days} day(s)${r.duration && r.duration !== 'full' ? ` · ${r.duration === 'half' ? 'Half day' : 'Short leave'}` : ''}`} subtitle={`${r.duration && r.duration !== 'full' ? formatDate(r.starts_on) : `${formatDate(r.starts_on)} – ${formatDate(r.ends_on)}`}${r.decision_note ? ` · ${r.decision_note}` : ''}`}
-            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={r.status} />{r.status === 'pending' ? <Button small tone="danger" title="Cancel" onPress={() => cancel(r.id)} /> : null}</View>} />
+            right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={r.status} />{r.status === 'pending' ? <><Button small title="Edit" onPress={() => openEdit(r)} /><Button small tone="danger" title="Cancel" onPress={() => cancel(r.id)} /></> : null}</View>} />
         )) : <Empty text={emptyText} />}
       </Card>
     </Screen>

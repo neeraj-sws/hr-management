@@ -140,10 +140,63 @@ class Requests extends Component
         $this->toast($approve ? 'Leave approved.' : 'Leave rejected.');
     }
 
+    /** Employee: change the leave type / reason of their own pending request. */
+    public ?int $editingId = null;
+    public ?int $editTypeId = null;
+    public string $editReason = '';
+
+    public function openEdit(int $id): void
+    {
+        $leave = LeaveRequest::where('employee_id', $this->requireEmployee()->id)->where('status', 'pending')->findOrFail($id);
+        $this->fill(['editingId' => $leave->id, 'editTypeId' => $leave->leave_type_id, 'editReason' => (string) $leave->reason]);
+        $this->resetValidation();
+    }
+
+    public function saveEdit(HrWorkflowService $workflow): void
+    {
+        $this->validate(['editTypeId' => ['required', 'integer'], 'editReason' => ['required', 'string', 'min:3', 'max:1000']], [], ['editTypeId' => 'leave type', 'editReason' => 'reason']);
+        $employee = $this->requireEmployee();
+        try {
+            $leave = $workflow->changeLeaveType(LeaveRequest::findOrFail($this->editingId), $employee, (int) $this->editTypeId, $this->editReason, $this->user()->id);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['editTypeId' => collect($e->errors())->flatten()->first()]);
+        }
+        $this->editingId = null;
+        $this->toast('Leave request changed to '.$leave->leaveType?->name.'. Your approver is told.');
+    }
+
+    /** HR / administrator: change a decided leave (approved or rejected by mistake), with a reason. */
+    public ?int $changingId = null;
+    public string $changeReason = '';
+
+    private function canChangeDecisions(): bool
+    {
+        return \App\Support\Access::isAdmin($this->user()) || $this->user()->canAny(['leave.manage', 'hr.manage']);
+    }
+
+    public function openChange(int $id): void
+    {
+        abort_unless($this->canChangeDecisions(), 403);
+        $this->fill(['changingId' => $id, 'changeReason' => '']);
+        $this->resetValidation();
+    }
+
+    public function saveChange(HrWorkflowService $workflow): void
+    {
+        abort_unless($this->canChangeDecisions(), 403);
+        $this->validate(['changeReason' => ['required', 'string', 'min:5', 'max:1000']], ['changeReason.required' => 'Write why the decision is changed.', 'changeReason.min' => 'Write why the decision is changed (at least 5 characters).'], ['changeReason' => 'reason']);
+        $leave = LeaveRequest::findOrFail($this->changingId);
+        $changed = $workflow->changeLeaveDecision($leave, $this->user(), $leave->status === 'rejected', $this->changeReason);
+        $this->changingId = null;
+        $this->editingId = null;
+        $this->toast('Leave is now '.$changed->status.'. The employee is told.');
+    }
+
     public function closeModal(): void
     {
         $this->showForm = false;
         $this->decidingId = null;
+        $this->changingId = null;
         $this->resetValidation();
     }
 
@@ -179,6 +232,9 @@ class Requests extends Component
             'pendingCount' => $canApprove ? $inbox->pending($user, LeaveRequest::class)->count() : 0,
             'types' => $types,
             'balances' => $own ? $types->map(fn ($t) => ['type' => $t, ...$accrual->balance($own, $t, \App\Support\LeaveYear::current())]) : collect(),
+            'canChangeDecisions' => $this->canChangeDecisions(),
+            'editing' => $this->editingId ? LeaveRequest::with('leaveType')->find($this->editingId) : null,
+            'changing' => $this->changingId ? LeaveRequest::with(['employee', 'leaveType', 'decider'])->find($this->changingId) : null,
             'deciding' => $this->decidingId ? LeaveRequest::with(['employee', 'leaveType'])->find($this->decidingId) : null,
             'own' => $own,
         ], 'Leave Requests');

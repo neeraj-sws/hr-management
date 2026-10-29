@@ -73,7 +73,9 @@ export type Task = {
 
 export type LeaveType = { id: number; name: string; paid: boolean; allow_advance: boolean };
 export type LeaveBalance = { leave_type: { id: number; name: string; paid: boolean }; entitled: number; accrued: number; adjusted: number; carried: number; used: number; booked: number; remaining: number };
-export type LeaveRequest = { id: number; leave_type: string; duration?: 'full' | 'half' | 'short'; starts_on: string; ends_on: string; days: number; reason: string; status: string; decision_note: string | null };
+export type LeaveRequest = { id: number; leave_type: string; leave_type_id?: number; duration?: 'full' | 'half' | 'short'; starts_on: string; ends_on: string; days: number; reason: string; status: string; decision_note: string | null };
+/** A request for a month's payslip; url opens it (short-lived link) once sent. */
+export type PayslipRequest = { id: number; month: string; month_label: string; note: string | null; status: string; decision_note: string | null; decided_by: string | null; decided_at: string | null; url: string | null };
 export type Payslip = { id: number; reference: string; issued_at: string; period_start: string; period_end: string; gross: number; net: number; paid: number; balance: number; breakdown?: Record<string, unknown>; payments?: { paid_on: string; amount: number; reference: string | null }[] };
 /** One month of the employee's salary (GET /my/salary): earnings and deductions as [label, amount, note]. */
 export type SalaryMonth = {

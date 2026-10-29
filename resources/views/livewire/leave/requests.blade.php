@@ -38,6 +38,8 @@
                     <td><x-badge :status="$leave->status" />@if($leave->isBackdated())<x-badge tone="amber" title="Asked for on {{ $leave->created_at->format('d M') }}, after the day">Old date</x-badge>@endif@if($leave->decider)<small>by {{ $leave->decider->name }}</small>@endif @foreach($leave->conflictResolutions as $settled)<small style="color:{{ $settled->resolution === 'worked' ? 'var(--green)' : 'var(--muted)' }}">{{ $settled->work_date->format('d M') }}: {{ $settled->resolution === 'worked' ? 'worked — counted as a working day'.($leave->leaveType?->paid ? ', leave day returned to balance' : '') : 'counted as leave' }}</small>@endforeach</td>
                     <td><div class="row-actions">
                         @if($tab === 'approvals')<button class="btn btn-sm btn-primary" wire:click="openDecision({{ $leave->id }})">Review</button>@endif
+                        @if($canChangeDecisions && $tab !== 'mine' && in_array($leave->status, ['approved', 'rejected'], true))<button class="btn btn-sm" wire:click="openChange({{ $leave->id }})" title="Approved or rejected by mistake? Change it, with a reason">Change decision</button>@endif
+                        @if($tab === 'mine' && $leave->status === 'pending')<button class="btn btn-sm" wire:click="openEdit({{ $leave->id }})" title="Change the leave type or the reason while it waits for a decision">Edit</button>@endif
                         @if($tab === 'mine' && $leave->status === 'pending')<button class="btn btn-sm btn-danger" wire:click="cancel({{ $leave->id }})" wire:confirm="Cancel this leave request?">Cancel</button>@endif
                     </div></td>
                 </tr>
@@ -68,6 +70,33 @@
         </x-modal>
     @endif
 
+    @if($editing)
+        {{-- Employee, while still pending: another leave type (e.g. Casual -> Sick) or a better reason. --}}
+        <x-modal title="Edit leave request">
+            <form wire:submit="saveEdit"><div class="modal-body"><x-errors />
+                <dl class="kv"><dt>Dates</dt><dd>{{ $editing->starts_on->format('d M Y') }} – {{ $editing->ends_on->format('d M Y') }} ({{ (float) $editing->days }} days)</dd><dt>Now</dt><dd>{{ $editing->leaveType?->name }}</dd></dl>
+                <div class="form-grid mt">
+                    <x-field label="Leave type" name="editTypeId"><select wire:model="editTypeId">@foreach($types as $t)<option value="{{ $t->id }}">{{ $t->name }}{{ $t->paid ? '' : ' (unpaid)' }}</option>@endforeach</select></x-field>
+                    <x-field label="Reason" name="editReason" full><textarea rows="3" wire:model="editReason"></textarea></x-field>
+                </div>
+                <p class="small muted">Only while it waits for a decision. The balance of the new type is checked; your approver is told. To change the dates, cancel this request and apply again.</p>
+            </div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Save</button></div></form>
+        </x-modal>
+    @endif
+    @if($changing)
+        {{-- Approved / rejected by mistake: the other decision, with a reason; balance, attendance, fines and salary follow. --}}
+        <x-modal title="Change leave decision">
+            <form wire:submit="saveChange"><div class="modal-body"><x-errors />
+                <dl class="kv"><dt>Employee</dt><dd>{{ $changing->employee?->name }}</dd><dt>Type</dt><dd>{{ $changing->leaveType?->name }}</dd><dt>Dates</dt><dd>{{ $changing->starts_on->format('d M Y') }} – {{ $changing->ends_on->format('d M Y') }} ({{ (float) $changing->days }} days)</dd>
+                    <dt>Now</dt><dd><x-badge :status="$changing->status" /> @if($changing->decider)<small>by {{ $changing->decider->name }}, {{ $changing->decided_at?->format('d M Y') }}</small>@endif</dd>
+                    <dt>Change to</dt><dd><x-badge :status="$changing->status === 'approved' ? 'rejected' : 'approved'" /></dd></dl>
+                <p class="small muted mt">{{ $changing->status === 'approved' ? 'Rejected: the days go back to the leave balance and become absent (not paid; a fine only if the absence rule says so).' : 'Approved: the days are taken from the leave balance and become on leave (paid for a paid leave type); an absence fine for them is removed.' }} If that salary is already processed, the difference goes into the next salary. The employee, their manager and HR are told.</p>
+                <x-field label="Why is the decision changed?" name="changeReason" full><textarea rows="3" wire:model="changeReason" placeholder="e.g. Approved by mistake - the project deadline was that week"></textarea></x-field>
+            </div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn {{ $changing->status === 'approved' ? 'btn-danger' : 'btn-success' }}" wire:loading.attr="disabled">{{ $changing->status === 'approved' ? 'Change to Rejected' : 'Change to Approved' }}</button></div></form>
+        </x-modal>
+    @endif
     @if($deciding)
         <x-modal title="Review leave request">
             <div class="modal-body">

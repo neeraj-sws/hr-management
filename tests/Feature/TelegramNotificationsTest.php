@@ -257,4 +257,34 @@ class TelegramNotificationsTest extends TestCase
         $this->assertStringContainsString('ATTENDANCE STARTED', $this->sentTo('777')[0] ?? '', 'The added person gets the feed in their own chat');
         $this->assertSame('SWS HRMS Alert'."\n".'x: <b>y</b>'."\n\n".'Open SWS HRMS: https://hr.test/a', TelegramNotificationService::plain('<b>SWS HRMS Alert</b>'."\n".'x: &lt;b&gt;y&lt;/b&gt;'."\n\n".'<a href="https://hr.test/a">Open SWS HRMS</a>'));
     }
+
+    public function test_app_connect_status_disconnect_and_preferences(): void
+    {
+        \Laravel\Sanctum\Sanctum::actingAs($this->employee->user, ['*']);
+        $this->getJson('/api/me/telegram')->assertOk()->assertJsonPath('data.available', true)->assertJsonPath('data.connected', false)->assertJsonPath('data.bot', 'sws_hrms_bot');
+        $url = $this->postJson('/api/me/telegram/connect')->assertOk()->json('data.url');
+        $this->assertStringStartsWith('https://t.me/sws_hrms_bot?start=', $url);
+        $this->start('/start '.substr($url, strlen('https://t.me/sws_hrms_bot?start=')))->assertOk();
+        \Laravel\Sanctum\Sanctum::actingAs($this->employee->user, ['*']);
+        $this->getJson('/api/me/telegram')->assertJsonPath('data.connected', true)->assertJsonPath('data.username', 'rahul_s');
+
+        // Preferences: the app shows the Telegram column; an older app (no telegram key) keeps the saved choice.
+        $prefs = $this->getJson('/api/notifications/preferences')->assertJsonPath('telegram_available', true)->assertJsonPath('telegram_connected', true)->json('data');
+        $this->assertTrue($prefs[0]['telegram']);
+        $this->postJson('/api/notifications/preferences', ['preferences' => ['important' => ['in_app' => true, 'push' => true, 'email' => true, 'telegram' => false]]])->assertOk();
+        $this->postJson('/api/notifications/preferences', ['preferences' => ['important' => ['in_app' => true, 'push' => true, 'email' => true]]])->assertOk();
+        $this->assertFalse($this->employee->user->fresh()->notification_preferences['important']['telegram']);
+
+        $this->postJson('/api/me/telegram/disconnect')->assertOk()->assertJsonPath('data.connected', false);
+        $this->assertNull(TelegramLink::where('user_id', $this->employee->user_id)->value('chat_id'));
+    }
+
+    public function test_no_website_link_for_people_without_website_access(): void
+    {
+        app(\App\Services\PeopleOperationsService::class)->setPolicy(\App\Services\WebAccessService::POLICY, 'security', 'Website access', ['mode' => 'roles', 'roles' => ['HR'], 'user_ids' => []], null, $this->admin->id, '2026-01-01');
+        $text = \App\Support\TelegramTemplates::forNotification('LeaveBalance', 1, 'Two days were added.', $this->employee->user, 'https://hr.test/leave');
+        $this->assertStringContainsString('Open the SWS HR app for details.', $text);
+        $this->assertStringNotContainsString('<a href', $text);
+        $this->assertStringContainsString('Open SWS HRMS</a>', \App\Support\TelegramTemplates::forNotification('LeaveBalance', 1, 'x', $this->admin, 'https://hr.test/leave'));
+    }
 }

@@ -24,7 +24,7 @@ class TelegramTemplates
         'DailyStatusSubmitted' => 'Daily status', 'AttendanceLate' => 'Late arrival', 'AttendanceAbsent' => 'Not checked in', 'AttendanceSession' => 'Attendance',
         'CheckoutReminder' => 'Check-out reminder', 'ShiftReminder' => 'Shift reminder', 'LeaveBalance' => 'Leave balance updated', 'SalaryAdjustment' => 'Salary adjustment',
         'SalaryAdvance' => 'Salary advance', 'OvertimeRequest' => 'Overtime', 'ExpenseClaim' => 'Expense claim', 'TaskComment' => 'Task comment', 'TaskCompleted' => 'Task completed',
-        'TaskOverdue' => 'Task overdue', 'TaskUpdated' => 'Task updated', 'EmployeeDocument' => 'Document', 'TrainingAssignment' => 'Training', 'Announcement' => 'Announcement',
+        'TaskOverdue' => 'Task overdue', 'TaskUpdated' => 'Task updated', 'PayslipRequest' => 'Payslip request', 'LeaveReminder' => 'Leave waiting for you', 'LeaveEscalated' => 'Leave not decided for 24 hours', 'LeaveUrgent' => 'Urgent: leave not decided', 'EmployeeDocument' => 'Document', 'TrainingAssignment' => 'Training', 'Announcement' => 'Announcement',
     ];
 
     private static function money(float $v): string
@@ -44,7 +44,10 @@ class TelegramTemplates
         $built = rescue(fn () => self::own($kind, $recordId, $message, (int) $notifiable->getKey(), $hello), null, false);
         [$title, $lines] = $built ?? [self::TITLES[$kind] ?? 'Notification', [$hello, $message]];
 
-        return Telegram::format($title, $lines)."\n\n<a href=\"".Telegram::escape($url).'">Open SWS HRMS</a>';
+        // Website link only for people who may use the website (Settings > Security > Website access); others use the app.
+        $web = $notifiable instanceof \App\Models\User && rescue(fn () => app(\App\Services\WebAccessService::class)->allows($notifiable), false, false);
+
+        return Telegram::format($title, $lines)."\n\n".($web ? '<a href="'.Telegram::escape($url).'">Open SWS HRMS</a>' : 'Open the SWS HR app for details.');
     }
 
     /** [title, lines] for the person's own leave, payslip, payment, advance, correction or task; null otherwise. */
@@ -54,7 +57,7 @@ class TelegramTemplates
         switch ($kind) {
             case 'LeaveRequest':
                 $leave = LeaveRequest::with(['employee', 'leaveType'])->find($id);
-                if (! $leave || $leave->employee?->user_id !== $userId || ! in_array($leave->status, ['approved', 'rejected'], true) || ! preg_match('/(approved|rejected) your leave/i', $message)) return null;
+                if (! $leave || $leave->employee?->user_id !== $userId || ! in_array($leave->status, ['approved', 'rejected'], true) || ! preg_match('/(approved|rejected) your leave|it is now (approved|rejected)/i', $message)) return null;
                 $days = rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.');
 
                 return ['Leave '.$leave->status, [$hello, 'Your '.($leave->leaveType?->name ?? 'leave')." request for {$days} day(s) has been {$leave->status}.", 'Leave Type' => $leave->leaveType?->name, 'From' => self::date($leave->starts_on), 'To' => self::date($leave->ends_on), ucfirst($leave->status).' by' => $by($leave->decided_by), 'Note' => $leave->decision_note]];

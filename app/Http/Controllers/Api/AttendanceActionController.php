@@ -84,6 +84,8 @@ class AttendanceActionController extends ApiController
         return response()->json(['data' => $this->attendance->days($employee, $from, $to)->map(fn ($day) => [
             'date' => $day['date'],
             'status' => $day['status'],
+            // Absent with a leave request still waiting for a decision: the app shows "Leave pending".
+            'leave_pending' => (bool) ($day['leave_pending'] ?? false), 'label' => $day['label'] ?? null,
             'session' => $day['session'] ? (new AttendanceSessionResource($day['session']))->resolve() : null,
             'pay_note' => $day['session'] ? $this->payNote($employee, $day['session']) : null,
         ])->values()]);

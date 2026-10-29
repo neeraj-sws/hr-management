@@ -11,15 +11,19 @@ class NotificationController extends ApiController
     {
         $saved = (array) ($request->user()->notification_preferences ?? []);
 
-        return response()->json(['data' => collect(\App\Notifications\ApprovalRequested::GROUPS)->map(fn ($d, $group) => ['group' => $group, 'label' => $d[0], 'can_mute' => $d[1], 'in_app' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'in_app'), 'email' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'email'), 'push' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'push')])->values(), 'push_available' => \App\Notifications\Channels\ExpoPushChannel::enabled()]);
+        return response()->json(['data' => collect(\App\Notifications\ApprovalRequested::GROUPS)->map(fn ($d, $group) => ['group' => $group, 'label' => $d[0], 'can_mute' => $d[1], 'in_app' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'in_app'), 'email' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'email'), 'push' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'push'), 'telegram' => \App\Notifications\ApprovalRequested::preference($saved, $group, 'telegram')])->values(), 'push_available' => \App\Notifications\Channels\ExpoPushChannel::enabled(),
+            // Telegram column: shown when the company switched Telegram on; ticks work once the person connected it.
+            'telegram_available' => \App\Notifications\Channels\TelegramChannel::enabled(), 'telegram_connected' => \App\Notifications\Channels\TelegramChannel::linked($request->user()->id)]);
     }
 
     public function savePreferences(Request $request): JsonResponse
     {
-        $data = $request->validate(['preferences' => ['required', 'array'], 'preferences.*.in_app' => ['boolean'], 'preferences.*.email' => ['boolean'], 'preferences.*.push' => ['boolean']]);
+        $data = $request->validate(['preferences' => ['required', 'array'], 'preferences.*.in_app' => ['boolean'], 'preferences.*.email' => ['boolean'], 'preferences.*.push' => ['boolean'], 'preferences.*.telegram' => ['boolean']]);
         $clean = [];
         foreach (\App\Notifications\ApprovalRequested::GROUPS as $group => [, $mutable]) {
-            $clean[$group] = ['in_app' => $mutable ? (bool) ($data['preferences'][$group]['in_app'] ?? true) : true, 'email' => (bool) ($data['preferences'][$group]['email'] ?? \App\Notifications\ApprovalRequested::EMAIL_DEFAULTS[$group]), 'push' => (bool) ($data['preferences'][$group]['push'] ?? true)];
+            $clean[$group] = ['in_app' => $mutable ? (bool) ($data['preferences'][$group]['in_app'] ?? true) : true, 'email' => (bool) ($data['preferences'][$group]['email'] ?? \App\Notifications\ApprovalRequested::EMAIL_DEFAULTS[$group]), 'push' => (bool) ($data['preferences'][$group]['push'] ?? true),
+                // An older app sends no Telegram choice: keep what was saved (or the default).
+                'telegram' => (bool) ($data['preferences'][$group]['telegram'] ?? \App\Notifications\ApprovalRequested::preference((array) ($request->user()->notification_preferences ?? []), $group, 'telegram'))];
         }
         // The website's sound setting is not part of the app's list: keep it.
         $saved = (array) ($request->user()->notification_preferences ?? []);

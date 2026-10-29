@@ -20,7 +20,8 @@ function screenFor(n: NotificationItem): Href | null {
   const kind = n.kind ?? '';
   if (kind === 'AttendanceCorrection') return '/corrections';
   if (kind === 'EmployeePenalty' || kind === 'PenaltyAppeal') return '/fines';
-  if (kind === 'LeaveRequest' || kind === 'LeaveBalance' || kind === 'OvertimeRequest') return '/(tabs)/leave';
+  if (kind === 'LeaveRequest' || kind === 'LeaveBalance' || kind === 'OvertimeRequest' || kind === 'LeaveReminder' || kind === 'LeaveEscalated' || kind === 'LeaveUrgent') return '/(tabs)/leave';
+  if (kind === 'PayslipRequest') return '/payslips';
   if (kind.startsWith('DailyStatus')) return '/daily-status';
   if (kind.startsWith('Task') || kind.startsWith('Project')) return n.record_id && kind.startsWith('Task') ? { pathname: '/task', params: { id: String(n.record_id) } } : '/(tabs)/tasks';
   if (kind === 'Payslip' || kind === 'PayrollRun' || kind === 'SalaryPayment') return '/payslips';

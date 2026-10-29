@@ -19,7 +19,7 @@
                  @if($info) title="{{ $day->format('D d M Y') }} · {{ $labels[$info['status']] ?? $info['status'] }}{{ $info['label'] ? ' · '.$info['label'] : '' }}" @endif>
                 <span class="att-cal-num">{{ $day->day }}</span>
                 @if($info && $info['status'] !== 'upcoming')
-                    <span class="att-cal-status">{{ $labels[$info['status']] ?? str($info['status'])->replace('_', ' ')->ucfirst() }}</span>
+                    <span class="att-cal-status">{{ ! empty($info['leave_pending']) ? 'Leave pending' : ($labels[$info['status']] ?? str($info['status'])->replace('_', ' ')->ucfirst()) }}</span>
                     @if($s)
                         <span class="att-cal-time">{{ $s->check_in?->format('h:i A') ?? '—' }} – {{ $s->check_out?->format('h:i A') ?? ($day->isToday() ? 'now' : '—') }}</span>
                         <span class="att-cal-worked" title="Worked: in–out less break and idle">@hms($att->workedSeconds($s))</span>

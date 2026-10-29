@@ -807,6 +807,10 @@ class AttendanceService
         $marks = \App\Models\AttendanceDayMark::where('employee_id', $employee->id)->whereDate('work_date', '>=', $from->toDateString())->whereDate('work_date', '<=', $to->toDateString())->get()->keyBy(fn ($m) => $m->work_date->toDateString());
         $leaves = LeaveRequest::with('leaveType')->where('employee_id', $employee->id)->where('status', 'approved')
             ->whereDate('starts_on', '<=', $to->toDateString())->whereDate('ends_on', '>=', $from->toDateString())->get();
+        // Leave asked for but not decided yet: the day stays absent (counts, salary and fines do not change) but shows
+        // "Leave pending", so nobody takes it for an unexplained absence.
+        $pendingLeaves = LeaveRequest::with('leaveType')->where('employee_id', $employee->id)->where('status', 'pending')
+            ->whereDate('starts_on', '<=', $to->toDateString())->whereDate('ends_on', '>=', $from->toDateString())->get();
         $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', $to->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         $joined = $employee->joined_at ? Carbon::parse($employee->joined_at)->startOfDay() : null;
         // Ex-employee: days after the last working day are "Left" (not absent, not counted anywhere).
@@ -855,7 +859,9 @@ class AttendanceService
             };
             // Worked on a weekly off / 3rd Saturday / holiday, or on a full-day leave (unless HR settled that day): extra working.
             $extra = $session !== null && (! $workday || ($leaveToday && $leaveToday->duration === 'full' && ! in_array($resolutions[$date] ?? null, ['worked', 'leave'], true)));
-            $days->push(['date' => $date, 'status' => $status, 'session' => $session, 'label' => $label, 'extra' => $extra, 'extra_reason' => $extra ? (! $workday ? (\App\Support\WorkCalendar::specialOffReason($date, $calendar) ?: (in_array($date, $calendar['holidays'] ?? [], true) ? 'Holiday' : 'Weekly off')) : ($leaveToday->leaveType?->name ?? 'Leave')) : null]);
+            $pendingLeave = $status === 'absent' ? $pendingLeaves->first(fn ($leave) => $leave->starts_on->toDateString() <= $date && $leave->ends_on->toDateString() >= $date) : null;
+            if ($pendingLeave) $label = 'Leave pending · '.($pendingLeave->leaveType?->name ?? 'Leave').' · waiting for approval';
+            $days->push(['date' => $date, 'status' => $status, 'leave_pending' => $pendingLeave !== null, 'session' => $session, 'label' => $label, 'extra' => $extra, 'extra_reason' => $extra ? (! $workday ? (\App\Support\WorkCalendar::specialOffReason($date, $calendar) ?: (in_array($date, $calendar['holidays'] ?? [], true) ? 'Holiday' : 'Weekly off')) : ($leaveToday->leaveType?->name ?? 'Leave')) : null]);
         }
 
         return $days;

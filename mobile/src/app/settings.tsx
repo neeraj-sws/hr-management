@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ComponentProps, ReactNode, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { DateField, todayYmd } from '../components/DateField';
 import { Button, Card, colors, confirmAction, Field, Muted, Notice, Screen } from '../components/ui';
 import { ApiError, get, getBaseUrl, post } from '../lib/api';
@@ -10,7 +10,8 @@ import { useAuth } from '../lib/auth';
 
 type Editable = { phone: string; date_of_birth: string | null; share_birthday: boolean; address: string; emergency_contact_name: string; emergency_contact_relation: string; emergency_contact_phone: string };
 type Profile = { editable: Editable | null; hr_only: { label: string; value: string }[]; two_factor: { on: boolean; required: boolean; email: string; mail_available: boolean; apps_too: boolean } };
-type Pref = { group: string; label: string; can_mute: boolean; in_app: boolean; email: boolean; push: boolean };
+type Pref = { group: string; label: string; can_mute: boolean; in_app: boolean; email: boolean; push: boolean; telegram?: boolean };
+type Telegram = { available: boolean; connected: boolean; username: string | null; linked_at: string | null; bot: string | null };
 type Note = { tone: 'success' | 'error' | 'info'; text: string } | null;
 
 /** More → My profile & settings: the same choices an employee has on the website's My profile page. */
@@ -24,6 +25,11 @@ export default function Settings() {
   const [detailsNote, setDetailsNote] = useState<Note>(null);
   const [prefs, setPrefs] = useState<Pref[]>([]);
   const [pushAvailable, setPushAvailable] = useState(true);
+  // Telegram: connect here (people who use only the app); the bot opens in Telegram, the person taps Start.
+  const [telegram, setTelegram] = useState<Telegram | null>(null);
+  const [tgBusy, setTgBusy] = useState(false);
+  const [tgNote, setTgNote] = useState<Note>(null);
+  const [tgWaiting, setTgWaiting] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsNote, setPrefsNote] = useState<Note>(null);
   const [twoFaBusy, setTwoFaBusy] = useState(false);
@@ -34,7 +40,8 @@ export default function Settings() {
   const load = useCallback(async () => {
     setLoadError(null);
     try {
-      const [p, n] = await Promise.all([get<{ data: Profile }>('/me/profile'), get<{ data: Pref[]; push_available: boolean }>('/notifications/preferences')]);
+      const [p, n, t] = await Promise.all([get<{ data: Profile }>('/me/profile'), get<{ data: Pref[]; push_available: boolean }>('/notifications/preferences'), get<{ data: Telegram }>('/me/telegram').catch(() => null)]);
+      if (t) setTelegram(t.data);
       setProfile(p.data);
       setForm(p.data.editable);
       setPrefs(n.data);
@@ -44,6 +51,47 @@ export default function Settings() {
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+  // Back from Telegram after tapping Start: check whether it is connected now.
+  useFocusEffect(useCallback(() => {
+    if (!tgWaiting) return;
+    get<{ data: Telegram }>('/me/telegram').then((r) => {
+      setTelegram(r.data);
+      if (r.data.connected) { setTgWaiting(false); setTgNote({ tone: 'success', text: 'Telegram connected. Your notifications will come there too.' }); load(); }
+    }).catch(() => undefined);
+  }, [tgWaiting, load]));
+
+  const connectTelegram = async () => {
+    setTgBusy(true); setTgNote(null);
+    try {
+      const r = await post<{ data: { url: string } }>('/me/telegram/connect');
+      setTgWaiting(true);
+      await Linking.openURL(r.data.url);
+      setTgNote({ tone: 'info', text: 'In Telegram tap Start, then come back here and tap "Check connection". The link works once, for 10 minutes.' });
+    } catch (e) {
+      setTgNote({ tone: 'error', text: e instanceof ApiError ? e.firstMessage : 'Could not open Telegram. Is it installed?' });
+    } finally {
+      setTgBusy(false);
+    }
+  };
+  const checkTelegram = async () => {
+    try {
+      const r = await get<{ data: Telegram }>('/me/telegram');
+      setTelegram(r.data);
+      if (r.data.connected) { setTgWaiting(false); setTgNote({ tone: 'success', text: 'Telegram connected.' }); load(); }
+      else setTgNote({ tone: 'error', text: 'Not connected yet: open the bot, tap Start, then check again.' });
+    } catch (e) {
+      setTgNote({ tone: 'error', text: e instanceof ApiError ? e.firstMessage : 'Could not check.' });
+    }
+  };
+  const disconnectTelegram = async () => {
+    if (!(await confirmAction('Disconnect Telegram?', 'You will not get SWS HRMS notifications on Telegram any more.', 'Disconnect'))) return;
+    try {
+      const r = await post<{ data: Telegram }>('/me/telegram/disconnect');
+      setTelegram(r.data); setTgNote({ tone: 'success', text: 'Telegram disconnected.' }); load();
+    } catch (e) {
+      setTgNote({ tone: 'error', text: e instanceof ApiError ? e.firstMessage : 'Could not disconnect.' });
+    }
+  };
 
   const set = <K extends keyof Editable>(key: K, value: Editable[K]) => { setForm((f) => (f ? { ...f, [key]: value } : f)); setErrors((e) => ({ ...e, [key]: '' })); setDetailsNote(null); };
 
@@ -66,11 +114,11 @@ export default function Settings() {
     }
   };
 
-  const togglePref = (group: string, channel: 'in_app' | 'push' | 'email') => { setPrefs((list) => list.map((p) => (p.group === group ? { ...p, [channel]: !p[channel] } : p))); setPrefsNote(null); };
+  const togglePref = (group: string, channel: 'in_app' | 'push' | 'email' | 'telegram') => { setPrefs((list) => list.map((p) => (p.group === group ? { ...p, [channel]: !p[channel] } : p))); setPrefsNote(null); };
   const savePrefs = async () => {
     setPrefsSaving(true);
     try {
-      const r = await post<{ data: Pref[] }>('/notifications/preferences', { preferences: Object.fromEntries(prefs.map((p) => [p.group, { in_app: p.in_app, push: p.push, email: p.email }])) });
+      const r = await post<{ data: Pref[] }>('/notifications/preferences', { preferences: Object.fromEntries(prefs.map((p) => [p.group, { in_app: p.in_app, push: p.push, email: p.email, ...(p.telegram !== undefined ? { telegram: p.telegram } : {}) }])) });
       setPrefs(r.data);
       setPrefsNote({ tone: 'success', text: 'Notification choices saved. The website shows the same.' });
     } catch (e) {
@@ -132,6 +180,24 @@ export default function Settings() {
         </Section>
       ) : null}
 
+      {telegram?.available ? (
+        <Section icon="send-outline" title="Telegram" hint="Get your own SWS HRMS notifications (leave, salary slip, payments, tasks, attendance) in Telegram.">
+          {telegram.connected ? (
+            <>
+              <Muted style={{ marginBottom: 10 }}>Connected{telegram.username ? ` as @${telegram.username}` : ''}. Choose below which kinds go to Telegram.</Muted>
+              <Button title="Disconnect Telegram" tone="danger" onPress={disconnectTelegram} />
+            </>
+          ) : (
+            <>
+              <Muted style={{ marginBottom: 10 }}>Not connected. Tap Connect: the {telegram.bot ? `@${telegram.bot}` : 'SWS HRMS'} bot opens in Telegram - tap Start there, then come back.</Muted>
+              <Button title="Connect Telegram" tone="primary" onPress={connectTelegram} loading={tgBusy} />
+              {tgWaiting ? <View style={{ marginTop: 8 }}><Button title="Check connection" onPress={checkTelegram} /></View> : null}
+            </>
+          )}
+          {tgNote ? <View style={{ marginTop: 10 }}><Notice tone={tgNote.tone} text={tgNote.text} /></View> : null}
+        </Section>
+      ) : null}
+
       {prefs.length ? (
         <Section icon="bell-outline" title="Notifications" hint="Choose what reaches you. Important updates always show in the app.">
           <View style={styles.prefHead}>
@@ -139,6 +205,7 @@ export default function Settings() {
             <Text style={styles.prefCol}>In app</Text>
             <Text style={styles.prefCol}>Phone</Text>
             <Text style={styles.prefCol}>E-mail</Text>
+            {telegram?.available ? <Text style={styles.prefCol}>Telegram</Text> : null}
           </View>
           {prefs.map((p) => (
             <View key={p.group} style={styles.prefRow}>
@@ -146,6 +213,7 @@ export default function Settings() {
               <View style={styles.prefCell}>{p.can_mute ? <Switch value={p.in_app} onValueChange={() => togglePref(p.group, 'in_app')} /> : <Text style={styles.always}>always</Text>}</View>
               <View style={styles.prefCell}><Switch value={p.push} onValueChange={() => togglePref(p.group, 'push')} /></View>
               <View style={styles.prefCell}><Switch value={p.email} onValueChange={() => togglePref(p.group, 'email')} /></View>
+              {telegram?.available ? <View style={styles.prefCell}><Switch value={!!p.telegram} onValueChange={() => togglePref(p.group, 'telegram')} disabled={!telegram.connected} /></View> : null}
             </View>
           ))}
           {!pushAvailable ? <View style={{ marginTop: 10 }}><Notice tone="info" text="Phone notifications are not switched on for the company yet. Your choice is kept for when they are." /></View> : null}

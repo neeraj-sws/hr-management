@@ -10,7 +10,7 @@ import { useAuth } from '../../lib/auth';
 import type { AttendanceSession } from '../../lib/types';
 import { useAttendance } from '../../lib/useAttendance';
 
-type Day = { date: string; status: string; session: AttendanceSession | null; pay_note?: string | null };
+type Day = { date: string; status: string; leave_pending?: boolean; label?: string | null; session: AttendanceSession | null; pay_note?: string | null };
 
 export default function Attendance() {
   const attendance = useAttendance();
@@ -65,7 +65,7 @@ export default function Attendance() {
         {error ? <Notice tone="error" text={error} /> : null}
         {day ? null : <Chips value={dayFilter} onChange={setDayFilter} options={[{ label: 'All', value: 'all' }, { label: 'Present', value: 'present' }, { label: 'Late', value: 'late' }, { label: 'Leave', value: 'leave' }, { label: 'Absent', value: 'absent' }, { label: 'Off days', value: 'off' }]} />}
         {shownDays.length ? shownDays.map((d) => (
-          <Row key={d.date} title={formatDate(d.date)} subtitle={d.session ? `${formatTime(d.session.check_in)} – ${formatTime(d.session.check_out)} · ${formatDuration(d.session.worked_seconds ?? d.session.active_seconds)} worked${d.session.idle_counted_seconds ? ` · ${formatDuration(d.session.idle_counted_seconds)} idle` : ''}${d.pay_note ? `\n${d.pay_note}` : ''}` : undefined} right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={d.status} />{['absent', 'late', 'half_day'].includes(d.status) || (d.session && !d.session.check_out && d.date !== attendance.session?.work_date) ? <Button small title="Correct" onPress={() => router.push({ pathname: '/corrections', params: { date: d.date } })} /> : null}</View>} />
+          <Row key={d.date} title={formatDate(d.date)} subtitle={d.session ? `${formatTime(d.session.check_in)} – ${formatTime(d.session.check_out)} · ${formatDuration(d.session.worked_seconds ?? d.session.active_seconds)} worked${d.session.idle_counted_seconds ? ` · ${formatDuration(d.session.idle_counted_seconds)} idle` : ''}${d.pay_note ? `\n${d.pay_note}` : ''}` : undefined} right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={d.leave_pending ? 'leave pending' : d.status} tone={d.leave_pending ? 'amber' : undefined} />{['absent', 'late', 'half_day'].includes(d.status) || (d.session && !d.session.check_out && d.date !== attendance.session?.work_date) ? <Button small title="Correct" onPress={() => router.push({ pathname: '/corrections', params: { date: d.date } })} /> : null}</View>} />
         )) : <Empty text={day ? `No attendance on ${formatDate(day)}` : dayFilter === 'all' ? 'No attendance this month' : 'No days match this filter'} />}
       </Card>
     </Screen>

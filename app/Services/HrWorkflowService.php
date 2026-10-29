@@ -202,6 +202,115 @@ class HrWorkflowService
     }
 
     /** $notify = false for bulk history (attendance import): no message per imported day. */
+    /**
+     * The employee changes the leave type (and the reason) of their own request while it is still pending - e.g.
+     * Casual -> Sick. The new type's balance is checked as for a new request; the approver is told. A decided leave
+     * cannot be changed here (HR uses "Change decision").
+     */
+    public function changeLeaveType(LeaveRequest $leave, AttendanceEmployee $employee, int $leaveTypeId, ?string $reason, int $userId): LeaveRequest
+    {
+        if ($leave->employee_id !== $employee->id) abort(403);
+
+        return DB::transaction(function () use ($leave, $employee, $leaveTypeId, $reason, $userId) {
+            $leave = LeaveRequest::with('leaveType')->whereKey($leave->id)->lockForUpdate()->firstOrFail();
+            if ($leave->status !== 'pending') throw ValidationException::withMessages(['leave_type_id' => 'Only a request still waiting for a decision can be changed. Ask HR to change a decided leave.']);
+            $type = LeaveType::where('is_active', true)->whereKey($leaveTypeId)->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
+            $reason = trim((string) $reason) !== '' ? mb_substr(trim((string) $reason), 0, 1000) : $leave->reason;
+            if ($type->id === $leave->leave_type_id && $reason === $leave->reason) throw ValidationException::withMessages(['leave_type_id' => 'Nothing changed.']);
+            if ($type->id !== $leave->leave_type_id && $type->paid) {
+                $year = LeaveYear::of($leave->starts_on);
+                if (! LeaveBalance::where('employee_id', $employee->id)->where('leave_type_id', $type->id)->where('year', $year)->exists()) LeaveBalance::open($employee->id, $type, $year);
+                $snapshot = app(LeaveAccrualService::class)->balance($employee, $type, $year, $leave->starts_on->toDateString());
+                $deficit = (float) $leave->days - (float) $snapshot['remaining'];
+                if ($deficit > 0 && ! $type->allow_advance) throw ValidationException::withMessages(['leave_type_id' => "Not enough {$type->name} balance for ".rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.').' day(s).']);
+                if ($deficit > 0) {
+                    $limit = $this->policyConfiguration($employee, 'leave.advance_limit', $leave->starts_on->toDateString(), ['max_days' => 5]);
+                    if ($deficit > (float) ($limit['max_days'] ?? 5)) throw ValidationException::withMessages(['leave_type_id' => 'This leave type would go over the advance leave limit.']);
+                }
+            }
+            $old = $leave->leaveType?->name ?? 'Leave';
+            $leave->update(['leave_type_id' => $type->id, 'reason' => $reason]);
+            $this->audit->record('leave.type_changed', $leave, ['from' => $old, 'to' => $type->name, 'by' => $userId]);
+            $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
+            $what = $old !== $type->name ? "from {$old} to {$type->name}" : 'its reason';
+            Notifier::send(collect([$employee->manager?->user])->merge(Notifier::withPermission('leave.manage')), 'LeaveRequest', $leave->id, "{$employee->name} changed their pending leave request ({$range}) {$what}. It still needs your decision.", route('leave.requests', ['tab' => 'approvals'], false), $userId);
+
+            return $leave->fresh('leaveType');
+        });
+    }
+
+    /** Takes an approved paid leave from the balance (refused when it would go over what may be taken). */
+    private function useLeaveBalance(LeaveRequest $leave, int $approverId): void
+    {
+        $type=LeaveType::findOrFail($leave->leave_type_id);
+        if($type->paid){
+            $leaveYear = LeaveYear::of($leave->starts_on);
+            $balance = LeaveBalance::where('employee_id', $leave->employee_id)->where('leave_type_id', $leave->leave_type_id)->where('year', $leaveYear)->lockForUpdate()->first();
+            if(!$balance)throw ValidationException::withMessages(['leave'=>'Leave balance is not configured for this employee.']);
+            $snapshot=app(LeaveAccrualService::class)->balance($leave->employee,$type,$leaveYear,$leave->starts_on->toDateString());
+            $available=(float)$snapshot['remaining']+(float)$leave->days;
+            $deficit=(float)$leave->days-$available;
+            if($deficit>0&&!$type->allow_advance)throw ValidationException::withMessages(['leave'=>'Approving this request would exceed the available paid leave balance.']);
+            if($deficit>0){$limit=$this->policyConfiguration($leave->employee,'leave.advance_limit',$leave->starts_on->toDateString(),['max_days'=>5]);if($deficit>(float)($limit['max_days']??5))throw ValidationException::withMessages(['leave'=>'Approving this request would exceed the advance leave limit.']);}
+            $balance->increment('used_days', $leave->days);
+            \App\Models\LeaveLedgerEntry::record($balance, 'used', -(float) $leave->days, $type->name.' '.$leave->starts_on->format('d M Y').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y')), $leave, $approverId);
+        }
+    }
+
+    /** Gives an approved paid leave back to the balance (its decision was changed to rejected). */
+    private function returnLeaveBalance(LeaveRequest $leave, int $actorId): void
+    {
+        $type = LeaveType::findOrFail($leave->leave_type_id);
+        if (! $type->paid) return;
+        $balance = LeaveBalance::where('employee_id', $leave->employee_id)->where('leave_type_id', $leave->leave_type_id)->where('year', LeaveYear::of($leave->starts_on))->lockForUpdate()->first();
+        if (! $balance) return;
+        $balance->update(['used_days' => max(0, (float) $balance->used_days - (float) $leave->days)]);
+        \App\Models\LeaveLedgerEntry::record($balance, 'reversal', (float) $leave->days, $type->name.' '.$leave->starts_on->format('d M Y').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y')).' (decision changed to rejected)', $leave, $actorId);
+    }
+
+    /**
+     * HR / an administrator changes a decided leave (approved by mistake, rejected by mistake), with a reason.
+     * Approved -> rejected: the days go back to the balance and become absent (unpaid; fines by the usual rules).
+     * Rejected -> approved: the balance is used and the days are on leave (an absence fine is removed).
+     * A processed payroll is not changed: the difference goes into the next salary. Everyone concerned is told.
+     */
+    public function changeLeaveDecision(LeaveRequest $leave, \App\Models\User $actor, bool $approve, string $reason): LeaveRequest
+    {
+        abort_unless(\App\Support\Access::isAdmin($actor) || $actor->canAny(['leave.manage', 'hr.manage']), 403, 'Only HR or an administrator can change a leave decision.');
+        $reason = trim($reason);
+        if (mb_strlen($reason) < 5) throw ValidationException::withMessages(['changeReason' => 'Write why the decision is changed (at least 5 characters).']);
+
+        $changed = DB::transaction(function () use ($leave, $actor, $approve, $reason) {
+            $leave = LeaveRequest::with(['employee.user', 'employee.manager.user', 'leaveType'])->whereKey($leave->id)->lockForUpdate()->firstOrFail();
+            $from = $leave->status;
+            if (! in_array($from, ['approved', 'rejected'], true)) throw ValidationException::withMessages(['changeReason' => 'Only an approved or rejected leave can be changed.']);
+            if ($from === ($approve ? 'approved' : 'rejected')) throw ValidationException::withMessages(['changeReason' => 'This leave is already '.$from.'.']);
+            $carry = app(PayrollLockGuard::class)->changedOrCarry($leave->employee_id, $leave->starts_on->toDateString(), 'leave', $leave->ends_on->toDateString());
+            if ($approve) $this->useLeaveBalance($leave, $actor->id);
+            else $this->returnLeaveBalance($leave, $actor->id);
+            $now = $approve ? 'approved' : 'rejected';
+            $note = "Decision changed from {$from} to {$now}: {$reason}".($leave->decision_note ? " (earlier note: {$leave->decision_note})" : '');
+            $leave->update(['status' => $now, 'decided_by' => $actor->id, 'decided_at' => now(), 'decision_note' => mb_substr($note, 0, 1000)]);
+            ApprovalRequest::where('approvable_type', LeaveRequest::class)->where('approvable_id', $leave->id)->latest('id')->limit(1)->update(['approver_id' => $actor->id, 'status' => $now, 'decided_at' => now(), 'comment' => mb_substr($note, 0, 1000)]);
+            $this->audit->record('leave.decision_changed', $leave, ['from' => $from, 'to' => $now, 'reason' => $reason]);
+            $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
+            if ($carry) app(PayrollCarryOver::class)->settle($leave->employee_id, $leave->starts_on->toDateString(), $leave->ends_on->toDateString(), ($leave->leaveType?->name ?? 'Leave')." {$range} (decision changed)", $actor->id);
+            Notifier::send($leave->employee?->user, 'LeaveRequest', $leave->id, "{$actor->name} changed the decision on your leave ({$range}): it is now {$now}. Reason: {$reason}".($carry ? ' The salary already processed is corrected in your next salary.' : ''), null, $actor->id);
+            Notifier::send(collect([$leave->employee?->manager?->user])->merge(Notifier::withPermission('leave.manage')), 'LeaveRequest', $leave->id, "{$actor->name} changed {$leave->employee?->name}'s leave ({$range}) from {$from} to {$now}. Reason: {$reason}", route('leave.requests', ['tab' => 'all'], false), $actor->id);
+
+            return $leave->fresh();
+        });
+        // Past days follow the new decision: fines removed or made by the usual rules.
+        if ($changed->employee) {
+            $people = app(PeopleOperationsService::class);
+            for ($day = $changed->starts_on->copy(); $day->lte($changed->ends_on) && $day->lt(today()); $day->addDay()) {
+                $people->reassessDay($changed->employee, $day->toDateString(), $actor->id, 'leave decision changed to '.$changed->status);
+            }
+        }
+
+        return $changed;
+    }
+
     public function decideLeave(LeaveRequest $leave, int $approverId, bool $approve, ?string $note = null, bool $notify = true): LeaveRequest
     {
         $decided = DB::transaction(function () use ($leave, $approverId, $approve, $note, $notify) {
@@ -214,21 +323,7 @@ class HrWorkflowService
             $carry = $approve && app(PayrollLockGuard::class)->changedOrCarry($leave->employee_id, $leave->starts_on->toDateString(), 'leave', $leave->ends_on->toDateString());
             $leave->update(['status' => $approve ? 'approved' : 'rejected', 'decided_by' => $approverId, 'decided_at' => now(), 'decision_note' => $note]);
             ApprovalRequest::where('approvable_type', LeaveRequest::class)->where('approvable_id', $leave->id)->where('status', 'pending')->update(['approver_id' => $approverId, 'status' => $approve ? 'approved' : 'rejected', 'decided_at' => now(), 'comment' => $note]);
-            if ($approve) {
-                $type=LeaveType::findOrFail($leave->leave_type_id);
-                if($type->paid){
-                    $leaveYear = LeaveYear::of($leave->starts_on);
-                    $balance = LeaveBalance::where('employee_id', $leave->employee_id)->where('leave_type_id', $leave->leave_type_id)->where('year', $leaveYear)->lockForUpdate()->first();
-                    if(!$balance)throw ValidationException::withMessages(['leave'=>'Leave balance is not configured for this employee.']);
-                    $snapshot=app(LeaveAccrualService::class)->balance($leave->employee,$type,$leaveYear,$leave->starts_on->toDateString());
-                    $available=(float)$snapshot['remaining']+(float)$leave->days;
-                    $deficit=(float)$leave->days-$available;
-                    if($deficit>0&&!$type->allow_advance)throw ValidationException::withMessages(['leave'=>'Approving this request would exceed the available paid leave balance.']);
-                    if($deficit>0){$limit=$this->policyConfiguration($leave->employee,'leave.advance_limit',$leave->starts_on->toDateString(),['max_days'=>5]);if($deficit>(float)($limit['max_days']??5))throw ValidationException::withMessages(['leave'=>'Approving this request would exceed the advance leave limit.']);}
-                    $balance->increment('used_days', $leave->days);
-                    \App\Models\LeaveLedgerEntry::record($balance, 'used', -(float) $leave->days, $type->name.' '.$leave->starts_on->format('d M Y').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y')), $leave, $approverId);
-                }
-            }
+            if ($approve) $this->useLeaveBalance($leave, $approverId);
             $this->audit->record($approve ? 'leave.approved' : 'leave.rejected', $leave, ['approver_id' => $approverId]);
             $by = \App\Models\User::find($approverId)?->name ?? 'Your approver';
             $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
