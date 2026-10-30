@@ -38,6 +38,8 @@
                 ['Weekly off / holiday', $person['off'], 'days', 'violet'],
                 ['Total worked', \App\Support\Duration::hm($person['worked']), 'avg '.\App\Support\Duration::hm($person['average']).' a day', 'blue'],
                 ['Average check-in', $person['avg_in'] ?? '—', 'on days at work', 'blue'],
+                ['Idle / Break', \App\Support\Duration::hm($person['idle']).' / '.\App\Support\Duration::hm($person['break']), 'idle / break in total', $person['idle'] ? 'amber' : 'gray'],
+                ['Meetings', \App\Support\Duration::hm($person['meeting']), 'in meetings (counts as work)', 'blue'],
                 ['Forgot to check out', $person['auto_out'], 'checked out automatically', $person['auto_out'] ? 'amber' : 'gray'],
                 ['Fines', '₹'.number_format($person['fines'], 0), $person['fines_count'].' fine(s)'.($person['fines_pending'] ? ' · '.$person['fines_pending'].' pending' : ''), $person['fines'] > 0 ? 'red' : 'gray'],
             ] as [$label, $value, $hint, $tone])

@@ -221,6 +221,8 @@ class Records extends Component
         $checkIns = $sessions->map(fn ($s) => $s->check_in ? $s->check_in->hour * 60 + $s->check_in->minute : null)->filter(fn ($m) => $m !== null);
         $fines = \App\Models\EmployeePenalty::where('employee_id', $employee->id)->whereIn('status', ['pending', 'approved'])->whereDate('effective_on', '>=', $this->from)->whereDate('effective_on', '<=', $this->to)->get();
         $worked = (int) $sessions->sum(fn ($s) => $attendance->workedSeconds($s));
+        // Idle, break and meeting time: the same figures as each row.
+        $figures = $sessions->map(fn ($s) => $attendance->liveFigures($s));
 
         return [
             'present' => $sessions->count(),
@@ -236,6 +238,9 @@ class Records extends Component
             'average' => $sessions->count() ? intdiv($worked, $sessions->count()) : 0,
             'avg_in' => $checkIns->count() ? Carbon::today()->addMinutes((int) round($checkIns->avg()))->format('h:i A') : null,
             'auto_out' => $sessions->where('closed_automatically', true)->count(),
+            'idle' => (int) $figures->sum('idle'),
+            'break' => (int) $figures->sum('break'),
+            'meeting' => (int) $figures->sum(fn ($f) => (int) ($f['screen']['meeting'] ?? 0)),
             'fines' => (float) $fines->where('status', 'approved')->sum('amount'),
             'fines_count' => $fines->where('status', 'approved')->count(),
             'fines_pending' => $fines->where('status', 'pending')->count(),

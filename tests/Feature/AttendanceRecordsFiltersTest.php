@@ -73,7 +73,7 @@ class AttendanceRecordsFiltersTest extends TestCase
 
         Livewire::actingAs($this->admin)->test(Records::class)->set('from', '2026-10-24')->set('to', '2026-10-29')->set('employee', $this->risha->id)->call('search')
             ->assertViewHas('person', fn ($p) => $p['present'] === 4 && $p['late'] === 1 && $p['half_day'] === 1 && $p['leave_pending'] === 1 && $p['absent'] === 0 && $p['extra'] === 1)
-            ->assertSee('Leave pending')->assertSee('without approval yet')->assertSee('Extra working')
+            ->assertSee('Leave pending')->assertSee('without approval yet')->assertSee('Extra working')->assertSee('Idle / Break')->assertSee('Meetings')
             ->assertSeeHtml('class="day-row rec-weekend"')->assertSeeHtml('class="rec-extra_work"')->assertSeeHtml('class="rec-half_day"')->assertSeeHtml('class="day-row rec-leave_pending"');
     }
 
