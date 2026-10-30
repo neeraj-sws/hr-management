@@ -132,6 +132,46 @@ class TelegramNotificationsTest extends TestCase
         $this->assertCount(2, $this->sentTo('1001'));
     }
 
+    public function test_break_start_and_end_reach_the_super_admin(): void
+    {
+        $attendance = app(AttendanceService::class);
+        $attendance->checkIn($this->employee, 'web');
+        Carbon::setTestNow('2026-10-28 13:00:00');
+        $attendance->startBreak($this->employee, 'web');
+        Carbon::setTestNow('2026-10-28 13:45:00');
+        $attendance->endBreak($this->employee, 'web');
+
+        $admin = $this->sentTo('1001');
+        $this->assertCount(3, $admin);
+        $this->assertStringContainsString('BREAK STARTED', $admin[1]);
+        $this->assertStringContainsString('Employee: Rahul Sharma', $admin[1]);
+        $this->assertStringContainsString('Time: 01:00 PM', $admin[1]);
+        $this->assertStringContainsString('BREAK ENDED', $admin[2]);
+        $this->assertStringContainsString('Time: 01:45 PM', $admin[2]);
+        $this->assertStringContainsString('Break: 45', $admin[2]);
+    }
+
+    public function test_correction_request_and_daily_status_reach_the_super_admin(): void
+    {
+        app(\App\Services\AttendanceCorrectionService::class)->request($this->employee, '2026-10-19', '10:05', '19:00', 'Forgot to check in on time');
+        $admin = $this->sentTo('1001');
+        $this->assertCount(1, $admin);
+        $this->assertStringContainsString('ATTENDANCE CORRECTION REQUESTED', $admin[0]);
+        $this->assertStringContainsString('Date: 19 October 2026', $admin[0]);
+        $this->assertStringContainsString('Reason: Forgot to check in on time', $admin[0]);
+        $this->assertStringContainsString('Status: Pending approval', $admin[0]);
+
+        \App\Models\DailyWorkStatus::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-28', 'summary' => 'Finished the leave screen', 'server_version' => 1]);
+        $this->assertStringContainsString('DAILY STATUS SUBMITTED', $this->sentTo('1001')[1]);
+        $this->assertStringContainsString('Summary: Finished the leave screen', $this->sentTo('1001')[1]);
+
+        // An old day's status, written later with a reason.
+        \App\Models\DailyWorkStatus::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-27', 'summary' => 'Fixed payroll bugs', 'late_reason' => 'Internet was down', 'server_version' => 1]);
+        $this->assertStringContainsString('DAILY STATUS (OLD DAY)', $this->sentTo('1001')[2]);
+        $this->assertStringContainsString('Date: 27 October 2026', $this->sentTo('1001')[2]);
+        $this->assertStringContainsString('Late reason: Internet was down', $this->sentTo('1001')[2]);
+    }
+
     public function test_leave_goes_to_the_super_admin_and_the_decision_to_the_employee_only(): void
     {
         $this->link($this->employee->user);

@@ -197,6 +197,7 @@ class AttendanceService
             return $session->fresh();
         });
         app(AttendanceAlertService::class)->breakStarted($employee, $session, $at ? $this->local($at) : now());
+        rescue(fn () => app(TelegramEvents::class)->breakStarted($employee, $session, $at ? $this->local($at) : now()), null, true);
 
         return $session;
     }
@@ -215,6 +216,7 @@ class AttendanceService
         });
         $end = $session->events()->where('event_type', 'break_end')->latest('event_time')->first();
         app(AttendanceAlertService::class)->breakEnded($employee, $session, $end?->event_time ?? now(), (int) ($end?->duration_seconds ?? 0));
+        rescue(fn () => app(TelegramEvents::class)->breakEnded($employee, $session, $end?->event_time ?? now(), (int) ($end?->duration_seconds ?? 0)), null, true);
 
         return $session;
     }

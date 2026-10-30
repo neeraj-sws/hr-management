@@ -14,7 +14,7 @@ use Illuminate\Contracts\Events\ShouldHandleEventsAfterCommit;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Super Admin Telegram feed for leave, corrections, tasks, payslips, payments, advances and fines - whichever screen,
+ * Super Admin Telegram feed for leave, corrections, daily status, tasks, payslips, payments, advances and fines - whichever screen,
  * app or job made the change. Runs only after the save is committed (a rolled-back change sends nothing) and only
  * when the status really changed. A Telegram problem never breaks the save.
  */
@@ -28,6 +28,8 @@ class TelegramEventObserver implements ShouldHandleEventsAfterCommit
             $model instanceof Payslip => $this->events()->payslip($model),
             $model instanceof SalaryPayment => $this->events()->salaryPayment($model),
             $model instanceof EmployeePenalty => $this->events()->fine($model, 'made'),
+            $model instanceof AttendanceCorrection => $model->status === 'pending' ? $this->events()->correctionRequested($model) : null,
+            $model instanceof \App\Models\DailyWorkStatus => $this->events()->dailyStatus($model),
             default => null,
         }, null, true);
     }
