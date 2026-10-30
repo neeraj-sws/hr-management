@@ -238,7 +238,7 @@ class PeopleOperationsService
             $kind = strtok((string) $penalty->source_key, ':');
             $stillApplies = match ($kind) {
                 'absence' => $session === null && ! LeaveRequest::where('employee_id', $employee->id)->whereIn('status', ['approved', 'pending'])->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists(),
-                'late' => $session !== null && ! $this->urgentWorkOnLeave($employee, $date) && (! $this->paidByHours($employee, $session) || $this->lateFineOnTop($employee, $session)) && app(AttendanceService::class)->lateMinutes($session) > 0,
+                'late' => $session !== null && ! $this->urgentWorkOnLeave($employee, $date) && ! \App\Models\LateArrivalRequest::excuses($employee->id, $date, $session->check_in?->format('H:i')) && (! $this->paidByHours($employee, $session) || $this->lateFineOnTop($employee, $session)) && app(AttendanceService::class)->lateMinutes($session) > 0,
                 'early' => $session !== null && $session->check_out && ! $this->urgentWorkOnLeave($employee, $date) && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->earlyMinutes($session) > 0,
                 default => true,
             };
@@ -608,6 +608,8 @@ class PeopleOperationsService
             if(!app(AttendanceService::class)->isScheduledDay($employee,$session->work_date->toDateString()))continue;
             // Urgent work on a full-day leave: paid by the hours worked, never late.
             if($this->urgentWorkOnLeave($employee,$session->work_date->toDateString()))continue;
+            // Late arrival told in advance and approved, checked in by the time given: no late fine.
+            if(\App\Models\LateArrivalRequest::excuses($employee->id,$session->work_date->toDateString(),$session->check_in?->format('H:i')))continue;
             $workStart=app(AttendanceService::class)->rules($employee,$session->work_date->toDateString())['work_start'];
             if(!$workStart)continue;
             $config=$this->policy($employee,'attendance.late_penalty',$rule?->configuration??[],$session->work_date->toDateString());

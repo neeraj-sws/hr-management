@@ -46,6 +46,8 @@ class HrWorkflowService
             $after = preg_match('/^\d{2}:\d{2}$/', (string) ($policy['late_checkin_after'] ?? '')) ? (string) $policy['late_checkin_after'] : '12:00';
         }
         if ($session->check_in->format('H:i') <= $after) return null;
+        // Late arrival told in advance and approved, checked in by the time given: not cut for coming late.
+        if (\App\Models\LateArrivalRequest::excuses($employee->id, $date, $session->check_in->format('H:i'))) return null;
         $calendar ??= $this->policyConfiguration($employee, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         if (\App\Support\WorkCalendar::halfDayHoliday($calendar, $date) || ! $this->isConfiguredWorkday($date, $calendar)) return null;
         $attendance = app(AttendanceService::class);

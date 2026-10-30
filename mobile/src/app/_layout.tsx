@@ -39,6 +39,7 @@ function RootNavigator() {
         <Stack.Screen name="approvals" options={{ title: 'Approvals' }} />
         <Stack.Screen name="sync" options={{ title: 'Offline sync' }} />
         <Stack.Screen name="corrections" options={{ title: 'Attendance correction' }} />
+        <Stack.Screen name="late-arrival" options={{ title: 'Late arrival' }} />
         <Stack.Screen name="night-work" options={{ title: 'Night work' }} />
         <Stack.Screen name="fines" options={{ title: 'My fines' }} />
         <Stack.Screen name="course-fees" options={{ title: 'My course & fees' }} />

@@ -42,7 +42,7 @@ class NotificationPresenter
         'DailyStatusSubmitted' => 'daily_status', 'DailyStatusRequested' => 'daily_status', 'DailyStatusReminder' => 'daily_status', 'DailyStatus' => 'daily_status',
         'TaskAssignment' => 'task', 'TaskCompleted' => 'task', 'TaskOverdue' => 'task', 'TaskComment' => 'task', 'ProjectMember' => 'task', 'ProjectManager' => 'task', 'TrainingAssignment' => 'task', 'PerformanceGoal' => 'task', 'PerformanceReview' => 'task', 'PerformanceFeedback' => 'task',
         'PayrollRun' => 'payroll', 'SalaryPayment' => 'payroll', 'Payslip' => 'payroll', 'SalaryAdjustment' => 'payroll', 'SalaryAdvance' => 'payroll', 'SalaryProfile' => 'payroll', 'EmployeeFinalSettlement' => 'payroll', 'EmployeeFinalSettlementPayment' => 'payroll',
-        'LeaveRequest' => 'leave', 'OvertimeRequest' => 'leave', 'LeaveBalance' => 'leave', 'ExpenseClaim' => 'leave', 'NightWork' => 'leave',
+        'LeaveRequest' => 'leave', 'OvertimeRequest' => 'leave', 'LeaveBalance' => 'leave', 'ExpenseClaim' => 'leave', 'NightWork' => 'leave', 'LateArrival' => 'leave',
         'MonitoringRequest' => 'other', 'ScreenCapture' => 'other',
         'AttendanceAbsent' => 'attendance', 'AttendanceBreak' => 'attendance', 'AttendanceLongBreak' => 'attendance', 'AttendanceSession' => 'attendance', 'ShiftReminder' => 'attendance', 'CheckoutReminder' => 'attendance', 'AutoCheckout' => 'attendance', 'Shift' => 'attendance', 'WeeklyOff' => 'attendance',
     ];
@@ -54,6 +54,7 @@ class NotificationPresenter
         'OvertimeRequest' => OvertimeRequest::class,
         'ExpenseClaim' => ExpenseClaim::class,
         'NightWork' => \App\Models\NightWorkRequest::class,
+        'LateArrival' => \App\Models\LateArrivalRequest::class,
         'MonitoringRequest' => \App\Models\MonitoringRequest::class,
     ];
 

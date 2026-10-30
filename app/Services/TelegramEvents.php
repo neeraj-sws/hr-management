@@ -137,6 +137,13 @@ class TelegramEvents
         $this->telegram->toAdmin('leave_pending', 'leave-pending-digest:'.today()->toDateString(), TelegramNotificationService::format('Leave requests not decided ('.$leaves->count().')', [...$lines, 'No action taken yet. Approve or reject them in Leave > Approvals.']));
     }
 
+    public function lateArrivalRequested(\App\Models\LateArrivalRequest $request): void
+    {
+        $request->loadMissing('employee');
+        $this->telegram->toAdmin('late_arrival_requested', "late-arrival:{$request->id}:requested", TelegramNotificationService::format('Late arrival (told in advance)', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Expected check-in' => $request->expectedLabel(),
+            'Reason' => \Illuminate\Support\Str::limit((string) $request->reason, 300), 'Status' => $request->status === 'pending' ? 'Pending approval' : 'Rejected automatically (personal reason)']));
+    }
+
     public function nightWorkRequested(\App\Models\NightWorkRequest $request): void
     {
         $request->loadMissing('employee');

@@ -48,6 +48,7 @@ return [
         ['label' => 'Leave Requests', 'route' => 'leave.requests', 'icon' => 'calendar'],
         ['label' => 'Leave Balance', 'route' => 'leave.balances', 'icon' => 'pie'],
         ['label' => 'Overtime', 'route' => 'leave.overtime', 'icon' => 'timer'],
+        ['label' => 'Late arrival', 'route' => 'leave.late-arrival', 'icon' => 'clock'],
         ['label' => 'Night work', 'route' => 'leave.night-work', 'icon' => 'clock'],
     ]],
     ['heading' => 'Expenses', 'items' => [
