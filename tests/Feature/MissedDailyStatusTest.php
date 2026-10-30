@@ -71,7 +71,8 @@ class MissedDailyStatusTest extends TestCase
 
         // The fine and the next-day notice with a link to write the day.
         $fine = $this->fine($employee, '2026-10-19');
-        $this->assertSame(['500.00', 'pending'], [(string) $fine->amount, $fine->status]);
+        // Deducted at once (no HR approval); writing the day with a reason takes it back.
+        $this->assertSame(['500.00', 'approved'], [(string) $fine->amount, $fine->status]);
         $notice = $employee->user->notifications()->where('data->kind', 'DailyStatusMissed')->firstOrFail();
         $this->assertStringContainsString('You did not write your daily status for 19 Oct', $notice->data['message']);
         $this->assertStringContainsString('missed=2026-10-19', (string) $notice->data['url']);

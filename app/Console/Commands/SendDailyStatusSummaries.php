@@ -11,7 +11,8 @@ use Illuminate\Console\Command;
 
 /**
  * End of the day: each daily status written today is e-mailed (with the day's timing) to the person and their manager.
- * Someone who worked but did not write one gets one written from the day's tasks first (WorkService::autoStatusFromTasks).
+ * After each person's deadline (shift end + grace) work:daily-status-deadline mails the ones written later and writes
+ * missing ones from the day's tasks (WorkService::autoStatusFromTasks).
  */
 class SendDailyStatusSummaries extends Command
 {
@@ -22,17 +23,10 @@ class SendDailyStatusSummaries extends Command
     {
         $date = $this->option('date') ?: today()->toDateString();
         $sent = 0;
-        // Worked today but no daily status: one is written from today's tasks, so the end-of-day mail still goes out.
-        $work = app(\App\Services\WorkService::class);
-        $auto = 0;
-        AttendanceSession::with('employee')->whereDate('work_date', $date)->whereNotNull('check_in')->get()->pluck('employee')->filter()->unique('id')
-            ->each(function ($employee) use ($work, $date, &$auto) {
-                if ($employee->is_active && \App\Support\DailyStatusRule::required($employee, $date) && rescue(fn () => $work->autoStatusFromTasks($employee, $date), null, true)) $auto++;
-            });
         DailyWorkStatus::with(['employee.user', 'employee.manager.user'])->whereDate('work_date', $date)->get()->each(function (DailyWorkStatus $status) use (&$sent) {
             $sent += self::send($status);
         });
-        $this->info("{$sent} summary e-mail(s) sent for {$date}; {$auto} daily status(es) written from tasks.");
+        $this->info("{$sent} summary e-mail(s) sent for {$date}.");
 
         return self::SUCCESS;
     }
@@ -41,8 +35,15 @@ class SendDailyStatusSummaries extends Command
      * E-mails one daily status (with that day's timing) to the person, their manager and the extra mailbox, as set in
      * Settings > E-mail. Also used at once for a missed day written later (the 8:30 PM run for that day is past).
      */
+    /** Cache key that marks a status as mailed (so the deadline run does not mail it again). */
+    public static function mailedKey(DailyWorkStatus $status): string
+    {
+        return 'daily-summary-mailed:'.$status->id;
+    }
+
     public static function send(DailyWorkStatus $status): int
     {
+        \Illuminate\Support\Facades\Cache::put(self::mailedKey($status), true, now()->addDays(3));
         $attendance = app(AttendanceService::class);
         $date = $status->work_date->toDateString();
         $sent = 0;

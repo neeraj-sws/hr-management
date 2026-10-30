@@ -35,7 +35,7 @@ class AutoDailyStatusFromTasksTest extends TestCase
         $this->admin = User::where('email', 'admin@example.com')->firstOrFail();
         $user = User::factory()->create(['name' => 'Abheeshri Parmar']);
         $user->assignRole('Employee');
-        $this->employee = AttendanceEmployee::create(['employee_code' => 'EMP-11', 'name' => 'Abheeshri Parmar', 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01']);
+        $this->employee = AttendanceEmployee::create(['employee_code' => 'EMP-11', 'name' => 'Abheeshri Parmar', 'is_active' => true, 'user_id' => $user->id, 'joined_at' => '2026-01-01', 'work_start' => '10:00:00', 'work_end' => '19:30:00']);
         AttendanceSession::create(['employee_id' => $this->employee->id, 'work_date' => '2026-10-29', 'check_in' => '2026-10-29 10:05:00', 'check_out' => '2026-10-29 19:00:00', 'status' => 'completed']);
     }
 
@@ -59,7 +59,18 @@ class AutoDailyStatusFromTasksTest extends TestCase
         $this->task('Search filter fix', 'completed', 120);
         $this->task('Category page slider', 'in_progress', 90, 60);
 
+        // 8:30 PM: still before her deadline (7:30 PM shift end + 3 h grace = 10:30 PM) - nothing written yet.
+        app(\App\Services\PeopleOperationsService::class)->setPolicy('daily_status.missing', 'compliance', 'Daily status', ['amount_per_day' => 500, 'grace_hours' => 3], null, $this->admin->id, '2026-01-01');
         $this->artisan('work:daily-status-summary')->assertSuccessful();
+        $this->artisan('work:daily-status-deadline')->assertSuccessful();
+        $this->assertSame(0, DailyWorkStatus::count());
+        $this->assertSame('2026-10-29 22:30', app(\App\Services\PeopleOperationsService::class)->statusDeadline($this->employee, '2026-10-29')->format('Y-m-d H:i'));
+
+        // 10:40 PM: past the deadline - written from the tasks and mailed once.
+        Carbon::setTestNow('2026-10-29 22:40:00');
+        $this->artisan('work:daily-status-deadline')->assertSuccessful();
+        $this->artisan('work:daily-status-deadline')->assertSuccessful();
+        Notification::assertSentToTimes($this->employee->user, DailyStatusSummary::class, 1);
 
         $status = DailyWorkStatus::where('employee_id', $this->employee->id)->firstOrFail();
         $this->assertTrue($status->auto_from_tasks);
@@ -69,8 +80,7 @@ class AutoDailyStatusFromTasksTest extends TestCase
         $this->assertSame(7200, $status->project_updates[0]['tasks'][0]['seconds']);
         Notification::assertSentTo($this->employee->user, DailyStatusSummary::class);
 
-        // The night's fine check: a status exists, written in time - no "not submitted" fine.
-        app(\App\Services\PeopleOperationsService::class)->setPolicy('daily_status.missing', 'compliance', 'Daily status', ['amount_per_day' => 200, 'grace_hours' => 0], null, $this->admin->id, '2026-01-01');
+        // The night's fine check: a status exists (written from the tasks) - no "not submitted" fine.
         Carbon::setTestNow('2026-10-30 03:00:00');
         $this->artisan('compliance:assess')->assertSuccessful();
         $this->assertSame(0, EmployeePenalty::where('employee_id', $this->employee->id)->where('source_key', 'like', 'no_status:%')->whereIn('status', ['pending', 'approved'])->count());

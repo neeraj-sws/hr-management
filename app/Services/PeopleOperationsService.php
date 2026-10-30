@@ -171,6 +171,23 @@ class PeopleOperationsService
      * cuts: the fine is made also on a day paid by the hours (check-in after the late check-in time, half day). Not on a
      * day with an approved half-day / short leave: being away then was allowed.
      */
+    /**
+     * When a day's daily status is due: the end of the employee's shift that day (their shift, else their own end
+     * time, else the company's) plus the grace hours of the "Daily status not submitted" rule - e.g. 7:30 PM + 3 h =
+     * 10:30 PM. No end time known: midnight plus the grace hours (as before).
+     */
+    public function statusDeadline(AttendanceEmployee $employee, string $date): Carbon
+    {
+        $config = $this->policy($employee, 'daily_status.missing', [], $date);
+        $shift = rescue(fn () => app(ShiftService::class)->shiftFor($employee, $date), null, false);
+        $end = $shift?->end_time ?: ($employee->work_end ?: ($this->policy($employee, 'work.hours', [], $date)['end_time'] ?? null));
+        $base = $end ? Carbon::parse($date.' '.substr((string) $end, 0, 5)) : Carbon::parse($date)->endOfDay();
+        // A night shift ending after midnight ends on the next day.
+        if ($end && $shift?->start_time && substr((string) $shift->end_time, 0, 5) < substr((string) $shift->start_time, 0, 5)) $base->addDay();
+
+        return $base->addMinutes((int) round((float) ($config['grace_hours'] ?? 0) * 60));
+    }
+
     public function lateFineOnTop(AttendanceEmployee $employee, \App\Models\AttendanceSession $session): bool
     {
         $date = $session->work_date->toDateString();
@@ -645,6 +662,8 @@ class PeopleOperationsService
                 $this->approval(EmployeePenalty::class, $penalty->id);
                 $this->audit->record('compliance.'.str_replace('.', '_', $key).'_assessed', $penalty, $meta);
                 $employee->user?->notify(new ApprovalRequested($meta['kind'] ?? 'EmployeePenalty', $penalty->id, $meta['message'] ?? ($reason.' — a penalty is pending review.'), $meta['url'] ?? null));
+                // Deducted at once (no HR approval) for rules that say so; the employee can still give a reason.
+                if (! empty($meta['auto'])) $this->autoApprove($penalty, $employee, $actor, 'Deducted automatically. If you had a valid reason, give it on the Penalties page (Give reason).');
                 $created++;
             }
         };
@@ -672,18 +691,19 @@ class PeopleOperationsService
                 if (! $hasWork) $raise($employee, 'task.missing_entry', "no_task:{$employee->id}:{$date}", $date, (float) $config['amount_per_day'], 'No task entered for '.Carbon::parse($date)->format('d M'), []);
             }
 
-            // Daily status missing after the grace period.
+            // Daily status missing after its deadline (shift end + grace hours, e.g. 7:30 PM + 3 h = 10:30 PM).
             $config = $this->policy($employee, 'daily_status.missing', [], $date);
-            if ((float) ($config['amount_per_day'] ?? 0) > 0 && $dayEnd->copy()->addHours((int) ($config['grace_hours'] ?? 0))->lt($now) && \App\Support\DailyStatusRule::required($employee, $date)) {
+            $statusDue = $this->statusDeadline($employee, $date);
+            if ((float) ($config['amount_per_day'] ?? 0) > 0 && $statusDue->lt($now) && \App\Support\DailyStatusRule::required($employee, $date)) {
                 $status = \App\Models\DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', $date)->first();
-                // Written later with a reason (Daily status > Write a missed day): no fine.
-                $late = $status && ! $status->late_reason && $status->submitted_at && $status->submitted_at->gt($dayEnd->copy()->addHours((int) ($config['grace_hours'] ?? 0)));
+                // Written later with a reason (Daily status > Write a missed day): no fine. Written from the tasks: on time.
+                $late = $status && ! $status->late_reason && ! $status->auto_from_tasks && $status->submitted_at && $status->submitted_at->gt($statusDue);
                 $writable = ! $status && Carbon::parse($date)->gte(today()->subDays(WorkService::MISSED_DAYS_BACK));
                 if (! $status || $late) $raise($employee, 'daily_status.missing', "no_status:{$employee->id}:{$date}", $date, (float) $config['amount_per_day'], ($status ? 'Daily status submitted late for ' : 'No daily status for ').Carbon::parse($date)->format('d M'), $writable ? [
                     // The next morning: the fine, and how to undo it - give the reason, then write that day's status.
-                    'message' => 'You did not write your daily status for '.Carbon::parse($date)->format('d M').': a fine of '.number_format((float) $config['amount_per_day'], 2).' is made. Give the reason and write it now (Daily status > Write the missed day) - the fine is then removed.',
-                    'kind' => 'DailyStatusMissed', 'url' => route('work.daily-status', ['missed' => $date], false),
-                ] : []);
+                    'message' => 'You did not write your daily status for '.Carbon::parse($date)->format('d M').' by '.$statusDue->format('h:i A').': a fine of '.number_format((float) $config['amount_per_day'], 2).' is deducted. Give the reason and write it now (Daily status > Write the missed day) - the fine is then removed; or give a reason on the Penalties page for HR to decide.',
+                    'kind' => 'DailyStatusMissed', 'url' => route('work.daily-status', ['missed' => $date], false), 'auto' => true,
+                ] : ['auto' => true]);
             }
         }
 

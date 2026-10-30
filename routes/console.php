@@ -23,6 +23,8 @@ Schedule::command('sanctum:prune-expired --hours=24')->dailyAt('04:00');
 Schedule::command('work:remind-daily-status')->everyFiveMinutes()->withoutOverlapping();
 // End of the day: each daily status written today goes by e-mail (task status and timing) to the person and their manager.
 Schedule::command('work:daily-status-summary')->dailyAt('20:30')->withoutOverlapping();
+// Each person's daily status deadline (shift end + grace): missing ones written from tasks, late-written ones mailed.
+Schedule::command('work:daily-status-deadline')->everyTenMinutes()->withoutOverlapping();
 // Before-shift and forgot-to-check-out reminders (each sent once per person per day).
 Schedule::command('attendance:reminders')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('attendance:absence-alerts')->everyFifteenMinutes()->between('09:00', '20:00')->withoutOverlapping();
