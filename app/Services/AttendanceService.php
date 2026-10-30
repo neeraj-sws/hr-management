@@ -878,7 +878,7 @@ class AttendanceService
             $extra = $session !== null && (! $workday || ($leaveToday && $leaveToday->duration === 'full' && ! in_array($resolutions[$date] ?? null, ['worked', 'leave'], true)));
             $pendingLeave = $status === 'absent' ? $pendingLeaves->first(fn ($leave) => $leave->starts_on->toDateString() <= $date && $leave->ends_on->toDateString() >= $date) : null;
             if ($pendingLeave) $label = 'Leave pending · '.($pendingLeave->typeName() ?? 'Leave').' · waiting for approval';
-            $days->push(['date' => $date, 'status' => $status, 'leave_pending' => $pendingLeave !== null, 'session' => $session, 'label' => $label, 'extra' => $extra, 'extra_reason' => $extra ? (! $workday ? (\App\Support\WorkCalendar::specialOffReason($date, $calendar) ?: (in_array($date, $calendar['holidays'] ?? [], true) ? 'Holiday' : 'Weekly off')) : ($leaveToday->typeName() ?? 'Leave')) : null]);
+            $days->push(['date' => $date, 'status' => $status, 'workday' => $workday, 'leave_pending' => $pendingLeave !== null, 'session' => $session, 'label' => $label, 'extra' => $extra, 'extra_reason' => $extra ? (! $workday ? (\App\Support\WorkCalendar::specialOffReason($date, $calendar) ?: (in_array($date, $calendar['holidays'] ?? [], true) ? 'Holiday' : 'Weekly off')) : ($leaveToday->typeName() ?? 'Leave')) : null]);
         }
 
         return $days;

@@ -225,6 +225,8 @@ class Records extends Component
         $figures = $sessions->map(fn ($s) => $attendance->liveFigures($s));
 
         return [
+            // Working days in the range (weekly offs and holidays not counted; before joining / after leaving neither).
+            'working_days' => $rows->where('workday', true)->whereNotIn('status', ['not_joined', 'left'])->count(),
             'present' => $sessions->count(),
             'late' => $rows->where('status', 'late')->count(),
             'half_day' => $rows->where('status', 'half_day')->count(),

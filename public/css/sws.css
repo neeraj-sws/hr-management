@@ -160,6 +160,8 @@ input[type=date]::-webkit-calendar-picker-indicator:hover,input[type=time]::-web
 :where(input[type=file]){font:inherit;font-size:13px;color:var(--ink-2);max-width:100%}
 input[type=file]::file-selector-button{font:inherit;font-size:13px;font-weight:600;color:var(--ink-2);background:#fff;border:1px solid #d8dfe9;border-radius:9px;height:40px;padding:0 14px;margin-right:10px;cursor:pointer}
 input[type=file]::file-selector-button:hover{border-color:var(--blue);color:var(--blue)}
+/* A small dropdown inside a table row (e.g. a task's progress): same look, compact. */
+.input.input-sm{width:auto;height:30px;font-size:12px;padding:0 26px 0 9px;border-radius:8px;background-position:right 8px center;background-size:10px;margin-top:4px}
 .field.has-error input,.field.has-error select,.field.has-error textarea{border-color:var(--red)}
 .error{color:var(--red);font-size:11px;font-weight:600}
 .check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
@@ -1370,7 +1372,7 @@ div.tm-card{cursor:default}
 .ar-pg.on{background:var(--blue);border-color:var(--blue);color:#fff}
 .ar-pg:disabled{opacity:.45;cursor:default}
 .ar-pg-gap{color:var(--faint);padding:0 2px}
-.ar-perpage{height:34px;border:1px solid var(--line);border-radius:8px;padding:0 8px;background:#fff;margin-left:4px}
+.ar-perpage{width:auto;margin-left:4px}
 .ar-hide-in [data-col=in],.ar-hide-out [data-col=out],.ar-hide-worked [data-col=worked],.ar-hide-idle [data-col=idle],.ar-hide-break [data-col=break],.ar-hide-screen [data-col=screen],.ar-hide-late [data-col=late],.ar-hide-source [data-col=source],.ar-hide-status [data-col=status]{display:none}
 .ar-drawer{width:min(620px,100%)}
 .ar-drawer-date{margin-top:4px!important;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -1423,9 +1425,9 @@ div.tm-card{cursor:default}
 .dsr-tools{flex-wrap:wrap;gap:8px;align-items:center}
 .dsr-list{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
 .dsr-select{min-width:250px;width:auto}
-.dsr-select.dsr-required_reminder{border-color:#b9d9c6;background:var(--green-soft)}
-.dsr-select.dsr-required{border-color:#f0d9a8;background:var(--amber-soft)}
-.dsr-select.dsr-optional{border-color:var(--line);background:#f4f6fa;color:var(--muted)}
+.dsr-select.dsr-required_reminder{border-color:#b9d9c6;background-color:var(--green-soft)}
+.dsr-select.dsr-required{border-color:#f0d9a8;background-color:var(--amber-soft)}
+.dsr-select.dsr-optional{border-color:var(--line);background-color:#f4f6fa;color:var(--muted)}
 .dsr-list th,.dsr-list td{text-align:left}
 
 /* ===== Screen activity details panel (Attendance records) ===== */

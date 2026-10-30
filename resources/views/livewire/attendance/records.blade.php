@@ -28,19 +28,19 @@
         {{-- One employee: the whole range at a glance. --}}
         <div class="ar-mini-cards">
             @foreach([
+                ['Working days', $person['working_days'], 'in the chosen dates', 'blue'],
                 ['Present', $person['present'], 'days at work', 'green'],
                 ['Late', $person['late'], 'days late', 'amber'],
                 ['Half day', $person['half_day'], 'days', 'amber'],
                 ['Absent', $person['absent'], 'no leave applied', 'red'],
                 ['Leave pending', $person['leave_pending'], 'without approval yet', 'amber'],
                 ['On leave', $person['on_leave'], 'approved leave days', 'blue'],
-                ['Extra working', $person['extra'], 'off days / leave days worked', 'green'],
                 ['Weekly off / holiday', $person['off'], 'days', 'violet'],
+                ['Extra working', $person['extra'], 'off days / leave days worked', 'green'],
                 ['Total worked', \App\Support\Duration::hm($person['worked']), 'avg '.\App\Support\Duration::hm($person['average']).' a day', 'blue'],
                 ['Average check-in', $person['avg_in'] ?? '—', 'on days at work', 'blue'],
                 ['Idle / Break', \App\Support\Duration::hm($person['idle']).' / '.\App\Support\Duration::hm($person['break']), 'idle / break in total', $person['idle'] ? 'amber' : 'gray'],
                 ['Meetings', \App\Support\Duration::hm($person['meeting']), 'in meetings (counts as work)', 'blue'],
-                ['Forgot to check out', $person['auto_out'], 'checked out automatically', $person['auto_out'] ? 'amber' : 'gray'],
                 ['Fines', '₹'.number_format($person['fines'], 0), $person['fines_count'].' fine(s)'.($person['fines_pending'] ? ' · '.$person['fines_pending'].' pending' : ''), $person['fines'] > 0 ? 'red' : 'gray'],
             ] as [$label, $value, $hint, $tone])
                 <div class="ar-mini ar-mini-{{ $tone }}"><span>{{ $label }}</span><strong>{{ $value }}</strong><small>{{ $hint }}</small></div>
