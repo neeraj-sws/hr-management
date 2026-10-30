@@ -65,9 +65,9 @@
                     @endforeach
                 </div>
                 <x-field label="Duration" name="duration" full><select wire:model.live="dayChoice"><option value="one">Full day — one day</option><option value="several">Full day — several days</option><option value="half">Half day</option><option value="short">Short leave (part of a day)</option></select></x-field>
-                <x-field :label="$dayChoice === 'several' ? 'From' : 'Date'" name="startsOn"><input type="date" wire:model.live="startsOn" min="{{ today()->subMonthNoOverflow()->startOfMonth()->toDateString() }}"></x-field>
+                <x-field :label="$dayChoice === 'several' ? 'From' : 'Date'" name="startsOn"><input type="date" wire:model.live="startsOn" min="{{ today()->toDateString() }}"></x-field>
                 @if($startsOn && $startsOn < today()->toDateString())<p class="small" style="grid-column:1/-1;margin:0;color:#9a6412">This is a past date ("Old date"): your approver must give a reason to approve it, and a late-leave fine may apply.</p>@endif
-                @if($dayChoice === 'several')<x-field label="To" name="endsOn"><input type="date" wire:model.live="endsOn" x-bind:min="$wire.startsOn || @js(today()->subMonthNoOverflow()->startOfMonth()->toDateString())"></x-field>@endif
+                @if($dayChoice === 'several')<x-field label="To" name="endsOn"><input type="date" wire:model.live="endsOn" x-bind:min="$wire.startsOn || @js(today()->toDateString())"></x-field>@endif
                 <x-field label="Reason" name="reason" full><textarea wire:model="reason"></textarea></x-field>
             </div><p class="small muted mt">Only your working days are counted — weekly offs (including off Saturdays and moved weekly offs) and holidays are skipped. Half day = 0.5 day, short leave = 0.25 day. Paid leave beyond your balance is allowed only for leave types with advance leave, within the configured limit.</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Submit request</button></div></form>
