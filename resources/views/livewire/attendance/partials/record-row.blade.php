@@ -3,7 +3,9 @@
 @php($t = $f['screen'] ?? null)
 @php($late = $attendance->lateMinutes($s))
 @php($state = $attendance->isHalfDay($s) ? 'half_day' : ($attendance->isLate($s) ? 'late' : $s->status))
-<tr wire:key="rec-{{ $s->id }}-{{ now()->timestamp }}" x-data="swsLive(@js($f))">
+{{-- Row colour like the calendar: worked on a weekly off / holiday (extra working), late / half day, worked on leave. --}}
+@php($rowStatus = $rowStatus ?? $attendance->dayKind($s))
+<tr wire:key="rec-{{ $s->id }}-{{ now()->timestamp }}" x-data="swsLive(@js($f))" class="rec-{{ $rowStatus }}">
     <td class="nowrap ar-date" data-label="Date"><strong>{{ $s->work_date->format('d M Y') }}</strong><small>{{ $s->work_date->format('D') }}</small></td>
     <td data-label="Employee"><div class="ar-person"><x-avatar :employee="$s->employee" /><div><strong>{{ $s->employee?->name }}</strong><small>{{ collect([$s->employee?->department?->name, $s->employee?->employee_code])->filter()->join(' · ') }}</small>@if($s->employee)<x-person-badges :employee="$s->employee" />@endif</div></div></td>
     <td data-col="in" data-label="In" class="nowrap">{{ $s->check_in?->format('h:i A') ?? '—' }}

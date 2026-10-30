@@ -27,7 +27,9 @@ class LeaveConflictService
      */
     public function open(string $from, string $to, ?array $employeeIds = null): Collection
     {
+        // A half-day or short leave goes with work that day (paid for the hours worked): never a conflict.
         $leaves = LeaveRequest::with(['employee', 'leaveType'])->where('status', 'approved')
+            ->where(fn ($q) => $q->whereNull('duration')->orWhere('duration', 'full'))
             ->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)
             ->when($employeeIds !== null, fn ($q) => $q->whereIn('employee_id', $employeeIds ?: [0]))->get();
         if ($leaves->isEmpty()) return collect();

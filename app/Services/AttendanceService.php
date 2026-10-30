@@ -716,6 +716,21 @@ class AttendanceService
         return $session->check_in->gt($expected);
     }
 
+    /** @var array<string, array> calendars already looked up (employee|month) */
+    private array $calendarCache = [];
+
+    /** A worked day like the calendar names it: extra_work (weekly off / holiday), half_day, late or present. */
+    public function dayKind(AttendanceSession $session): string
+    {
+        $date = $session->work_date->toDateString();
+        $key = $session->employee_id.'|'.substr($date, 0, 7);
+        $calendar = $this->calendarCache[$key] ??= $session->employee ? $this->policies->forEmployee($session->employee, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]) : ['days' => [1, 2, 3, 4, 5], 'holidays' => []];
+        if (! \App\Support\WorkCalendar::isWorkday($date, $calendar)) return 'extra_work';
+        if ($session->check_out && $this->isHalfDay($session)) return 'half_day';
+
+        return $this->isLate($session) ? 'late' : 'present';
+    }
+
     public function lateMinutes(AttendanceSession $session): int
     {
         $employee = $session->employee;
