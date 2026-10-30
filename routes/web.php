@@ -103,6 +103,8 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::middleware('access:hr.manage,payroll.manage')->group(function () {
         Route::get('/billing/customers', Livewire\Billing\Customers::class)->name('billing.customers');
         Route::get('/billing/invoices', Livewire\Billing\Invoices::class)->name('billing.invoices');
+        Route::get('/billing/invoices/create', Livewire\Billing\InvoiceForm::class)->name('billing.invoices.create');
+        Route::get('/billing/invoices/{invoice}/edit', Livewire\Billing\InvoiceForm::class)->name('billing.invoices.edit');
         Route::get('/billing/invoices/{invoice}', Livewire\Billing\InvoiceShow::class)->name('billing.invoices.show');
     });
 

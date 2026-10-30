@@ -1,5 +1,6 @@
 <div>
-    <div class="page-head"><div><h1>Invoices</h1><p>Bills to customers — status, payments and dues.</p></div></div>
+    <div class="page-head"><div><h1>Invoices</h1><p>Bills to customers — status, payments and dues.</p></div>
+        <a class="btn btn-primary" href="{{ route('billing.invoices.create') }}"><x-icon name="plus" class="icon-sm" />New invoice</a></div>
     <div class="stats">
         <div class="stat"><span class="stat-icon"><x-icon name="receipt" /></span><div><span class="stat-label">Invoices</span><span class="stat-value">{{ $totals['count'] }}</span></div></div>
         <div class="stat"><span class="stat-icon"><x-icon name="layers" /></span><div><span class="stat-label">Billed</span><span class="stat-value">{{ number_format($totals['billed'], 0) }}</span></div></div>

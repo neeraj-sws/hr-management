@@ -1,6 +1,7 @@
 <div>
     <div class="page-head"><div><h1>{{ $invoice->number() }}</h1><p>{{ $invoice->customer?->name }} · {{ $invoice->issue_date->format('d M Y') }}</p></div>
         <div class="row-actions">
+            <a class="btn" href="{{ route('billing.invoices.edit', $invoice) }}">Edit</a>
             @if($invoice->status === 'Draft')<button class="btn" wire:click="markSent">Mark as sent</button>@endif
             @if($invoice->due() > 0)<button class="btn btn-primary" wire:click="openPayment">Record payment</button>@endif
         </div></div>
