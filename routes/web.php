@@ -102,10 +102,18 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Billing / Invoicing
     Route::middleware('access:hr.manage,payroll.manage')->group(function () {
         Route::get('/billing/customers', Livewire\Billing\Customers::class)->name('billing.customers');
+        Route::get('/billing/products', Livewire\Billing\Products::class)->name('billing.products');
+        Route::get('/billing/taxes', Livewire\Billing\Taxes::class)->name('billing.taxes');
         Route::get('/billing/invoices', Livewire\Billing\Invoices::class)->name('billing.invoices');
         Route::get('/billing/invoices/create', Livewire\Billing\InvoiceForm::class)->name('billing.invoices.create');
         Route::get('/billing/invoices/{invoice}/edit', Livewire\Billing\InvoiceForm::class)->name('billing.invoices.edit');
         Route::get('/billing/invoices/{invoice}', Livewire\Billing\InvoiceShow::class)->name('billing.invoices.show');
+        Route::get('/billing/estimates', Livewire\Billing\Estimates::class)->name('billing.estimates');
+        Route::get('/billing/estimates/create', Livewire\Billing\EstimateForm::class)->name('billing.estimates.create');
+        Route::get('/billing/estimates/{estimate}/edit', Livewire\Billing\EstimateForm::class)->name('billing.estimates.edit');
+        Route::get('/billing/estimates/{estimate}', Livewire\Billing\EstimateShow::class)->name('billing.estimates.show');
+        Route::get('/billing/credit-notes', Livewire\Billing\CreditNotes::class)->name('billing.credit-notes');
+        Route::get('/billing/revenue', Livewire\Billing\Revenues::class)->name('billing.revenue');
     });
 
     // Performance

@@ -63,7 +63,12 @@ return [
     ]],
     ['heading' => 'Billing', 'items' => [
         ['label' => 'Customers', 'route' => 'billing.customers', 'icon' => 'users'],
+        ['label' => 'Products', 'route' => 'billing.products', 'icon' => 'layers'],
+        ['label' => 'Estimates', 'route' => 'billing.estimates', 'icon' => 'file'],
         ['label' => 'Invoices', 'route' => 'billing.invoices', 'icon' => 'receipt'],
+        ['label' => 'Credit notes', 'route' => 'billing.credit-notes', 'icon' => 'file'],
+        ['label' => 'Revenue', 'route' => 'billing.revenue', 'icon' => 'credit-card'],
+        ['label' => 'Taxes', 'route' => 'billing.taxes', 'icon' => 'settings'],
     ]],
     ['heading' => 'Performance', 'items' => [
         ['label' => 'Goals (KRA / OKR)', 'route' => 'performance.goals', 'icon' => 'check'],
