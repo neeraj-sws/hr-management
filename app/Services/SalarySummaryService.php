@@ -90,7 +90,7 @@ class SalarySummaryService
         $earnings[] = ['Salary for days worked', $money($b['base_salary'] ?? 0), ($data['pay_basis'] ?? 'monthly') === 'daily'
             ? number_format((float) ($data['daily_rate'] ?? 0), 2).' × '.round((float) $days['present'] - 0.5 * count($halfDays) - $byHoursCut, 2).' days present'.$halfNote
             : $days['present'].' present'.$halfNote.($days['paid_leave'] ? ' + '.$days['paid_leave'].' paid leave' : '').(($b['paid_holiday_days'] ?? 0) ? ' + '.$b['paid_holiday_days'].' paid holiday' : '').($halfHolidays ? ' + ½ day for '.count($halfHolidays).' half-day holiday not at work ('.collect($halfHolidays)->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('d M'))->join(', ').')' : '').' of '.$days['working'].' working days'];
-        if ((float) ($b['extra_work']['amount'] ?? 0) > 0) $earnings[] = ['Extra working (off days)', $money($b['extra_work']['amount']), ($b['extra_work']['days'] ?? 0).' days · '.Duration::hms((int) ($b['extra_work']['seconds'] ?? 0))];
+        if ((float) ($b['extra_work']['amount'] ?? 0) > 0) $earnings[] = ['Extra working (off days)', $money($b['extra_work']['amount']), ($b['extra_work']['days'] ?? 0).' days · worked '.Duration::hms((int) ($b['extra_work']['seconds'] ?? 0)).' · paid '.Duration::hms((int) ($b['extra_work']['paid_seconds'] ?? $b['extra_work']['seconds'] ?? 0)).' (at most one working day a day)'];
         if ((float) ($b['overtime_amount'] ?? 0) > 0) $earnings[] = ['Overtime', $money($b['overtime_amount']), null];
         $deductions = [];
         foreach ((array) ($b['salary_adjustment_lines'] ?? []) as $line) {
@@ -228,8 +228,9 @@ class SalarySummaryService
             'extra' => (float) ($b['extra_work']['amount'] ?? 0) > 0 ? [
                 'amount' => round((float) $b['extra_work']['amount'], 2),
                 'days' => (int) ($b['extra_work']['days'] ?? 0),
-                'hours' => Duration::hm((int) ($b['extra_work']['seconds'] ?? 0)),
-                'dates' => collect((array) ($b['extra_work']['dates'] ?? []))->map(fn ($d, $date) => Carbon::parse($date)->format('d M').' ('.Duration::hm((int) ($d['seconds'] ?? 0)).')')->values()->join(', '),
+                // Paid hours: at most one working day a day; the hours above that are shown, not paid.
+                'hours' => 'paid '.Duration::hm((int) ($b['extra_work']['paid_seconds'] ?? $b['extra_work']['seconds'] ?? 0)).((int) ($b['extra_work']['seconds'] ?? 0) - (int) ($b['extra_work']['paid_seconds'] ?? $b['extra_work']['seconds'] ?? 0) >= 60 ? ' of '.Duration::hm((int) $b['extra_work']['seconds']).' worked' : ''),
+                'dates' => collect((array) ($b['extra_work']['dates'] ?? []))->map(fn ($d, $date) => Carbon::parse($date)->format('d M').' ('.Duration::hm((int) ($d['seconds'] ?? 0)).((int) ($d['seconds'] ?? 0) - (int) ($d['paid_seconds'] ?? $d['seconds'] ?? 0) >= 60 ? ', paid '.Duration::hm((int) $d['paid_seconds']).' max' : '').')')->values()->join(', '),
             ] : null];
     }
 

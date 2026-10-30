@@ -73,10 +73,10 @@
                     </td>
                     <td class="ta-screen">
                         @if($t && ($t['active'] + $t['idle'] + $t['meeting']) > 0)
-                            <div class="ta-bar" title="In use {{ \App\Support\Duration::hms($t['active']) }} · meetings {{ \App\Support\Duration::hms($t['meeting']) }} · idle {{ \App\Support\Duration::hms($t['idle']) }}">
+                            <div class="ta-bar" title="In use {{ \App\Support\Duration::hms($t['active'] + $t['meeting']) }} (incl. meetings) · meetings {{ \App\Support\Duration::hms($t['meeting']) }} · idle {{ \App\Support\Duration::hms($t['idle']) }}">
                                 <span class="ta-bar-use" style="width:{{ round(($t['active'] + $t['corrected']) * 100 / max(1, $tracked), 1) }}%"></span><span class="ta-bar-meet" style="width:{{ round($t['meeting'] * 100 / max(1, $tracked), 1) }}%"></span><span class="ta-bar-idle" style="width:{{ round($t['idle'] * 100 / max(1, $tracked), 1) }}%"></span>
                             </div>
-                            <small><span x-text="hms(v.active)">@hms($t['active'])</span> in use · <span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / max(1, $tracked)) }}</span>% working</small>
+                            <small><span x-text="hms(v.active + v.meeting)">@hms($t['active'] + $t['meeting'])</span> in use · <span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / max(1, $tracked)) }}</span>% working</small>
                         @else
                             <span class="muted small" title="Idle and screen time come from the SWS HR desktop app; it has not reported for this day">no desktop app</span>
                         @endif

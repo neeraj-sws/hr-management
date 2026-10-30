@@ -37,7 +37,7 @@
 
     @if($tab === 'day')
         <div class="tm-summary">
-            @foreach([['Check-in', $row['check_in']?->format('h:i A') ?? '—'], ['Check-out', $row['check_out']?->format('h:i A') ?? ($row['check_in'] && $isToday ? 'still in' : '—')], ['Worked', \App\Support\Duration::hms($row['worked'])], ['Break', \App\Support\Duration::hms($row['break'])], ['Idle', \App\Support\Duration::hms($row['idle'])], ['Meeting', \App\Support\Duration::hms($row['meeting'])], ['Screen in use', \App\Support\Duration::hms($row['active'])], ['Not tracked', \App\Support\Duration::hms($row['untracked'])]] as [$label, $value])
+            @foreach([['Check-in', $row['check_in']?->format('h:i A') ?? '—'], ['Check-out', $row['check_out']?->format('h:i A') ?? ($row['check_in'] && $isToday ? 'still in' : '—')], ['Worked', \App\Support\Duration::hms($row['worked'])], ['Break', \App\Support\Duration::hms($row['break'])], ['Idle', \App\Support\Duration::hms($row['idle'])], ['Meeting', \App\Support\Duration::hms($row['meeting'])], ['Screen in use (incl. meetings)', \App\Support\Duration::hms($row['active'] + $row['meeting'])], ['Not tracked', \App\Support\Duration::hms($row['untracked'])]] as [$label, $value])
                 <div><span>{{ $label }}</span><strong>{{ $value }}</strong></div>
             @endforeach
         </div>

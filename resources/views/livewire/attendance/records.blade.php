@@ -159,7 +159,7 @@
 
                 <div class="sa-body">
                     <div class="sa-tiles">
-                        <div class="sa-tile sa-t-blue"><span>Total in use</span><strong x-text="hms(v.active)">@hms($t['active'])</strong></div>
+                        <div class="sa-tile sa-t-blue"><span>Total in use (incl. meetings)</span><strong x-text="hms(v.active + v.meeting)">@hms($t['active'] + $t['meeting'])</strong></div>
                         <div class="sa-tile sa-t-gray"><span>Meetings</span><strong x-text="hms(v.meeting)">@hms($t['meeting'])</strong></div>
                         <div class="sa-tile sa-t-amber"><span>Idle time</span><strong x-text="hms(v.sIdle)">@hms($t['idle'])</strong></div>
                         <div class="sa-tile sa-t-violet"><span>Active</span><strong>@if($tTotal > 0)<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $tTotal) }}</span>%@else — @endif</strong></div>

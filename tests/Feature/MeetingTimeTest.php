@@ -114,7 +114,7 @@ class MeetingTimeTest extends TestCase
         $this->getJson('/api/attendance/history?from=2026-10-23&to=2026-10-23')->assertOk()
             ->assertJsonPath('data.0.session.worked_seconds', 2640)->assertJsonPath('data.0.session.idle_counted_seconds', 300);
         Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)
-            ->assertSee('00:44:00')->assertSeeText('00:13:00 in use')->assertSeeText('00:25:00 in meetings')->assertSeeText('00:05:00 idle')->assertSee('swsLive', false);
+            ->assertSee('00:44:00')->assertSeeText('00:38:00 in use')->assertSeeText('incl. 00:25:00 in meetings')->assertSeeText('00:05:00 idle')->assertSee('swsLive', false);
         Livewire::actingAs($user)->test(\App\Livewire\Attendance\MyAttendance::class)
             ->assertSee('00:44:00')->assertSee('00:05:00')->assertSee('00:25:00');
     }

@@ -702,19 +702,22 @@ class HrWorkflowService
             : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
         $overtimeHours = $approvedMinutes/60;
         $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
-        // Extra working: the hours actually worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set).
-        $extraWork = ['enabled' => $extraAuto, 'days' => 0, 'seconds' => 0, 'multiplier' => isset($overtimePolicy['holiday_multiplier']) ? (float) $overtimePolicy['holiday_multiplier'] : 1.0, 'amount' => 0.0, 'overtime_minutes_not_paid_twice' => $overtimeOnExtraDays, 'dates' => []];
+        // Extra working: the hours worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set),
+        // at most one working day a day (e.g. 8h 30m): 10 hours on a Sunday is paid as one day, not as overtime.
+        $extraWork = ['enabled' => $extraAuto, 'days' => 0, 'seconds' => 0, 'paid_seconds' => 0, 'multiplier' => isset($overtimePolicy['holiday_multiplier']) ? (float) $overtimePolicy['holiday_multiplier'] : 1.0, 'amount' => 0.0, 'overtime_minutes_not_paid_twice' => $overtimeOnExtraDays, 'dates' => []];
         if ($extraDates) {
             $extraSessions = AttendanceSession::with('employee')->where('employee_id', $employee->id)->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->get()->groupBy(fn ($s) => $s->work_date->toDateString());
             foreach ($extraDates as $date => $kind) {
                 $seconds = (int) collect($extraSessions->get($date, []))->sum(fn ($s) => app(AttendanceService::class)->workedSeconds($s));
                 if ($seconds <= 0) continue;
-                $extraWork['dates'][$date] = ['type' => $kind, 'seconds' => $seconds];
+                $paid = min($seconds, max(1, (int) round(app(AttendanceService::class)->dailyHours($employee, $date) * 3600)));
+                $extraWork['dates'][$date] = ['type' => $kind, 'seconds' => $seconds, 'paid_seconds' => $paid];
                 $extraWork['seconds'] += $seconds;
+                $extraWork['paid_seconds'] += $paid;
                 $extraWork['days']++;
             }
             ksort($extraWork['dates']);
-            if ($extraAuto) $extraWork['amount'] = round($hourly * $extraWork['seconds'] / 3600 * $extraWork['multiplier'], 2);
+            if ($extraAuto) $extraWork['amount'] = round($hourly * $extraWork['paid_seconds'] / 3600 * $extraWork['multiplier'], 2);
         }
         // Short hours (optional, Settings > Payroll): on the days the employee was present, the time
         // worked below their working day (less any half-day/short leave that day) is deducted at the
