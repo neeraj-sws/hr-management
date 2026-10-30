@@ -145,7 +145,8 @@ class TeamMonitoringTest extends TestCase
 
         // HR's audit log and the employee's own "who looked" list.
         Livewire::actingAs($this->hr)->test(MonitoringAudit::class)->assertSee('Downloaded a screenshot')->assertSee('Mona Manager')->assertSee('Dina Direct (TM-1)');
-        Livewire::actingAs($this->employeeUser)->test(Policy::class)->assertSee('Who looked at your monitoring data')->assertSee('Downloaded a screenshot');
+        // The employee's own "who looked" list is hidden for now (commented out in the policy page).
+        Livewire::actingAs($this->employeeUser)->test(Policy::class)->assertDontSee('Who looked at your monitoring data')->assertDontSee('Downloaded a screenshot');
     }
 
     public function test_capture_off_shows_the_empty_state(): void

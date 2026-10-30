@@ -32,6 +32,8 @@
         @endif
     </section>
 
+    {{-- Hidden from employees for now: "Who looked at your monitoring data" (each view / download stays in
+         Monitoring > Audit log for HR). Remove this comment to show it again.
     @if($own)
         <section class="card mt">
             <div class="card-head"><div><h2>Who looked at your monitoring data</h2><p>Every view and download of your screenshots and work timeline is logged.</p></div></div>
@@ -48,4 +50,5 @@
             </table></div>
         </section>
     @endif
+    --}}
 </div>
