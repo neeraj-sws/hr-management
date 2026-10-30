@@ -157,6 +157,9 @@ class Dashboard extends Component
             'recentStatuses' => DailyWorkStatus::with('employee')->whereIn('employee_id', $employeeIds)->latest('work_date')->limit(5)->get(),
             'recentAudit' => $user->can('audit.view') ? AuditLog::with('actor')->latest('id')->limit(6)->get() : collect(),
             'pendingApprovals' => $user->canAny(\App\Support\Access::APPROVER_PERMISSIONS) ? $inbox->pending($user)->take(5) : collect(),
+            // Leave nobody has decided yet (the whole company for HR / admin, the team for a manager), oldest first.
+            'undecidedLeave' => ($orgWide || $user->canAny(['leave.manage', 'leave.approve'])) ? LeaveRequest::with(['employee', 'leaveType'])->where('status', 'pending')
+                ->whereIn('employee_id', $orgWide ? AttendanceEmployee::pluck('id') : $employeeIds->reject(fn ($id) => $id === $profile?->id))->oldest()->get() : collect(),
             'inbox' => $inbox,
             'mySession' => $mySession,
             'myWorked' => $mySession ? $attendance->workedSeconds($mySession) : 0,

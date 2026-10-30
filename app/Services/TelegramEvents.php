@@ -107,6 +107,36 @@ class TelegramEvents
             'Details' => \Illuminate\Support\Str::limit(trim((string) $claim->description), 200), 'Receipt' => $claim->receipt_path ? 'Attached' : 'None', 'Status' => 'Pending approval']));
     }
 
+    /** How long a leave request has waited, in words ("5 hours", "2 days"). */
+    public static function waiting(LeaveRequest $leave): string
+    {
+        $hours = (int) $leave->created_at->diffInHours(now());
+
+        return $hours < 24 ? max(1, $hours).' hour'.($hours === 1 ? '' : 's') : intdiv($hours, 24).' day'.(intdiv($hours, 24) === 1 ? '' : 's');
+    }
+
+    /** Undecided for 24 hours: the Super Admin is told (once). */
+    public function leavePendingEscalated(LeaveRequest $leave): void
+    {
+        $leave->loadMissing(['employee', 'leaveType']);
+        $this->telegram->toAdmin('leave_pending', "leave:{$leave->id}:pending-24h", TelegramNotificationService::format('Leave not decided for 24 hours', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
+            'Asked on' => $leave->created_at?->format('d F Y, h:i A'), 'Waiting' => self::waiting($leave), 'Reason' => $leave->reason, 'Status' => 'Pending - no action taken yet. Please approve or reject.']));
+    }
+
+    /** Every morning: one message listing every leave request nobody has decided yet (oldest first). */
+    public function leavePendingDigest(\Illuminate\Support\Collection $leaves): void
+    {
+        if ($leaves->isEmpty()) return;
+        $lines = [];
+        foreach ($leaves->values() as $i => $leave) {
+            $leave->loadMissing(['employee', 'leaveType']);
+            $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' - '.$leave->ends_on->format('d M'));
+            $when = $leave->starts_on->lt(today()) ? 'already started' : ($leave->starts_on->isToday() ? 'starts TODAY' : ($leave->starts_on->isTomorrow() ? 'starts tomorrow' : null));
+            $lines[] = ($i + 1).'. '.$leave->employee?->name.' · '.($leave->typeName() ?? 'Leave').' · '.$range.' · waiting '.self::waiting($leave).($when ? ' · '.$when : '');
+        }
+        $this->telegram->toAdmin('leave_pending', 'leave-pending-digest:'.today()->toDateString(), TelegramNotificationService::format('Leave requests not decided ('.$leaves->count().')', [...$lines, 'No action taken yet. Approve or reject them in Leave > Approvals.']));
+    }
+
     /** The leave day has come and nobody has decided the request. */
     public function leavePendingUrgent(LeaveRequest $leave): void
     {

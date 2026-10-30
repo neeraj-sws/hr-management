@@ -20,6 +20,27 @@
         </div>
     @endif
 
+    {{-- Leave requests nobody has acted on yet: always at the top until each is approved or rejected. --}}
+    @if($undecidedLeave->isNotEmpty())
+        @php($lateOnes = $undecidedLeave->filter(fn ($l) => $l->created_at->lte(now()->subDay()) || $l->starts_on->lte(today()))->count())
+        <section class="card mb" style="border-left:4px solid {{ $lateOnes ? 'var(--red)' : 'var(--amber)' }}">
+            <div class="card-head"><div><h2>Leave requests not decided yet ({{ $undecidedLeave->count() }})</h2><p>No action taken on these yet.@if($lateOnes) <strong style="color:var(--red)">{{ $lateOnes }} waiting more than 24 hours or already started.</strong>@endif Until a leave is decided its days show "Leave pending" and are not paid.</p></div><a class="btn btn-sm btn-primary" href="{{ route('leave.requests', ['tab' => 'approvals']) }}">Approve / reject</a></div>
+            <div class="table-wrap"><table class="table" data-no-sort>
+                <thead><tr><th>Employee</th><th>Leave</th><th>Dates</th><th>Asked</th><th>Waiting</th></tr></thead>
+                <tbody>
+                @foreach($undecidedLeave->take(10) as $leave)
+                    <tr wire:key="ul-{{ $leave->id }}"><td><strong>{{ $leave->employee?->name }}</strong><small>{{ $leave->employee?->employee_code }}</small></td>
+                        <td>{{ $leave->typeName() ?? 'Leave' }}<small>{{ \Illuminate\Support\Str::limit((string) $leave->reason, 60) }}</small></td>
+                        <td class="nowrap">{{ $leave->starts_on->format('d M') }}{{ $leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M') }}<small>{{ rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.') }} day(s)</small></td>
+                        <td class="nowrap small">{{ $leave->created_at->format('d M, h:i A') }}</td>
+                        <td>@if($leave->starts_on->lt(today()))<x-badge tone="red">Started · {{ \App\Services\TelegramEvents::waiting($leave) }}</x-badge>@elseif($leave->starts_on->isToday())<x-badge tone="red">Starts today · {{ \App\Services\TelegramEvents::waiting($leave) }}</x-badge>@elseif($leave->created_at->lte(now()->subDay()))<x-badge tone="amber">{{ \App\Services\TelegramEvents::waiting($leave) }}</x-badge>@else<x-badge tone="gray">{{ \App\Services\TelegramEvents::waiting($leave) }}</x-badge>@endif</td></tr>
+                @endforeach
+                </tbody>
+            </table></div>
+            @if($undecidedLeave->count() > 10)<div class="card-body small muted">and {{ $undecidedLeave->count() - 10 }} more in Leave &gt; Approvals.</div>@endif
+        </section>
+    @endif
+
     @if($profile)
         <div class="grid grid-3 mb">
             <section class="card card-body">
