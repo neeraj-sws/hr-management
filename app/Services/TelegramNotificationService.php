@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\SendTelegramNotification;
 use App\Models\TelegramLink;
+use App\Models\TelegramSetting;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -35,6 +36,9 @@ class TelegramNotificationService
         'leave_applied' => ['Leave request', true, null],
         'leave_decided' => ['Leave approved / rejected', true, null],
         'leave_cancelled' => ['Leave cancelled', true, null],
+        'auto_rejected' => ['Leave / late reason rejected automatically (personal reason)', true, null],
+        'overtime_requested' => ['Overtime requested', true, null],
+        'expense_submitted' => ['Expense claim submitted', true, null],
         'leave_pending' => ['Leave still not decided on its day', true, null],
         'correction_requested' => ['Attendance correction requested', true, null],
         'daily_status' => ['Daily status submitted (an old day shows its reason)', true, null],
@@ -49,12 +53,68 @@ class TelegramNotificationService
         'delivery_error' => ['Telegram delivery problems', true, null],
     ];
 
-    /** Bot token from config only (never logged or shown). */
+    /** A value set in System > Telegram, else the one in .env (config). */
+    private function setting(string $field): ?string
+    {
+        $value = trim((string) (TelegramSetting::current()?->{$field} ?? ''));
+        if ($value === '') $value = trim((string) config('services.telegram.'.$field));
+
+        return $value !== '' ? $value : null;
+    }
+
+    /** Bot token: saved in System > Telegram (encrypted) or in .env. Never logged or shown. */
     private function token(): ?string
     {
-        $token = trim((string) config('services.telegram.bot_token'));
+        return $this->setting('bot_token');
+    }
 
-        return $token !== '' ? $token : null;
+    /** Where each part comes from, for the setup checks: "HRMS", ".env" or null (not set). */
+    public function source(string $field): ?string
+    {
+        $saved = TelegramSetting::current();
+        if ($field === 'enabled') return $saved?->enabled !== null ? 'HRMS' : (config('services.telegram.enabled') ? '.env' : null);
+        if (trim((string) ($saved?->{$field} ?? '')) !== '') return 'HRMS';
+
+        return trim((string) config('services.telegram.'.$field)) !== '' ? '.env' : null;
+    }
+
+    /**
+     * Saves the bot from System > Telegram. A new token is checked with Telegram first (getMe) and its @username kept;
+     * an empty token field keeps the saved one. Then the bot is pointed at this website.
+     *
+     * @return array{ok: bool, error: ?string, username: ?string}
+     */
+    public function saveBot(bool $enabled, ?string $token, ?string $adminChatId, int $actor, ?string $webhookUrl = null): array
+    {
+        $row = TelegramSetting::current() ?? new TelegramSetting;
+        $token = trim((string) $token);
+        $username = $row->bot_username;
+        if ($token !== '') {
+            try {
+                $me = Http::timeout(10)->acceptJson()->get(self::API.'/bot'.$token.'/getMe');
+            } catch (\Throwable $e) {
+                return ['ok' => false, 'error' => 'Could not reach Telegram: '.Str::limit(str_replace($token, '***', $e->getMessage()), 100), 'username' => null];
+            }
+            if ($me->json('ok') !== true) return ['ok' => false, 'error' => 'Telegram did not accept this bot token ('.Str::limit((string) $me->json('description', 'HTTP '.$me->status()), 80).'). Copy it again from @BotFather.', 'username' => null];
+            $row->bot_token = $token;
+            $username = (string) $me->json('result.username');
+        }
+        $row->fill(['enabled' => $enabled, 'bot_username' => $username ?: null, 'admin_chat_id' => trim((string) $adminChatId) ?: null, 'updated_by' => $actor])->save();
+        Cache::forget('telegram.bot_username');
+        app(\App\Services\AuditLogger::class)->record('telegram.bot_saved', $row, ['token_changed' => $token !== '', 'enabled' => $enabled]);
+        if ($token !== '' && $webhookUrl) $this->setWebhook($webhookUrl);
+
+        return ['ok' => true, 'error' => null, 'username' => $username ?: null];
+    }
+
+    /** Forgets the token saved in the HRMS (.env is used again, if it has one). */
+    public function removeSavedToken(int $actor): void
+    {
+        $row = TelegramSetting::current();
+        if (! $row) return;
+        $row->forceFill(['bot_token' => null, 'bot_username' => null, 'updated_by' => $actor])->save();
+        Cache::forget('telegram.bot_username');
+        app(\App\Services\AuditLogger::class)->record('telegram.bot_token_removed', $row);
     }
 
     public function configured(): bool
@@ -62,17 +122,18 @@ class TelegramNotificationService
         return $this->token() !== null;
     }
 
-    /** .env switch + token + System > Telegram master switch. */
+    /** Bot turned on (System > Telegram, else .env) + a token + the master switch for messages. */
     public function enabled(): bool
     {
-        return (bool) config('services.telegram.enabled') && $this->configured() && (bool) ($this->settings()['on'] ?? true);
+        $saved = TelegramSetting::current()?->enabled;
+        $on = $saved !== null ? (bool) $saved : (bool) config('services.telegram.enabled');
+
+        return $on && $this->configured() && (bool) ($this->settings()['on'] ?? true);
     }
 
     public function adminChatId(): ?string
     {
-        $id = trim((string) config('services.telegram.admin_chat_id'));
-
-        return $id !== '' ? $id : null;
+        return $this->setting('admin_chat_id');
     }
 
     /** {on, employees, admin: {event: bool}, employee: {event: bool}} with defaults. */
@@ -193,7 +254,7 @@ class TelegramNotificationService
     /** The bot's @username (for the link); from .env or asked once from Telegram. */
     public function botUsername(): ?string
     {
-        $name = ltrim(trim((string) config('services.telegram.bot_username')), '@');
+        $name = ltrim((string) $this->setting('bot_username'), '@');
         if ($name !== '') return $name;
         if (! $this->configured()) return null;
 

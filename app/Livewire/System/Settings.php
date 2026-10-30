@@ -40,6 +40,10 @@ class Settings extends Component
     /** Half-day holiday: the office closes at this time (blank = closed all day). */
     public string $newHolidayClosesAt = '';
     public string $leaveYearStart = '4';
+    /** A personal reason ("personal work") rejects a leave request / a late fine's reason automatically. */
+    public bool $personalLeave = true;
+    public bool $personalLate = true;
+    public string $personalPhrases = '';
     public string $idleMinutes = '10';
     public bool $autoCheckout = true;
     public string $autoCheckoutMinutes = '30';
@@ -198,6 +202,9 @@ class Settings extends Component
             'holidayNames' => (array) ($calendar['holiday_names'] ?? []),
             'holidayTypes' => collect((array) ($calendar['holiday_types'] ?? []))->map(fn ($t) => \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => ['d' => $t]], 'd'))->all(),
             'leaveYearStart' => (string) \App\Support\LeaveYear::startMonth(),
+            'personalLeave' => \App\Support\PersonalReason::settings()['leave'],
+            'personalLate' => \App\Support\PersonalReason::settings()['late'],
+            'personalPhrases' => implode(', ', \App\Support\PersonalReason::settings()['phrases']),
             'idleMinutes' => (string) ($idle['away_prompt_minutes'] ?? 10),
             'idleAfterMinutes' => (string) ($idle['idle_after_minutes'] ?? 5),
             'autoCheckout' => ($auto = app(\App\Services\AttendanceService::class)->autoCheckoutPolicy(null))['enabled'],
@@ -312,6 +319,25 @@ class Settings extends Component
         $this->validate(['leaveYearStart' => ['required', 'integer', 'between:1,12']], [], ['leaveYearStart' => 'leave year start']);
         $people->setPolicy('leave.year', 'leave', 'Leave year', ['start_month' => (int) $this->leaveYearStart], null, auth()->id(), today()->toDateString());
         $this->toast('Leave year saved: '.\Illuminate\Support\Carbon::create(2000, (int) $this->leaveYearStart, 1)->format('F').' to '.\Illuminate\Support\Carbon::create(2000, (int) $this->leaveYearStart, 1)->subMonth()->format('F').'.');
+    }
+
+    public function savePersonalReasons(PeopleOperationsService $people): void
+    {
+        $this->authorizeSettings();
+        $phrases = \App\Support\PersonalReason::clean(preg_split('/[,\n]+/', $this->personalPhrases) ?: []);
+        if (($this->personalLeave || $this->personalLate) && ! $phrases) {
+            $this->addError('personalPhrases', 'Write at least one word, e.g. personal.');
+
+            return;
+        }
+        if (collect($phrases)->contains(fn ($p) => mb_strlen($p) > 60)) {
+            $this->addError('personalPhrases', 'Keep each word or phrase under 60 characters.');
+
+            return;
+        }
+        $people->setPolicy(\App\Support\PersonalReason::KEY, 'leave', 'Personal reasons rejected automatically', ['leave' => $this->personalLeave, 'late' => $this->personalLate, 'phrases' => $phrases], null, auth()->id(), today()->toDateString());
+        $this->personalPhrases = implode(', ', $phrases);
+        $this->toast('Saved: personal reasons are '.($this->personalLeave || $this->personalLate ? 'rejected automatically for '.implode(' and ', array_keys(array_filter(['leave' => $this->personalLeave, 'late fines' => $this->personalLate]))) : 'no longer rejected automatically').'.');
     }
 
     public function saveCalendar(PeopleOperationsService $people): void

@@ -19,5 +19,5 @@ class EmployeePenalty extends Model
     /** HR / admin can still take it back: not removed yet and not already paid back. */
     public function canBeRemoved(): bool{return in_array($this->status, ['pending', 'approved'], true) && ! $this->isPaidBack();}
     /** The employee can still give a reason: any fine (late, absence, daily status, task …) not removed and with no reason yet. */
-    public function canAppeal(): bool{return in_array($this->status, ['pending', 'approved'], true) && ! $this->isPaidBack() && ! $this->appeal;}
+    public function canAppeal(): bool{return in_array($this->status, ['pending', 'approved'], true) && ! $this->isPaidBack() && (! $this->appeal || $this->appeal->isAutoRejected());}
 }

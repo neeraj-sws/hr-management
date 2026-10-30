@@ -84,7 +84,10 @@ export default function Leave() {
       const created = await post<{ data: LeaveRequest }>('/leave/requests', { leave_type_id: typeId, other_type: isOther(typeId) ? otherType.trim() : null, duration, starts_on: startsOn, ends_on: endDate, reason });
       // Show the new request immediately; balances refresh in the background.
       setRequests((current) => [created.data, ...current.filter((r) => r.id !== created.data.id)]);
-      setMessage({ tone: 'success', text: `Leave request for ${formatDate(startsOn)} submitted for approval.` });
+      // A personal reason is rejected automatically: say so with the reason, not "submitted".
+      setMessage(created.data.status === 'rejected'
+        ? { tone: 'error', text: created.data.decision_note || 'Your leave request was rejected automatically.' }
+        : { tone: 'success', text: `Leave request for ${formatDate(startsOn)} submitted for approval.` });
       // Open the month the leave is in (e.g. November), so the new request stays in the list.
       if (!day && statusFilter !== 'pending') setMonth(startsOn.slice(0, 7));
       setStartsOn(''); setEndsOn(''); setReason(''); setDayChoice('one');

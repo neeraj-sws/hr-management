@@ -109,14 +109,15 @@ class Requests extends Component
         ], ['startsOn.after_or_equal' => 'Leave can be asked for back to '.today()->subMonthNoOverflow()->startOfMonth()->format('d M Y').' at the earliest; for older days ask HR.'], ['leaveTypeId' => 'leave type', 'startsOn' => 'start date', 'endsOn' => 'end date']);
         if ($this->duration !== 'full') $this->endsOn = $this->startsOn;
         try {
-            $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'other_type' => $this->otherType, 'duration' => $this->duration, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
+            $leave = $workflow->requestLeave($this->requireEmployee(), ['leave_type_id' => $this->leaveTypeId, 'other_type' => $this->otherType, 'duration' => $this->duration, 'starts_on' => Carbon::parse($this->startsOn), 'ends_on' => Carbon::parse($this->endsOn), 'reason' => $this->reason]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             if (isset($e->errors()['other_type'])) throw \Illuminate\Validation\ValidationException::withMessages(['otherType' => $e->errors()['other_type'][0]]);
             throw $e;
         }
         $this->otherType = '';
         $this->showForm = false;
-        $this->toast('Leave request submitted for approval.');
+        // A personal reason: rejected automatically, and the employee sees why at once.
+        $leave->status === 'rejected' ? $this->toast((string) $leave->decision_note, 'error') : $this->toast('Leave request submitted for approval.');
     }
 
     public function cancel(int $id, AuditLogger $audit): void

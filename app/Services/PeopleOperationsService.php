@@ -271,11 +271,26 @@ class PeopleOperationsService
         $reason = trim($reason);
         if ($penalty->employee?->user_id !== $user->id) abort(403);
         if (! in_array($penalty->status, ['pending', 'approved'], true)) throw ValidationException::withMessages(['reason' => 'This fine is already removed.']);
-        if ($penalty->appeal()->exists()) throw ValidationException::withMessages(['reason' => 'A reason was already given for this fine.']);
+        if ($penalty->appeal && ! $penalty->appeal->isAutoRejected()) throw ValidationException::withMessages(['reason' => 'A reason was already given for this fine.']);
         if (mb_strlen($reason) < 5) throw ValidationException::withMessages(['reason' => 'Write the reason (at least 5 characters).']);
 
+        // "Personal work / personal reason" is not a valid reason for coming late: rejected at once, the fine stays.
+        if ($penalty->isLateFine() && ($matched = \App\Support\PersonalReason::match($reason, 'late'))) {
+            return DB::transaction(function () use ($penalty, $user, $reason, $matched) {
+                $note = \App\Support\PersonalReason::note('late');
+                // One reason row per fine: a second personal reason replaces the first (both stay in the audit log).
+                $appeal = PenaltyAppeal::updateOrCreate(['employee_penalty_id' => $penalty->id], ['employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'rejected', 'decided_by' => null, 'decided_at' => now(), 'decision_note' => $note]);
+                $this->audit->record('penalty.appeal_auto_rejected', $penalty, ['appeal_id' => $appeal->id, 'matched' => $matched, 'reason' => mb_substr($reason, 0, 1000)]);
+                Notifier::send($penalty->employee?->user, 'PenaltyAppeal', $appeal->id, 'Your reason for the late fine of '.$penalty->effective_on->format('d M').' ("'.\Illuminate\Support\Str::limit($appeal->reason, 80).'") was rejected: the fine of '.number_format((float) $penalty->amount, 2)." stays. {$note}", route('compliance.penalties', [], false));
+                rescue(fn () => app(\App\Services\TelegramEvents::class)->lateReasonAutoRejected($appeal->setRelation('penalty', $penalty)), null, true);
+
+                return $appeal;
+            });
+        }
+
         return DB::transaction(function () use ($penalty, $user, $reason) {
-            $appeal = PenaltyAppeal::create(['employee_penalty_id' => $penalty->id, 'employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'pending']);
+            // After a personal reason was rejected automatically, the valid reason takes its place (the first is in the audit log).
+            $appeal = PenaltyAppeal::updateOrCreate(['employee_penalty_id' => $penalty->id], ['employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'pending', 'decided_by' => null, 'decided_at' => null, 'decision_note' => null]);
             ApprovalRequest::create(['approvable_type' => PenaltyAppeal::class, 'approvable_id' => $appeal->id, 'approver_id' => null, 'status' => 'pending']);
             $this->audit->record('penalty.appealed', $penalty, ['appeal_id' => $appeal->id]);
             Notifier::send(Notifier::withPermission('penalties.manage'), 'PenaltyAppeal', $appeal->id,

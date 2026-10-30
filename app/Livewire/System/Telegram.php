@@ -10,8 +10,9 @@ use Livewire\Component;
 
 /**
  * System > Telegram (administrators only): setup checks, connecting the bot to this website, a test message to the
- * Super Admin chat, which events go where, who has connected, and the latest messages. The bot token and the Super
- * Admin chat ID live in .env only and are never shown here in full.
+ * Super Admin chat, which events go where, who has connected, and the latest messages. The bot (on/off, token,
+ * Super Admin chat ID) is set here and saved in the HRMS - .env is only a fallback. The token is stored encrypted and
+ * never shown again, not even in part.
  */
 class Telegram extends Component
 {
@@ -24,9 +25,61 @@ class Telegram extends Component
 
     public array $form = [];
 
+    /** Bot connection form. The token field always starts empty (empty on save = keep the saved token). */
+    public bool $botEnabled = true;
+    public string $botToken = '';
+    public string $adminChatId = '';
+
     public function mount(TelegramNotificationService $telegram): void
     {
         $this->form = $telegram->settings();
+        $saved = \App\Models\TelegramSetting::current();
+        $this->botEnabled = $saved?->enabled ?? ((bool) config('services.telegram.enabled') || ! $telegram->configured());
+        $this->adminChatId = (string) $telegram->adminChatId();
+    }
+
+    public function saveBot(TelegramNotificationService $telegram): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($this->user()), 403);
+        $this->validate([
+            'botToken' => ['nullable', 'string', 'max:100', 'regex:/^\d{5,15}:[A-Za-z0-9_-]{30,60}$/'],
+            'adminChatId' => ['nullable', 'string', 'regex:/^-?\d{4,20}$/'],
+        ], ['botToken.regex' => 'This does not look like a bot token (it looks like 123456789:ABC...). Copy it again from @BotFather.', 'adminChatId.regex' => 'The chat ID is a number (e.g. 1234567890; a group starts with -).'], ['botToken' => 'bot token', 'adminChatId' => 'Super Admin chat ID']);
+        if (trim($this->botToken) === '' && ! $telegram->configured()) {
+            $this->addError('botToken', 'Paste the bot token from @BotFather.');
+
+            return;
+        }
+        $result = $telegram->saveBot($this->botEnabled, $this->botToken, $this->adminChatId, $this->user()->id, route('api.telegram.webhook'));
+        $this->botToken = '';
+        if (! $result['ok']) {
+            $this->addError('botToken', $result['error']);
+
+            return;
+        }
+        $this->adminChatId = (string) $telegram->adminChatId();
+        $this->toast('Telegram bot saved'.($result['username'] ? ' (@'.$result['username'].')' : '').'.');
+    }
+
+    /** The signed-in administrator's own connected Telegram becomes the Super Admin chat (no typing of IDs). */
+    public function useMyChat(): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($this->user()), 403);
+        $chat = TelegramLink::where('user_id', $this->user()->id)->whereNotNull('chat_id')->value('chat_id');
+        if (! $chat) {
+            $this->addError('adminChatId', 'Connect your own Telegram first (My profile > Telegram > Connect), then press this again.');
+
+            return;
+        }
+        $this->adminChatId = (string) $chat;
+        $this->toast('Your Telegram chat is filled in. Press "Save bot" to keep it.');
+    }
+
+    public function removeToken(TelegramNotificationService $telegram): void
+    {
+        abort_unless(\App\Support\Access::isAdmin($this->user()), 403);
+        $telegram->removeSavedToken($this->user()->id);
+        $this->toast('The saved bot token was removed.');
     }
 
     /** Tick or untick every event in one column ("admin" or "employee") - saved with Save. */
@@ -66,7 +119,7 @@ class Telegram extends Component
         abort_unless(\App\Support\Access::isAdmin($this->user()), 403);
         $chat = $telegram->adminChatId();
         if (! $chat) {
-            $this->addError('telegram', 'Set TELEGRAM_ADMIN_CHAT_ID in .env first (send /start to the bot to see your chat ID).');
+            $this->addError('telegram', 'Fill in the Super Admin chat ID under "Bot connection" first (or press "Use my Telegram").');
 
             return;
         }
@@ -85,14 +138,19 @@ class Telegram extends Component
     public function render(TelegramNotificationService $telegram)
     {
         $admin = (string) $telegram->adminChatId();
+        $from = fn (string $field) => ($s = $telegram->source($field)) ? " · from {$s}" : '';
+        $saved = \App\Models\TelegramSetting::current();
 
         return $this->page('livewire.system.telegram', [
             'checks' => [
-                ['TELEGRAM_NOTIFICATIONS_ENABLED=true in .env', (bool) config('services.telegram.enabled')],
-                ['TELEGRAM_BOT_TOKEN set in .env', $telegram->configured()],
-                ['TELEGRAM_ADMIN_CHAT_ID set in .env'.($admin !== '' ? ' (…'.substr($admin, -4).')' : ''), $admin !== ''],
+                ['Bot turned on'.$from('enabled'), $saved?->enabled !== null ? (bool) $saved->enabled : (bool) config('services.telegram.enabled')],
+                ['Bot token saved'.$from('bot_token'), $telegram->configured()],
+                ['Super Admin chat ID'.($admin !== '' ? ' (…'.substr($admin, -4).')' : '').$from('admin_chat_id'), $admin !== ''],
                 ['Bot username'.($telegram->configured() && $telegram->botUsername() ? ': @'.$telegram->botUsername() : ''), (bool) ($telegram->configured() && $telegram->botUsername())],
             ],
+            'tokenSource' => $telegram->source('bot_token'),
+            'savedBot' => $saved?->loadMissing('updater'),
+            'myChatLinked' => TelegramLink::where('user_id', $this->user()->id)->whereNotNull('chat_id')->exists(),
             'events' => TelegramNotificationService::EVENTS,
             'links' => TelegramLink::with('user')->whereNotNull('chat_id')->latest('linked_at')->get(),
             // Latest messages: filtered, 20 a page, grouped by day on the page; who and what in words.

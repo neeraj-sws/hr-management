@@ -172,6 +172,18 @@ class HrWorkflowService
                 ->whereDate('ends_on', '>=', $data['starts_on'])
                 ->exists();
             if ($overlap) throw ValidationException::withMessages(['leave' => 'This request overlaps another pending or approved leave request.']);
+            // "Personal work / personal reason" is not a valid reason: rejected at once with the reason, the employee
+            // is told. Leave HR records for someone (no notifications) is never rejected this way.
+            if ($notify && ($matched = \App\Support\PersonalReason::match($data['reason'] ?? null, 'leave'))) {
+                $note = \App\Support\PersonalReason::note('leave');
+                $data['other_type'] = self::otherType(LeaveType::whereKey($data['leave_type_id'])->firstOrFail(), $data['other_type'] ?? null);
+                $leave = LeaveRequest::create(['employee_id' => $employee->id, ...$data, 'days' => $days, 'status' => 'rejected', 'decided_at' => now(), 'decision_note' => $note]);
+                $this->audit->record('leave.auto_rejected', $leave, ['matched' => $matched]);
+                $range = $data['starts_on']->isSameDay($data['ends_on']) ? $data['starts_on']->format('d M Y') : $data['starts_on']->format('d M').' – '.$data['ends_on']->format('d M Y');
+                Notifier::send($employee->user, 'LeaveRequest', $leave->id, "Your leave request ({$range}) was rejected automatically. {$note}", route('leave.requests', [], false));
+
+                return $leave;
+            }
             $balance = LeaveBalance::where('employee_id', $employee->id)->where('leave_type_id', $data['leave_type_id'])->where('year', $year)->lockForUpdate()->first();
             $leaveType = LeaveType::whereKey($data['leave_type_id'])->firstOrFail();
             if (! $balance) {

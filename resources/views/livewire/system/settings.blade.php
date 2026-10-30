@@ -18,6 +18,17 @@
                 <span class="small muted">Current leave year: <b>{{ \App\Support\LeaveYear::label(\App\Support\LeaveYear::current()) }}</b> ({{ \App\Support\LeaveYear::start(\App\Support\LeaveYear::current())->format('d M Y') }} – {{ \App\Support\LeaveYear::end(\App\Support\LeaveYear::current())->format('d M Y') }}). Change it only between leave years: balances already created stay under the leave year they were made for.</span>
             </form>
         </section>
+        <section class="card mb">
+            <form class="card-body stack" wire:submit="savePersonalReasons">
+                <div class="card-head" style="padding:0;border:0"><div><h2>Personal reasons are not accepted</h2><p>A leave request, or the reason for a late fine, that says "personal work" / "personal reason" is rejected automatically. The employee is told at once why (in the app, by e-mail / Telegram as they chose) and the Super Admin gets a Telegram message. Leave that HR records for someone is never rejected this way.</p></div></div>
+                <label class="check"><input type="checkbox" wire:model="personalLeave"> <span><strong>Reject leave requests</strong> with a personal reason</span></label>
+                <label class="check"><input type="checkbox" wire:model="personalLate"> <span><strong>Reject late-coming reasons</strong> (reason for a late fine) that are personal · the fine stays; they can give a valid reason again</span></label>
+                <x-field label="Words that mean a personal reason" name="personalPhrases" hint="Separated by commas. Whole words, any case: personal matches Personal work and personal reason, but not personally.">
+                    <input type="text" wire:model="personalPhrases" placeholder="personal, private work, own work">
+                </x-field>
+                <div><button class="btn btn-primary">Save</button></div>
+            </form>
+        </section>
         <section class="card">
             <div class="card-head"><div><h2>Leave types</h2><p>Monthly accrual &gt; 0 means balances build up each month (via the scheduled <code>leave:accrue</code> job); otherwise the annual allowance is granted up-front.</p></div><button class="btn btn-primary btn-sm" wire:click="editType"><x-icon name="plus" class="icon-sm" />Add leave type</button></div>
             <div class="table-wrap"><table class="table">

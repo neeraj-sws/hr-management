@@ -39,7 +39,9 @@ export default function FinesScreen() {
     try {
       const saved = await post<{ data: Fine }>(`/my/fines/${giving.id}/reason`, { reason: reason.trim() });
       setItems((current) => current.map((f) => (f.id === saved.data.id ? saved.data : f)));
-      setMessage({ tone: 'success', text: 'Reason sent to HR. If it is accepted, the fine is removed.' });
+      setMessage(saved.data.my_reason?.status === 'rejected'
+        ? { tone: 'error', text: saved.data.my_reason.note || 'Your reason was rejected automatically.' }
+        : { tone: 'success', text: 'Reason sent to HR. If it is accepted, the fine is removed.' });
       setReason('');
     } catch (e) {
       if (e instanceof ApiError) { setError(e.errors.reason?.[0]); setMessage({ tone: 'error', text: e.firstMessage }); }

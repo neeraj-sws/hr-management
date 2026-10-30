@@ -151,9 +151,9 @@ class Penalties extends Component
     public function saveAppeal(PeopleOperationsService $people): void
     {
         $this->validate(['appealReason' => ['required', 'string', 'min:5', 'max:1000']], ['appealReason.min' => 'Write the reason (at least 5 characters).'], ['appealReason' => 'reason']);
-        $people->appealPenalty(EmployeePenalty::with('employee')->findOrFail($this->appealingId), $this->user(), $this->appealReason);
+        $appeal = $people->appealPenalty(EmployeePenalty::with('employee')->findOrFail($this->appealingId), $this->user(), $this->appealReason);
         $this->appealingId = null;
-        $this->toast('Reason sent to HR. If it is accepted, the fine is removed.');
+        $appeal->status === 'rejected' ? $this->toast((string) $appeal->decision_note, 'error') : $this->toast('Reason sent to HR. If it is accepted, the fine is removed.');
     }
 
     /** accept = the fine is removed; reject = it stays (a note is required). */
