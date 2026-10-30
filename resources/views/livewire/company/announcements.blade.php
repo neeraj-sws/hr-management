@@ -30,6 +30,13 @@
                 <x-field label="Send to" name="audience"><select wire:model.live="audience"><option value="all">Everyone</option><option value="department">One department</option><option value="team">One team</option></select></x-field>
                 @if($audience === 'department')<x-field label="Department" name="departmentId"><select wire:model="departmentId"><option value="">Choose…</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-field>@endif
                 @if($audience === 'team')<x-field label="Team" name="teamId"><select wire:model="teamId"><option value="">Choose…</option>@foreach($teams as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach</select></x-field>@endif
+                {{-- Leave out departments / teams (e.g. everyone except IT Web Info). --}}
+                <x-field label="Leave out (optional)" name="excludeDepartments" full hint="nobody in these departments or teams gets or sees it">
+                    <div class="checks">
+                        @foreach($departments as $d)<label class="check"><input type="checkbox" value="{{ $d->id }}" wire:model="excludeDepartments"> Department: {{ $d->name }}</label>@endforeach
+                        @foreach($teams as $t)<label class="check"><input type="checkbox" value="{{ $t->id }}" wire:model="excludeTeams"> Team: {{ $t->name }}</label>@endforeach
+                    </div>
+                </x-field>
                 <x-field label="Show until" name="expiresOn" hint="blank = always"><input type="date" wire:model="expiresOn" min="{{ today()->toDateString() }}"></x-field>
                 <label class="check"><input type="checkbox" wire:model="isPinned"> Pin to the top</label>
                 @unless($editingId)<label class="check full"><input type="checkbox" wire:model="sendEmail"> Also send by e-mail to everyone in the audience <span class="small muted">(otherwise in the app only — no e-mail is sent)</span></label>@endunless

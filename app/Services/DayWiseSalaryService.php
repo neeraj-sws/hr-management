@@ -82,6 +82,8 @@ class DayWiseSalaryService
             $pay = $workday ? round($rate * $share, 2) : 0.0;
             $extra = isset($f['extraWork']['dates'][$date]) && $f['extraAuto'] ? round($f['hourly'] * (int) ($f['extraWork']['dates'][$date]['paid_seconds'] ?? $f['extraWork']['dates'][$date]['seconds']) / 3600 * $f['extraWork']['multiplier'], 2) : 0.0;
             $ot = 0.0;
+            // Approved night work that day: paid by the hour on top.
+            $night = isset($f['nightWork']['dates'][$date]) ? round($f['hourly'] * (int) $f['nightWork']['dates'][$date] / 60, 2) : 0.0;
             if (! isset($f['extraWork']['dates'][$date]) || ! $f['extraAuto']) {
                 $minutes = (int) collect($overtime->get($date, []))->sum('approved_minutes');
                 $ot = $minutes ? round($f['hourly'] * $minutes / 60 * ($workday ? $f['multiplier'] : $f['holidayMultiplier']), 2) : 0.0;
@@ -91,15 +93,15 @@ class DayWiseSalaryService
 
             $rows[] = ['date' => $date, 'day' => $day->format('D'), 'status' => $status, 'tone' => $tone, 'note' => $note, 'workday' => $workday,
                 'in' => $session?->check_in, 'out' => $session?->check_out, 'at_work' => $session && $session->check_out ? (int) $this->attendance->officeSeconds($session) : null,
-                'rate' => $workday ? round($rate, 2) : null, 'share' => $share, 'pay' => $pay, 'extra' => $extra, 'overtime' => $ot, 'fines' => $dayFines, 'fines_deducted' => $deducted,
-                'net' => round($pay + $extra + $ot - $deducted, 2)];
+                'rate' => $workday ? round($rate, 2) : null, 'share' => $share, 'pay' => $pay, 'extra' => $extra, 'overtime' => round($ot + $night, 2), 'night' => $night, 'fines' => $dayFines, 'fines_deducted' => $deducted,
+                'net' => round($pay + $extra + $ot + $night - $deducted, 2)];
         }
 
         $totals = ['pay' => round(array_sum(array_column($rows, 'pay')), 2), 'extra' => round(array_sum(array_column($rows, 'extra')), 2), 'overtime' => round(array_sum(array_column($rows, 'overtime')), 2), 'fines' => round(array_sum(array_column($rows, 'fines_deducted')), 2), 'net' => round(array_sum(array_column($rows, 'net')), 2)];
 
         // Month items (not tied to one day), so the total is exactly what payroll pays.
         $items = [];
-        $match = round((float) $f['basePay'] + (float) $f['overtimeAmount'] + (float) ($f['extraWork']['amount'] ?? 0) - $totals['pay'] - $totals['extra'] - $totals['overtime'], 2);
+        $match = round((float) $f['basePay'] + (float) $f['overtimeAmount'] + (float) ($f['extraWork']['amount'] ?? 0) + (float) ($f['nightWork']['amount'] ?? 0) - $totals['pay'] - $totals['extra'] - $totals['overtime'], 2);
         if (abs($match) >= 0.01) $items[] = ['label' => 'Month adjustment', 'detail' => 'paid holidays topping up a short month, or the most days a month pays', 'amount' => $match];
         // Fines the month deducts that are not on a listed day (e.g. a fine dated in this month but already counted).
         $fineGap = round($totals['fines'] - (float) $f['penalties'], 2);

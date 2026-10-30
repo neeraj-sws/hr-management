@@ -137,6 +137,13 @@ class TelegramEvents
         $this->telegram->toAdmin('leave_pending', 'leave-pending-digest:'.today()->toDateString(), TelegramNotificationService::format('Leave requests not decided ('.$leaves->count().')', [...$lines, 'No action taken yet. Approve or reject them in Leave > Approvals.']));
     }
 
+    public function nightWorkRequested(\App\Models\NightWorkRequest $request): void
+    {
+        $request->loadMissing('employee');
+        $this->telegram->toAdmin('night_work_requested', "night-work:{$request->id}:requested", TelegramNotificationService::format('Night work requested', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Time' => $request->timeRange(), 'Hours' => Duration::words($request->minutes),
+            'Tasks' => $request->tasks()->pluck('title')->join(', ') ?: null, 'Work done' => \Illuminate\Support\Str::limit((string) $request->work_done, 300), 'Status' => 'Pending approval']));
+    }
+
     /** The leave day has come and nobody has decided the request. */
     public function leavePendingUrgent(LeaveRequest $leave): void
     {

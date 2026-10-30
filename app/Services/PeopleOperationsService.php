@@ -188,6 +188,19 @@ class PeopleOperationsService
         return $base->addMinutes((int) round((float) ($config['grace_hours'] ?? 0) * 60));
     }
 
+    /**
+     * An approved full-day leave covers this day, and HR has not settled it as a normal working day: work that day
+     * was urgent work on a leave day - paid for the hours worked (extra working), with no late / early check-out
+     * rules (no 10:16 cut-off, no late fine, no early fine). The rest of the day stays leave.
+     */
+    public function urgentWorkOnLeave(AttendanceEmployee $employee, string $date): bool
+    {
+        $onLeave = LeaveRequest::where('employee_id', $employee->id)->where('status', 'approved')->where(fn ($q) => $q->whereNull('duration')->orWhere('duration', 'full'))
+            ->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists();
+
+        return $onLeave && \App\Models\LeaveConflictResolution::where('employee_id', $employee->id)->whereDate('work_date', $date)->value('resolution') !== 'worked';
+    }
+
     public function lateFineOnTop(AttendanceEmployee $employee, \App\Models\AttendanceSession $session): bool
     {
         $date = $session->work_date->toDateString();
@@ -225,8 +238,8 @@ class PeopleOperationsService
             $kind = strtok((string) $penalty->source_key, ':');
             $stillApplies = match ($kind) {
                 'absence' => $session === null && ! LeaveRequest::where('employee_id', $employee->id)->whereIn('status', ['approved', 'pending'])->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists(),
-                'late' => $session !== null && (! $this->paidByHours($employee, $session) || $this->lateFineOnTop($employee, $session)) && app(AttendanceService::class)->lateMinutes($session) > 0,
-                'early' => $session !== null && $session->check_out && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->earlyMinutes($session) > 0,
+                'late' => $session !== null && ! $this->urgentWorkOnLeave($employee, $date) && (! $this->paidByHours($employee, $session) || $this->lateFineOnTop($employee, $session)) && app(AttendanceService::class)->lateMinutes($session) > 0,
+                'early' => $session !== null && $session->check_out && ! $this->urgentWorkOnLeave($employee, $date) && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->earlyMinutes($session) > 0,
                 default => true,
             };
             if ($stillApplies) continue;
@@ -593,6 +606,8 @@ class PeopleOperationsService
             if($this->paidByHours($employee,$session)&&!$this->lateFineOnTop($employee,$session))continue;
             // Extra working on an off day is never late.
             if(!app(AttendanceService::class)->isScheduledDay($employee,$session->work_date->toDateString()))continue;
+            // Urgent work on a full-day leave: paid by the hours worked, never late.
+            if($this->urgentWorkOnLeave($employee,$session->work_date->toDateString()))continue;
             $workStart=app(AttendanceService::class)->rules($employee,$session->work_date->toDateString())['work_start'];
             if(!$workStart)continue;
             $config=$this->policy($employee,'attendance.late_penalty',$rule?->configuration??[],$session->work_date->toDateString());
@@ -678,7 +693,7 @@ class PeopleOperationsService
 
             // Early check-out (an auto-closed session is a missed check-out, not an early one). Never cut twice:
             // a day already paid only for the hours at work has its early leaving cut by that.
-            if ($session->check_out && ! $session->closed_automatically && ! $this->paidByHours($employee, $session)) {
+            if ($session->check_out && ! $session->closed_automatically && ! $this->paidByHours($employee, $session) && ! $this->urgentWorkOnLeave($employee, $date)) {
                 $config = $this->policy($employee, 'attendance.early_checkout', [], $date);
                 $early = max(0, $attendance->earlyMinutes($session) - (int) ($config['grace_minutes'] ?? 0));
                 if ($early > 0) $raise($employee, 'attendance.early_checkout', "early:{$employee->id}:{$date}", $date, $this->capped($early * $this->penaltyRatePerMinute($employee, $config, $date), $config), "Checked out {$early} minutes early", ['early_minutes' => $early]);

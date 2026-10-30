@@ -39,6 +39,7 @@ class TelegramNotificationService
         'auto_rejected' => ['Leave / late reason rejected automatically (personal reason)', true, null],
         'overtime_requested' => ['Overtime requested', true, null],
         'expense_submitted' => ['Expense claim submitted', true, null],
+        'night_work_requested' => ['Night work requested', true, null],
         'leave_pending' => ['Leave not decided (list every morning, after 24 hours, on its day)', true, null],
         'correction_requested' => ['Attendance correction requested', true, null],
         'daily_status' => ['Daily status submitted (an old day shows its reason)', true, null],

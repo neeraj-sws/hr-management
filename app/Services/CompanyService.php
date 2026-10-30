@@ -60,6 +60,9 @@ class CompanyService
         $employees = AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id');
         if ($announcement->audience === 'department') $employees->where('department_id', $announcement->department_id);
         if ($announcement->audience === 'team') $employees->whereHas('teams', fn ($q) => $q->where('teams.id', $announcement->team_id));
+        // Departments / teams the announcement leaves out.
+        if ($announcement->excluded_department_ids) $employees->where(fn ($q) => $q->whereNull('department_id')->orWhereNotIn('department_id', (array) $announcement->excluded_department_ids));
+        if ($announcement->excluded_team_ids) $employees->whereDoesntHave('teams', fn ($q) => $q->whereIn('teams.id', (array) $announcement->excluded_team_ids));
         $users = $employees->get()->pluck('user')->filter(fn ($user) => $user?->is_active);
         if ($announcement->audience === 'all') $users = $users->merge(User::where('is_active', true)->doesntHave('employeeProfile')->get());
 

@@ -35,7 +35,7 @@
                         <td class="nowrap small">{{ $r['in'] ? $r['in']->format('h:i A') : '—' }} – {{ $r['out'] ? $r['out']->format('h:i A') : ($r['in'] ? 'still in' : '—') }}</td>
                         <td class="num">{{ $r['at_work'] !== null ? \App\Support\Duration::hm($r['at_work']) : '—' }}</td>
                         <td class="num">@if($r['rate'] !== null){{ $rs($r['pay']) }}@if($r['share'] > 0 && $r['share'] < 1)<small>{{ round($r['share'] * 100) }}% of {{ $rs($r['rate']) }}</small>@endif @else<span class="muted">—</span>@endif</td>
-                        <td class="num">@if($r['extra'] || $r['overtime'])<span style="color:var(--green)">+{{ $rs($r['extra'] + $r['overtime']) }}</span><small>{{ $r['extra'] ? 'extra working' : 'overtime' }}</small>@else<span class="muted">—</span>@endif</td>
+                        <td class="num">@if($r['extra'] || $r['overtime'])<span style="color:var(--green)">+{{ $rs($r['extra'] + $r['overtime']) }}</span><small>{{ $r['extra'] ? 'extra working' : (! empty($r['night']) ? 'night work' : 'overtime') }}</small>@else<span class="muted">—</span>@endif</td>
                         <td>
                             @foreach($r['fines'] as $fine)
                                 <div class="small" style="margin-bottom:4px">

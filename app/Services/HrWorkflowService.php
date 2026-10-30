@@ -413,7 +413,7 @@ class HrWorkflowService
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
                     'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
-                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'hours_paid_days'=>$hoursPaidSet,'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'penalty_lines'=>$penaltyLines,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
+                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'hours_paid_days'=>$hoursPaidSet,'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'night_work'=>$nightWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'penalty_lines'=>$penaltyLines,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
                 foreach ($claims as $claim) $claim->update(['payroll_item_id'=>$item->id]);
@@ -719,6 +719,10 @@ class HrWorkflowService
             ksort($extraWork['dates']);
             if ($extraAuto) $extraWork['amount'] = round($hourly * $extraWork['paid_seconds'] / 3600 * $extraWork['multiplier'], 2);
         }
+        // Night work approved for days in the period: the hours at the hourly rate, on top (Leave & Time > Night work).
+        $nightRows = \App\Models\NightWorkRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->orderBy('work_date')->get();
+        $nightWork = ['minutes' => (int) $nightRows->sum('minutes'), 'amount' => round($hourly * (int) $nightRows->sum('minutes') / 60, 2),
+            'dates' => $nightRows->groupBy(fn ($r) => $r->work_date->toDateString())->map(fn ($g) => (int) $g->sum('minutes'))->all()];
         // Short hours (optional, Settings > Payroll): on the days the employee was present, the time
         // worked below their working day (less any half-day/short leave that day) is deducted at the
         // hourly rate, after a monthly grace. Absent days are already handled by proration above.
@@ -776,7 +780,7 @@ class HrWorkflowService
         $draftRepaid = $draftItemIds ? SalaryAdvanceRepayment::whereIn('payroll_item_id', $draftItemIds)->get()->groupBy('salary_advance_id')->map(fn ($r) => (float) $r->sum('amount')) : collect();
         if ($draftRepaid->isNotEmpty()) $advanceRows = $advanceRows->merge(SalaryAdvance::whereIn('id', $draftRepaid->keys())->whereNotIn('id', $advanceRows->pluck('id'))->get());
         foreach ($advanceRows as $advance) $advanceRecovery += min((float)$advance->installment_amount,max(0,(float)$advance->disbursed_amount-(float)$advance->recovered_amount+(float)($draftRepaid[$advance->id] ?? 0)));
-        $preStatutoryGross = round($basePay+$overtimeAmount+$extraWork['amount']+$adjustmentEarnings,2);
+        $preStatutoryGross = round($basePay+$overtimeAmount+$extraWork['amount']+$nightWork['amount']+$adjustmentEarnings,2);
         // Fixed monthly deductions from the structure in effect at the end of the period (not prorated).
         $fixedDeductions = array_values(array_filter($structure->components($profileOn($endDate->toDateString()) ?? $profile, $employee, $end), fn ($c) => $c['type'] === 'deduction' && $c['amount'] > 0));
         $fixedDeductionTotal = round(array_sum(array_column($fixedDeductions, 'amount')), 2);
@@ -818,7 +822,7 @@ class HrWorkflowService
             'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
             'month_divisors' => $f['monthDivisors'], 'working_days_per_month' => $f['workingDaysPerMonth'], 'standard_daily_hours' => $f['standardDailyHours'],
             'breakdown' => [
-                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'],
+                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'], 'night_work' => $f['nightWork'],
                 'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],
                 'penalties' => (float) $f['penalties'], 'penalty_lines' => $f['penaltyLines'] ?? [], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
             ],
@@ -836,7 +840,7 @@ class HrWorkflowService
         $base = round((float) $f['basePay'], 2);
         $overtime = round((float) $f['overtimeAmount'], 2);
         $short = round((float) $f['shortAmount'], 2);
-        $extra = round((float) ($f['extraWork']['amount'] ?? 0), 2);
+        $extra = round((float) ($f['extraWork']['amount'] ?? 0), 2) + round((float) ($f['nightWork']['amount'] ?? 0), 2);
 
         return ['base' => $base, 'overtime' => $overtime, 'extra' => $extra, 'short' => $short, 'total' => round($base + $overtime + $extra - $short, 2),
             'present_days' => $f['presentDays'], 'paid_leave_days' => $f['paidLeaveDays'], 'unpaid_leave_days' => $f['unpaidLeaveDays']];
