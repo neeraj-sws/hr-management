@@ -61,6 +61,10 @@ return [
         ['label' => 'Payments', 'route' => 'payroll.payments', 'icon' => 'credit-card'],
         ['label' => 'Legacy Salary', 'route' => 'payroll.legacy', 'icon' => 'file'],
     ]],
+    ['heading' => 'Billing', 'items' => [
+        ['label' => 'Customers', 'route' => 'billing.customers', 'icon' => 'users'],
+        ['label' => 'Invoices', 'route' => 'billing.invoices', 'icon' => 'receipt'],
+    ]],
     ['heading' => 'Performance', 'items' => [
         ['label' => 'Goals (KRA / OKR)', 'route' => 'performance.goals', 'icon' => 'check'],
         ['label' => 'Reviews & 360', 'route' => 'performance.reviews', 'icon' => 'star'],

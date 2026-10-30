@@ -99,6 +99,13 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/payroll/advances', Livewire\Payroll\Advances::class)->middleware('access:profile,salary.advance,salary.adjust')->name('payroll.advances');
     Route::get('/payroll/payments', Livewire\Payroll\Payments::class)->middleware('access:payroll.manage,payroll.approve')->name('payroll.payments');
 
+    // Billing / Invoicing
+    Route::middleware('access:hr.manage,payroll.manage')->group(function () {
+        Route::get('/billing/customers', Livewire\Billing\Customers::class)->name('billing.customers');
+        Route::get('/billing/invoices', Livewire\Billing\Invoices::class)->name('billing.invoices');
+        Route::get('/billing/invoices/{invoice}', Livewire\Billing\InvoiceShow::class)->name('billing.invoices.show');
+    });
+
     // Performance
     Route::get('/performance/goals', Livewire\Performance\Goals::class)->middleware('access:profile,performance.review,hr.manage')->name('performance.goals');
     Route::get('/performance/reviews', Livewire\Performance\Reviews::class)->middleware('access:profile,performance.review,hr.manage')->name('performance.reviews');
