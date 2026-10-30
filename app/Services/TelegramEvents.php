@@ -156,7 +156,7 @@ class TelegramEvents
     {
         $status->loadMissing('employee');
         $old = $status->work_date && $status->work_date->lt(today());
-        $this->telegram->toAdmin('daily_status', "status:{$status->id}", TelegramNotificationService::format($old ? 'Daily status (old day)' : 'Daily status submitted', [...self::who($status->employee), 'Date' => $status->work_date?->format('d F Y'),
+        $this->telegram->toAdmin('daily_status', "status:{$status->id}", TelegramNotificationService::format($old ? 'Daily status (old day)' : ($status->auto_from_tasks ? 'Daily status (written from tasks)' : 'Daily status submitted'), [...self::who($status->employee), 'Date' => $status->work_date?->format('d F Y'),
             'Submitted' => now()->format('d F Y, h:i A'), 'Summary' => \Illuminate\Support\Str::limit(trim((string) $status->summary), 300), 'Late reason' => $status->late_reason]));
     }
 

@@ -35,6 +35,7 @@ class DailyStatusSummary extends Notification
             ->greeting('Hello '.($notifiable->name ?? '').',')
             ->line($own ? 'Here is the summary of your day.' : "Here is {$name}'s summary for the day.")
             ->line('**Timing:** check-in '.($t['check_in'] ?? '—').' · check-out '.($t['check_out'] ?? 'still in').' · worked '.Duration::hms($t['worked']).' · break '.Duration::hms($t['break']).' · idle '.Duration::hms($t['idle']).' · task time '.Duration::hms($t['task_seconds']));
+        if ($s->auto_from_tasks) $mail->line('**Written automatically** from the day\'s tasks: the daily status was not written by the evening.');
         if ($s->late_reason) $mail->line('**Written late** (on '.$s->submitted_at?->format('d M, h:i A').'). **Why:** '.$s->late_reason);
         if ($s->plan) $mail->line('**Plan:** '.$s->plan);
         $mail->line('**Completed:** '.$s->summary);

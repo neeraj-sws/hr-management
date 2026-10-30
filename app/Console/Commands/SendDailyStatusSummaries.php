@@ -9,7 +9,10 @@ use App\Notifications\DailyStatusSummary;
 use App\Services\AttendanceService;
 use Illuminate\Console\Command;
 
-/** End of the day: each daily status written today is e-mailed (with the day's timing) to the person and their manager. */
+/**
+ * End of the day: each daily status written today is e-mailed (with the day's timing) to the person and their manager.
+ * Someone who worked but did not write one gets one written from the day's tasks first (WorkService::autoStatusFromTasks).
+ */
 class SendDailyStatusSummaries extends Command
 {
     protected $signature = 'work:daily-status-summary {--date= : day to send (default today)}';
@@ -19,10 +22,17 @@ class SendDailyStatusSummaries extends Command
     {
         $date = $this->option('date') ?: today()->toDateString();
         $sent = 0;
+        // Worked today but no daily status: one is written from today's tasks, so the end-of-day mail still goes out.
+        $work = app(\App\Services\WorkService::class);
+        $auto = 0;
+        AttendanceSession::with('employee')->whereDate('work_date', $date)->whereNotNull('check_in')->get()->pluck('employee')->filter()->unique('id')
+            ->each(function ($employee) use ($work, $date, &$auto) {
+                if ($employee->is_active && \App\Support\DailyStatusRule::required($employee, $date) && rescue(fn () => $work->autoStatusFromTasks($employee, $date), null, true)) $auto++;
+            });
         DailyWorkStatus::with(['employee.user', 'employee.manager.user'])->whereDate('work_date', $date)->get()->each(function (DailyWorkStatus $status) use (&$sent) {
             $sent += self::send($status);
         });
-        $this->info("{$sent} summary e-mail(s) sent for {$date}.");
+        $this->info("{$sent} summary e-mail(s) sent for {$date}; {$auto} daily status(es) written from tasks.");
 
         return self::SUCCESS;
     }
