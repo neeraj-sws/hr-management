@@ -54,6 +54,7 @@ return [
     ]],
     ['heading' => 'Payroll', 'items' => [
         ['label' => 'Salary', 'route' => 'payroll.salary', 'icon' => 'wallet'],
+        ['label' => 'Day-wise salary', 'route' => 'payroll.day-wise', 'icon' => 'calendar'],
         ['label' => 'Payroll', 'route' => 'payroll.runs', 'icon' => 'layers'],
         ['label' => 'Payroll Approvals', 'route' => 'payroll.approvals', 'icon' => 'check-circle'],
         ['label' => 'Payslips', 'route' => 'payroll.payslips', 'icon' => 'file'],

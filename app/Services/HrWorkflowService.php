@@ -791,6 +791,19 @@ class HrWorkflowService
     }
 
     /**
+     * Every figure the payroll calculation uses for a period (nothing is written), plus whether a date is a working
+     * day - for the day-wise salary page, so its days add up to exactly what payroll pays.
+     */
+    public function payFigures(AttendanceEmployee $employee, string $start, string $end): ?array
+    {
+        $f = $this->employeePayFigures($employee, $start, $end, false);
+        if ($f === null) return null;
+        $f['isWorkday'] = fn (string $date) => $this->isConfiguredWorkday($date, $f['calendar']);
+
+        return $f;
+    }
+
+    /**
      * What payroll would pay for a period as things stand (nothing is written): the same figures and
      * the same breakdown keys a payroll item stores, for "salary so far this month".
      */

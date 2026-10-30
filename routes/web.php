@@ -86,6 +86,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/expenses/{claim}/receipt', [HrFileController::class, 'receipt'])->name('expenses.receipt');
 
     // Payroll
+    Route::get('/payroll/day-wise', Livewire\Payroll\DayWise::class)->middleware('access:payroll.manage,payroll.approve,hr.manage,employees.manage,manager')->name('payroll.day-wise');
     Route::get('/payroll/salary', Livewire\Payroll\Salary::class)->middleware('access:profile,payroll.manage,payroll.approve,hr.manage')->name('payroll.salary');
     Route::post('/payroll/salary/import', [ImportController::class, 'salary'])->middleware('access:payroll.manage,hr.manage')->name('payroll.salary.import');
     Route::get('/payroll/legacy-salary', Livewire\Payroll\LegacySalary::class)->middleware('access:payroll.manage,hr.manage')->name('payroll.legacy');
