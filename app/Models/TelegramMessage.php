@@ -10,4 +10,9 @@ class TelegramMessage extends Model
     protected $fillable = ['key', 'target', 'user_id', 'event', 'status', 'attempts', 'error', 'sent_at'];
 
     protected $casts = ['sent_at' => 'datetime'];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }

@@ -10,12 +10,26 @@
         <div class="toolbar">
             <label class="field"><span>Status</span><select wire:model.live="status"><option value="">Any</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="waived">Removed / waived</option></select></label>
             @if($canManage)<label class="field grow"><span>Employee</span><select wire:model.live="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></label>@endif
+            <label class="field"><span>Month</span><input type="month" wire:model.live="month"></label>
         </div>
+        {{-- HR / admin: tick fines (or all that match the filters) and take them back with one reason. --}}
+        @if($canManage)
+            <div class="toolbar" style="border-top:0;padding-top:0;gap:8px;align-items:center">
+                <button type="button" class="btn btn-sm" wire:click="selectAllMatching">Select all matching</button>
+                @if($selected)
+                    <span class="small"><b>{{ count($selected) }}</b> selected · Rs {{ number_format($selectedTotal, 2) }}</span>
+                    <button type="button" class="btn btn-sm" wire:click="clearSelection">Clear</button>
+                    <button type="button" class="btn btn-sm btn-danger" wire:click="openBulk">Take back selected</button>
+                @else
+                    <span class="small muted">Tick fines below, or filter (e.g. employee + month) and "Select all matching".</span>
+                @endif
+            </div>
+        @endif
         <div class="table-wrap"><table class="table">
-            <thead><tr>@if($canManage)<th>Employee</th>@endif<th>Date</th><th>Reason</th><th>Source</th><th class="num">Amount</th><th>Status</th><th>Payroll</th><th></th></tr></thead>
+            <thead><tr>@if($canManage)<th style="width:28px"></th><th>Employee</th>@endif<th>Date</th><th>Reason</th><th>Source</th><th class="num">Amount</th><th>Status</th><th>Payroll</th><th></th></tr></thead>
             <tbody>
             @forelse($penalties as $p)
-                <tr>@if($canManage)<td><strong>{{ $p->employee?->name }}</strong></td>@endif
+                <tr wire:key="pen-{{ $p->id }}">@if($canManage)<td>@if($p->canBeRemoved())<input type="checkbox" value="{{ $p->id }}" wire:model.live="selected" aria-label="Select this fine">@endif</td><td><strong>{{ $p->employee?->name }}</strong></td>@endif
                     <td class="nowrap">{{ $p->effective_on->format('d M Y') }}</td>
                     {{-- The whole story on both sides: why it was made, the employee's reason, and why it stays or was removed. --}}
                     <td style="white-space:normal"><div><b>Why applied:</b> {{ $p->reason }}</div>
@@ -29,7 +43,7 @@
                                 <div class="small" style="color:var(--red)"><b>Reason not accepted</b> by {{ $p->appeal->decider?->name ?? 'HR' }} on {{ $p->appeal->decided_at?->format('d M Y') }}: {{ $p->appeal->decision_note }} · the fine stays</div>
                             @endif
                         @elseif($p->decision_note && $p->decided_at)
-                            <div class="small mt"><b>{{ ['waived' => 'Why removed', 'rejected' => 'Why rejected'][$p->status] ?? 'Note' }}</b> ({{ $p->decider?->name ?? 'HR' }}, {{ $p->decided_at->format('d M Y') }}): {{ $p->decision_note }}</div>
+                            <div class="small mt"><b>{{ ['waived' => 'Why removed', 'rejected' => 'Why rejected'][$p->status] ?? ($p->isPaidBack() ? 'Taken back' : 'Note') }}</b> ({{ $p->decider?->name ?? 'HR' }}, {{ $p->decided_at->format('d M Y') }}): {{ $p->decision_note }}</div>
                         @endif
                     </td>
                     <td><x-badge :tone="$p->policyRule ? 'violet' : 'blue'">{{ $p->policyRule ? 'policy' : 'manual' }}</x-badge></td>
@@ -37,7 +51,7 @@
                     <td class="small">{{ $p->payrollItem?->run ? $p->payrollItem->run->period_starts_on->format('M Y') : '—' }}</td>
                     <td><div class="row-actions">@if(in_array($p->id, $decidable))<button class="btn btn-sm btn-success" wire:click="decide({{ $p->id }}, true)" wire:confirm="Apply this penalty? It will be deducted in payroll.">Approve</button><button class="btn btn-sm" wire:click="openAction({{ $p->id }}, 'reduce')">Reduce</button><button class="btn btn-sm" wire:click="openAction({{ $p->id }}, 'reject')">Reject</button>@endif@if(auth()->user()->can('penalties.manage') && in_array($p->status, ['pending', 'approved'], true))<button class="btn btn-sm btn-danger" wire:click="openAction({{ $p->id }}, 'waive')">Waive</button>@endif@if($p->appeal && in_array($p->appeal->id, $reviewable))<button class="btn btn-sm btn-success" wire:click="openReview({{ $p->appeal->id }}, true)" title="The fine is removed">Accept reason</button><button class="btn btn-sm" wire:click="openReview({{ $p->appeal->id }}, false)" title="The fine stays">Don't accept</button>@endif@if($p->employee_id === $ownId && $p->canAppeal())<button class="btn btn-sm btn-primary" wire:click="openAppeal({{ $p->id }})">Give reason</button>@endif</div></td></tr>
             @empty
-                <tr><td colspan="8"><x-empty title="No penalties" icon="shield" /></td></tr>
+                <tr><td colspan="9"><x-empty title="No penalties" icon="shield" /></td></tr>
             @endforelse
             </tbody>
         </table></div>
@@ -60,6 +74,15 @@
                 <x-field label="Reason" name="actNote" full><input wire:model="actNote" placeholder="e.g. First time, train delayed"></x-field>
             </div>@if($acting === 'waive')<p class="small muted">If the penalty is already in a draft payroll run, the run must be recalculated before approval. Penalties in an approved or locked payroll cannot be waived.</p>@endif</div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Save</button></div></form>
+        </x-modal>
+    @endif
+    @if($bulkOpen)
+        <x-modal title="Take back {{ count($selected) }} fine(s)">
+            <form wire:submit="saveBulk"><div class="modal-body"><x-errors />
+                <p class="small">Rs {{ number_format($selectedTotal, 2) }} in all. Each fine is removed and keeps this reason in its history; one whose salary is already paid (locked payroll) is paid back in the next salary. Each employee is told once.</p>
+                <x-field label="Why are they taken back?" name="bulkNote" full><textarea rows="3" wire:model="bulkNote" placeholder="e.g. Warning given on 29 Oct; October late fines taken back"></textarea></x-field>
+            </div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-danger" wire:loading.attr="disabled">Take back</button></div></form>
         </x-modal>
     @endif
     @if($appealingId)

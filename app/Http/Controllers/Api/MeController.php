@@ -24,6 +24,8 @@ class MeController extends ApiController
             'roles' => $user->getRoleNames()->values(),
             // The same badges as the website header (Master Admin / HR / Manager / Team lead / Employee / Trainee).
             'badges' => \App\Support\PersonBadges::for($user, $employee),
+            // A trainee pays a course fee instead of getting a salary: the app shows "My course & fees", not salary.
+            'is_trainee' => (bool) $employee?->isTrainee(),
             // Profile photo set on the website (or in the app): the apps load it from /api/me/photo with their token.
             // ?v changes when the photo changes, so a new photo shows at once instead of a cached one.
             // People reporting to them (the "Team" button in the app's header).

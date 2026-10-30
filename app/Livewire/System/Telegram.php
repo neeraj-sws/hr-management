@@ -15,13 +15,33 @@ use Livewire\Component;
  */
 class Telegram extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithPagination;
+
+    /** Latest messages filters: to (admin / user), status, day. */
+    public string $msgTarget = '';
+    public string $msgStatus = '';
+    public string $msgDay = '';
 
     public array $form = [];
 
     public function mount(TelegramNotificationService $telegram): void
     {
         $this->form = $telegram->settings();
+    }
+
+    /** Tick or untick every event in one column ("admin" or "employee") - saved with Save. */
+    public function setAll(string $column, bool $on): void
+    {
+        abort_unless(in_array($column, ['admin', 'employee'], true), 404);
+        foreach (TelegramNotificationService::EVENTS as $event => [, , $employeeDefault]) {
+            if ($column === 'employee' && $employeeDefault === null) continue;
+            $this->form[$column][$event] = $on;
+        }
+    }
+
+    public function updated($property): void
+    {
+        if (in_array($property, ['msgTarget', 'msgStatus', 'msgDay'], true)) $this->resetPage('msgs');
     }
 
     public function save(TelegramNotificationService $telegram): void
@@ -75,7 +95,13 @@ class Telegram extends Component
             ],
             'events' => TelegramNotificationService::EVENTS,
             'links' => TelegramLink::with('user')->whereNotNull('chat_id')->latest('linked_at')->get(),
-            'messages' => TelegramMessage::with([])->latest('id')->limit(25)->get(),
+            // Latest messages: filtered, 20 a page, grouped by day on the page; who and what in words.
+            'messages' => TelegramMessage::with('user')
+                ->when($this->msgTarget !== '', fn ($q) => $q->where('target', $this->msgTarget))
+                ->when($this->msgStatus !== '', fn ($q) => $q->where('status', $this->msgStatus))
+                ->when(preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->msgDay), fn ($q) => $q->whereDate('created_at', $this->msgDay))
+                ->latest('id')->paginate(20, ['*'], 'msgs'),
+            'messageCounts' => TelegramMessage::whereDate('created_at', today())->selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status')->all(),
             'webhookUrl' => route('api.telegram.webhook'),
             'queueConnection' => (string) config('services.telegram.queue_connection', 'database'),
         ], 'Telegram');

@@ -76,6 +76,7 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::delete('/my/documents/{document}', [SelfServiceController::class, 'deleteDocument'])->name('api.my.documents.delete');
     Route::get('/my/assets', [SelfServiceController::class, 'assets'])->name('api.my.assets');
     Route::get('/my/performance', [SelfServiceController::class, 'performance'])->name('api.my.performance');
+    Route::get('/my/course-fees', [\App\Http\Controllers\Api\CourseFeeController::class, 'index'])->name('api.my.course-fees');
     Route::get('/my/salary', [SelfServiceController::class, 'salary'])->name('api.my.salary');
     Route::get('/my/fines', [\App\Http\Controllers\Api\FineController::class, 'index'])->name('api.my.fines');
     Route::post('/my/fines/{penalty}/reason', [\App\Http\Controllers\Api\FineController::class, 'reason'])->name('api.my.fines.reason');

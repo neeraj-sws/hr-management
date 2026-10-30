@@ -85,9 +85,10 @@ export default function More() {
       ...(approvals > 0 ? [{ label: 'Approvals', icon: '✅', href: '/approvals', badge: approvals, tone: 'amber' as const }] : []),
     ] },
     { title: 'Money & documents', tiles: [
-      { label: 'My salary', icon: '📊', href: '/salary' },
+      // A trainee pays a course fee: "My course & fees" instead of salary and payslips.
+      ...(me?.is_trainee ? [{ label: 'My course & fees', icon: '🎓', href: '/course-fees' }] : [{ label: 'My salary', icon: '📊', href: '/salary' }]),
       { label: 'My fines', icon: '⚠️', href: '/fines' },
-      { label: 'Payslips', icon: '💰', href: '/payslips' },
+      ...(me?.is_trainee ? [] : [{ label: 'Payslips', icon: '💰', href: '/payslips' }]),
       { label: 'Expenses', icon: '🧾', href: '/expenses' },
       { label: 'Documents', icon: '📁', href: '/documents' },
     ] },

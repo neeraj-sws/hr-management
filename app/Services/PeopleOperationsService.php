@@ -353,6 +353,48 @@ class PeopleOperationsService
         });
     }
 
+    /**
+     * HR / admin take back many fines at once (e.g. a month of late fines after a warning), with one reason. Each is
+     * removed and keeps the reason in its history; one in a locked payroll stays as it was and is paid back in the
+     * next salary instead. Each employee is told once. Returns how many were removed / paid back / skipped.
+     *
+     * @return array{removed: int, paid_back: int, skipped: int}
+     */
+    public function removeFines(array $ids, string $note, int $actor): array
+    {
+        $note = trim($note);
+        if (mb_strlen($note) < 5) throw ValidationException::withMessages(['bulkNote' => 'Write why these fines are taken back (at least 5 characters).']);
+        $counts = ['removed' => 0, 'paid_back' => 0, 'skipped' => 0];
+        $done = [];
+        foreach (EmployeePenalty::with('employee.user')->whereIn('id', array_map('intval', $ids))->get() as $penalty) {
+            if (! $penalty->canBeRemoved()) { $counts['skipped']++; continue; }
+            try {
+                $this->waivePenalty($penalty, $actor, 'Taken back: '.$note, false);
+                $counts['removed']++;
+            } catch (ValidationException $e) {
+                if (! array_key_exists('payroll', $e->errors())) { $counts['skipped']++; continue; }
+                // Its payroll is locked (already paid): the fine stays there and is paid back in the next salary.
+                DB::transaction(function () use ($penalty, $note, $actor) {
+                    SalaryAdjustment::create(['employee_id' => $penalty->employee_id, 'effective_on' => today(), 'amount' => $penalty->amount, 'kind' => 'arrear', 'is_recurring' => false, 'status' => 'approved',
+                        'reason' => 'Fine of '.$penalty->effective_on->format('d M Y').' paid back: '.mb_substr($note, 0, 150), 'requested_by' => $actor, 'decided_by' => $actor, 'decided_at' => now()]);
+                    app(PayrollLockGuard::class)->flagDrafts(today()->toDateString());
+                    $penalty->update(['decision_note' => EmployeePenalty::PAID_BACK.' (salary already paid). '.mb_substr($note, 0, 900), 'decided_by' => $actor, 'decided_at' => now()]);
+                });
+                $counts['paid_back']++;
+            }
+            $done[$penalty->employee_id][] = $penalty;
+        }
+        foreach ($done as $fines) {
+            $employee = $fines[0]->employee;
+            $total = number_format(collect($fines)->sum(fn ($p) => (float) $p->amount), 2);
+            $dates = collect($fines)->map(fn ($p) => $p->effective_on->format('d M'))->join(', ');
+            Notifier::send($employee?->user, 'EmployeePenalty', $fines[0]->id, count($fines).' fine(s) of yours, Rs '.$total." in all ({$dates}), were taken back. Reason: {$note}", route('compliance.penalties', [], false), $actor);
+        }
+        $this->audit->record('penalty.bulk_removed', null, [...$counts, 'ids' => array_values(array_map('intval', $ids)), 'note' => $note]);
+
+        return $counts;
+    }
+
     public function waivePenalty(EmployeePenalty $penalty, int $actor, string $note, bool $notify = true): EmployeePenalty
     {
         return DB::transaction(function () use ($penalty, $actor, $note, $notify) {

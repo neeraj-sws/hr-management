@@ -27,6 +27,11 @@
                         @forelse($links as $link)<label class="check" style="display:flex"><input type="checkbox" value="{{ $link->user_id }}" wire:model="form.extra_users"> {{ $link->user?->name }}</label>@empty<span class="small muted">Nobody has connected Telegram yet.</span>@endforelse
                     </div>
                 </x-field>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center" class="small">
+                    <span class="muted">Super Admin chat:</span><button type="button" class="btn btn-sm" wire:click="setAll('admin', true)">Select all</button><button type="button" class="btn btn-sm" wire:click="setAll('admin', false)">Unselect all</button>
+                    <span class="muted" style="margin-left:10px">Employee's own chat:</span><button type="button" class="btn btn-sm" wire:click="setAll('employee', true)">Select all</button><button type="button" class="btn btn-sm" wire:click="setAll('employee', false)">Unselect all</button>
+                    <span class="muted">(then Save)</span>
+                </div>
                 <div class="table-wrap"><table class="table" data-no-sort><thead><tr><th>Event</th><th>Super Admin chat</th><th>Employee's own chat</th></tr></thead><tbody>
                     @foreach($events as $event => [$label, , $employeeDefault])
                         <tr><td>{{ $label }}</td><td><input type="checkbox" wire:model="form.admin.{{ $event }}" aria-label="{{ $label }} to the Super Admin"></td>
@@ -50,15 +55,28 @@
             </div>
         </section>
         <section class="card">
-            <div class="card-head"><div><h2>Latest messages</h2><p>Each message is sent once; failures are retried, then shown here.</p></div></div>
-            <div class="table-wrap"><table class="table"><thead><tr><th>When</th><th>To</th><th>Event</th><th>Status</th></tr></thead><tbody>
-                @forelse($messages as $m)
-                    <tr><td class="nowrap small">{{ $m->created_at?->format('d M, h:i A') }}</td><td>{{ $m->target === 'admin' ? 'Super Admin' : 'Employee' }}</td><td>{{ $m->event ?? 'notification' }}</td>
-                        <td><x-badge :tone="['sent' => 'green', 'failed' => 'red', 'retrying' => 'amber'][$m->status] ?? 'gray'">{{ $m->status }}</x-badge>@if($m->error)<small class="muted" style="display:block">{{ $m->error }}</small>@endif</td></tr>
+            <div class="card-head"><div><h2>Latest messages</h2><p>Today: {{ $messageCounts['sent'] ?? 0 }} sent @if($messageCounts['failed'] ?? 0)· <span style="color:var(--red)">{{ $messageCounts['failed'] }} failed</span>@endif @if(($messageCounts['pending'] ?? 0) + ($messageCounts['retrying'] ?? 0))· {{ ($messageCounts['pending'] ?? 0) + ($messageCounts['retrying'] ?? 0) }} waiting @endif · each message is sent once; failures are retried.</p></div></div>
+            <div class="toolbar">
+                <label class="field"><span>To</span><select wire:model.live="msgTarget"><option value="">Everyone</option><option value="admin">Super Admin</option><option value="user">Employees</option></select></label>
+                <label class="field"><span>Status</span><select wire:model.live="msgStatus"><option value="">Any</option><option value="sent">Sent</option><option value="failed">Failed</option><option value="retrying">Retrying</option><option value="pending">Waiting</option><option value="skipped">Skipped</option></select></label>
+                <label class="field"><span>Day</span><input type="date" wire:model.live="msgDay"></label>
+            </div>
+            @php($labels = collect($events)->map(fn ($e) => $e[0])->all())
+            <div class="table-wrap"><table class="table" data-no-sort><thead><tr><th>Time</th><th>To</th><th>What</th><th>Status</th></tr></thead><tbody>
+                @forelse($messages->getCollection()->groupBy(fn ($m) => $m->created_at?->toDateString()) as $day => $rows)
+                    @php($d = \Illuminate\Support\Carbon::parse($day))
+                    <tr><td colspan="4" style="background:var(--canvas);font-weight:700;font-size:12px">{{ $d->isToday() ? 'Today' : ($d->isYesterday() ? 'Yesterday' : $d->format('D, d M Y')) }} · {{ $rows->count() }}</td></tr>
+                    @foreach($rows as $m)
+                        <tr wire:key="tm-{{ $m->id }}"><td class="nowrap small">{{ $m->created_at?->format('h:i A') }}</td>
+                            <td>{{ $m->target === 'admin' ? 'Super Admin' : ($m->user?->name ?? 'Employee') }}</td>
+                            <td class="small">{{ $m->event ? ($labels[$m->event] ?? str($m->event)->replace('_', ' ')->ucfirst()) : 'Their notification' }}</td>
+                            <td><x-badge :tone="['sent' => 'green', 'failed' => 'red', 'retrying' => 'amber', 'pending' => 'amber'][$m->status] ?? 'gray'">{{ ['pending' => 'waiting'][$m->status] ?? $m->status }}</x-badge>@if($m->error)<small class="muted" style="display:block">{{ $m->error }}</small>@endif</td></tr>
+                    @endforeach
                 @empty
-                    <tr><td colspan="4"><x-empty title="No messages yet" icon="bell" /></td></tr>
+                    <tr><td colspan="4"><x-empty title="No messages for these filters" icon="bell" /></td></tr>
                 @endforelse
             </tbody></table></div>
+            {{ $messages->links() }}
         </section>
     </div>
 </div>

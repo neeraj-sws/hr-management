@@ -13,6 +13,11 @@ class EmployeePenalty extends Model
     public function appeal(){return $this->hasOne(PenaltyAppeal::class, 'employee_penalty_id');}
     /** A late-arrival fine: the employee can give a reason for it. */
     public function isLateFine(): bool{return str_starts_with((string) $this->source_key, 'late:');}
+    /** Start of the note on a fine taken back after its salary was paid: it stays in that payroll and is paid back. */
+    public const PAID_BACK = 'Paid back in the next salary';
+    public function isPaidBack(): bool{return str_starts_with((string) $this->decision_note, self::PAID_BACK);}
+    /** HR / admin can still take it back: not removed yet and not already paid back. */
+    public function canBeRemoved(): bool{return in_array($this->status, ['pending', 'approved'], true) && ! $this->isPaidBack();}
     /** The employee can still give a reason: any fine (late, absence, daily status, task …) not removed and with no reason yet. */
-    public function canAppeal(): bool{return in_array($this->status, ['pending', 'approved'], true) && ! $this->appeal;}
+    public function canAppeal(): bool{return in_array($this->status, ['pending', 'approved'], true) && ! $this->isPaidBack() && ! $this->appeal;}
 }
