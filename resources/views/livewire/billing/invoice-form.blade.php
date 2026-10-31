@@ -1,4 +1,8 @@
-<div>
+<div class="bill-form">
+    <style>
+        .bill-form { max-width: 1120px; }
+        .bill-form td:first-child .input { max-width: 440px; }
+    </style>
     <div class="page-head"><div><h1>{{ $invoiceId ? 'Edit invoice' : 'New invoice' }}</h1><p>Bill a customer — add line items, tax and discount.</p></div>
         <a class="btn" href="{{ route('billing.invoices') }}">Back</a></div>
     <x-errors />

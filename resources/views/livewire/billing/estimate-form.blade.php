@@ -1,4 +1,8 @@
-<div>
+<div class="bill-form">
+    <style>
+        .bill-form { max-width: 1120px; }
+        .bill-form td:first-child .input { max-width: 440px; }
+    </style>
     <div class="page-head"><div><h1>{{ $estimateId ? 'Edit estimate' : 'New estimate' }}</h1><p>Quote a customer — add line items, tax and discount.</p></div>
         <a class="btn" href="{{ route('billing.estimates') }}">Back</a></div>
     <x-errors />
