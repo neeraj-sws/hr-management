@@ -105,7 +105,11 @@ class Navigation
     private static function isActive(string $routeName, array $params): bool
     {
         $current = request()->route();
-        if (! $current || $current->getName() !== $routeName) return false;
+        if (! $current) return false;
+        $name = (string) $current->getName();
+        // The item's own route, or one of its detail/create/edit sub-routes
+        // (e.g. billing.invoices.show keeps the "Invoices" item — and the Sales menu — active).
+        if ($name !== $routeName && ! Str::startsWith($name, $routeName.'.')) return false;
         foreach ($params as $key => $value) {
             if ((string) $current->parameter($key) !== (string) $value) return false;
         }
