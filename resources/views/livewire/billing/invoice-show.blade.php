@@ -1,4 +1,11 @@
 <div>
+    <style>
+        .slip-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 22px;margin-bottom:4px}
+        .slip-meta > div{min-width:0}
+        .slip-meta span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+        .slip-meta strong{display:block;font-size:14px;margin-top:3px}
+        .slip-meta small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+    </style>
     <div class="page-head"><div><h1>{{ $invoice->number() }}</h1><p>{{ $invoice->customer?->name }} · {{ $invoice->issue_date->format('d M Y') }}</p></div>
         <div class="row-actions">
             <a class="btn" href="{{ route('billing.invoices.print', $invoice) }}" target="_blank"><x-icon name="download" class="icon-sm" />Print / PDF</a>
