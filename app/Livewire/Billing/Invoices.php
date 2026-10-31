@@ -4,6 +4,7 @@ namespace App\Livewire\Billing;
 
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\BillingInvoice;
+use App\Services\BillingService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -15,6 +16,12 @@ class Invoices extends Component
     #[Url] public string $search = '';
     #[Url] public string $status = '';
     #[Url] public string $fy = '';
+
+    /** Default the financial-year filter to the current year (unless the URL already picked one, incl. "All"). */
+    public function mount(BillingService $billing): void
+    {
+        if (! request()->has('fy')) $this->fy = $billing->financialYear(today());
+    }
 
     public function updated($p): void { if (in_array($p, ['search', 'status', 'fy'], true)) $this->resetPage(); }
 
@@ -34,7 +41,7 @@ class Invoices extends Component
 
         return $this->page('livewire.billing.invoices', [
             'invoices' => $invoices,
-            'years' => BillingInvoice::select('financial_year')->distinct()->orderByDesc('financial_year')->pluck('financial_year'),
+            'years' => BillingInvoice::select('financial_year')->distinct()->orderBy('financial_year')->pluck('financial_year'),
             'totals' => [
                 'count' => $all->count(),
                 'billed' => round($all->sum(fn ($i) => $i->total()), 2),
