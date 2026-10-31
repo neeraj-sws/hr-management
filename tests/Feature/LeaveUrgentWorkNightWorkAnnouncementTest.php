@@ -91,6 +91,26 @@ class LeaveUrgentWorkNightWorkAnnouncementTest extends TestCase
         $this->assertSame('Everyone except IT Web Info', $announcement->fresh()->audienceLabel());
     }
 
+    public function test_announcement_also_sent_on_telegram_to_the_audience(): void
+    {
+        config(['services.telegram' => ['enabled' => true, 'bot_token' => '123456:TEST', 'bot_username' => 'sws_hrms_bot', 'admin_chat_id' => '1001', 'webhook_secret' => 'x', 'queue_connection' => 'sync', 'link_minutes' => 10]]);
+        \Illuminate\Support\Facades\Http::fake(['api.telegram.org/*' => \Illuminate\Support\Facades\Http::response(['ok' => true, 'result' => ['message_id' => 1]])]);
+        \App\Models\TelegramLink::create(['user_id' => $this->employee->user_id, 'chat_id' => '555', 'linked_at' => now()]);
+        $itWeb = Department::create(['name' => 'IT Web Info', 'code' => 'ITW']);
+        $outsider = $this->person('ITW-2', 'Left Out', null, $itWeb->id);
+        \App\Models\TelegramLink::create(['user_id' => $outsider->user_id, 'chat_id' => '777', 'linked_at' => now()]);
+
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Company\Announcements::class)->call('edit')
+            ->set('title', 'Diwali party')->set('body', 'Friday 6 PM at the office terrace')->set('excludeDepartments', [(string) $itWeb->id])->set('sendTelegram', true)->call('save')->assertHasNoErrors();
+
+        $sent = collect(\Illuminate\Support\Facades\Http::recorded())->map(fn ($p) => $p[0])->filter(fn ($r) => str_contains($r->url(), '/sendMessage'));
+        $toEmployee = $sent->first(fn ($r) => (string) $r['chat_id'] === '555');
+        $this->assertNotNull($toEmployee);
+        $this->assertStringContainsString('ANNOUNCEMENT', $toEmployee['text']);
+        $this->assertStringContainsString('Friday 6 PM at the office terrace', $toEmployee['text']);
+        $this->assertNull($sent->first(fn ($r) => (string) $r['chat_id'] === '777'), 'Left-out department gets nothing');
+    }
+
     public function test_night_work_is_asked_with_tasks_approved_by_the_manager_and_paid(): void
     {
         $task = Task::create(['title' => 'Live search bug', 'assignee_id' => $this->employee->id, 'created_by' => $this->admin->id, 'status' => 'in_progress', 'priority' => 'high']);

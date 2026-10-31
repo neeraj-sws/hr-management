@@ -20,9 +20,9 @@ class CompanyService
      * Only with $email is the full announcement also e-mailed to everyone in the audience; without it
      * nobody gets an e-mail, whatever their notification preferences.
      */
-    public function saveAnnouncement(array $data, User $author, ?Announcement $announcement = null, bool $email = false): Announcement
+    public function saveAnnouncement(array $data, User $author, ?Announcement $announcement = null, bool $email = false, bool $telegram = false): Announcement
     {
-        return DB::transaction(function () use ($data, $author, $announcement, $email) {
+        return DB::transaction(function () use ($data, $author, $announcement, $email, $telegram) {
             $data['department_id'] = $data['audience'] === 'department' ? $data['department_id'] : null;
             $data['team_id'] = $data['audience'] === 'team' ? $data['team_id'] : null;
             $isNew = ! $announcement;
@@ -38,6 +38,15 @@ class CompanyService
                     if ($email) rescue(fn () => $user->notify(new \App\Notifications\AnnouncementEmail($announcement)), null, true);
                 }
                 if ($email) $this->audit->record('announcement.emailed', $announcement, ['audience' => $announcement->audience]);
+                // "Also send on Telegram": the full announcement to everyone in the audience who connected Telegram
+                // (sent after the save; their own notification choices do not apply - HR chose to send it).
+                if ($telegram) {
+                    $text = \App\Services\TelegramNotificationService::format('Announcement', [$announcement->title, \Illuminate\Support\Str::limit((string) $announcement->body, 3500), 'From' => $author->name]);
+                    foreach ($this->audienceUsers($announcement) as $user) {
+                        rescue(fn () => app(\App\Services\TelegramNotificationService::class)->toUser($user, null, "announcement:{$announcement->id}", $text), null, true);
+                    }
+                    $this->audit->record('announcement.telegram', $announcement, ['audience' => $announcement->audience]);
+                }
             }
 
             return $announcement;

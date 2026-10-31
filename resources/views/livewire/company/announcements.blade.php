@@ -40,6 +40,7 @@
                 <x-field label="Show until" name="expiresOn" hint="blank = always"><input type="date" wire:model="expiresOn" min="{{ today()->toDateString() }}"></x-field>
                 <label class="check"><input type="checkbox" wire:model="isPinned"> Pin to the top</label>
                 @unless($editingId)<label class="check full"><input type="checkbox" wire:model="sendEmail"> Also send by e-mail to everyone in the audience <span class="small muted">(otherwise in the app only — no e-mail is sent)</span></label>@endunless
+                @unless($editingId)<label class="check full"><input type="checkbox" wire:model="sendTelegram"> Also send on Telegram <span class="small muted">(the full announcement to everyone in the audience who connected Telegram)</span></label>@endunless
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">{{ $editingId ? 'Save' : 'Publish' }}</button></div></form>
         </x-modal>
