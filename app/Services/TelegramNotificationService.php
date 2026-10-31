@@ -41,6 +41,7 @@ class TelegramNotificationService
         'expense_submitted' => ['Expense claim submitted', true, null],
         'night_work_requested' => ['Night work requested', true, null],
         'late_arrival_requested' => ['Late arrival told in advance', true, null],
+        'approvals_pending' => ['Requests still waiting for approval (night work, late arrival, corrections, expenses, fine reasons)', true, null],
         'leave_pending' => ['Leave not decided (list every morning, after 24 hours, on its day)', true, null],
         'correction_requested' => ['Attendance correction requested', true, null],
         'daily_status' => ['Daily status submitted (an old day shows its reason)', true, null],
