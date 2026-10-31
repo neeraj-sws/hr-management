@@ -28,7 +28,7 @@ class InvoiceShow extends Component
 
     private function invoice(): BillingInvoice
     {
-        return BillingInvoice::with(['customer', 'items.tax', 'payments', 'creditNotes'])->findOrFail($this->invoiceId);
+        return BillingInvoice::with(['customer', 'items.tax', 'payments.recorder', 'creditNotes', 'project'])->findOrFail($this->invoiceId);
     }
 
     public function markSent(AuditLogger $audit): void
@@ -68,8 +68,23 @@ class InvoiceShow extends Component
         $this->toast('Payment recorded.');
     }
 
-    public function render()
+    /** Removes a payment entered by mistake; the invoice's status and due amount follow. */
+    public function deletePayment(int $paymentId, AuditLogger $audit): void
     {
-        return $this->page('livewire.billing.invoice-show', ['invoice' => $this->invoice()], 'Invoice');
+        abort_unless($this->user()->canAny(['hr.manage', 'payroll.manage']), 403);
+        $payment = BillingInvoicePayment::where('invoice_id', $this->invoiceId)->findOrFail($paymentId);
+        $audit->record('billing.payment_deleted', $payment->invoice, ['amount' => (float) $payment->amount, 'date' => $payment->date?->toDateString(), 'reference' => $payment->reference]);
+        $payment->delete();
+        $inv = $this->invoice();
+        if ($inv->status === 'Paid' || $inv->status === 'Partially Paid') $inv->status = 'Unpaid';
+        $inv->refreshStatus();
+        $this->toast('Payment removed.');
+    }
+
+    public function render(\App\Services\BillingService $billing)
+    {
+        $invoice = $this->invoice();
+
+        return $this->page('livewire.billing.invoice-show', ['invoice' => $invoice, 'taxes' => $billing->taxSplit($invoice), 'interState' => $billing->isInterState($invoice->place_of_supply ?: $invoice->customer?->billing_state)], 'Invoice');
     }
 }

@@ -36,6 +36,19 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/search/suggest', \App\Http\Controllers\SearchController::class)->middleware('throttle:120,1')->name('search.suggest');
     Route::get('/profile', Livewire\Account\Profile::class)->name('account.profile');
 
+    // Client portal (client logins only — see ClientPortalOnly)
+    Route::prefix('client')->name('client.')->group(function () {
+        Route::get('/', Livewire\Client\Dashboard::class)->name('dashboard');
+        Route::get('/timesheet', Livewire\Client\Timesheet::class)->name('timesheet');
+        Route::get('/invoices', Livewire\Client\Invoices::class)->name('invoices');
+        Route::get('/invoices/{invoice}', [\App\Http\Controllers\BillingPrintController::class, 'clientInvoice'])->name('invoices.print');
+    });
+    // Client timesheets and clients (staff)
+    Route::middleware('access:projects.manage,hr.manage')->group(function () {
+        Route::get('/work/timesheets', Livewire\Work\Timesheets::class)->name('work.timesheets');
+        Route::get('/work/clients', Livewire\Work\Clients::class)->name('work.clients');
+    });
+
     // People
     Route::middleware('access:employees.manage,hr.manage')->group(function () {
         Route::get('/people/employees', Livewire\People\Employees::class)->name('people.employees');
@@ -114,6 +127,9 @@ Route::middleware(['auth', 'account.active'])->group(function () {
         Route::get('/billing/estimates/{estimate}', Livewire\Billing\EstimateShow::class)->name('billing.estimates.show');
         Route::get('/billing/credit-notes', Livewire\Billing\CreditNotes::class)->name('billing.credit-notes');
         Route::get('/billing/revenue', Livewire\Billing\Revenues::class)->name('billing.revenue');
+        Route::get('/billing/settings', Livewire\Billing\Settings::class)->name('billing.settings');
+        Route::get('/billing/invoices/{invoice}/print', [\App\Http\Controllers\BillingPrintController::class, 'invoice'])->name('billing.invoices.print');
+        Route::get('/billing/estimates/{estimate}/print', [\App\Http\Controllers\BillingPrintController::class, 'estimate'])->name('billing.estimates.print');
     });
 
     // Performance

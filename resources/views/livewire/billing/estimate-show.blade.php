@@ -1,6 +1,7 @@
 <div>
     <div class="page-head"><div><h1>{{ $estimate->number() }}</h1><p>{{ $estimate->customer?->name }} · {{ $estimate->issue_date->format('d M Y') }}</p></div>
         <div class="row-actions">
+            <a class="btn" href="{{ route('billing.estimates.print', $estimate) }}" target="_blank"><x-icon name="download" class="icon-sm" />Print / PDF</a>
             @if($estimate->status !== 'Converted')
                 <a class="btn" href="{{ route('billing.estimates.edit', $estimate) }}">Edit</a>
                 @if($estimate->status === 'Draft')<button class="btn" wire:click="setStatus('Sent')">Mark as sent</button>@endif

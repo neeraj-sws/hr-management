@@ -5,16 +5,16 @@
     <section class="card">
         <div class="toolbar"><label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name or SKU"></label></div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Name</th><th>Type</th><th>SKU</th><th class="num">Price</th><th>Tax</th><th>Active</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Type</th><th>SKU</th><th>HSN/SAC</th><th class="num">Price</th><th>Tax</th><th>Active</th><th></th></tr></thead>
             <tbody>
             @forelse($products as $p)
                 <tr wire:key="p-{{ $p->id }}"><td><strong>{{ $p->name }}</strong>@if($p->description)<small style="white-space:normal">{{ \Illuminate\Support\Str::limit($p->description, 60) }}</small>@endif</td>
-                    <td><span class="badge">{{ ucfirst($p->type) }}</span></td><td>{{ $p->sku ?: '—' }}</td>
+                    <td><span class="badge">{{ ucfirst($p->type) }}</span></td><td>{{ $p->sku ?: '—' }}</td><td>{{ $p->hsn_sac ?: '—' }}</td>
                     <td class="num">{{ number_format($p->sale_price, 2) }}</td>
                     <td>{{ $p->tax ? $p->tax->name.' ('.(float) $p->tax->rate.'%)' : '—' }}</td>
                     <td>{{ $p->is_active ? 'Yes' : 'No' }}</td>
                     <td><button class="btn btn-sm" wire:click="edit({{ $p->id }})">Edit</button></td></tr>
-            @empty<tr><td colspan="7"><x-empty title="No products yet" icon="layers" /></td></tr>@endforelse
+            @empty<tr><td colspan="8"><x-empty title="No products yet" icon="layers" /></td></tr>@endforelse
             </tbody></table></div>
         {{ $products->links() }}
     </section>
@@ -24,6 +24,7 @@
                 <x-field label="Name" name="name" full><input wire:model="name"></x-field>
                 <x-field label="Type" name="type"><select wire:model="type"><option value="service">Service</option><option value="product">Product</option></select></x-field>
                 <x-field label="SKU" name="sku"><input wire:model="sku"></x-field>
+                <x-field label="HSN/SAC code" name="hsnSac" hint="services: SAC e.g. 998314 (IT services)"><input wire:model="hsnSac"></x-field>
                 <x-field label="Sale price" name="salePrice"><input type="number" step="0.01" min="0" wire:model="salePrice"></x-field>
                 <x-field label="Purchase price" name="purchasePrice"><input type="number" step="0.01" min="0" wire:model="purchasePrice"></x-field>
                 <x-field label="Default tax" name="taxId"><select wire:model="taxId"><option value="">None</option>@foreach($taxes as $t)<option value="{{ $t->id }}">{{ $t->name }} ({{ (float) $t->rate }}%)</option>@endforeach</select></x-field>

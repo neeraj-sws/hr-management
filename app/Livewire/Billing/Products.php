@@ -21,6 +21,7 @@ class Products extends Component
     public string $name = '';
     public string $type = 'service';
     public string $sku = '';
+    public string $hsnSac = '';
     public string $salePrice = '0';
     public string $purchasePrice = '0';
     public ?int $taxId = null;
@@ -34,7 +35,7 @@ class Products extends Component
     public function create(): void
     {
         $this->guard();
-        $this->reset('editingId', 'name', 'sku', 'salePrice', 'purchasePrice', 'taxId', 'description');
+        $this->reset('editingId', 'name', 'sku', 'hsnSac', 'salePrice', 'purchasePrice', 'taxId', 'description');
         $this->type = 'service';
         $this->isActive = true;
         $this->resetValidation();
@@ -45,7 +46,7 @@ class Products extends Component
     {
         $this->guard();
         $p = BillingProduct::findOrFail($id);
-        $this->fill(['editingId' => $p->id, 'name' => $p->name, 'type' => $p->type, 'sku' => (string) $p->sku,
+        $this->fill(['editingId' => $p->id, 'name' => $p->name, 'type' => $p->type, 'sku' => (string) $p->sku, 'hsnSac' => (string) $p->hsn_sac,
             'salePrice' => (string) (float) $p->sale_price, 'purchasePrice' => (string) (float) $p->purchase_price,
             'taxId' => $p->tax_id, 'description' => (string) $p->description, 'isActive' => (bool) $p->is_active]);
         $this->showForm = true;
@@ -58,13 +59,14 @@ class Products extends Component
             'name' => ['required', 'string', 'max:191'],
             'type' => ['required', 'in:product,service'],
             'sku' => ['nullable', 'string', 'max:100'],
+            'hsnSac' => ['nullable', 'string', 'max:20'],
             'salePrice' => ['required', 'numeric', 'min:0'],
             'purchasePrice' => ['nullable', 'numeric', 'min:0'],
             'taxId' => ['nullable', 'exists:billing_taxes,id'],
             'description' => ['nullable', 'string', 'max:1000'],
         ]);
         $p = BillingProduct::updateOrCreate(['id' => $this->editingId], [
-            'name' => $data['name'], 'type' => $data['type'], 'sku' => $data['sku'] ?: null,
+            'name' => $data['name'], 'type' => $data['type'], 'sku' => $data['sku'] ?: null, 'hsn_sac' => $data['hsnSac'] ?: null,
             'sale_price' => $data['salePrice'], 'purchase_price' => $data['purchasePrice'] ?: 0,
             'tax_id' => $data['taxId'] ?: null, 'description' => $data['description'] ?: null,
             'is_active' => $this->isActive,

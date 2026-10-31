@@ -14,6 +14,7 @@ class BillingInvoice extends Model
     public function items(): HasMany { return $this->hasMany(BillingInvoiceItem::class, 'invoice_id'); }
     public function payments(): HasMany { return $this->hasMany(BillingInvoicePayment::class, 'invoice_id'); }
     public function creditNotes(): HasMany { return $this->hasMany(BillingCreditNote::class, 'invoice_id'); }
+    public function project(): BelongsTo { return $this->belongsTo(Project::class, 'project_id'); }
 
     /** Display number, e.g. SWS/2026-27/00018. Prefix comes from settings (default SWS). */
     public function number(?string $prefix = null): string

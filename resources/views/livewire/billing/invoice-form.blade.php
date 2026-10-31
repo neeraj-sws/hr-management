@@ -5,17 +5,19 @@
     <form wire:submit="save">
         <section class="card mb">
             <div class="form-grid">
-                <x-field label="Customer" name="customerId"><select wire:model="customerId"><option value="">Select customer</option>@foreach($customers as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></x-field>
+                <x-field label="Customer" name="customerId"><select wire:model.live="customerId"><option value="">Select customer</option>@foreach($customers as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></x-field>
                 <x-field label="Reference / PO number" name="refNumber"><input wire:model="refNumber"></x-field>
                 <x-field label="Issue date" name="issueDate"><input type="date" wire:model="issueDate"></x-field>
                 <x-field label="Due date" name="dueDate"><input type="date" wire:model="dueDate"></x-field>
+                <x-field label="Place of supply (state)" name="placeOfSupply" :hint="$interState ? 'other state: IGST' : 'same state: CGST + SGST'"><input wire:model.live.debounce.500ms="placeOfSupply" placeholder="e.g. Madhya Pradesh"></x-field>
+                <x-field label="Project" name="projectId" hint="optional"><select wire:model="projectId"><option value="">—</option>@foreach($projects as $pr)<option value="{{ $pr->id }}">{{ $pr->name }}</option>@endforeach</select></x-field>
             </div>
         </section>
 
         <section class="card mb">
             <div class="card-head"><h2>Items</h2></div>
             <div class="table-wrap"><table class="table">
-                <thead><tr><th style="min-width:200px">Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Discount</th><th>Tax</th><th class="num">Amount</th><th></th></tr></thead>
+                <thead><tr><th style="min-width:200px">Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Discount</th><th>Tax</th><th class="num">Amount</th><th></th></tr></thead>
                 <tbody>
                 @foreach($items as $i => $it)
                     <tr wire:key="item-{{ $i }}">
@@ -25,6 +27,7 @@
                             @error('items.'.$i.'.name')<span class="error">{{ $message }}</span>@enderror
                             <input class="input" wire:model="items.{{ $i }}.description" placeholder="Description (optional)" aria-label="Description" style="margin-top:4px">
                         </td>
+                        <td><input class="input" wire:model="items.{{ $i }}.hsn_sac" placeholder="998314" style="max-width:90px" aria-label="HSN/SAC"></td>
                         <td class="num"><input class="input" type="number" step="0.01" min="0" wire:model.live.debounce.400ms="items.{{ $i }}.quantity" style="max-width:80px" aria-label="Quantity"></td>
                         <td class="num"><input class="input" type="number" step="0.01" min="0" wire:model.live.debounce.400ms="items.{{ $i }}.price" style="max-width:110px" aria-label="Price"></td>
                         <td class="num"><input class="input" type="number" step="0.01" min="0" wire:model.live.debounce.400ms="items.{{ $i }}.discount" style="max-width:100px" aria-label="Discount"></td>

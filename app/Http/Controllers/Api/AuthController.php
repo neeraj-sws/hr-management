@@ -19,6 +19,8 @@ class AuthController extends Controller
             app(\App\Services\AuditLogger::class)->record('auth.api_login_failed', $user, ['email' => $data['email'], 'reason' => !$user ? 'unknown_email' : (!$user->is_active ? 'inactive' : 'wrong_password'), 'device' => $data['device_name']]);
             throw ValidationException::withMessages(['email'=>'These credentials do not match our records.']);
         }
+        // Client-portal logins use the website only, never the employee apps.
+        if($user->client_id)throw ValidationException::withMessages(['email'=>'Client logins use the website (client portal), not the app.']);
         // 2-step sign-in in the apps (Settings > Security): the first call e-mails a code and answers
         // 202 {otp_required, challenge}; the app sends the same sign-in again with challenge + otp.
         $twoFactor=app(\App\Services\TwoFactorService::class);

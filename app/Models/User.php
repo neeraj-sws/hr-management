@@ -26,6 +26,7 @@ class User extends Authenticatable
         'email',
         'password',
         'is_active',
+        'client_id',
     ];
 
     /**
@@ -84,6 +85,11 @@ class User extends Authenticatable
             ? $value
             : \Illuminate\Support\Facades\Hash::make($value);
     }
+
+    /** Set for client-portal logins: the client company this person belongs to. */
+    public function client(): \Illuminate\Database\Eloquent\Relations\BelongsTo { return $this->belongsTo(Client::class); }
+
+    public function isClient(): bool { return $this->client_id !== null; }
 
     public function employeeProfile(): HasOne
     {

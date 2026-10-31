@@ -38,6 +38,8 @@ return [
     ]],
     ['heading' => 'Work', 'items' => [
         ['label' => 'Projects', 'route' => 'work.projects', 'icon' => 'folder'],
+        ['label' => 'Timesheets', 'route' => 'work.timesheets', 'icon' => 'clock'],
+        ['label' => 'Clients', 'route' => 'work.clients', 'icon' => 'users'],
         ['label' => 'My Projects', 'route' => 'work.my-projects', 'icon' => 'folder'],
         ['label' => 'Tasks', 'route' => 'work.tasks', 'icon' => 'check-square'],
         ['label' => 'My Tasks', 'route' => 'work.my-tasks', 'icon' => 'list'],
@@ -61,14 +63,15 @@ return [
         ['label' => 'Payments', 'route' => 'payroll.payments', 'icon' => 'credit-card'],
         ['label' => 'Legacy Salary', 'route' => 'payroll.legacy', 'icon' => 'file'],
     ]],
-    ['heading' => 'Billing', 'items' => [
+    ['heading' => 'Sales', 'items' => [
         ['label' => 'Customers', 'route' => 'billing.customers', 'icon' => 'users'],
-        ['label' => 'Products', 'route' => 'billing.products', 'icon' => 'layers'],
         ['label' => 'Estimates', 'route' => 'billing.estimates', 'icon' => 'file'],
         ['label' => 'Invoices', 'route' => 'billing.invoices', 'icon' => 'receipt'],
-        ['label' => 'Credit notes', 'route' => 'billing.credit-notes', 'icon' => 'file'],
         ['label' => 'Revenue', 'route' => 'billing.revenue', 'icon' => 'credit-card'],
+        ['label' => 'Credit notes', 'route' => 'billing.credit-notes', 'icon' => 'file'],
+        ['label' => 'Products', 'route' => 'billing.products', 'icon' => 'layers'],
         ['label' => 'Taxes', 'route' => 'billing.taxes', 'icon' => 'settings'],
+        ['label' => 'Billing settings', 'route' => 'billing.settings', 'icon' => 'settings'],
     ]],
     ['heading' => 'Performance', 'items' => [
         ['label' => 'Goals (KRA / OKR)', 'route' => 'performance.goals', 'icon' => 'check'],
