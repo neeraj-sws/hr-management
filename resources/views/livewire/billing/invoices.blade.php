@@ -1,4 +1,5 @@
 <div>
+    @include('billing._ui')
     <div class="page-head"><div><h1>Invoices</h1><p>Bills to customers — status, payments and dues.</p></div>
         <a class="btn btn-primary" href="{{ route('billing.invoices.create') }}"><x-icon name="plus" class="icon-sm" />New invoice</a></div>
     <div class="stats">
@@ -21,7 +22,7 @@
                     <td class="nowrap">{{ $i->issue_date->format('d M Y') }}</td><td class="nowrap">{{ $i->due_date?->format('d M Y') ?? '—' }}</td>
                     <td class="num">{{ number_format($i->total(), 2) }}</td><td class="num">{{ number_format($i->paidAmount(), 2) }}</td>
                     <td class="num"><strong>{{ number_format(max(0, $i->due()), 2) }}</strong></td>
-                    <td><span class="badge">{{ $i->status }}</span></td>
+                    <td><span class="bill-badge {{ billing_badge_class($i->status) }}">{{ $i->status }}</span></td>
                     <td><a class="btn btn-sm" href="{{ route('billing.invoices.show', $i) }}">Open</a></td></tr>
             @empty<tr><td colspan="9"><x-empty title="No invoices" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>

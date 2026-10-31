@@ -1,28 +1,6 @@
 <div>
-    <style>
-        .slip-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px 22px;margin:4px 0 18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
-        .slip-meta > div{min-width:0}
-        .slip-meta span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-        .slip-meta strong{display:block;font-size:14px;margin-top:3px}
-        .slip-meta small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
-        .inv-badge{display:inline-block;padding:3px 13px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle;margin-left:12px}
-        .inv-badge.paid{background:rgba(16,185,129,.14);color:var(--green,#059669)}
-        .inv-badge.part{background:rgba(245,158,11,.16);color:var(--amber,#b45309)}
-        .inv-badge.sent{background:rgba(59,130,246,.14);color:#2563eb}
-        .inv-badge.draft{background:var(--line-2);color:var(--muted)}
-        .inv-badge.unpaid{background:rgba(239,68,68,.14);color:var(--red,#dc2626)}
-        .inv-totals{max-width:340px;margin-left:auto;margin-top:18px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-        .inv-totals .r{display:flex;justify-content:space-between;gap:16px;padding:9px 16px;font-size:14px}
-        .inv-totals .r span{color:var(--muted)}
-        .inv-totals .r.total{border-top:1px solid var(--line);font-weight:700;font-size:15px}
-        .inv-totals .r.total span{color:inherit}
-        .inv-due{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;background:rgba(239,68,68,.08);border-top:1px solid var(--line)}
-        .inv-due.clear{background:rgba(16,185,129,.09)}
-        .inv-due .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-        .inv-due b{font-size:19px}
-    </style>
-    @php($sc = ['Paid'=>'paid','Partially Paid'=>'part','Sent'=>'sent','Draft'=>'draft','Unpaid'=>'unpaid'][$invoice->status] ?? 'draft')
-    <div class="page-head"><div><h1>{{ $invoice->number() }}<span class="inv-badge {{ $sc }}">{{ $invoice->status }}</span></h1><p>{{ $invoice->customer?->name }} · {{ $invoice->issue_date->format('d M Y') }}</p></div>
+    @include('billing._ui')
+    <div class="page-head"><div><h1>{{ $invoice->number() }}<span class="bill-badge {{ billing_badge_class($invoice->status) }}">{{ $invoice->status }}</span></h1><p>{{ $invoice->customer?->name }} · {{ $invoice->issue_date->format('d M Y') }}</p></div>
         <div class="row-actions">
             <a class="btn" href="{{ route('billing.invoices.print', $invoice) }}" target="_blank"><x-icon name="download" class="icon-sm" />Print / PDF</a>
             <a class="btn" href="{{ route('billing.invoices.edit', $invoice) }}">Edit</a>

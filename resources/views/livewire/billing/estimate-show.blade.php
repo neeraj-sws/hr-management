@@ -1,12 +1,6 @@
 <div>
-    <style>
-        .slip-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 22px;margin-bottom:4px}
-        .slip-meta > div{min-width:0}
-        .slip-meta span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-        .slip-meta strong{display:block;font-size:14px;margin-top:3px}
-        .slip-meta small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
-    </style>
-    <div class="page-head"><div><h1>{{ $estimate->number() }}</h1><p>{{ $estimate->customer?->name }} · {{ $estimate->issue_date->format('d M Y') }}</p></div>
+    @include('billing._ui')
+    <div class="page-head"><div><h1>{{ $estimate->number() }}<span class="bill-badge {{ billing_badge_class($estimate->status) }}">{{ $estimate->status }}</span></h1><p>{{ $estimate->customer?->name }} · {{ $estimate->issue_date->format('d M Y') }}</p></div>
         <div class="row-actions">
             <a class="btn" href="{{ route('billing.estimates.print', $estimate) }}" target="_blank"><x-icon name="download" class="icon-sm" />Print / PDF</a>
             @if($estimate->status !== 'Converted')
@@ -36,10 +30,10 @@
                     <td class="num">{{ number_format($it->lineSubtotal() + $it->lineTax(), 2) }}</td></tr>
             @endforeach
             </tbody></table></div>
-        <div class="stack" style="max-width:320px;margin-left:auto;margin-top:12px">
-            <div class="list-row"><span>Sub-total</span><strong>{{ number_format($estimate->subTotal(), 2) }}</strong></div>
-            <div class="list-row"><span>Tax</span><strong>{{ number_format($estimate->totalTax(), 2) }}</strong></div>
-            <div class="list-row"><span><strong>Total</strong></span><strong>{{ number_format($estimate->total(), 2) }}</strong></div>
+        <div class="inv-totals">
+            <div class="r"><span>Sub-total</span><strong>{{ number_format($estimate->subTotal(), 2) }}</strong></div>
+            <div class="r"><span>Tax</span><strong>{{ number_format($estimate->totalTax(), 2) }}</strong></div>
+            <div class="r total"><span>Total</span><strong>₹{{ number_format($estimate->total(), 2) }}</strong></div>
         </div>
     </section>
 </div>
