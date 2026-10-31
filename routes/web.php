@@ -92,6 +92,8 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Leave & time
     Route::get('/leave/requests', Livewire\Leave\Requests::class)->middleware('access:profile,leave.manage,leave.approve')->name('leave.requests');
     Route::get('/leave/balances', Livewire\Leave\Balances::class)->middleware('access:profile,leave.manage')->name('leave.balances');
+    Route::get('/leave/late-arrival', Livewire\Leave\LateArrival::class)->middleware('access:profile,hr.manage,approvals.manage,manager')->name('leave.late-arrival');
+    Route::get('/leave/night-work', Livewire\Leave\NightWork::class)->middleware('access:profile,hr.manage,approvals.manage,manager')->name('leave.night-work');
     Route::get('/leave/overtime', Livewire\Leave\Overtime::class)->middleware('access:profile,overtime.manage')->name('leave.overtime');
 
     // Expenses
@@ -99,6 +101,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/expenses/{claim}/receipt', [HrFileController::class, 'receipt'])->name('expenses.receipt');
 
     // Payroll
+    Route::get('/payroll/day-wise', Livewire\Payroll\DayWise::class)->middleware('access:payroll.manage,payroll.approve,hr.manage,employees.manage,manager')->name('payroll.day-wise');
     Route::get('/payroll/salary', Livewire\Payroll\Salary::class)->middleware('access:profile,payroll.manage,payroll.approve,hr.manage')->name('payroll.salary');
     Route::post('/payroll/salary/import', [ImportController::class, 'salary'])->middleware('access:payroll.manage,hr.manage')->name('payroll.salary.import');
     Route::get('/payroll/legacy-salary', Livewire\Payroll\LegacySalary::class)->middleware('access:payroll.manage,hr.manage')->name('payroll.legacy');

@@ -1141,7 +1141,7 @@ class DesktopApp:
             # The server's figures (the same as the website, admin list and phone), counted on each second.
             active, idle, meeting = live["active"], live["screen_idle"], live["meeting"]
             corrected = int(session.get("screen_corrected_seconds") or 0)  # time the app missed, confirmed by an approved correction
-            text = f"Screen time today: {hms(active)} in use" + (f" · {hms(meeting)} in meetings" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
+            text = f"Screen time today: {hms(active + meeting)} in use" + (f" (incl. {hms(meeting)} in meetings)" if meeting else "") + (f" · {hms(corrected)} added by approved correction" if corrected else "") + f" · {hms(idle)} idle"
             untracked = int(session.get("screen_untracked_seconds") or 0)  # app closed / updating: counted as worked
             if untracked >= 60:
                 text += f" · {hms(untracked)} not tracked"

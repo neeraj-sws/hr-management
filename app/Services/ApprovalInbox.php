@@ -31,6 +31,8 @@ class ApprovalInbox
         EmployeeFinalSettlement::class => ['Final settlement', ['payroll.approve']],
         AttendanceCorrection::class => ['Attendance correction', ['attendance.correct', 'approvals.manage']],
         ExpenseClaim::class => ['Expense claim', ['expenses.manage', 'approvals.manage']],
+        \App\Models\NightWorkRequest::class => ['Night work', ['hr.manage', 'approvals.manage']],
+        \App\Models\LateArrivalRequest::class => ['Late arrival', ['hr.manage', 'approvals.manage']],
         \App\Models\MonitoringRequest::class => ['Screen capture', ['monitoring.capture', 'monitoring.manage']],
     ];
 
@@ -47,7 +49,7 @@ class ApprovalInbox
      * is the designated approver for these even without a Manager role, so the
      * request they are notified about never ends in "403 Forbidden".
      */
-    public const TEAM_LEAD_TYPES = [LeaveRequest::class, OvertimeRequest::class, AttendanceCorrection::class, ExpenseClaim::class];
+    public const TEAM_LEAD_TYPES = [LeaveRequest::class, OvertimeRequest::class, AttendanceCorrection::class, ExpenseClaim::class, \App\Models\NightWorkRequest::class, \App\Models\LateArrivalRequest::class];
 
     /**
      * Who decides an employee's request: their manager — unless there is no
@@ -129,6 +131,8 @@ class ApprovalInbox
             $subject instanceof OvertimeRequest => $subject->status === 'pending' && ($user->canAny(['hr.manage', 'employees.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
             $subject instanceof AttendanceCorrection => $subject->status === 'pending' && ($user->canAny(['attendance.correct', 'approvals.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
             $subject instanceof ExpenseClaim => $subject->status === 'pending' && ($user->canAny(['expenses.manage', 'approvals.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
+            $subject instanceof \App\Models\LateArrivalRequest => $subject->status === 'pending' && ($user->canAny(['hr.manage', 'approvals.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
+            $subject instanceof \App\Models\NightWorkRequest => $subject->status === 'pending' && ($user->canAny(['hr.manage', 'approvals.manage']) || $approval->approver_id === $user->id || $this->managesEmployee($user, $subject->employee)),
             $subject instanceof PayrollRun => $subject->status === 'draft',
             $subject instanceof EmployeeFinalSettlement => $subject->status === 'pending',
             default => $subject->status === 'pending',
@@ -148,6 +152,8 @@ class ApprovalInbox
             $subject instanceof OvertimeRequest => $this->people->decideOvertime($subject, $user->id, $approve, null, $note),
             $subject instanceof AttendanceCorrection => $this->corrections->decide($subject, $user->id, $approve, $note),
             $subject instanceof ExpenseClaim => $this->expenses->decide($subject, $user->id, $approve, $note),
+            $subject instanceof \App\Models\NightWorkRequest => app(NightWorkService::class)->decide($subject, $user->id, $approve, $note),
+            $subject instanceof \App\Models\LateArrivalRequest => app(LateArrivalService::class)->decide($subject, $user->id, $approve, $note),
             $subject instanceof PayrollRun => $approve ? $this->workflow->approvePayroll($subject, $user->id) : $this->workflow->rejectPayroll($subject, $user->id, $note),
             $subject instanceof EmployeeFinalSettlement => $approve ? $this->settlements->approve($subject, $user->id) : $this->settlements->reject($subject, $user->id, $note),
             $subject instanceof \App\Models\MonitoringRequest => app(TeamMonitoringService::class)->decideRequest($subject, $user, $approve, $note),
@@ -176,6 +182,8 @@ class ApprovalInbox
             $subject instanceof \App\Models\PenaltyAppeal => "{$who} · fine ".number_format((float) $subject->penalty?->amount, 2).' on '.$subject->penalty?->effective_on?->format('d M Y').' ('.$subject->penalty?->reason.') · reason: '.$subject->reason.' · accept = fine removed',
             $subject instanceof AttendanceCorrection => "{$who} · {$subject->work_date->format('d M Y')} · ".collect(['in '.$subject->requested_check_in?->format('h:i A'), 'out '.$subject->requested_check_out?->format('h:i A')])->filter(fn ($part) => strlen($part) > 4)->join(', '),
             $subject instanceof ExpenseClaim => "{$who} · {$subject->category} · ".number_format((float) $subject->amount, 2).' · '.$subject->spent_on->format('d M Y'),
+            $subject instanceof \App\Models\LateArrivalRequest => "{$who} · {$subject->work_date->format('d M Y')} · expected check-in {$subject->expectedLabel()} · ".\Illuminate\Support\Str::limit($subject->reason, 120),
+            $subject instanceof \App\Models\NightWorkRequest => "{$who} · {$subject->work_date->format('d M Y')} · {$subject->timeRange()} (".\App\Support\Duration::words($subject->minutes).')'.($subject->tasks()->isNotEmpty() ? ' · tasks: '.$subject->tasks()->pluck('title')->join(', ') : '').' · '.\Illuminate\Support\Str::limit($subject->work_done, 120),
             $subject instanceof PayrollRun => "Period {$subject->period_starts_on->format('d M')}–{$subject->period_ends_on->format('d M Y')} · {$subject->items()->count()} employees",
             $subject instanceof EmployeeFinalSettlement => "{$who} · net ".number_format((float) $subject->net_amount, 2),
             $subject instanceof \App\Models\MonitoringRequest => "{$who} · turn on screen capture".($subject->until ? ' until '.$subject->until->format('d M Y') : '').' · asked by '.($subject->requester?->name ?? '—').' · '.$subject->reason,
@@ -206,6 +214,8 @@ class ApprovalInbox
             $subject instanceof OvertimeRequest => $user->canAny(['hr.manage', 'employees.manage']) || $this->managesEmployee($user, $subject->employee),
             $subject instanceof AttendanceCorrection => $user->canAny(['attendance.correct', 'approvals.manage']) || $this->managesEmployee($user, $subject->employee),
             $subject instanceof ExpenseClaim => $user->canAny(['expenses.manage', 'approvals.manage']) || $this->managesEmployee($user, $subject->employee),
+            $subject instanceof \App\Models\NightWorkRequest => $user->canAny(['hr.manage', 'approvals.manage']) || $this->managesEmployee($user, $subject->employee),
+            $subject instanceof \App\Models\LateArrivalRequest => $user->canAny(['hr.manage', 'approvals.manage']) || $this->managesEmployee($user, $subject->employee),
             default => $user->canAny(self::TYPES[$approval->approvable_type][1] ?? ['-']),
         };
     }

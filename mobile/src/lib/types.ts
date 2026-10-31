@@ -113,6 +113,8 @@ export type Fine = {
   decision_note: string | null; decided_by: string | null; decided_at: string | null;
   my_reason: { reason: string; sent_at: string | null; status: string; decided_by: string | null; decided_at: string | null; note: string | null; paid_back_next_payroll: boolean } | null;
 };
+export type LateArrival = { id: number; work_date: string; expected_at: string; reason: string; status: string; decision_note: string | null };
+export type NightWork = { id: number; work_date: string; starts_at: string; ends_at: string; minutes: number; tasks: { id: number; title: string }[]; work_done: string; status: string; decision_note: string | null };
 export type Correction = { id: number; work_date: string; check_in: string | null; check_out: string | null; reason: string; status: string; decision_note: string | null };
 export type ExpenseClaim = { id: number; category: string; spent_on: string; amount: number; description: string; has_receipt: boolean; status: string; decision_note: string | null };
 export type Announcement = { id: number; title: string; body: string; pinned: boolean; published_at: string; author: string | null };

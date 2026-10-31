@@ -25,7 +25,7 @@ class Policies extends Component
         'attendance.early_checkout' => ['Early check-out', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per early minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day']],
         'task.missing_entry' => ['No task entered for a worked day', ['amount_per_day' => 'Amount per day']],
         'task.late_entry' => ['Task entered late (after the day it was for)', ['amount' => 'Amount per late task', 'grace_hours' => 'Grace hours after the day ends']],
-        'daily_status.missing' => ['Daily status not submitted', ['amount_per_day' => 'Amount per day', 'grace_hours' => 'Grace hours after the day ends']],
+        'daily_status.missing' => ['Daily status not submitted', ['amount_per_day' => 'Amount per day', 'grace_hours' => 'Grace hours after the shift ends (e.g. 7:30 PM + 3 = 10:30 PM)']],
         // Leave asked for too late: fewer days before it than the notice (a past day is always late). Pending: needs approval.
         'leave.late_application' => ['Leave applied late (short notice or after the day)', ['amount' => 'Amount per late leave request', 'notice_days' => 'Days of notice needed (0 = only past days)']],
     ];

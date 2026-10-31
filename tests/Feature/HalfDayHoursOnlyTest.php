@@ -90,6 +90,16 @@ class HalfDayHoursOnlyTest extends TestCase
         $this->assertEqualsWithDelta(500, (float) $this->item()->calculation_breakdown['base_salary'], 0.01);
     }
 
+    public function test_extra_working_day_is_paid_at_most_one_working_day_no_overtime(): void
+    {
+        $this->day('2026-10-18', '09:00', '20:00'); // Sunday: 11 h worked, the working day is 8 h
+        $extra = $this->item()->calculation_breakdown['extra_work'];
+        $this->assertSame(11 * 3600, $extra['seconds']);
+        $this->assertSame(8 * 3600, $extra['paid_seconds']);
+        $this->assertEqualsWithDelta(1000, (float) $extra['amount'], 0.01, '8 h x 125 an hour, the 3 h above are not paid');
+        $this->assertSame('paid 8h 00m of 11h 00m worked', app(\App\Services\SalarySummaryService::class)->soFar($this->employee)['shortfall']['extra']['hours']);
+    }
+
     public function test_extra_working_on_an_off_day_is_shown_where_gross_is_explained(): void
     {
         $this->day('2026-10-12', '09:00', '18:00');
@@ -101,7 +111,7 @@ class HalfDayHoursOnlyTest extends TestCase
 
         $s = app(\App\Services\SalarySummaryService::class)->soFar($this->employee)['shortfall'];
         $this->assertSame($extra, $s['extra']['amount']);
-        $this->assertSame('4h 00m', $s['extra']['hours']);
+        $this->assertSame('paid 4h 00m', $s['extra']['hours']);
 
         $admin = $this->admin;
         \Livewire\Livewire::actingAs($admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $item->payroll_run_id)->set('breakdownItemId', $item->id)

@@ -67,6 +67,12 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/attendance/corrections', [CorrectionController::class, 'store'])->name('api.corrections.store');
     Route::post('/attendance/corrections/{correction}/cancel', [CorrectionController::class, 'cancel'])->name('api.corrections.cancel');
 
+    Route::get('/late-arrival', [\App\Http\Controllers\Api\LateArrivalController::class, 'index'])->name('api.late-arrival.index');
+    Route::post('/late-arrival', [\App\Http\Controllers\Api\LateArrivalController::class, 'store'])->name('api.late-arrival.store');
+    Route::post('/late-arrival/{lateArrival}/cancel', [\App\Http\Controllers\Api\LateArrivalController::class, 'cancel'])->name('api.late-arrival.cancel');
+    Route::get('/night-work', [\App\Http\Controllers\Api\NightWorkController::class, 'index'])->name('api.night-work.index');
+    Route::post('/night-work', [\App\Http\Controllers\Api\NightWorkController::class, 'store'])->name('api.night-work.store');
+    Route::post('/night-work/{nightWork}/cancel', [\App\Http\Controllers\Api\NightWorkController::class, 'cancel'])->name('api.night-work.cancel');
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('api.expenses.index');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('api.expenses.store');
     Route::post('/expenses/{claim}/cancel', [ExpenseController::class, 'cancel'])->name('api.expenses.cancel');

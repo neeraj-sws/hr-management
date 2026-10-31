@@ -50,7 +50,7 @@ class LeaveController extends ApiController
     public function store(Request $request, HrWorkflowService $workflow): JsonResponse
     {
         $employee = $this->apiEmployee($request);
-        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'duration' => ['nullable', 'in:full,half,short'], 'starts_on' => ['required', 'date', 'after_or_equal:'.today()->subMonthNoOverflow()->startOfMonth()->toDateString()], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000'], 'other_type' => ['nullable', 'string', 'max:100']], ['starts_on.after_or_equal' => 'Leave can be asked for back to '.today()->subMonthNoOverflow()->startOfMonth()->format('d M Y').' at the earliest; for older days ask HR.']);
+        $data = $request->validate(['leave_type_id' => ['required', 'exists:leave_types,id'], 'duration' => ['nullable', 'in:full,half,short'], 'starts_on' => ['required', 'date', 'after_or_equal:today'], 'ends_on' => ['required', 'date', 'after_or_equal:starts_on'], 'reason' => ['required', 'string', 'max:2000'], 'other_type' => ['nullable', 'string', 'max:100']], ['starts_on.after_or_equal' => 'Leave can be applied for today or a later day only, not for a past day.']);
         return $this->once($request, function () use ($workflow, $employee, $data) {
             $leave = $workflow->requestLeave($employee, ['leave_type_id' => $data['leave_type_id'], 'other_type' => $data['other_type'] ?? null, 'duration' => $data['duration'] ?? 'full', 'starts_on' => Carbon::parse($data['starts_on']), 'ends_on' => Carbon::parse($data['ends_on']), 'reason' => $data['reason']]);
 

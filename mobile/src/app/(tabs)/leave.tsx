@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
 import { AddButton, FormSheet } from '../../components/FormSheet';
 import { DayFilter, MonthSwitcher, useMonth } from '../../components/MonthSwitcher';
-import { DateField, toYmd, todayYmd } from '../../components/DateField';
+import { DateField, todayYmd } from '../../components/DateField';
 import { Badge, Button, Card, Chips, colors, confirmAction, Empty, Field, formatDate, H2, Muted, Notice, Row, Screen } from '../../components/ui';
 import { api, ApiError, get, post } from '../../lib/api';
 import { enqueue } from '../../lib/queue';
@@ -12,8 +12,6 @@ import type { LeaveBalance, LeaveRequest, LeaveType, Paginated } from '../../lib
 
 const TYPES_CACHE = 'sws.cache.leave_types';
 
-/** A past day can be asked for back to the start of last month (marked "Old date" for the approver). */
-const earliestYmd = (() => { const d = new Date(); return toYmd(new Date(d.getFullYear(), d.getMonth() - 1, 1)); })();
 
 export default function Leave() {
   const [types, setTypes] = useState<LeaveType[]>([]);
@@ -84,7 +82,10 @@ export default function Leave() {
       const created = await post<{ data: LeaveRequest }>('/leave/requests', { leave_type_id: typeId, other_type: isOther(typeId) ? otherType.trim() : null, duration, starts_on: startsOn, ends_on: endDate, reason });
       // Show the new request immediately; balances refresh in the background.
       setRequests((current) => [created.data, ...current.filter((r) => r.id !== created.data.id)]);
-      setMessage({ tone: 'success', text: `Leave request for ${formatDate(startsOn)} submitted for approval.` });
+      // A personal reason is rejected automatically: say so with the reason, not "submitted".
+      setMessage(created.data.status === 'rejected'
+        ? { tone: 'error', text: created.data.decision_note || 'Your leave request was rejected automatically.' }
+        : { tone: 'success', text: `Leave request for ${formatDate(startsOn)} submitted for approval.` });
       // Open the month the leave is in (e.g. November), so the new request stays in the list.
       if (!day && statusFilter !== 'pending') setMonth(startsOn.slice(0, 7));
       setStartsOn(''); setEndsOn(''); setReason(''); setDayChoice('one');
@@ -181,9 +182,9 @@ export default function Leave() {
         {errors.leave_type_id ? <Muted style={{ color: '#bd3446', marginTop: -6, marginBottom: 8 }}>{errors.leave_type_id}</Muted> : null}
         <Muted style={{ marginBottom: 6 }}>Duration</Muted>
         <Chips<'one' | 'several' | 'half' | 'short'> value={dayChoice} onChange={setDayChoice} options={[{ label: 'One day', value: 'one' }, { label: 'Several days', value: 'several' }, { label: 'Half day', value: 'half' }, { label: 'Short leave', value: 'short' }]} />
-        <DateField label={several ? 'From' : 'Date'} value={startsOn} onChange={pickStart} minimumDate={earliestYmd} error={errors.starts_on} />
+        <DateField label={several ? 'From' : 'Date'} value={startsOn} onChange={pickStart} minimumDate={todayYmd()} error={errors.starts_on} />
         {startsOn && startsOn < todayYmd() ? <Text style={{ color: colors.amber, fontSize: 12, marginTop: -6, marginBottom: 10 }}>Past date ("Old date"): your approver must give a reason, and a late-leave fine may apply.</Text> : null}
-        {several ? <DateField label="To" value={endsOn} onChange={setEndsOn} minimumDate={startsOn || earliestYmd} error={errors.ends_on} /> : null}
+        {several ? <DateField label="To" value={endsOn} onChange={setEndsOn} minimumDate={startsOn || todayYmd()} error={errors.ends_on} /> : null}
         <Field label="Reason" value={reason} onChangeText={setReason} error={errors.reason} multiline />
         <Button title="Submit request" tone="primary" onPress={submit} loading={busy} />
       </FormSheet>

@@ -81,18 +81,15 @@ class Oct21BatchETest extends TestCase
         $this->assertSame([8562.96, 8562.96, 0.0], [$row['payable'], $row['paid'], $row['balance']]);
     }
 
-    public function test_leave_for_a_past_day_only_back_to_last_month_and_marked_old_date(): void
+    public function test_leave_only_for_today_or_a_later_day(): void
     {
         $e = $this->employee('LP-1');
         $type = \App\Models\LeaveType::where('is_active', true)->firstOrFail();
         \Laravel\Sanctum\Sanctum::actingAs($e->user, ['*']);
-        // Older than the start of last month: ask HR.
-        $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => today()->subMonthsNoOverflow(2)->startOfMonth()->toDateString(), 'ends_on' => today()->subMonthsNoOverflow(2)->startOfMonth()->toDateString(), 'reason' => 'Trip'])
-            ->assertStatus(422)->assertJsonValidationErrors('starts_on');
-        // A recent past day: allowed, marked "old date".
+        // Any past day: refused (HR records past leave from the employee's profile).
         $past = today()->subDays(3)->isWeekend() ? today()->subDays(5) : today()->subDays(3);
         $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => $past->toDateString(), 'ends_on' => $past->toDateString(), 'reason' => 'Fever'])
-            ->assertCreated()->assertJsonPath('data.backdated', true);
+            ->assertStatus(422)->assertJsonPath('errors.starts_on.0', 'Leave can be applied for today or a later day only, not for a past day.');
         $this->postJson('/api/leave/requests', ['leave_type_id' => $type->id, 'duration' => 'full', 'starts_on' => '2026-10-22', 'ends_on' => '2026-10-23', 'reason' => 'Trip'])
             ->assertCreated();
     }

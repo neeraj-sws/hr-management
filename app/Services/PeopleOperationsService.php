@@ -171,6 +171,36 @@ class PeopleOperationsService
      * cuts: the fine is made also on a day paid by the hours (check-in after the late check-in time, half day). Not on a
      * day with an approved half-day / short leave: being away then was allowed.
      */
+    /**
+     * When a day's daily status is due: the end of the employee's shift that day (their shift, else their own end
+     * time, else the company's) plus the grace hours of the "Daily status not submitted" rule - e.g. 7:30 PM + 3 h =
+     * 10:30 PM. No end time known: midnight plus the grace hours (as before).
+     */
+    public function statusDeadline(AttendanceEmployee $employee, string $date): Carbon
+    {
+        $config = $this->policy($employee, 'daily_status.missing', [], $date);
+        $shift = rescue(fn () => app(ShiftService::class)->shiftFor($employee, $date), null, false);
+        $end = $shift?->end_time ?: ($employee->work_end ?: ($this->policy($employee, 'work.hours', [], $date)['end_time'] ?? null));
+        $base = $end ? Carbon::parse($date.' '.substr((string) $end, 0, 5)) : Carbon::parse($date)->endOfDay();
+        // A night shift ending after midnight ends on the next day.
+        if ($end && $shift?->start_time && substr((string) $shift->end_time, 0, 5) < substr((string) $shift->start_time, 0, 5)) $base->addDay();
+
+        return $base->addMinutes((int) round((float) ($config['grace_hours'] ?? 0) * 60));
+    }
+
+    /**
+     * An approved full-day leave covers this day, and HR has not settled it as a normal working day: work that day
+     * was urgent work on a leave day - paid for the hours worked (extra working), with no late / early check-out
+     * rules (no 10:16 cut-off, no late fine, no early fine). The rest of the day stays leave.
+     */
+    public function urgentWorkOnLeave(AttendanceEmployee $employee, string $date): bool
+    {
+        $onLeave = LeaveRequest::where('employee_id', $employee->id)->where('status', 'approved')->where(fn ($q) => $q->whereNull('duration')->orWhere('duration', 'full'))
+            ->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists();
+
+        return $onLeave && \App\Models\LeaveConflictResolution::where('employee_id', $employee->id)->whereDate('work_date', $date)->value('resolution') !== 'worked';
+    }
+
     public function lateFineOnTop(AttendanceEmployee $employee, \App\Models\AttendanceSession $session): bool
     {
         $date = $session->work_date->toDateString();
@@ -208,8 +238,8 @@ class PeopleOperationsService
             $kind = strtok((string) $penalty->source_key, ':');
             $stillApplies = match ($kind) {
                 'absence' => $session === null && ! LeaveRequest::where('employee_id', $employee->id)->whereIn('status', ['approved', 'pending'])->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->exists(),
-                'late' => $session !== null && (! $this->paidByHours($employee, $session) || $this->lateFineOnTop($employee, $session)) && app(AttendanceService::class)->lateMinutes($session) > 0,
-                'early' => $session !== null && $session->check_out && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->earlyMinutes($session) > 0,
+                'late' => $session !== null && ! $this->urgentWorkOnLeave($employee, $date) && ! \App\Models\LateArrivalRequest::excuses($employee->id, $date, $session->check_in?->format('H:i')) && (! $this->paidByHours($employee, $session) || $this->lateFineOnTop($employee, $session)) && app(AttendanceService::class)->lateMinutes($session) > 0,
+                'early' => $session !== null && $session->check_out && ! $this->urgentWorkOnLeave($employee, $date) && ! $this->paidByHours($employee, $session) && app(AttendanceService::class)->earlyMinutes($session) > 0,
                 default => true,
             };
             if ($stillApplies) continue;
@@ -271,11 +301,26 @@ class PeopleOperationsService
         $reason = trim($reason);
         if ($penalty->employee?->user_id !== $user->id) abort(403);
         if (! in_array($penalty->status, ['pending', 'approved'], true)) throw ValidationException::withMessages(['reason' => 'This fine is already removed.']);
-        if ($penalty->appeal()->exists()) throw ValidationException::withMessages(['reason' => 'A reason was already given for this fine.']);
+        if ($penalty->appeal && ! $penalty->appeal->isAutoRejected()) throw ValidationException::withMessages(['reason' => 'A reason was already given for this fine.']);
         if (mb_strlen($reason) < 5) throw ValidationException::withMessages(['reason' => 'Write the reason (at least 5 characters).']);
 
+        // "Personal work / personal reason" is not a valid reason for coming late: rejected at once, the fine stays.
+        if ($penalty->isLateFine() && ($matched = \App\Support\PersonalReason::match($reason, 'late'))) {
+            return DB::transaction(function () use ($penalty, $user, $reason, $matched) {
+                $note = \App\Support\PersonalReason::note('late');
+                // One reason row per fine: a second personal reason replaces the first (both stay in the audit log).
+                $appeal = PenaltyAppeal::updateOrCreate(['employee_penalty_id' => $penalty->id], ['employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'rejected', 'decided_by' => null, 'decided_at' => now(), 'decision_note' => $note]);
+                $this->audit->record('penalty.appeal_auto_rejected', $penalty, ['appeal_id' => $appeal->id, 'matched' => $matched, 'reason' => mb_substr($reason, 0, 1000)]);
+                Notifier::send($penalty->employee?->user, 'PenaltyAppeal', $appeal->id, 'Your reason for the late fine of '.$penalty->effective_on->format('d M').' ("'.\Illuminate\Support\Str::limit($appeal->reason, 80).'") was rejected: the fine of '.number_format((float) $penalty->amount, 2)." stays. {$note}", route('compliance.penalties', [], false));
+                rescue(fn () => app(\App\Services\TelegramEvents::class)->lateReasonAutoRejected($appeal->setRelation('penalty', $penalty)), null, true);
+
+                return $appeal;
+            });
+        }
+
         return DB::transaction(function () use ($penalty, $user, $reason) {
-            $appeal = PenaltyAppeal::create(['employee_penalty_id' => $penalty->id, 'employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'pending']);
+            // After a personal reason was rejected automatically, the valid reason takes its place (the first is in the audit log).
+            $appeal = PenaltyAppeal::updateOrCreate(['employee_penalty_id' => $penalty->id], ['employee_id' => $penalty->employee_id, 'reason' => mb_substr($reason, 0, 1000), 'status' => 'pending', 'decided_by' => null, 'decided_at' => null, 'decision_note' => null]);
             ApprovalRequest::create(['approvable_type' => PenaltyAppeal::class, 'approvable_id' => $appeal->id, 'approver_id' => null, 'status' => 'pending']);
             $this->audit->record('penalty.appealed', $penalty, ['appeal_id' => $appeal->id]);
             Notifier::send(Notifier::withPermission('penalties.manage'), 'PenaltyAppeal', $appeal->id,
@@ -561,6 +606,10 @@ class PeopleOperationsService
             if($this->paidByHours($employee,$session)&&!$this->lateFineOnTop($employee,$session))continue;
             // Extra working on an off day is never late.
             if(!app(AttendanceService::class)->isScheduledDay($employee,$session->work_date->toDateString()))continue;
+            // Urgent work on a full-day leave: paid by the hours worked, never late.
+            if($this->urgentWorkOnLeave($employee,$session->work_date->toDateString()))continue;
+            // Late arrival told in advance and approved, checked in by the time given: no late fine.
+            if(\App\Models\LateArrivalRequest::excuses($employee->id,$session->work_date->toDateString(),$session->check_in?->format('H:i')))continue;
             $workStart=app(AttendanceService::class)->rules($employee,$session->work_date->toDateString())['work_start'];
             if(!$workStart)continue;
             $config=$this->policy($employee,'attendance.late_penalty',$rule?->configuration??[],$session->work_date->toDateString());
@@ -630,6 +679,8 @@ class PeopleOperationsService
                 $this->approval(EmployeePenalty::class, $penalty->id);
                 $this->audit->record('compliance.'.str_replace('.', '_', $key).'_assessed', $penalty, $meta);
                 $employee->user?->notify(new ApprovalRequested($meta['kind'] ?? 'EmployeePenalty', $penalty->id, $meta['message'] ?? ($reason.' — a penalty is pending review.'), $meta['url'] ?? null));
+                // Deducted at once (no HR approval) for rules that say so; the employee can still give a reason.
+                if (! empty($meta['auto'])) $this->autoApprove($penalty, $employee, $actor, 'Deducted automatically. If you had a valid reason, give it on the Penalties page (Give reason).');
                 $created++;
             }
         };
@@ -644,7 +695,7 @@ class PeopleOperationsService
 
             // Early check-out (an auto-closed session is a missed check-out, not an early one). Never cut twice:
             // a day already paid only for the hours at work has its early leaving cut by that.
-            if ($session->check_out && ! $session->closed_automatically && ! $this->paidByHours($employee, $session)) {
+            if ($session->check_out && ! $session->closed_automatically && ! $this->paidByHours($employee, $session) && ! $this->urgentWorkOnLeave($employee, $date)) {
                 $config = $this->policy($employee, 'attendance.early_checkout', [], $date);
                 $early = max(0, $attendance->earlyMinutes($session) - (int) ($config['grace_minutes'] ?? 0));
                 if ($early > 0) $raise($employee, 'attendance.early_checkout', "early:{$employee->id}:{$date}", $date, $this->capped($early * $this->penaltyRatePerMinute($employee, $config, $date), $config), "Checked out {$early} minutes early", ['early_minutes' => $early]);
@@ -657,18 +708,19 @@ class PeopleOperationsService
                 if (! $hasWork) $raise($employee, 'task.missing_entry', "no_task:{$employee->id}:{$date}", $date, (float) $config['amount_per_day'], 'No task entered for '.Carbon::parse($date)->format('d M'), []);
             }
 
-            // Daily status missing after the grace period.
+            // Daily status missing after its deadline (shift end + grace hours, e.g. 7:30 PM + 3 h = 10:30 PM).
             $config = $this->policy($employee, 'daily_status.missing', [], $date);
-            if ((float) ($config['amount_per_day'] ?? 0) > 0 && $dayEnd->copy()->addHours((int) ($config['grace_hours'] ?? 0))->lt($now) && \App\Support\DailyStatusRule::required($employee, $date)) {
+            $statusDue = $this->statusDeadline($employee, $date);
+            if ((float) ($config['amount_per_day'] ?? 0) > 0 && $statusDue->lt($now) && \App\Support\DailyStatusRule::required($employee, $date)) {
                 $status = \App\Models\DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', $date)->first();
-                // Written later with a reason (Daily status > Write a missed day): no fine.
-                $late = $status && ! $status->late_reason && $status->submitted_at && $status->submitted_at->gt($dayEnd->copy()->addHours((int) ($config['grace_hours'] ?? 0)));
+                // Written later with a reason (Daily status > Write a missed day): no fine. Written from the tasks: on time.
+                $late = $status && ! $status->late_reason && ! $status->auto_from_tasks && $status->submitted_at && $status->submitted_at->gt($statusDue);
                 $writable = ! $status && Carbon::parse($date)->gte(today()->subDays(WorkService::MISSED_DAYS_BACK));
                 if (! $status || $late) $raise($employee, 'daily_status.missing', "no_status:{$employee->id}:{$date}", $date, (float) $config['amount_per_day'], ($status ? 'Daily status submitted late for ' : 'No daily status for ').Carbon::parse($date)->format('d M'), $writable ? [
                     // The next morning: the fine, and how to undo it - give the reason, then write that day's status.
-                    'message' => 'You did not write your daily status for '.Carbon::parse($date)->format('d M').': a fine of '.number_format((float) $config['amount_per_day'], 2).' is made. Give the reason and write it now (Daily status > Write the missed day) - the fine is then removed.',
-                    'kind' => 'DailyStatusMissed', 'url' => route('work.daily-status', ['missed' => $date], false),
-                ] : []);
+                    'message' => 'You did not write your daily status for '.Carbon::parse($date)->format('d M').' by '.$statusDue->format('h:i A').': a fine of '.number_format((float) $config['amount_per_day'], 2).' is deducted. Give the reason and write it now (Daily status > Write the missed day) - the fine is then removed; or give a reason on the Penalties page for HR to decide.',
+                    'kind' => 'DailyStatusMissed', 'url' => route('work.daily-status', ['missed' => $date], false), 'auto' => true,
+                ] : ['auto' => true]);
             }
         }
 

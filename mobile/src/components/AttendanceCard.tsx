@@ -53,7 +53,7 @@ export function AttendanceCard({ attendance }: { attendance: ReturnType<typeof u
           {`Break ${formatDuration(v.brk)} · Idle ${formatDuration(v.idle)}`
             + (v.meeting ? ` · Meeting ${formatDuration(v.meeting)}` : '')
             + (v.active + v.sIdle + v.meeting > 0
-              ? `\nScreen time: ${formatDuration(v.active)} in use`
+              ? `\nScreen time: ${formatDuration(v.active + v.meeting)} in use` + (v.meeting ? ` (incl. ${formatDuration(v.meeting)} meeting)` : '')
                 + ((session.screen_corrected_seconds ?? 0) >= 60 ? ` · ${formatDuration(session.screen_corrected_seconds ?? 0)} added by correction` : '')
                 + ((session.screen_untracked_seconds ?? 0) >= 60 ? ` · ${formatDuration(session.screen_untracked_seconds ?? 0)} not tracked` : '')
               : '')}

@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Cache;
  *  2. after 24 hours undecided it goes to HR (leave.manage) and the administrators too (once);
  *  3. when the leave day arrives and it is still undecided: an urgent alert to the administrators (once), also on
  *     the Super Admin Telegram chat.
+ * The Super Admin Telegram chat also gets, from 10:00, one list of every undecided request (once a day), and a message
+ * for each request undecided for 24 hours. The administrators' dashboard lists them too (Hr\Dashboard).
  * Runs every hour (routes/console.php); each step is sent once, however often it runs.
  */
 class RemindPendingLeave extends Command
@@ -30,7 +32,13 @@ class RemindPendingLeave extends Command
         $admins = User::role('Master Admin')->where('is_active', true)->get();
         $hr = Notifier::withPermission('leave.manage');
 
-        foreach (LeaveRequest::with(['employee.user', 'employee.manager.user', 'leaveType'])->where('status', 'pending')->get() as $leave) {
+        $pending = LeaveRequest::with(['employee.user', 'employee.manager.user', 'leaveType'])->where('status', 'pending')->oldest()->get()->filter(fn ($l) => $l->employee)->values();
+        // Morning list on the Super Admin's Telegram (once a day).
+        if ($pending->isNotEmpty() && $now->format('H:i') >= '10:00' && Cache::add('leave-pending:digest:'.$now->toDateString(), true, $now->copy()->endOfDay())) {
+            rescue(fn () => app(TelegramEvents::class)->leavePendingDigest($pending), null, true);
+        }
+
+        foreach ($pending as $leave) {
             $employee = $leave->employee;
             if (! $employee) continue;
             $range = $leave->starts_on->format('d M').($leave->ends_on->isSameDay($leave->starts_on) ? '' : ' – '.$leave->ends_on->format('d M Y'));
@@ -47,6 +55,7 @@ class RemindPendingLeave extends Command
             // 2. Undecided for 24 hours: HR and the administrators too (once).
             if ($leave->created_at->lte($now->copy()->subDay()) && Cache::add("leave-pending:escalated:{$leave->id}", true, now()->addDays(90))) {
                 $counts['escalated'] += Notifier::send($hr->merge($admins)->unique('id')->reject(fn ($u) => $approvers->contains('id', $u->id)), 'LeaveEscalated', $leave->id, "Not decided for 24 hours: {$what}. Please approve or reject it.", $url, $employee->user_id);
+                rescue(fn () => app(TelegramEvents::class)->leavePendingEscalated($leave), null, true);
             }
             // 3. The leave day has come and it is still undecided: urgent (once).
             if ($leave->starts_on->lte($now->copy()->startOfDay()) && Cache::add("leave-pending:urgent:{$leave->id}", true, now()->addDays(90))) {

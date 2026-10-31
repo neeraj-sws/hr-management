@@ -108,10 +108,11 @@ class FairDeductionsTest extends TestCase
         // Tomorrow: only 1 day of notice (2 needed) → pending fine.
         $this->postJson('/api/leave/requests', ['leave_type_id' => $annual->id, 'duration' => 'full', 'starts_on' => '2026-10-21', 'ends_on' => '2026-10-21', 'reason' => 'Family'])->assertCreated();
         $this->assertSame('pending', EmployeePenalty::where('source_key', 'like', 'late_leave:%')->value('status'));
-        // A past day: allowed, marked old date, and the approver must give a reason.
-        $id = $this->postJson('/api/leave/requests', ['leave_type_id' => $annual->id, 'duration' => 'full', 'starts_on' => '2026-10-16', 'ends_on' => '2026-10-16', 'reason' => 'Was ill'])->assertCreated()->assertJsonPath('data.backdated', true)->json('data.id');
-        $this->assertSame(2, EmployeePenalty::where('source_key', 'like', 'late_leave:%')->count(), 'After the day: late too');
-        $leave = \App\Models\LeaveRequest::findOrFail($id);
+        // A past day: the employee cannot apply for it.
+        $this->postJson('/api/leave/requests', ['leave_type_id' => $annual->id, 'duration' => 'full', 'starts_on' => '2026-10-16', 'ends_on' => '2026-10-16', 'reason' => 'Was ill'])->assertStatus(422);
+        // A past-date leave that still reaches the approver (e.g. an old request): approving it needs a reason.
+        $leave = app(HrWorkflowService::class)->requestLeave($this->employee, ['leave_type_id' => $annual->id, 'duration' => 'full', 'starts_on' => \Illuminate\Support\Carbon::parse('2026-10-16'), 'ends_on' => \Illuminate\Support\Carbon::parse('2026-10-16'), 'reason' => 'Was ill']);
+        $this->assertTrue($leave->isBackdated());
         try {
             app(HrWorkflowService::class)->decideLeave($leave, $this->admin->id, true);
             $this->fail('Approving a past-date leave needs a reason');
@@ -119,8 +120,6 @@ class FairDeductionsTest extends TestCase
             $this->assertArrayHasKey('decisionNote', $e->errors());
         }
         $this->assertSame('approved', app(HrWorkflowService::class)->decideLeave($leave, $this->admin->id, true, 'Doctor note seen')->status);
-        // Older than the start of last month: not allowed (ask HR).
-        $this->postJson('/api/leave/requests', ['leave_type_id' => $annual->id, 'duration' => 'full', 'starts_on' => '2026-08-20', 'ends_on' => '2026-08-20', 'reason' => 'Old'])->assertStatus(422);
     }
 
     public function test_hr_changes_time_with_a_reason_from_attendance_records(): void

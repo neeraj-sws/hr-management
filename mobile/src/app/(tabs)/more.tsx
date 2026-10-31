@@ -80,6 +80,8 @@ export default function More() {
       { label: 'Daily status', icon: '📝', href: '/daily-status' },
       { label: 'Notes', icon: '🗒️', href: '/notes' },
       { label: 'Correction', icon: '🕘', href: '/corrections' },
+      { label: 'Late arrival', icon: '⏰', href: '/late-arrival' },
+      { label: 'Night work', icon: '🌙', href: '/night-work' },
       { label: 'Training', icon: '🎓', href: '/training' },
       { label: 'Performance', icon: '📈', href: '/performance' },
       ...(approvals > 0 ? [{ label: 'Approvals', icon: '✅', href: '/approvals', badge: approvals, tone: 'amber' as const }] : []),

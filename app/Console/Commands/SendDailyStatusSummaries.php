@@ -9,7 +9,11 @@ use App\Notifications\DailyStatusSummary;
 use App\Services\AttendanceService;
 use Illuminate\Console\Command;
 
-/** End of the day: each daily status written today is e-mailed (with the day's timing) to the person and their manager. */
+/**
+ * End of the day: each daily status written today is e-mailed (with the day's timing) to the person and their manager.
+ * After each person's deadline (shift end + grace) work:daily-status-deadline mails the ones written later and writes
+ * missing ones from the day's tasks (WorkService::autoStatusFromTasks).
+ */
 class SendDailyStatusSummaries extends Command
 {
     protected $signature = 'work:daily-status-summary {--date= : day to send (default today)}';
@@ -31,8 +35,15 @@ class SendDailyStatusSummaries extends Command
      * E-mails one daily status (with that day's timing) to the person, their manager and the extra mailbox, as set in
      * Settings > E-mail. Also used at once for a missed day written later (the 8:30 PM run for that day is past).
      */
+    /** Cache key that marks a status as mailed (so the deadline run does not mail it again). */
+    public static function mailedKey(DailyWorkStatus $status): string
+    {
+        return 'daily-summary-mailed:'.$status->id;
+    }
+
     public static function send(DailyWorkStatus $status): int
     {
+        \Illuminate\Support\Facades\Cache::put(self::mailedKey($status), true, now()->addDays(3));
         $attendance = app(AttendanceService::class);
         $date = $status->work_date->toDateString();
         $sent = 0;

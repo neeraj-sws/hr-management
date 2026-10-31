@@ -23,7 +23,7 @@
 
     <div class="wl-row wl-total"><span>Salary for days worked</span><b>{{ $rs($s['earned']) }}</b></div>
     @if(! empty($s['extra']))
-        <div class="wl-row"><span>+ Extra working on off days (paid by the hours worked)<small>{{ $s['extra']['days'] }} {{ $s['extra']['days'] === 1 ? 'day' : 'days' }} · {{ $s['extra']['hours'] }} · {{ $s['extra']['dates'] }}</small></span><b class="wl-pos">+{{ $rs($s['extra']['amount']) }}</b></div>
+        <div class="wl-row"><span>+ Extra working on off days (paid by the hours worked, at most one working day a day; no overtime)<small>{{ $s['extra']['days'] }} {{ $s['extra']['days'] === 1 ? 'day' : 'days' }} · {{ $s['extra']['hours'] }} · {{ $s['extra']['dates'] }}</small></span><b class="wl-pos">+{{ $rs($s['extra']['amount']) }}</b></div>
         <div class="wl-row wl-total"><span>Total (before additions and deductions)</span><b>{{ $rs($s['earned'] + $s['extra']['amount']) }}</b></div>
     @endif
     @if(isset($s['net']))

@@ -26,7 +26,7 @@ class FinishedDayFiguresVisibleTest extends TestCase
         $day = today()->subDay()->toDateString();
         AttendanceSession::create(['employee_id' => $employee->id, 'work_date' => $day, 'check_in' => "$day 09:00:00", 'check_out' => "$day 18:00:00", 'break_seconds' => 1800, 'active_seconds' => 8 * 3600 + 1800, 'status' => 'completed']);
 
-        foreach ([[$admin, route('attendance.records')], [$user, route('attendance.my')]] as [$who, $url]) {
+        foreach ([[$admin, route('attendance.records', ['from' => $day, 'to' => $day])], [$user, route('attendance.my')]] as [$who, $url]) {
             $html = $this->actingAs($who)->get($url)->assertOk()->getContent();
             preg_match_all('/<tr\b[^>]*>(?:(?!<\/tr>).)*x-text="[^"]*hms\(v\./s', $html, $rows);
             $this->assertNotEmpty($rows[0], $url);

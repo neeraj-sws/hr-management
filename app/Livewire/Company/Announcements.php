@@ -21,8 +21,12 @@ class Announcements extends Component
     public string $audience = 'all';
     public string $departmentId = '';
     public string $teamId = '';
+    /** Departments / teams left out (e.g. everyone except IT Web Info). */
+    public array $excludeDepartments = [];
+    public array $excludeTeams = [];
     public bool $isPinned = false;
     public bool $sendEmail = false;
+    public bool $sendTelegram = false;
     public string $expiresOn = '';
 
     private function canManage(): bool
@@ -37,7 +41,8 @@ class Announcements extends Component
         $this->fill([
             'editingId' => $a?->id, 'title' => $a?->title ?? '', 'body' => $a?->body ?? '', 'audience' => $a?->audience ?? 'all',
             'departmentId' => (string) ($a?->department_id ?? ''), 'teamId' => (string) ($a?->team_id ?? ''),
-            'isPinned' => (bool) $a?->is_pinned, 'expiresOn' => (string) $a?->expires_on?->toDateString(), 'sendEmail' => false,
+            'excludeDepartments' => array_map('strval', (array) ($a?->excluded_department_ids ?? [])), 'excludeTeams' => array_map('strval', (array) ($a?->excluded_team_ids ?? [])),
+            'isPinned' => (bool) $a?->is_pinned, 'expiresOn' => (string) $a?->expires_on?->toDateString(), 'sendEmail' => false, 'sendTelegram' => false,
         ]);
         $this->resetValidation();
         $this->showForm = true;
@@ -53,14 +58,18 @@ class Announcements extends Component
             'departmentId' => ['required_if:audience,department', 'nullable', 'exists:departments,id'],
             'teamId' => ['required_if:audience,team', 'nullable', 'exists:teams,id'],
             'expiresOn' => ['nullable', 'date', 'after_or_equal:today'],
+            'excludeDepartments' => ['array'], 'excludeDepartments.*' => ['integer', 'exists:departments,id'],
+            'excludeTeams' => ['array'], 'excludeTeams.*' => ['integer', 'exists:teams,id'],
         ], ['departmentId.required_if' => 'Choose the department.', 'teamId.required_if' => 'Choose the team.'], ['expiresOn' => 'show until']);
         $company->saveAnnouncement([
             'title' => $this->title, 'body' => $this->body, 'audience' => $this->audience,
             'department_id' => $this->departmentId ?: null, 'team_id' => $this->teamId ?: null,
+            'excluded_department_ids' => array_values(array_map('intval', $this->excludeDepartments)) ?: null,
+            'excluded_team_ids' => array_values(array_map('intval', $this->excludeTeams)) ?: null,
             'is_pinned' => $this->isPinned, 'expires_on' => $this->expiresOn ?: null,
-        ], $this->user(), $this->editingId ? Announcement::findOrFail($this->editingId) : null, ! $this->editingId && $this->sendEmail);
+        ], $this->user(), $this->editingId ? Announcement::findOrFail($this->editingId) : null, ! $this->editingId && $this->sendEmail, ! $this->editingId && $this->sendTelegram);
         $this->showForm = false;
-        $this->toast($this->editingId ? 'Announcement updated.' : ($this->sendEmail ? 'Announcement published, sent in the app and e-mailed to its audience.' : 'Announcement published and sent to its audience.'));
+        $this->toast($this->editingId ? 'Announcement updated.' : 'Announcement published and sent in the app'.($this->sendEmail ? ', by e-mail' : '').($this->sendTelegram ? ', on Telegram' : '').' to its audience.');
     }
 
     public function delete(int $id, CompanyService $company): void

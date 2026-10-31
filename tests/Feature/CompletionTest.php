@@ -114,7 +114,8 @@ class CompletionTest extends TestCase
         $penalties = \App\Models\EmployeePenalty::orderBy('id')->get();
         $this->assertSame(4, $created);
         $this->assertEquals([250, 100, 75, 50], $penalties->pluck('amount')->map(fn ($a) => (float) $a)->all());
-        $this->assertTrue($penalties->every(fn ($p) => $p->status === 'pending'), 'Nothing is deducted before approval');
+        // Early check-out / tasks wait for approval; the missing daily status fine is deducted at once.
+        $this->assertSame(['pending', 'pending', 'approved', 'pending'], $penalties->pluck('status')->all());
         $this->assertSame(0, $people->assessCompliance('2026-10-05', '2026-10-06', $this->admin->id), 'Re-running does not duplicate');
         $this->assertTrue($this->employeeUser->notifications()->where('data->kind', 'EmployeePenalty')->exists());
         $this->artisan('compliance:assess', ['--from' => '2026-10-05', '--to' => '2026-10-06'])->assertSuccessful();

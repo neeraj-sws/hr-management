@@ -3,7 +3,9 @@
 @php($t = $f['screen'] ?? null)
 @php($late = $attendance->lateMinutes($s))
 @php($state = $attendance->isHalfDay($s) ? 'half_day' : ($attendance->isLate($s) ? 'late' : $s->status))
-<tr wire:key="rec-{{ $s->id }}-{{ now()->timestamp }}" x-data="swsLive(@js($f))">
+{{-- Row colour like the calendar: worked on a weekly off / holiday (extra working), late / half day, worked on leave. --}}
+@php($rowStatus = $rowStatus ?? $attendance->dayKind($s))
+<tr wire:key="rec-{{ $s->id }}-{{ now()->timestamp }}" x-data="swsLive(@js($f))" class="rec-{{ $rowStatus }}">
     <td class="nowrap ar-date" data-label="Date"><strong>{{ $s->work_date->format('d M Y') }}</strong><small>{{ $s->work_date->format('D') }}</small></td>
     <td data-label="Employee"><div class="ar-person"><x-avatar :employee="$s->employee" /><div><strong>{{ $s->employee?->name }}</strong><small>{{ collect([$s->employee?->department?->name, $s->employee?->employee_code])->filter()->join(' · ') }}</small>@if($s->employee)<x-person-badges :employee="$s->employee" />@endif</div></div></td>
     <td data-col="in" data-label="In" class="nowrap">{{ $s->check_in?->format('h:i A') ?? '—' }}
@@ -20,8 +22,8 @@
     <td data-col="screen" data-label="Screen time" class="ar-c ar-screen">
         @if($t && ($t['active'] + $t['idle'] + $t['meeting']) > 0)
             @php($total = $t['active'] + $t['idle'] + $t['meeting'] + $t['corrected'])
-            <strong><span x-text="hms(v.active)">@hms($t['active'])</span> in use</strong>
-            <small>@if($t['meeting'])<span x-text="hms(v.meeting)">@hms($t['meeting'])</span> meet · @endif<span x-text="hms(v.sIdle)">@hms($t['idle'])</span> idle · @if($t['untracked'] >= 60)@hms($t['untracked']) not tracked @else<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $total) }}</span>% working @endif</small>
+            <strong title="Computer in use plus meetings"><span x-text="hms(v.active + v.meeting)">@hms($t['active'] + $t['meeting'])</span> in use</strong>
+            <small>@if($t['meeting'])incl. <span x-text="hms(v.meeting)">@hms($t['meeting'])</span> meet · @endif<span x-text="hms(v.sIdle)">@hms($t['idle'])</span> idle · @if($t['untracked'] >= 60)@hms($t['untracked']) not tracked @else<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $total) }}</span>% working @endif</small>
             @if(! ($f['idle_deducted'] ?? true))<small class="ar-field">Field / mobile · idle not taken off</small>@endif
         @else
             <span class="muted small" title="Idle and screen time come from the SWS HR desktop app; it has not reported for this day">no desktop app</span>

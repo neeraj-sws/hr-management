@@ -37,7 +37,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(OvertimeRequest::class,OvertimeRequestPolicy::class);
 
         // Telegram: the Super Admin's feed of HR events (after each save is committed; nothing is changed).
-        foreach ([\App\Models\LeaveRequest::class, \App\Models\AttendanceCorrection::class, \App\Models\Task::class, \App\Models\Payslip::class, \App\Models\SalaryPayment::class, \App\Models\SalaryAdvance::class, \App\Models\EmployeePenalty::class, \App\Models\DailyWorkStatus::class] as $model) {
+        foreach ([\App\Models\LeaveRequest::class, \App\Models\AttendanceCorrection::class, \App\Models\Task::class, \App\Models\Payslip::class, \App\Models\SalaryPayment::class, \App\Models\SalaryAdvance::class, \App\Models\EmployeePenalty::class, \App\Models\DailyWorkStatus::class, \App\Models\OvertimeRequest::class, \App\Models\ExpenseClaim::class, \App\Models\NightWorkRequest::class, \App\Models\LateArrivalRequest::class] as $model) {
             $model::observe(\App\Observers\TelegramEventObserver::class);
         }
 

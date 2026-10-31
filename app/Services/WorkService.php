@@ -204,6 +204,48 @@ class WorkService
      * Writes a missed day's status later: the reason first (why it was not written that day), then the status. Its
      * "not submitted" fine is removed at once; the employee, manager and HR are told, and the day's e-mail goes out now.
      */
+    /**
+     * The evening run found no daily status for a day the person worked: one is written from that day's tasks (the
+     * tasks they added or were given for the day, and the tasks they ran the timer on) - each task with its status,
+     * progress and time - so their end-of-day mail still goes out and counts as their status. A "not submitted"
+     * fine for that day is removed. Nothing is written when there are no tasks for the day.
+     */
+    public function autoStatusFromTasks(AttendanceEmployee $employee, string $date): ?\App\Models\DailyWorkStatus
+    {
+        if (\App\Models\DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', $date)->exists()) return null;
+        $entries = TaskTimeEntry::where('employee_id', $employee->id)->whereDate('started_at', $date)->get();
+        $seconds = $entries->groupBy('task_id')->map(fn ($rows) => (int) $rows->sum(fn ($e) => $e->status === 'running' ? (int) $e->started_at->diffInSeconds(now()) : (int) $e->duration_seconds));
+        $tasks = Task::with('project')->where('assignee_id', $employee->id)
+            ->where(fn ($q) => $q->whereDate('work_date', $date)->orWhereIn('id', $seconds->keys()->all()))->orderBy('id')->get();
+        if ($tasks->isEmpty()) return null;
+
+        $label = fn (Task $t) => ['todo' => 'To do', 'in_progress' => 'In progress', 'on_hold' => 'On hold', 'completed' => 'Completed'][$t->status] ?? str((string) $t->status)->replace('_', ' ')->ucfirst();
+        $updates = $tasks->groupBy(fn (Task $t) => $t->project_id ?: 0)->map(function ($group) use ($seconds, $label) {
+            $first = $group->first();
+
+            return [
+                'project_id' => $first->project_id, 'project' => $first->project?->name ?? 'Other work', 'update' => null,
+                'tasks' => $group->map(fn (Task $t) => ['title' => $t->title, 'status' => $label($t), 'seconds' => (int) ($seconds[$t->id] ?? 0), 'note' => $t->status === 'completed' ? null : $t->progressPercent((int) ($seconds[$t->id] ?? 0)).'% done'])->values()->all(),
+                'seconds' => (int) $group->sum(fn (Task $t) => (int) ($seconds[$t->id] ?? 0)),
+            ];
+        })->values()->all();
+        $done = $tasks->where('status', 'completed');
+        $open = $tasks->where('status', '!=', 'completed');
+        $summary = 'Written automatically from the day\'s tasks (the daily status was not written). '
+            .($done->isNotEmpty() ? 'Completed: '.$done->pluck('title')->join(', ').'. ' : '')
+            .($open->isNotEmpty() ? 'Worked on: '.$open->map(fn (Task $t) => $t->title.' ('.$label($t).', '.$t->progressPercent((int) ($seconds[$t->id] ?? 0)).'%)')->join(', ').'.' : '');
+
+        $status = DB::transaction(fn () => \App\Models\DailyWorkStatus::create([
+            'employee_id' => $employee->id, 'work_date' => $date, 'summary' => mb_substr(trim($summary), 0, 5000), 'project_updates' => $updates,
+            'pending' => $open->isNotEmpty() ? $open->pluck('title')->join(', ') : null, 'submitted_at' => now(), 'submitted_by' => null, 'auto_from_tasks' => true, 'server_version' => 1,
+        ]));
+        $this->audit->record('work_status.auto_from_tasks', $status, ['tasks' => $tasks->count()]);
+        // A "not submitted" fine already made for that day goes (the task mail is their status).
+        rescue(fn () => app(PeopleOperationsService::class)->removeStatusFine($employee, $date, 'Daily status written automatically from the day\'s tasks', (int) ($employee->user_id ?? 0)), null, true);
+
+        return $status;
+    }
+
     public function writeMissedStatus(AttendanceEmployee $employee, string $date, string $reason, array $fields, User $user): \App\Models\DailyWorkStatus
     {
         $reason = trim($reason);

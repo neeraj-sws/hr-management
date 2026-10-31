@@ -23,7 +23,11 @@ class TelegramEventObserver implements ShouldHandleEventsAfterCommit
     public function created(Model $model): void
     {
         rescue(fn () => match (true) {
-            $model instanceof LeaveRequest => $model->status === 'pending' ? $this->events()->leave($model, 'applied') : null,
+            $model instanceof LeaveRequest => $model->status === 'pending' ? $this->events()->leave($model, 'applied') : ($model->status === 'rejected' && ! $model->decided_by ? $this->events()->leaveAutoRejected($model) : null),
+            $model instanceof \App\Models\OvertimeRequest => $model->status === 'pending' ? $this->events()->overtimeRequested($model) : null,
+            $model instanceof \App\Models\ExpenseClaim => $model->status === 'pending' ? $this->events()->expenseSubmitted($model) : null,
+            $model instanceof \App\Models\NightWorkRequest => $model->status === 'pending' ? $this->events()->nightWorkRequested($model) : null,
+            $model instanceof \App\Models\LateArrivalRequest => $this->events()->lateArrivalRequested($model),
             $model instanceof Task => $model->assignee_id ? $this->events()->task($model, 'assigned') : null,
             $model instanceof Payslip => $this->events()->payslip($model),
             $model instanceof SalaryPayment => $this->events()->salaryPayment($model),

@@ -23,6 +23,8 @@ Schedule::command('sanctum:prune-expired --hours=24')->dailyAt('04:00');
 Schedule::command('work:remind-daily-status')->everyFiveMinutes()->withoutOverlapping();
 // End of the day: each daily status written today goes by e-mail (task status and timing) to the person and their manager.
 Schedule::command('work:daily-status-summary')->dailyAt('20:30')->withoutOverlapping();
+// Each person's daily status deadline (shift end + grace): missing ones written from tasks, late-written ones mailed.
+Schedule::command('work:daily-status-deadline')->everyTenMinutes()->withoutOverlapping();
 // Before-shift and forgot-to-check-out reminders (each sent once per person per day).
 Schedule::command('attendance:reminders')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('attendance:absence-alerts')->everyFifteenMinutes()->between('09:00', '20:00')->withoutOverlapping();
@@ -35,4 +37,6 @@ if (config('services.telegram.queue_connection', 'database') !== 'sync') {
 }
 // Undecided leave: daily reminder to the approver (from 10:00), HR / admins after 24 hours, urgent on the leave day.
 Schedule::command('leave:pending-reminders')->hourly()->between('09:00', '21:00')->withoutOverlapping();
+// Other requests still waiting: Telegram list to the Super Admin and to each manager.
+Schedule::command('approvals:pending-reminders')->hourly()->between('09:00', '21:00')->withoutOverlapping();
 Schedule::command('hr:weekly-off-reminders')->dailyAt('17:00')->withoutOverlapping();

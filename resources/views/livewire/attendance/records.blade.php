@@ -4,37 +4,13 @@
         <div class="actions"><button type="button" class="btn" x-on:click="importOpen = ! importOpen" x-bind:aria-expanded="importOpen"><x-icon name="upload" class="icon-sm" />Import</button></div>
     </div>
 
-    {{-- Today at a glance (the Department filter applies), compared with yesterday. --}}
-    <div class="ar-cards">
-        <div class="ar-card ar-blue">
-            <span class="ar-card-icon"><x-icon name="users" /></span>
-            <div class="ar-card-body"><span class="ar-card-label">Present Today</span><strong class="ar-card-value">{{ $summary['present'] }}</strong><small>of {{ $summary['employees'] }} employees</small></div>
-            @if($summary['present_change'])<span class="ar-trend {{ $summary['present_change'] > 0 ? 'up' : 'down' }}" title="Compared with yesterday">{{ $summary['present_change'] > 0 ? '↑' : '↓' }} {{ abs($summary['present_change']) }}</span>@endif
-        </div>
-        <div class="ar-card ar-amber">
-            <span class="ar-card-icon"><x-icon name="clock" /></span>
-            <div class="ar-card-body"><span class="ar-card-label">Late Arrivals</span><strong class="ar-card-value">{{ $summary['late'] }}</strong><small>of {{ $summary['employees'] }} employees</small></div>
-            @if($summary['late_change'])<span class="ar-trend {{ $summary['late_change'] > 0 ? 'bad' : 'up' }}" title="Compared with yesterday">{{ $summary['late_change'] > 0 ? '↑' : '↓' }} {{ abs($summary['late_change']) }}</span>@endif
-        </div>
-        <div class="ar-card ar-green">
-            <span class="ar-card-icon"><x-icon name="calendar" /></span>
-            <div class="ar-card-body"><span class="ar-card-label">Total Worked</span><strong class="ar-card-value">{{ \App\Support\Duration::hm($summary['worked']) }}</strong><small>today (all employees)</small></div>
-            @if($summary['worked_change'])<span class="ar-trend {{ $summary['worked_change'] > 0 ? 'up' : 'down' }}" title="Compared with yesterday">{{ $summary['worked_change'] > 0 ? '↑' : '↓' }} {{ abs($summary['worked_change']) }}%</span>@endif
-        </div>
-        <div class="ar-card ar-violet">
-            <span class="ar-card-icon"><x-icon name="monitor" /></span>
-            <div class="ar-card-body"><span class="ar-card-label">Working Now</span><strong class="ar-card-value">{{ $summary['working'] }}</strong><small>employees online @if($summary['on_break'])· {{ $summary['on_break'] }} on break @endif</small></div>
-            @if($summary['working'])<span class="ar-live" title="Checked in and working right now"></span>@endif
-        </div>
-    </div>
-
     <section class="card mb" x-show="importOpen" x-cloak>
         <div class="card-head"><div><h2>Import attendance</h2><p>Add past attendance from Excel (.xlsx) or CSV: one row per employee per day.</p></div>
             <button type="button" class="btn btn-sm btn-ghost" x-on:click="importOpen = false" aria-label="Close import"><x-icon name="x" class="icon-sm" /></button></div>
         @include('partials.import-form', ['type' => 'attendance', 'kind' => 'Attendance', 'action' => route('attendance.records.import')])
     </section>
 
-    {{-- Filters: applied with Search (or Enter); Reset goes back to this month, everyone. --}}
+    {{-- Filters: applied with Search (or Enter); Reset goes back to today, everyone. --}}
     <form class="card ar-filters" wire:submit="search">
         <label class="field"><span>From</span><input type="date" wire:model="from"></label>
         <label class="field"><span>To</span><input type="date" wire:model="to" x-bind:min="$wire.from"></label>
@@ -46,6 +22,66 @@
             <button type="button" class="btn" wire:click="resetFilters"><x-icon name="refresh" class="icon-sm" />Reset</button>
         </div>
     </form>
+
+    {{-- The cards follow the filters above (dates, department, employee). --}}
+    @if($person)
+        {{-- One employee: the whole range at a glance. --}}
+        <div class="ar-mini-cards">
+            @foreach([
+                ['Working days', $person['working_days'], 'in the chosen dates', 'blue'],
+                ['Present', $person['present'], 'days at work', 'green'],
+                ['Late', $person['late'], 'days late', 'amber'],
+                ['Half day', $person['half_day'], 'days', 'amber'],
+                ['Absent', $person['absent'], 'no leave applied', 'red'],
+                ['Leave pending', $person['leave_pending'], 'without approval yet', 'amber'],
+                ['On leave', $person['on_leave'], 'approved leave days', 'blue'],
+                ['Weekly off / holiday', $person['off'], 'days', 'violet'],
+                ['Extra working', $person['extra'], 'off days / leave days worked', 'green'],
+                ['Total worked', \App\Support\Duration::hm($person['worked']), 'avg '.\App\Support\Duration::hm($person['average']).' a day', 'blue'],
+                ['Average check-in', $person['avg_in'] ?? '—', 'on days at work', 'blue'],
+                ['Idle / Break', \App\Support\Duration::hm($person['idle']).' / '.\App\Support\Duration::hm($person['break']), 'idle / break in total', $person['idle'] ? 'amber' : 'gray'],
+                ['Meetings', \App\Support\Duration::hm($person['meeting']), 'in meetings (counts as work)', 'blue'],
+                ['Fines', '₹'.number_format($person['fines'], 0), $person['fines_count'].' fine(s)'.($person['fines_pending'] ? ' · '.$person['fines_pending'].' pending' : ''), $person['fines'] > 0 ? 'red' : 'gray'],
+            ] as [$label, $value, $hint, $tone])
+                <div class="ar-mini ar-mini-{{ $tone }}"><span>{{ $label }}</span><strong>{{ $value }}</strong><small>{{ $hint }}</small></div>
+            @endforeach
+            @if($person['conflict'])<div class="ar-mini ar-mini-blue"><span>Worked on leave</span><strong>{{ $person['conflict'] }}</strong><small><a href="{{ route('attendance.conflicts') }}">decide in Conflicts</a></small></div>@endif
+        </div>
+    @else
+    <div class="ar-cards">
+        <div class="ar-card ar-blue">
+            <span class="ar-card-icon"><x-icon name="users" /></span>
+            @if($summary['single'])
+                <div class="ar-card-body"><span class="ar-card-label">Present {{ $summary['when'] === 'today' ? 'Today' : '· '.$summary['when'] }}</span><strong class="ar-card-value">{{ $summary['people'] }}</strong><small>of {{ $summary['employees'] }} employees</small></div>
+                @if($summary['present_change'])<span class="ar-trend {{ $summary['present_change'] > 0 ? 'up' : 'down' }}" title="Compared with the day before">{{ $summary['present_change'] > 0 ? '↑' : '↓' }} {{ abs($summary['present_change']) }}</span>@endif
+            @else
+                <div class="ar-card-body"><span class="ar-card-label">Attendance days</span><strong class="ar-card-value">{{ $summary['days'] }}</strong><small>{{ $summary['people'] }} people · {{ $summary['when'] }}</small></div>
+            @endif
+        </div>
+        <div class="ar-card ar-amber">
+            <span class="ar-card-icon"><x-icon name="clock" /></span>
+            <div class="ar-card-body"><span class="ar-card-label">Late Arrivals</span><strong class="ar-card-value">{{ $summary['single'] ? $summary['late_people'] : $summary['late'] }}</strong><small>{{ $summary['single'] ? 'of '.$summary['employees'].' employees' : 'late days · '.$summary['late_people'].' people' }}</small></div>
+            @if($summary['late_change'])<span class="ar-trend {{ $summary['late_change'] > 0 ? 'bad' : 'up' }}" title="Compared with the day before">{{ $summary['late_change'] > 0 ? '↑' : '↓' }} {{ abs($summary['late_change']) }}</span>@endif
+        </div>
+        <div class="ar-card ar-green">
+            <span class="ar-card-icon"><x-icon name="calendar" /></span>
+            <div class="ar-card-body"><span class="ar-card-label">Total Worked</span><strong class="ar-card-value">{{ \App\Support\Duration::hm($summary['worked']) }}</strong><small>{{ $summary['when'] }}{{ $summary['employee'] ?? false ? '' : ' (all employees)' }}</small></div>
+            @if($summary['worked_change'])<span class="ar-trend {{ $summary['worked_change'] > 0 ? 'up' : 'down' }}" title="Compared with the day before">{{ $summary['worked_change'] > 0 ? '↑' : '↓' }} {{ abs($summary['worked_change']) }}%</span>@endif
+        </div>
+        <div class="ar-card ar-violet">
+            <span class="ar-card-icon"><x-icon name="monitor" /></span>
+            @if($summary['live'])
+                <div class="ar-card-body"><span class="ar-card-label">Working Now</span><strong class="ar-card-value">{{ $summary['working'] }}</strong><small>employees online @if($summary['on_break'])· {{ $summary['on_break'] }} on break @endif</small></div>
+                @if($summary['working'])<span class="ar-live" title="Checked in and working right now"></span>@endif
+            @elseif($summary['absent'] !== null)
+                <div class="ar-card-body"><span class="ar-card-label">Absent</span><strong class="ar-card-value">{{ $summary['absent'] }}</strong><small>not at work{{ $summary['on_leave'] ? ' · '.$summary['on_leave'].' on leave' : '' }}</small></div>
+            @else
+                <div class="ar-card-body"><span class="ar-card-label">Average a day</span><strong class="ar-card-value">{{ \App\Support\Duration::hm($summary['days'] ? intdiv($summary['worked'], $summary['days']) : 0) }}</strong><small>worked per attendance day</small></div>
+            @endif
+        </div>
+    </div>
+    @endif
+
 
     @php($cols = ['in' => 'In', 'out' => 'Out', 'worked' => 'Worked', 'idle' => 'Idle', 'break' => 'Break', 'screen' => 'Screen time', 'late' => 'Late by', 'source' => 'Source', 'status' => 'Status'])
     <section class="card ar-table-card"
@@ -88,10 +124,10 @@
                 {{-- One employee: every day of the range, incl. leave, weekly off / 3rd Saturday and absent days. --}}
                 @forelse($dayRows as $day)
                     @if($day['session'])
-                        @include('livewire.attendance.partials.record-row', ['s' => $day['session']])
+                        @include('livewire.attendance.partials.record-row', ['s' => $day['session'], 'rowStatus' => $day['status']])
                     @else
                         @php($date = \Illuminate\Support\Carbon::parse($day['date']))
-                        <tr class="day-row day-{{ $day['status'] }}"><td class="nowrap ar-date" data-label="Date"><strong>{{ $date->format('d M Y') }}</strong><small>{{ $date->format('D') }}</small></td>
+                        <tr class="day-row rec-{{ ! empty($day['leave_pending']) ? 'leave_pending' : $day['status'] }}"><td class="nowrap ar-date" data-label="Date"><strong>{{ $date->format('d M Y') }}</strong><small>{{ $date->format('D') }}</small></td>
                             <td data-label="Employee"><div class="ar-person"><x-avatar :employee="$dayEmployee" /><div><strong>{{ $dayEmployee?->name }}</strong><small>{{ $dayEmployee?->department?->name }}</small></div></div></td>
                             <td colspan="8" class="small muted ar-dayinfo" style="text-align:left">{{ ['on_leave' => 'On leave', 'weekend' => 'Weekly off', 'holiday' => 'Holiday', 'absent' => 'No attendance', 'upcoming' => 'Upcoming', 'not_joined' => 'Before joining', 'left' => 'After leaving the company'][$day['status']] ?? '' }}@if($day['label']) · <strong>{{ $day['label'] }}</strong>@endif</td>
                             <td data-col="status" data-label="Status">@if($day['status'] === 'weekend')<x-badge tone="violet">{{ $day['label'] ?: 'Weekly off' }}</x-badge>@elseif($day['status'] === 'on_leave')<x-badge status="on_leave">{{ $day['label'] ?: 'On leave' }}</x-badge>@else<x-badge :status="$day['status']" />@endif</td>
@@ -159,7 +195,7 @@
 
                 <div class="sa-body">
                     <div class="sa-tiles">
-                        <div class="sa-tile sa-t-blue"><span>Total in use</span><strong x-text="hms(v.active)">@hms($t['active'])</strong></div>
+                        <div class="sa-tile sa-t-blue"><span>Total in use (incl. meetings)</span><strong x-text="hms(v.active + v.meeting)">@hms($t['active'] + $t['meeting'])</strong></div>
                         <div class="sa-tile sa-t-gray"><span>Meetings</span><strong x-text="hms(v.meeting)">@hms($t['meeting'])</strong></div>
                         <div class="sa-tile sa-t-amber"><span>Idle time</span><strong x-text="hms(v.sIdle)">@hms($t['idle'])</strong></div>
                         <div class="sa-tile sa-t-violet"><span>Active</span><strong>@if($tTotal > 0)<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $tTotal) }}</span>%@else — @endif</strong></div>

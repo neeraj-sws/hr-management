@@ -102,7 +102,7 @@ class PayrollCarryOverTest extends TestCase
         $unpaid = LeaveType::where('name', 'Unpaid Leave')->firstOrFail();
         // Worked on Mon 14 Sep, but it was really an unpaid leave day counted as leave.
         $workflow = app(HrWorkflowService::class);
-        $leave = $workflow->requestLeave($this->employee, ['leave_type_id' => $unpaid->id, 'duration' => 'full', 'starts_on' => Carbon::parse('2026-09-14'), 'ends_on' => Carbon::parse('2026-09-14'), 'reason' => 'Personal']);
+        $leave = $workflow->requestLeave($this->employee, ['leave_type_id' => $unpaid->id, 'duration' => 'full', 'starts_on' => Carbon::parse('2026-09-14'), 'ends_on' => Carbon::parse('2026-09-14'), 'reason' => 'Family function']);
         $workflow->decideLeave($leave, $this->managerUser->id, true, 'Informed by phone');
         app(\App\Services\LeaveConflictService::class)->resolve($leave, '2026-09-14', 'leave', $this->admin->id);
 

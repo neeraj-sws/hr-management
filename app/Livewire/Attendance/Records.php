@@ -5,6 +5,7 @@ namespace App\Livewire\Attendance;
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\AttendanceEmployee;
 use App\Models\AttendanceSession;
+use App\Models\LeaveRequest;
 use App\Models\Department;
 use App\Services\AttendanceService;
 use Illuminate\Support\Carbon;
@@ -40,8 +41,9 @@ class Records extends Component
 
     public function mount(): void
     {
-        $this->from = $this->from ?: now()->startOfMonth()->toDateString();
-        $this->to = $this->to ?: today()->toDateString();
+        // Opens on today; pick other dates to see them (the cards follow).
+        $this->from = $this->from ?: today()->toDateString();
+        $this->to = $this->to ?: $this->from;
     }
 
     public function updated(string $name): void
@@ -55,10 +57,10 @@ class Records extends Component
         $this->resetPage();
     }
 
-    /** "Reset": back to this month, everyone, any session. */
+    /** "Reset": back to today, everyone, any session. */
     public function resetFilters(): void
     {
-        $this->from = now()->startOfMonth()->toDateString();
+        $this->from = today()->toDateString();
         $this->to = today()->toDateString();
         $this->employee = null;
         $this->department = null;
@@ -161,38 +163,95 @@ class Records extends Component
     }
 
     /**
-     * Today's numbers for the cards (the Department filter applies), each compared with the day before:
-     * people checked in, late arrivals, time worked, and who is working right now.
+     * The cards follow the filters: the chosen dates (today when the page opens), department and employee. One day:
+     * people present / late / time worked and, for today, who is working now (else who was absent), compared with
+     * the day before. A range: attendance days, late arrivals and time worked in it.
      */
-    private function todaySummary(AttendanceService $attendance): array
+    private function rangeSummary(AttendanceService $attendance): array
     {
-        $scope = fn ($q) => $q->when($this->department, fn ($q, $id) => $q->whereHas('employee', fn ($e) => $e->where('department_id', $id)));
-        $day = function (Carbon $date) use ($scope, $attendance) {
-            $sessions = AttendanceSession::with('employee')->whereDate('work_date', $date->toDateString())->whereNotNull('check_in')->tap($scope)->get();
+        $scope = fn ($q) => $q->when($this->employee, fn ($q, $id) => $q->where('employee_id', $id))
+            ->when($this->department, fn ($q, $id) => $q->whereHas('employee', fn ($e) => $e->where('department_id', $id)));
+        $range = function (string $from, string $to) use ($scope, $attendance) {
+            $sessions = AttendanceSession::with('employee')->whereDate('work_date', '>=', $from)->whereDate('work_date', '<=', $to)->whereNotNull('check_in')->tap($scope)->get();
+            $late = $sessions->filter(fn ($s) => $s->employee && $attendance->isLate($s));
 
             return [
-                'present' => $sessions->pluck('employee_id')->unique()->count(),
-                'late' => $sessions->filter(fn ($s) => $s->employee && $attendance->isLate($s))->pluck('employee_id')->unique()->count(),
+                'days' => $sessions->count(),
+                'people' => $sessions->pluck('employee_id')->unique()->count(),
+                'late' => $late->count(),
+                'late_people' => $late->pluck('employee_id')->unique()->count(),
                 'worked' => (int) $sessions->sum(fn ($s) => $attendance->workedSeconds($s)),
                 'working' => $sessions->whereNull('check_out')->where('status', 'working')->pluck('employee_id')->unique()->count(),
                 'on_break' => $sessions->whereNull('check_out')->where('status', 'on_break')->pluck('employee_id')->unique()->count(),
             ];
         };
-        $today = $day(today());
-        $before = $day(today()->subDay());
+        $single = $this->from === $this->to;
+        $now = $range($this->from, $this->to);
+        $before = $single ? $range($day = Carbon::parse($this->from)->subDay()->toDateString(), $day) : null;
+        $employees = AttendanceEmployee::where('is_active', true)->onPayroll()->when($this->employee, fn ($q, $id) => $q->whereKey($id))->when($this->department, fn ($q, $id) => $q->where('department_id', $id))->count();
+        $includesToday = $this->from <= today()->toDateString() && $this->to >= today()->toDateString();
+        $onLeave = $single ? LeaveRequest::where('status', 'approved')->whereDate('starts_on', '<=', $this->from)->whereDate('ends_on', '>=', $this->from)
+            ->when($this->employee, fn ($q, $id) => $q->where('employee_id', $id))->when($this->department, fn ($q, $id) => $q->whereHas('employee', fn ($e) => $e->where('department_id', $id)))->distinct()->count('employee_id') : 0;
+        $from = Carbon::parse($this->from);
 
         return [
-            ...$today,
-            'employees' => AttendanceEmployee::where('is_active', true)->when($this->department, fn ($q, $id) => $q->where('department_id', $id))->count(),
-            'present_change' => $today['present'] - $before['present'],
-            'late_change' => $today['late'] - $before['late'],
-            'worked_change' => $before['worked'] > 0 ? (int) round(($today['worked'] - $before['worked']) * 100 / $before['worked']) : null,
+            ...$now,
+            'single' => $single,
+            'employee' => (bool) $this->employee,
+            'employees' => $employees,
+            'when' => $single ? ($from->isToday() ? 'today' : ($from->isYesterday() ? 'yesterday' : $from->format('d M Y'))) : $from->format('d M').' – '.Carbon::parse($this->to)->format('d M Y'),
+            'live' => $single && $includesToday,
+            'absent' => $single && ! $from->isFuture() ? max(0, $employees - $now['people'] - $onLeave) : null,
+            'on_leave' => $onLeave,
+            'present_change' => $before ? $now['people'] - $before['people'] : 0,
+            'late_change' => $before ? $now['late_people'] - $before['late_people'] : 0,
+            'worked_change' => $before && $before['worked'] > 0 ? (int) round(($now['worked'] - $before['worked']) * 100 / $before['worked']) : null,
+        ];
+    }
+
+    /**
+     * One employee chosen: their whole range at a glance, so nobody has to scroll the rows - present, late, half
+     * days, absent with no leave, leave waiting for approval, approved leave, extra working, off days, time worked,
+     * average check-in, forgotten check-outs (closed automatically) and fines.
+     */
+    private function personSummary(array $days, AttendanceEmployee $employee, AttendanceService $attendance): array
+    {
+        $rows = collect($days);
+        $sessions = $rows->pluck('session')->filter();
+        $checkIns = $sessions->map(fn ($s) => $s->check_in ? $s->check_in->hour * 60 + $s->check_in->minute : null)->filter(fn ($m) => $m !== null);
+        $fines = \App\Models\EmployeePenalty::where('employee_id', $employee->id)->whereIn('status', ['pending', 'approved'])->whereDate('effective_on', '>=', $this->from)->whereDate('effective_on', '<=', $this->to)->get();
+        $worked = (int) $sessions->sum(fn ($s) => $attendance->workedSeconds($s));
+        // Idle, break and meeting time: the same figures as each row.
+        $figures = $sessions->map(fn ($s) => $attendance->liveFigures($s));
+
+        return [
+            // Working days in the range (weekly offs and holidays not counted; before joining / after leaving neither).
+            'working_days' => $rows->where('workday', true)->whereNotIn('status', ['not_joined', 'left'])->count(),
+            'present' => $sessions->count(),
+            'late' => $rows->where('status', 'late')->count(),
+            'half_day' => $rows->where('status', 'half_day')->count(),
+            'absent' => $rows->where('status', 'absent')->where('leave_pending', false)->count(),
+            'leave_pending' => $rows->where('leave_pending', true)->count(),
+            'on_leave' => $rows->where('status', 'on_leave')->count(),
+            'extra' => $rows->where('extra', true)->count(),
+            'off' => $rows->whereIn('status', ['weekend', 'holiday'])->count(),
+            'conflict' => $rows->where('status', 'leave_conflict')->count(),
+            'worked' => $worked,
+            'average' => $sessions->count() ? intdiv($worked, $sessions->count()) : 0,
+            'avg_in' => $checkIns->count() ? Carbon::today()->addMinutes((int) round($checkIns->avg()))->format('h:i A') : null,
+            'auto_out' => $sessions->where('closed_automatically', true)->count(),
+            'idle' => (int) $figures->sum('idle'),
+            'break' => (int) $figures->sum('break'),
+            'meeting' => (int) $figures->sum(fn ($f) => (int) ($f['screen']['meeting'] ?? 0)),
+            'fines' => (float) $fines->where('status', 'approved')->sum('amount'),
+            'fines_count' => $fines->where('status', 'approved')->count(),
+            'fines_pending' => $fines->where('status', 'pending')->count(),
         ];
     }
 
     public function render(AttendanceService $attendance)
     {
-        if (! strtotime($this->from)) $this->from = now()->startOfMonth()->toDateString();
+        if (! strtotime($this->from)) $this->from = today()->toDateString();
         if (! strtotime($this->to) || $this->to < $this->from) $this->to = max($this->from, today()->toDateString());
         if (! in_array($this->perPage, self::PER_PAGE, true)) $this->perPage = 25;
         $sessions = AttendanceSession::with(['employee.department', 'employee.user.roles', 'device', 'checkInOffice', 'checkOutOffice'])
@@ -231,7 +290,8 @@ class Records extends Component
                     ->when($this->employee, fn ($q, $id) => $q->orWhere('id', $id)))
                 ->inCodeOrder()->get(['id', 'name', 'employee_code']),
             'departments' => Department::orderBy('name')->get(),
-            'summary' => $this->todaySummary($attendance),
+            'summary' => $this->rangeSummary($attendance),
+            'person' => $dayEmployee && $dayRows !== null ? $this->personSummary($dayRows, $dayEmployee, $attendance) : null,
             'detailSession' => $detail,
             'activity' => $activity,
             'canEditTime' => $this->canEditTime(),

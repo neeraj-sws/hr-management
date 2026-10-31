@@ -3,9 +3,28 @@
     <x-errors />
     @error('telegram')<div class="alert alert-error">{{ $message }}</div>@enderror
 
+    <section class="card mb">
+        <div class="card-head"><div><h2>Bot connection</h2><p>Create the bot with @BotFather (/newbot), paste its token here and Save. The token is checked with Telegram, stored encrypted and never shown again. Saving a new token also connects the bot to this website.</p></div></div>
+        <form class="card-body stack" wire:submit="saveBot">
+            <label class="check"><input type="checkbox" wire:model="botEnabled"> <span><strong>Telegram bot on</strong> · turn off to stop every Telegram message at once</span></label>
+            <div class="grid grid-2">
+                <x-field label="Bot token" name="botToken" :hint="$tokenSource === 'HRMS' ? 'A token is saved'.($savedBot?->updater ? ' (by '.$savedBot->updater->name.', '.$savedBot->updated_at?->format('d M Y').')' : '').'. Leave empty to keep it; paste a new one to replace it.' : ($tokenSource === '.env' ? 'Using the token in .env. Paste one here to manage it from the HRMS instead.' : 'From @BotFather, looks like 123456789:ABC...')">
+                    <input type="password" wire:model="botToken" autocomplete="new-password" placeholder="{{ $tokenSource ? '•••••••• (saved)' : '123456789:ABC...' }}">
+                </x-field>
+                <x-field label="Super Admin chat ID" name="adminChatId" hint="Where all administrative messages go. Easiest: connect your own Telegram in My profile, then press Use my Telegram.">
+                    <div style="display:flex;gap:6px"><input type="text" wire:model="adminChatId" inputmode="numeric" placeholder="e.g. 1234567890" style="flex:1"><button type="button" class="btn btn-sm" wire:click="useMyChat" title="{{ $myChatLinked ? 'Fill in your own connected Telegram chat' : 'Connect your Telegram in My profile first' }}">Use my Telegram</button></div>
+                </x-field>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary" wire:loading.attr="disabled">Save bot</button>
+                @if($tokenSource === 'HRMS')<button type="button" class="btn" wire:click="removeToken" wire:confirm="Remove the saved bot token? Telegram messages stop until a token is saved again (or .env has one).">Remove saved token</button>@endif
+            </div>
+        </form>
+    </section>
+
     <div class="grid grid-2 mb">
         <section class="card">
-            <div class="card-head"><div><h2>Setup</h2><p>The bot token and the Super Admin chat ID are kept in .env on the server only.</p></div></div>
+            <div class="card-head"><div><h2>Setup</h2><p>Set the bot above under "Bot connection" - no .env editing needed.</p></div></div>
             <div class="list">
                 @foreach($checks as [$label, $ok])
                     <div class="list-row"><div><strong>{{ $label }}</strong></div><x-badge :tone="$ok ? 'green' : 'red'">{{ $ok ? 'OK' : 'Missing' }}</x-badge></div>
