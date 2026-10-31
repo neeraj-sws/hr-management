@@ -22,6 +22,12 @@
     .inv-due.clear{background:rgba(16,185,129,.09)}
     .inv-due .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
     .inv-due b{font-size:19px}
+    /* Line-items table: item column reads left, numbers right, tidy rows */
+    .bill-items th,.bill-items td{vertical-align:top}
+    .bill-items th:first-child,.bill-items td:first-child{text-align:left;width:40%}
+    .bill-items td:first-child strong{display:block}
+    .bill-items td:first-child small{display:block;color:var(--muted);margin-top:2px;white-space:normal;text-align:left}
+    .bill-items tbody tr:hover{background:var(--line-2)}
 </style>
 @php
     if (! function_exists('billing_badge_class')) {

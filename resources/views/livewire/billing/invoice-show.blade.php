@@ -18,7 +18,7 @@
             <div><span>Customer GSTIN</span><strong>{{ \App\Services\BillingService::cleanGstin($invoice->customer?->tax_number) ?: '—' }}</strong></div>
             @if($invoice->project)<div><span>Project</span><strong>{{ $invoice->project->name }}</strong></div>@endif
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table bill-items">
             <thead><tr><th>Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Discount</th><th>Tax</th><th class="num">Amount</th></tr></thead>
             <tbody>
             @foreach($invoice->items as $it)

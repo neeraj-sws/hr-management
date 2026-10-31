@@ -20,7 +20,7 @@
             <div><span>Issue date</span><strong>{{ $estimate->issue_date->format('d M Y') }}</strong></div>
             <div><span>Expiry date</span><strong>{{ $estimate->expiry_date?->format('d M Y') ?? '—' }}</strong></div>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table bill-items">
             <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Discount</th><th>Tax</th><th class="num">Amount</th></tr></thead>
             <tbody>
             @foreach($estimate->items as $it)
