@@ -70,6 +70,19 @@ class Timesheets extends Component
         $this->showEntry = true;
     }
 
+    /** Fill worked-minutes from start/end as soon as both are set (overnight shifts wrap past midnight). */
+    public function updatedEntry($value, $key): void
+    {
+        if ($key !== 'start_time' && $key !== 'end_time') return;
+        $start = $this->entry['start_time'] ?? '';
+        $end = $this->entry['end_time'] ?? '';
+        if (! preg_match('/^\d{2}:\d{2}$/', $start) || ! preg_match('/^\d{2}:\d{2}$/', $end)) return;
+        $s = Carbon::createFromFormat('H:i', $start);
+        $e = Carbon::createFromFormat('H:i', $end);
+        if ($e->lessThanOrEqualTo($s)) $e->addDay();
+        $this->entry['minutes'] = (string) $s->diffInMinutes($e);
+    }
+
     public function saveEntry(TimesheetService $timesheets, AuditLogger $audit): void
     {
         $this->guard();
