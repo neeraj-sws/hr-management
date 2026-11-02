@@ -79,7 +79,7 @@
         <section class="card"><div class="card-head"><h2><x-icon name="note" class="icon-sm" /> Notes</h2><a class="btn btn-sm" href="{{ route('billing.invoices.edit', $invoice) }}"><x-icon name="edit" class="icon-sm" />Edit</a></div>
             <p style="white-space:pre-wrap;margin:4px 2px;{{ $invoice->notes ? '' : 'color:var(--muted)' }}">{{ $invoice->notes ?: '—' }}</p></section>
         <section class="card"><div class="card-head"><h2><x-icon name="file" class="icon-sm" /> Terms &amp; conditions</h2></div>
-            <p style="white-space:pre-wrap;margin:4px 2px;color:var(--muted)">{{ config('billing.terms') ?: '—' }}</p></section>
+            <p style="white-space:pre-wrap;margin:4px 2px;{{ $invoice->terms ? '' : 'color:var(--muted)' }}">{{ $invoice->terms ?: '—' }}</p></section>
     </div>
 
     {{-- Payment history --}}
