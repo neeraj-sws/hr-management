@@ -31,15 +31,18 @@
     .bill-items tbody tr:hover{background:var(--line-2)}
     /* Rich invoice detail */
     .bill-badge.dot::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:middle}
-    .inv-cust{display:flex;flex-wrap:wrap;gap:22px;align-items:center}
-    .inv-cust-main{display:flex;gap:14px;align-items:center;min-width:220px;flex:1}
+    .inv-cust{display:flex;flex-wrap:wrap;gap:0;align-items:stretch}
+    .inv-cust-main{display:flex;gap:14px;align-items:center;min-width:220px;flex:1;padding:4px 26px 4px 0}
+    @media(min-width:820px){.inv-cust-main{border-right:1px solid var(--line)}}
     .inv-avatar{width:50px;height:50px;border-radius:50%;background:rgba(59,130,246,.12);color:#2563eb;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex:none}
     .inv-cust-main .nm{font-weight:700;font-size:16px}
     .inv-cust-main .sub{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.7}
-    .inv-cmeta{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:16px 26px;flex:2;min-width:260px}
+    .inv-cmeta{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:18px 0;flex:2.3;min-width:260px;padding:4px 0 4px 26px;align-content:center}
+    .inv-cmeta > div{padding:0 20px;border-left:1px solid var(--line)}
+    .inv-cmeta > div:first-child{border-left:0;padding-left:0}
     .inv-cmeta span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-    .inv-cmeta strong{display:block;font-size:13.5px;margin-top:4px}
-    .inv-cmeta small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+    .inv-cmeta strong{display:block;font-size:13.5px;margin-top:5px}
+    .inv-cmeta small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
     .inv-grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}
     @media(max-width:900px){.inv-grid{grid-template-columns:1fr}}
     .inv-sum{padding:4px 2px}
