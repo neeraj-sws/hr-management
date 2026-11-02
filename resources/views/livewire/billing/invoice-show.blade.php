@@ -38,7 +38,11 @@
                 <div><span>Issue date</span><strong>{{ $invoice->issue_date->format('d M Y') }}</strong></div>
                 <div><span>Due date</span><strong class="{{ $overdue ? 'ov-red' : '' }}">{{ $invoice->due_date?->format('d M Y') ?? '—' }}</strong></div>
                 <div><span>Place of supply</span><strong>{{ $posLabel }}</strong><small>{{ $interState ? 'IGST' : 'CGST + SGST' }}</small></div>
-                <div><span>Customer GSTIN</span><strong>{{ $gstin ?: '—' }}</strong></div>
+                @php($paidOn = $invoice->payments->max('date'))
+                <div><span>Status</span><strong class="meta-dot" style="color:{{ $invoice->status === 'Paid' ? 'var(--green,#059669)' : ($invoice->status === 'Partially Paid' ? 'var(--amber,#b45309)' : 'inherit') }}">{{ $invoice->status }}</strong>
+                    @if($invoice->status === 'Paid' && $paidOn)<small>Paid on {{ \Illuminate\Support\Carbon::parse($paidOn)->format('d M Y') }}</small>
+                    @elseif($invoice->send_date)<small>Sent on {{ $invoice->send_date->format('d M Y') }}</small>@endif</div>
+                @if($invoice->project)<div><span>Project</span><strong>{{ $invoice->project->name }}</strong></div>@endif
             </div>
         </div>
     </section>
@@ -69,7 +73,10 @@
                 @if($invoice->creditTotal() > 0)<div class="r"><span>Credit notes</span><strong>− ₹{{ number_format($invoice->creditTotal(), 2) }}</strong></div>@endif
                 <div class="r tot"><span>Total amount</span><strong>₹{{ number_format($invoice->total(), 2) }}</strong></div>
                 <div class="r"><span>Paid amount</span><strong class="pos">₹{{ number_format($invoice->paidAmount(), 2) }}</strong></div>
-                <div class="inv-bal {{ $due <= 0 ? 'clear' : '' }}"><span class="lbl">{{ $due <= 0 ? 'Fully paid' : 'Balance due' }}</span><b>₹{{ number_format($due, 2) }}</b></div>
+                <div class="inv-bal {{ $due <= 0 ? 'clear' : '' }}">
+                    <div><span class="lbl">@if($due <= 0)<x-icon name="check-circle" class="icon-sm" />@endif{{ $due <= 0 ? 'Fully paid' : 'Balance due' }}</span><b>₹{{ number_format($due, 2) }}</b></div>
+                    @if($due <= 0)<span class="inv-bal-ic"><x-icon name="check" /></span>@endif
+                </div>
             </div>
         </section>
     </div>
