@@ -103,6 +103,8 @@ class Settings extends Component
     public bool $requireLocation = false;
     public bool $requireLocationWeb = false;
     public bool $selfieWeb = false;
+    /** Check in / break / check out on the website (company-wide; one person can still be allowed in their profile). */
+    public bool $webAttendance = true;
     public bool $selfieMobile = false;
     public bool $alertsEnabled = true;
     public string $absentAfter = '11:00';
@@ -211,6 +213,7 @@ class Settings extends Component
             'autoCheckoutMinutes' => (string) $auto['idle_minutes'],
             'requireLocation' => (bool) ($location['required_for_mobile'] ?? false),
             'requireLocationWeb' => (bool) ($location['required_for_web'] ?? false),
+            'webAttendance' => $this->companyAllowsWeb($policies, $today),
             'selfieWeb' => (bool) ($selfie['required_web'] ?? false), 'selfieMobile' => (bool) ($selfie['required_mobile'] ?? false),
             'alertsEnabled' => (bool) ($alerts['enabled'] ?? true), 'absentAfter' => (string) ($alerts['absent_after'] ?? '11:00'), 'breakAlerts' => (bool) ($alerts['break_alerts'] ?? true), 'longBreakMinutes' => (string) ($alerts['long_break_minutes'] ?? 60),
             'captureEnabled' => (bool) ($capture['enabled'] ?? false), 'captureInterval' => (string) ($capture['interval_minutes'] ?? 10), 'captureActiveOnly' => (bool) ($capture['active_only'] ?? true),
@@ -639,9 +642,21 @@ class Settings extends Component
         $people->setPolicy('attendance.idle', 'attendance', 'Away-time prompt (desktop)', ['away_prompt_minutes' => (int) $this->idleMinutes, 'idle_after_minutes' => (int) $this->idleAfterMinutes], null, auth()->id(), today()->toDateString());
         $people->setPolicy('attendance.auto_checkout', 'attendance', 'Automatic check-out (desktop)', ['enabled' => $this->autoCheckout, 'idle_minutes' => (int) $this->autoCheckoutMinutes], null, auth()->id(), today()->toDateString());
         $this->validate(['absentAfter' => ['required', 'date_format:H:i'], 'longBreakMinutes' => ['required', 'integer', 'min:0', 'max:600']], [], ['absentAfter' => 'absent alert time', 'longBreakMinutes' => 'long break alert']);
+        // Website off: no check-in / break / check-out buttons on the website (screen time cannot be tracked there).
+        if ($this->webAttendance !== $this->companyAllowsWeb(app(\App\Services\PolicyConfigurationService::class), today()->toDateString())) {
+            $people->setPolicy('attendance.sources', 'attendance', 'Attendance methods', ['allowed' => $this->webAttendance ? ['web', 'mobile', 'desktop'] : ['mobile', 'desktop']], null, auth()->id(), today()->toDateString());
+        }
         $people->setPolicy('attendance.selfie', 'attendance', 'Selfie at check-in/out', ['required_web' => $this->selfieWeb, 'required_mobile' => $this->selfieMobile], null, auth()->id(), today()->toDateString());
         $people->setPolicy('attendance.alerts', 'attendance', 'Late and absence alerts', ['enabled' => $this->alertsEnabled, 'absent_after' => $this->absentAfter, 'break_alerts' => $this->breakAlerts, 'long_break_minutes' => (int) $this->longBreakMinutes], null, auth()->id(), today()->toDateString());
         $this->toast('Work hours and attendance rules saved.');
+    }
+
+    /** Company-wide: may people mark attendance on the website? (no setting = yes) */
+    private function companyAllowsWeb(\App\Services\PolicyConfigurationService $policies, string $date): bool
+    {
+        $allowed = $policies->forEmployee(null, 'attendance.sources', $date, [])['allowed'] ?? null;
+
+        return ! is_array($allowed) || $allowed === [] || in_array('web', $allowed, true);
     }
 
     public function savePayroll(PeopleOperationsService $people): void

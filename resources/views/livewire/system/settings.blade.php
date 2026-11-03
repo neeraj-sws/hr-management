@@ -148,6 +148,9 @@
                 </div>
                 <x-field label="Automatic check-out after (minutes without keyboard/mouse after the shift)" name="autoCheckoutMinutes"><input type="number" min="10" max="240" wire:model="autoCheckoutMinutes"></x-field>
                 <x-field label="Desktop app: ask 'Are you sitting idle?' after (minutes)" name="idleMinutes" hint="the popup shows while the computer is untouched this long (checked in, not on a break) · also asks about breaks after a locked screen or sleep · 0 = never ask · field / mobile staff (Compliance → Policies → Work type) are not asked"><input type="number" min="0" max="240" wire:model="idleMinutes"></x-field>
+                <div class="full"><span class="label">Website attendance</span>
+                    <label class="check"><input type="checkbox" wire:model="webAttendance"> Allow check-in, break and check-out on the website</label>
+                    <span class="small muted">Off: the website hides these buttons, because screen and idle time can't be tracked there. People use the desktop app or mobile app. To allow one person, turn on Website in their profile → Attendance methods.</span></div>
                 <div class="full"><span class="label">Selfie at check-in / check-out</span>
                     <label class="check"><input type="checkbox" wire:model="selfieWeb"> Required on the website</label>
                     <label class="check"><input type="checkbox" wire:model="selfieMobile"> Required in the mobile app</label>
