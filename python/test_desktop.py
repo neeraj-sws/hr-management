@@ -151,6 +151,66 @@ class ClientTests(unittest.TestCase):
         app._sync_session({"id": 5, "status": "completed", "check_out": "2026-10-21T13:30:00Z", "worked_seconds": 26100})
         app._set_session.assert_called_once()
 
+    def test_no_sign_out_while_checked_in(self):
+        from unittest.mock import patch
+        from sws_desktop import app as app_module
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app._run = Mock()
+        app._show_login = Mock()
+        app.client = Mock()
+        with patch.object(app_module.messagebox, "showinfo") as info, patch.object(app_module.messagebox, "askyesno", return_value=True) as ask,                 patch.object(app_module.settings, "clear_token") as clear:
+            for session in ({"check_in": "2026-11-03T04:30:00Z", "check_out": None, "status": "working"},
+                            {"check_in": "2026-11-03T04:30:00Z", "check_out": None, "status": "on_break"}):
+                app.session = session
+                app.logout()
+            self.assertEqual(info.call_count, 2, "Checked in (or on a break): told to check out first")
+            ask.assert_not_called()
+            clear.assert_not_called()
+            app._show_login.assert_not_called()
+
+            app.session = {"check_in": "2026-11-03T04:30:00Z", "check_out": "2026-11-03T13:00:00Z", "status": "completed"}
+            app.logout()
+            ask.assert_called_once()
+            clear.assert_called_once()
+            app._show_login.assert_called_once()
+
+            app.session = None  # not checked in today: signing out is allowed
+            app.logout()
+            self.assertEqual(clear.call_count, 2)
+
+    def test_a_check_in_made_elsewhere_reaches_a_running_app(self):
+        from sws_desktop.app import DesktopApp
+
+        app = DesktopApp.__new__(DesktopApp)
+        app.status_pill = Mock(winfo_exists=Mock(return_value=True))
+        app.offline = Mock(counts=Mock(return_value={"queued": 0}))
+        app._set_session = Mock(side_effect=lambda s: setattr(app, "session", s))
+        app._sync_session = Mock()
+
+        # The app was open before check-in; the person checked in on the phone / website.
+        app.session = None
+        server = {"id": 9, "check_in": "2026-11-03T04:30:00Z", "check_out": None, "status": "working"}
+        app._take_server_session(server)
+        app._set_session.assert_called_once_with(server)
+        self.assertTrue(app.checked_in(), "Now the app sends screen time and sign out is locked")
+
+        # Same session again: only the figures are taken (HR checking out is handled by the sync).
+        app._take_server_session({**server, "worked_seconds": 120})
+        app._sync_session.assert_called_once()
+
+        # Offline actions waiting: the local state is newer, so the server's is not taken.
+        app.offline.counts.return_value = {"queued": 1}
+        app._take_server_session(None)
+        self.assertEqual(app._set_session.call_count, 1)
+
+        # Main window closed (signed out): nothing to update.
+        app.offline.counts.return_value = {"queued": 0}
+        app.status_pill.winfo_exists.return_value = False
+        app._take_server_session(None)
+        self.assertEqual(app._set_session.call_count, 1)
+
     def test_total_time_since_check_in_is_shown(self):
         from datetime import datetime, timedelta, timezone
         from sws_desktop.app import DesktopApp
