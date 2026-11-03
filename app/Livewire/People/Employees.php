@@ -103,6 +103,8 @@ class Employees extends Component
     public string $exitReason = '';
     public array $teamIds = [];
     public bool $isManager = false;
+    /** No fixed working hours (e.g. cleaning staff): no late / early / half-day / short-hour cuts. */
+    public bool $flexibleHours = false;
 
     public ?int $pwEmployeeId = null;
     public string $pwPassword = '';
@@ -138,7 +140,7 @@ class Employees extends Component
             'departmentId' => $employee->department_id, 'managerId' => $employee->manager_id,
             'joinedAt' => (string) $employee->joined_at?->toDateString(), 'dateOfBirth' => (string) $employee->date_of_birth?->toDateString(), 'employmentType' => $employee->employment_type ?: 'full_time', 'probationEndsOn' => (string) $employee->probation_ends_on?->toDateString(), 'noticePeriodDays' => (string) ($employee->notice_period_days ?? ''), 'workStart' => substr((string) $employee->work_start, 0, 5),
             'workEnd' => substr((string) $employee->work_end, 0, 5), 'dailyHours' => (string) (float) $employee->daily_work_hours,
-            'teamIds' => $employee->teams->pluck('id')->map(fn ($id) => (string) $id)->all(), 'isManager' => (bool) $employee->user?->hasRole('Manager'),
+            'teamIds' => $employee->teams->pluck('id')->map(fn ($id) => (string) $id)->all(), 'isManager' => (bool) $employee->user?->hasRole('Manager'), 'flexibleHours' => app(\App\Services\AttendanceService::class)->flexibleHours($employee),
             'exitDate' => (string) $employee->exit_date?->toDateString(), 'exitType' => $employee->exit_type ?: 'resignation', 'exitReason' => (string) $employee->exit_reason,
         ]);
         $this->showForm = true;
@@ -193,9 +195,11 @@ class Employees extends Component
         ];
         if ($employee) {
             $service->update($employee, $data, $this->user());
+            $this->saveFlexibleHours($employee);
             $this->toast($left ? 'Saved as an ex-employee. Their login and devices are switched off; their records stay.' : 'Employee updated.');
         } else {
             $added = $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary === '' ? 0 : $this->monthlySalary, 'pay_basis' => $this->payBasis, 'daily_rate' => $this->payBasis === 'daily' ? $this->dailyRate : null], $this->user());
+            $this->saveFlexibleHours($added);
             if (! $left && \App\Services\HrLetterService::canManage($this->user()) && app(\App\Services\HrLetterService::class)->templateFor('appointment')) $this->letterOffer = [$added->id, $added->name];
             $this->toast($left ? 'Ex-employee added (inactive, no login). Their old attendance and salary can now be imported.' : 'Employee and login account created.');
         }
@@ -249,9 +253,28 @@ class Employees extends Component
         $this->resetForm();
     }
 
+    /**
+     * Flexible hours on / off for this person (for all their days). Switched on: their late and early fines that are not in a
+     * locked payroll are removed, as those days are now on time.
+     */
+    private function saveFlexibleHours(AttendanceEmployee $employee): void
+    {
+        $attendance = app(\App\Services\AttendanceService::class);
+        if ($attendance->flexibleHours($employee) === $this->flexibleHours) return;
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $people->setPolicy(\App\Services\AttendanceService::FLEXIBLE_KEY, 'attendance', 'Flexible working hours', ['on' => $this->flexibleHours ? 1 : 0], $employee->id, $this->user()->id, '2000-01-01');
+        $attendance->forgetFlexible($employee);
+        app(\App\Services\AuditLogger::class)->record($this->flexibleHours ? 'employee.flexible_hours_on' : 'employee.flexible_hours_off', $employee, ['employee' => $employee->name]);
+        if (! $this->flexibleHours) return;
+        $dates = \App\Models\EmployeePenalty::where('employee_id', $employee->id)->whereIn('status', ['pending', 'approved'])
+            ->where(fn ($q) => $q->where('source_key', 'like', 'late:%')->orWhere('source_key', 'like', 'early:%'))
+            ->pluck('effective_on')->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->toDateString())->unique();
+        foreach ($dates as $date) $people->reassessDay($employee, $date, $this->user()->id, 'flexible working hours switched on');
+    }
+
     private function resetForm(): void
     {
-        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'address', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager');
+        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'address', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager', 'flexibleHours');
         $this->resetValidation();
     }
 

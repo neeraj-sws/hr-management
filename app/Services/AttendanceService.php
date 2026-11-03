@@ -704,10 +704,30 @@ class AttendanceService
         return \App\Support\WorkCalendar::isWorkday($date, $this->policies->forEmployee($employee, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]));
     }
 
+    /** People with no fixed working hours (e.g. cleaning staff): never late, early or a half day; no time is cut. */
+    public const FLEXIBLE_KEY = 'attendance.flexible';
+
+    /** @var array<int, bool> */
+    private array $flexibleCache = [];
+
+    /** Flexible hours (People > Employees > Edit): a present day is a full day, whatever the time. */
+    public function flexibleHours(?AttendanceEmployee $employee): bool
+    {
+        if (! $employee) return false;
+
+        return $this->flexibleCache[$employee->id] ??= ! empty($this->policies->forEmployee($employee, self::FLEXIBLE_KEY, today()->toDateString(), [])['on']);
+    }
+
+    public function forgetFlexible(AttendanceEmployee $employee): void
+    {
+        unset($this->flexibleCache[$employee->id]);
+    }
+
     public function isLate(AttendanceSession $session, ?array $rules = null): bool
     {
         $employee = $session->employee;
         if (! $employee || ! $session->check_in) return false;
+        if ($this->flexibleHours($employee)) return false;
         if (! $this->isScheduledDay($employee, $session->work_date->toDateString())) return false;
         $rules ??= $this->rules($employee, $session->work_date->toDateString());
         if (! $rules['work_start']) return false;
@@ -735,6 +755,7 @@ class AttendanceService
     {
         $employee = $session->employee;
         if (! $employee || ! $session->check_in) return 0;
+        if ($this->flexibleHours($employee)) return 0;
         if (! $this->isScheduledDay($employee, $session->work_date->toDateString())) return 0;
         $rules = $this->rules($employee, $session->work_date->toDateString());
         if (! $rules['work_start']) return 0;
@@ -782,6 +803,7 @@ class AttendanceService
     public function earlyMinutes(AttendanceSession $session): int
     {
         if (! $session->check_out || ! $session->employee) return 0;
+        if ($this->flexibleHours($session->employee)) return 0;
         if (! $this->isScheduledDay($session->employee, $session->work_date->toDateString())) return 0;
         $end = $this->expectedEnd($session->employee, $session->work_date->toDateString());
 
@@ -791,6 +813,7 @@ class AttendanceService
     public function isHalfDay(AttendanceSession $session, ?array $rules = null): bool
     {
         if (! $session->check_out || ! $session->employee) return false;
+        if ($this->flexibleHours($session->employee)) return false;
         if (! $this->isScheduledDay($session->employee, $session->work_date->toDateString())) return false;
         // A half-day holiday (office closes early): coming in counts as a full day.
         if ($this->halfDayHoliday($session->employee, $session->work_date->toDateString())) return false;

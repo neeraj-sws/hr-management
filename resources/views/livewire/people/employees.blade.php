@@ -153,6 +153,7 @@
                         <div class="field full"><span class="label">Teams</span>
                             <div class="checks">@forelse($teams as $team)<label class="check"><input type="checkbox" value="{{ $team->id }}" wire:model="teamIds"> {{ $team->name }}</label>@empty<span class="small muted">No teams yet.</span>@endforelse</div>
                         </div>
+                        <label class="check full"><input type="checkbox" wire:model="flexibleHours"> Flexible hours, no fixed time (e.g. cleaning staff): never late, early or a half day; no time is cut from the pay - a present day is paid in full</label>
                         <label class="check full"><input type="checkbox" wire:model="isManager"> Grant the Manager role (can approve team leave{{ app(\App\Services\PeopleOperationsService::class)->overtimeEnabled() ? '/overtime' : '' }} and assign tasks)</label>
                     </div>
                     @unless($editingId)<p class="small muted mt">Creating an employee also creates their login, salary profile and this year's leave balances. Salary changes later are effective-dated under Payroll → Salary.</p>@endunless

@@ -39,6 +39,7 @@ class HrWorkflowService
     public function lateCheckInPay(AttendanceEmployee $employee, AttendanceSession $session, ?string $after = null, ?array $calendar = null): ?array
     {
         if (! $session->check_in || ! $session->check_out) return null;
+        if (app(AttendanceService::class)->flexibleHours($employee)) return null; // flexible hours: a present day is a full day
         $date = $session->work_date->toDateString();
         if ($after === null) {
             $policy = app(PolicyConfigurationService::class)->forEmployee($employee, 'payroll.calculation', $date, []);
@@ -742,6 +743,7 @@ class HrWorkflowService
             foreach (array_keys($presentSet) as $date) {
                 if (isset($halfDaySet[$date]) || isset($hoursPaidSet[$date]) || \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) continue; // never cut twice / office closed early
                 if (! $hoursCutOn($date)) continue;
+                if ($attendanceService->flexibleHours($employee)) continue; // flexible hours: no time is cut
                 $daySession = $daySessions->get($date);
                 // Only finished days: a day still in progress (not checked out yet) is not short.
                 if (! $daySession || ! $daySession->check_out) continue;
