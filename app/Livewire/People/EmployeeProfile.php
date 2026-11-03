@@ -237,7 +237,7 @@ class EmployeeProfile extends Component
             if ($day['date'] < today()->toDateString()) {
                 $status = $statuses->get($day['date']);
                 if (! $status && \App\Support\DailyStatusRule::required($employee, $day['date'])) $discipline->push(['date' => $day['date'], 'type' => 'no_status', 'label' => 'Daily status missing', 'detail' => 'Worked but no daily status was submitted']);
-                elseif ($status->submitted_at && $status->submitted_at->toDateString() > $day['date']) $discipline->push(['date' => $day['date'], 'type' => 'late_status', 'label' => 'Daily status late', 'detail' => 'Submitted '.$status->submitted_at->format('d M, h:i A')]);
+                elseif ($status && $status->submitted_at && $status->submitted_at->toDateString() > $day['date']) $discipline->push(['date' => $day['date'], 'type' => 'late_status', 'label' => 'Daily status late', 'detail' => 'Submitted '.$status->submitted_at->format('d M, h:i A')]);
             }
         }
         $canSeeDocs = $isSelf || $user->canAny(['lifecycle.manage', 'hr.manage', 'employees.manage']) || \App\Support\Access::isAdmin($user);
