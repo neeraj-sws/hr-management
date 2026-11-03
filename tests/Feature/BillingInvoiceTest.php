@@ -126,4 +126,12 @@ class BillingInvoiceTest extends TestCase
 
         $this->get(route('billing.invoices.show', $invoice))->assertOk()->assertSee('inv-strip', false);
     }
+
+    public function test_edit_page_shows_cards_and_summary_with_gst_split(): void
+    {
+        $invoice = $this->invoiceFor($this->customer('Madhya Pradesh'));
+        Livewire::actingAs($this->admin)->test(InvoiceForm::class, ['invoice' => $invoice])
+            ->assertSee(['Edit Invoice', 'Customer &amp; dates', 'Invoice summary', 'CGST (9%)', 'SGST (9%)', '₹11,800.00', 'Add Item', 'Terms &amp; Conditions', 'Save Invoice'], false)
+            ->call('addItem')->assertSee('— custom item —')->call('save')->assertHasErrors('items.1.name');
+    }
 }

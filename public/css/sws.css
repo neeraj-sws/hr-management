@@ -1633,3 +1633,29 @@ div.tm-card{cursor:default}
 @media (max-width:1280px){.inv-strip{grid-template-columns:repeat(3,minmax(0,1fr));row-gap:16px}.inv-strip>div:first-child{grid-column:1/-1;padding-bottom:14px;border-bottom:1px solid var(--line-2)}.inv-strip>div:nth-child(2),.inv-strip>div:nth-child(5){padding-left:0;border-left:0}}
 @media (max-width:1100px){.inv-grid{grid-template-columns:1fr}}
 @media (max-width:640px){.inv-head{flex-direction:column}.inv-actions{justify-content:flex-start}.inv-strip{grid-template-columns:1fr 1fr;padding:16px}.inv-strip>div{padding:0 10px}.inv-strip>div:nth-child(2n){padding-left:0;border-left:0}.inv-strip>div:nth-child(5){padding-left:10px;border-left:1px solid var(--line-2)}.inv-pair{grid-template-columns:1fr}.inv-balance strong{font-size:24px}.inv-items{min-height:0}}
+
+/* Invoice create / edit page (reuses the .inv- cards of the invoice page). */
+.inv-form-title{display:flex;align-items:center;gap:14px}
+.inv-form-title h1{margin:0}
+.inv-form-title p{margin:4px 0 0}
+.inv-form-icon{flex:none;width:52px;height:52px;border-radius:14px;background:var(--blue);color:#fff;display:grid;place-items:center;box-shadow:0 6px 16px rgba(52,97,209,.25)}
+.inv-form-icon .icon{width:24px;height:24px}
+.inv-form .inv-grid{align-items:stretch}
+.inv-form-body{padding:0 16px 16px}
+.inv-form-body textarea{width:100%;min-height:84px;resize:vertical}
+.inv-form-total{margin-bottom:12px}
+.inv-form-total dd{font-size:17px}
+.inv-form-error{margin:0 16px 10px}
+.inv-edit-table td{vertical-align:top}
+.inv-edit-table td.inv-n{padding-top:20px}
+.inv-edit-table input,.inv-edit-table select{width:100%}
+.inv-col-item{min-width:240px}
+.inv-col-item>*+*{margin-top:6px}
+.inv-w-hsn{min-width:90px}.inv-w-qty{min-width:70px}.inv-w-money{min-width:100px}.inv-w-tax{min-width:130px}
+.inv-amount-box{display:block;min-width:110px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--canvas);font-weight:700;color:var(--ink);text-align:right;font-variant-numeric:tabular-nums}
+.inv-edit-table td.inv-act{padding-top:14px}
+.inv-form-add{padding:4px 16px 16px}
+.inv-form-add .btn{color:var(--blue);font-weight:650}
+.inv-terms{min-height:84px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:13px;white-space:pre-line}
+.inv-form-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+@media (max-width:640px){.inv-form-title{align-items:flex-start}.inv-form-icon{width:42px;height:42px}.inv-form-foot .btn{flex:1;justify-content:center}}
