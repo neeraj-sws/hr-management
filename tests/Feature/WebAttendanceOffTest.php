@@ -73,6 +73,29 @@ class WebAttendanceOffTest extends TestCase
         $this->assertSame(1, AttendanceSession::where('employee_id', $this->employee->id)->count());
     }
 
+    public function test_desktop_only_for_everyone_and_mobile_for_cleaning_staff(): void
+    {
+        Livewire::actingAs($this->admin)->test(Settings::class)->set('webAttendance', false)->set('mobileAttendance', false)->call('saveHours')->assertHasNoErrors();
+        Livewire::actingAs($this->admin)->test(Settings::class)->assertSet('webAttendance', false)->assertSet('mobileAttendance', false);
+        $attendance = app(AttendanceService::class);
+        $this->assertSame(['desktop'], $attendance->allowedSources($this->employee));
+
+        Livewire::actingAs($this->staff)->test(MyAttendance::class)->assertSee('Check in, take breaks and check out in the Desktop app.');
+        \Laravel\Sanctum\Sanctum::actingAs($this->staff, ['*']);
+        $this->postJson('/api/attendance/check-in', ['source' => 'mobile'])->assertUnprocessable();
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('data.policies.attendance_sources', ['desktop']);
+
+        // Cleaning staff: HR turns on Mobile app in her profile → Attendance methods.
+        $aunty = User::create(['name' => 'Safai Aunty', 'email' => 'safai@company.test', 'password' => bcrypt('secret-password-1'), 'is_active' => true]);
+        $aunty->assignRole('Employee');
+        $cleaner = AttendanceEmployee::create(['employee_code' => 'EMP-17', 'name' => 'Safai Aunty', 'email' => 'safai@company.test', 'user_id' => $aunty->id, 'is_active' => true, 'joined_at' => '2026-01-01', 'daily_work_hours' => 1, 'work_start' => '09:00:00', 'work_end' => '10:00:00']);
+        Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $cleaner])
+            ->call('setAttendanceSources', ['desktop', 'mobile']);
+        $this->assertSame(['mobile', 'desktop'], $attendance->allowedSources($cleaner));
+        \Laravel\Sanctum\Sanctum::actingAs($aunty, ['*']);
+        $this->postJson('/api/attendance/check-in', ['source' => 'mobile'])->assertCreated();
+    }
+
     public function test_saving_settings_without_changing_it_adds_no_rule(): void
     {
         Livewire::actingAs($this->admin)->test(Settings::class)->call('saveHours')->assertHasNoErrors();
