@@ -10,15 +10,14 @@
         @include('partials.import-form', ['type' => 'attendance', 'kind' => 'Attendance', 'action' => route('attendance.records.import')])
     </section>
 
-    {{-- Filters: applied with Search (or Enter); Reset goes back to today, everyone. --}}
-    <form class="card ar-filters" wire:submit="search">
-        <label class="field"><span>From</span><input type="date" wire:model="from"></label>
-        <label class="field"><span>To</span><input type="date" wire:model="to" x-bind:min="$wire.from"></label>
-        <label class="field ar-grow"><span>Employee</span><select wire:model="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }} ({{ $e->employee_code }})</option>@endforeach</select></label>
-        <label class="field ar-grow"><span>Department</span><select wire:model="department"><option value="">All departments</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
-        <label class="field"><span>Session</span><select wire:model="status"><option value="">Any</option><option value="working">Working</option><option value="on_break">On break</option><option value="completed">Completed</option></select></label>
+    {{-- Filters: the list updates as soon as a filter changes; Reset goes back to today, everyone. --}}
+    <form class="card ar-filters" wire:submit.prevent>
+        <label class="field"><span>From</span><input type="date" wire:model.live="from"></label>
+        <label class="field"><span>To</span><input type="date" wire:model.live="to" x-bind:min="$wire.from"></label>
+        <label class="field ar-grow"><span>Employee</span><select wire:model.live="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }} ({{ $e->employee_code }})</option>@endforeach</select></label>
+        <label class="field ar-grow"><span>Department</span><select wire:model.live="department"><option value="">All departments</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
+        <label class="field"><span>Session</span><select wire:model.live="status"><option value="">Any</option><option value="working">Working</option><option value="on_break">On break</option><option value="completed">Completed</option></select></label>
         <div class="ar-filter-actions">
-            <button type="submit" class="btn btn-primary"><span wire:loading wire:target="search" class="spinner"></span><x-icon name="search" class="icon-sm" wire:loading.remove wire:target="search" />Search</button>
             <button type="button" class="btn" wire:click="resetFilters"><x-icon name="refresh" class="icon-sm" />Reset</button>
         </div>
     </form>
@@ -112,7 +111,7 @@
             <p class="small muted" style="padding:0 18px">{{ $dayEmployee->name }} · {{ $calendarMonth->format('F Y') }} (the month of “From”)</p>
             <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" />
         @else
-        <div class="table-wrap" wire:loading.class="ar-loading" wire:target="search,resetFilters,gotoPage,nextPage,previousPage,perPage"><table class="table ar-table">
+        <div class="table-wrap" wire:loading.class="ar-loading" wire:target="from,to,employee,department,status,resetFilters,gotoPage,nextPage,previousPage,perPage"><table class="table ar-table">
             <thead><tr><th>Date</th><th>Employee</th>
                 <th data-col="in">In</th><th data-col="out">Out</th>
                 <th data-col="worked" class="num" title="Worked: in–out time less break and idle · at work: in–out less break only (decides a half day)">Worked</th>

@@ -51,7 +51,7 @@ class Records extends Component
         if (! in_array($name, ['detail', 'detailTab'], true)) $this->resetPage();
     }
 
-    /** "Search": the filters are applied when this is pressed (and when the page loads from a link). */
+    /** Filters now apply as soon as they change (wire:model.live); kept for older callers. */
     public function search(): void
     {
         $this->resetPage();
