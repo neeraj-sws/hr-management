@@ -688,10 +688,16 @@ class AttendanceService
     public function dailyHours(AttendanceEmployee $employee, ?string $date = null): float
     {
         $date ??= today()->toDateString();
-        $override = \App\Models\EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', 'work.hours')
-            ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date))
-            ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $date))
-            ->orderByRaw('effective_from IS NULL')->orderByDesc('effective_from')->orderByDesc('id')->first()?->configuration ?? [];
+        $override = PolicyConfigurationService::on()
+            // Page being drawn: the person's work-hours overrides are read once, the one for this date picked here (same order).
+            ? PolicyConfigurationService::memo('rows|employee|'.$employee->id.'|work.hours', fn () => \App\Models\EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', 'work.hours')->get())
+                ->filter(fn ($o) => (! $o->effective_from || $o->effective_from->toDateString() <= $date) && (! $o->effective_until || $o->effective_until->toDateString() >= $date))
+                ->sort(fn ($a, $b) => [$a->effective_from === null, $b->effective_from?->toDateString(), $b->id] <=> [$b->effective_from === null, $a->effective_from?->toDateString(), $a->id])
+                ->first()?->configuration ?? []
+            : \App\Models\EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', 'work.hours')
+                ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date))
+                ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $date))
+                ->orderByRaw('effective_from IS NULL')->orderByDesc('effective_from')->orderByDesc('id')->first()?->configuration ?? [];
         if (isset($override['standard_daily_hours']) && (float) $override['standard_daily_hours'] > 0) return (float) $override['standard_daily_hours'];
         if ((float) $employee->daily_work_hours > 0) return (float) $employee->daily_work_hours;
         $company = $this->policies->forEmployee(null, 'work.hours', $date, []);
@@ -701,6 +707,11 @@ class AttendanceService
 
     /** Attendance rules for an employee: work start, grace minutes and half-day threshold. */
     public function rules(AttendanceEmployee $employee, string $date): array
+    {
+        return PolicyConfigurationService::memo('rules|'.$employee->id.'|'.$date, fn () => $this->resolveRules($employee, $date));
+    }
+
+    private function resolveRules(AttendanceEmployee $employee, string $date): array
     {
         $configured = $this->policies->forEmployee($employee, 'attendance.rules', $date, []);
         // Grace and the half-day threshold are current operational settings, not historical values:

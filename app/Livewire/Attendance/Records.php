@@ -249,8 +249,21 @@ class Records extends Component
         ];
     }
 
+    /** The page is drawn: forget the rules again, so the next action reads fresh ones. */
+    public function rendered(): void
+    {
+        \App\Services\PolicyConfigurationService::stop();
+    }
+
+    public function exception($e, $stopPropagation): void
+    {
+        \App\Services\PolicyConfigurationService::stop();
+    }
+
     public function render(AttendanceService $attendance)
     {
+        // The rows and cards ask the same rule (shift, grace, working days) many times: read each once while drawing.
+        \App\Services\PolicyConfigurationService::start();
         if (! strtotime($this->from)) $this->from = today()->toDateString();
         if (! strtotime($this->to) || $this->to < $this->from) $this->to = max($this->from, today()->toDateString());
         if (! in_array($this->perPage, self::PER_PAGE, true)) $this->perPage = 25;
