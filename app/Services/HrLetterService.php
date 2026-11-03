@@ -192,10 +192,38 @@ class HrLetterService
 
     // ---- letterhead ------------------------------------------------------------------------
 
-    /** Company name, address and contact line for the letterhead (from Billing > Settings, where they are kept). */
+    /** Letterhead fields HR can set on the Letter templates page (shared with Billing > Settings, same saved record). */
+    public const COMPANY_FIELDS = ['name' => 'Company name', 'address' => 'Address', 'city' => 'City', 'state' => 'State', 'pin' => 'PIN code', 'phone' => 'Phone', 'email' => 'E-mail', 'website' => 'Website'];
+
+    /** The company details as saved (read directly, so letters work even where the Billing module is not installed). */
+    private function companyRecord(): array
+    {
+        $saved = (array) app(PolicyConfigurationService::class)->forEmployee(null, 'billing.company', today()->toDateString(), []);
+
+        return array_merge(['name' => config('app.name'), 'address' => '', 'city' => '', 'state' => '', 'pin' => '', 'phone' => '', 'email' => '', 'website' => '', 'signatory' => ''], array_filter($saved, fn ($v) => $v !== null && $v !== ''));
+    }
+
+    /** @return array<string, string> the letterhead fields for the form */
+    public function companyFields(): array
+    {
+        return array_map(fn ($v) => (string) $v, array_intersect_key($this->companyRecord(), self::COMPANY_FIELDS));
+    }
+
+    /** Saves the letterhead details; other saved company details (bank, GST …) are kept as they are. */
+    public function saveCompany(array $fields, User $actor): void
+    {
+        abort_unless(self::canManage($actor), 403);
+        $saved = (array) app(PolicyConfigurationService::class)->forEmployee(null, 'billing.company', today()->toDateString(), []);
+        $new = array_map(fn ($v) => mb_substr(trim((string) $v), 0, 200), array_intersect_key($fields, self::COMPANY_FIELDS));
+        if (($new['name'] ?? '') === '') throw ValidationException::withMessages(['company.name' => 'Enter the company name.']);
+        app(PeopleOperationsService::class)->setPolicy('billing.company', 'billing', 'Billing company details', array_merge($saved, $new), null, $actor->id, today()->toDateString());
+        $this->audit->record('letters.letterhead_saved', null, ['name' => $new['name']]);
+    }
+
+    /** Company name, address and contact line for the letterhead. */
     public function company(): array
     {
-        $c = app(BillingService::class)->company();
+        $c = $this->companyRecord();
         $lines = array_values(array_filter([trim((string) $c['address']), trim((string) $c['city']), trim(trim((string) $c['state']).' '.trim((string) $c['pin']))]));
         $contact = implode('  ·  ', array_filter([$c['phone'] ? 'Phone: '.$c['phone'] : '', $c['email'] ? 'E-mail: '.$c['email'] : '', (string) $c['website']]));
 

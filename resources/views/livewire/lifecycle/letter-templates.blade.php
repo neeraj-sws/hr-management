@@ -24,6 +24,18 @@
         </div>
     </section>
 
+    <section class="card mb">
+        <div class="card-head"><div><h2>Letterhead</h2><p>Printed at the top of every letter, with the logo. The same details are used by Billing (if it is in use).</p></div></div>
+        <form class="card-body" wire:submit="saveCompany">
+            <div class="form-grid">
+                @foreach($companyFields as $key => $label)
+                    <x-field :label="$label" :name="'company.'.$key"><input type="{{ $key === 'email' ? 'email' : 'text' }}" wire:model="company.{{ $key }}" maxlength="200"></x-field>
+                @endforeach
+            </div>
+            <div class="form-actions"><button class="btn btn-primary">Save letterhead</button></div>
+        </form>
+    </section>
+
     <section class="card">
         <div class="card-head"><div><h2>Signature on letters</h2><p>Shown at the {signature} place in every letter (or at the end when a template has no {signature}).</p></div></div>
         <form class="card-body" wire:submit="saveSignatory">
@@ -31,7 +43,6 @@
                 <x-field label="Signed by (name)" name="signatoryName"><input type="text" wire:model="signatoryName" maxlength="120"></x-field>
                 <x-field label="Designation" name="signatoryDesignation"><input type="text" wire:model="signatoryDesignation" maxlength="120" placeholder="Authorised Signatory"></x-field>
             </div>
-            <p class="small muted">Company name, address, phone and e-mail on the letterhead come from Billing &gt; Settings (company details).</p>
             <div class="form-actions"><button class="btn btn-primary">Save signature</button></div>
         </form>
     </section>

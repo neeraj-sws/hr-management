@@ -105,6 +105,19 @@ class HrLetterTemplatesTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'letter_template.deleted']);
     }
 
+    public function test_letterhead_is_saved_and_keeps_other_company_details(): void
+    {
+        app(\App\Services\PeopleOperationsService::class)->setPolicy('billing.company', 'billing', 'Billing company details', ['name' => 'Old Name', 'gstin' => '23ABCDE1234F1Z5'], null, $this->hr->id, today()->toDateString());
+        Livewire::actingAs($this->hr)->test(LetterTemplates::class)->assertSet('company.name', 'Old Name')
+            ->set('company.name', 'Soham Web Solution')->set('company.city', 'Indore')->call('saveCompany')->assertHasNoErrors();
+        $letters = app(HrLetterService::class);
+        $this->assertSame('Soham Web Solution', $letters->company()['name']);
+        $this->assertContains('Indore', $letters->company()['address_lines']);
+        $saved = app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'billing.company', today()->toDateString(), []);
+        $this->assertSame('23ABCDE1234F1Z5', $saved['gstin'], 'Billing details are kept');
+        Livewire::actingAs($this->hr)->test(LetterTemplates::class)->set('company.name', '')->call('saveCompany')->assertHasErrors('company.name');
+    }
+
     public function test_joining_and_exit_shortcuts_open_the_right_letter(): void
     {
         $this->actingAs($this->hr)->get(route('people.employees.show', ['employee' => $this->employee, 'letter' => 'relieving']))->assertOk()->assertSee('Generate letter · Riya Sharma');

@@ -27,11 +27,14 @@ class LetterTemplates extends Component
 
     public string $signatoryName = '';
     public string $signatoryDesignation = '';
+    /** Letterhead: company name, address and contacts. */
+    public array $company = [];
 
     public function mount(HrLetterService $letters): void
     {
         abort_unless(HrLetterService::canManage($this->user()), 403);
         ['signatory_name' => $this->signatoryName, 'signatory_designation' => $this->signatoryDesignation] = $letters->settings();
+        $this->company = $letters->companyFields();
     }
 
     public function create(): void
@@ -88,6 +91,13 @@ class LetterTemplates extends Component
         $this->toast('Signature details saved. New letters use them.');
     }
 
+    public function saveCompany(HrLetterService $letters): void
+    {
+        $this->resetErrorBag();
+        $letters->saveCompany($this->company, $this->user());
+        $this->toast('Letterhead saved. New letters use it.');
+    }
+
     /** A sample PDF of the template being edited, with the chosen employee's data (nothing is saved). */
     public function samplePdf(HrLetterService $letters)
     {
@@ -110,6 +120,7 @@ class LetterTemplates extends Component
             'templates' => LetterTemplate::with('editor')->orderByDesc('is_active')->orderBy('name')->get(),
             'categories' => HrLetterService::categories(),
             'placeholders' => HrLetterService::PLACEHOLDERS,
+            'companyFields' => HrLetterService::COMPANY_FIELDS,
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'preview' => $preview,
         ], 'Letter templates');
