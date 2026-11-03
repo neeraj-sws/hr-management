@@ -186,6 +186,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/lifecycle/documents', Livewire\Lifecycle\Documents::class)->middleware('access:profile,lifecycle.manage')->name('lifecycle.documents');
     Route::get('/lifecycle/documents/{document}/download', [EmployeeDocumentController::class, 'download'])->name('hr.documents.download');
     Route::get('/lifecycle/documents/{document}/view', [EmployeeDocumentController::class, 'view'])->name('hr.documents.view');
+    Route::get('/lifecycle/letters', Livewire\Lifecycle\LetterTemplates::class)->middleware('access:lifecycle.manage,hr.manage')->name('lifecycle.letters');
     Route::get('/lifecycle/assets', Livewire\Lifecycle\Assets::class)->middleware('access:profile,lifecycle.manage')->name('lifecycle.assets');
     Route::get('/lifecycle/onboarding', Livewire\Lifecycle\Cases::class)->middleware('access:lifecycle.manage')->name('lifecycle.onboarding');
     Route::get('/lifecycle/offboarding', Livewire\Lifecycle\Cases::class)->middleware('access:lifecycle.manage')->name('lifecycle.offboarding');

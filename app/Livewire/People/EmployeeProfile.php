@@ -31,6 +31,15 @@ class EmployeeProfile extends Component
     public string $recordDuration = 'full';
     public string $recordNote = '';
 
+    /** Tab shown first (?tab=docs from a link). */
+    public string $initialTab = 'overview';
+
+    /** "Generate letter" (HR / admin): template, the filled-in letter HR can edit, and profile fields that were empty. */
+    public bool $letterOpen = false;
+    public ?int $letterTemplateId = null;
+    public string $letterBody = '';
+    public array $letterMissing = [];
+
     public function openRecordLeave(string $date): void
     {
         abort_unless($this->user()->canAny(['leave.manage', 'hr.manage']), 403);
@@ -80,6 +89,71 @@ class EmployeeProfile extends Component
         abort_unless($this->user()->can('view', $employee), 403);
         $this->employee = $employee;
         $this->leaveMonth = now()->format('Y-m');
+        $tab = (string) request()->query('tab', '');
+        if (in_array($tab, ['overview', 'attendance', 'leave', 'work', 'payroll', 'docs', 'compliance', 'settings', 'history'], true)) $this->initialTab = $tab;
+        // ?letter=appointment (after adding an employee) / relieving / experience_issued (after an exit): open that letter.
+        $letter = (string) request()->query('letter', '');
+        if ($letter !== '' && \App\Services\HrLetterService::canManage($this->user())) {
+            $this->initialTab = 'docs';
+            $this->openLetter($letter);
+        }
+    }
+
+    public function openLetter(?string $category = null): void
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $letters = app(\App\Services\HrLetterService::class);
+        $template = ($category ? $letters->templateFor($category) : null) ?? \App\Models\LetterTemplate::where('is_active', true)->orderBy('name')->first();
+        $this->resetErrorBag();
+        $this->letterOpen = true;
+        $this->letterTemplateId = $template?->id;
+        $this->fillLetter();
+    }
+
+    /** Another template chosen: its wording replaces the letter (run after the request's property updates). */
+    public function chooseTemplate($templateId = null): void
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $this->resetErrorBag();
+        $this->letterTemplateId = $templateId !== null && $templateId !== '' ? (int) $templateId : null;
+        $this->fillLetter();
+    }
+
+    /** The chosen template with this employee's data filled in (HR can still change any word before issuing). */
+    private function fillLetter(): void
+    {
+        $template = $this->letterTemplateId ? \App\Models\LetterTemplate::where('is_active', true)->find($this->letterTemplateId) : null;
+        $filled = $template ? app(\App\Services\HrLetterService::class)->fill($template->body, $this->employee) : ['html' => '', 'missing' => []];
+        $this->letterBody = $filled['html'];
+        $this->letterMissing = $filled['missing'];
+        // The editor keeps its own text; send it the new letter.
+        $this->dispatch('letter-editor-set', model: 'letterBody', html: $this->letterBody);
+    }
+
+    public function closeLetter(): void
+    {
+        $this->letterOpen = false;
+    }
+
+    /** The letter as it is now, as a PDF to check (not saved, not sent to the employee). */
+    public function letterPdf()
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $template = \App\Models\LetterTemplate::findOrFail((int) $this->letterTemplateId);
+        $pdf = app(\App\Services\HrLetterService::class)->pdf($this->letterBody, $template->name.' - '.$this->employee->name);
+
+        return response()->streamDownload(fn () => print($pdf), 'Draft - '.preg_replace('/[^A-Za-z0-9 ._-]+/', '-', $template->name.' - '.$this->employee->name).'.pdf', ['Content-Type' => 'application/pdf']);
+    }
+
+    /** Saves the letter as a PDF in the employee's documents (they are told and can download it). */
+    public function issueLetter(): void
+    {
+        $this->resetErrorBag();
+        $template = \App\Models\LetterTemplate::where('is_active', true)->find((int) $this->letterTemplateId);
+        if (! $template) throw \Illuminate\Validation\ValidationException::withMessages(['letterTemplateId' => 'Choose a template.']);
+        app(\App\Services\HrLetterService::class)->issue($this->employee, $template, $this->letterBody, $this->user());
+        $this->letterOpen = false;
+        $this->toast($template->name.' issued: saved in Docs & assets, and the employee was told.');
     }
 
     public function confirmEmployment(\App\Services\EmployeeService $employees): void
@@ -190,6 +264,8 @@ class EmployeeProfile extends Component
             'tasks' => $employee->tasks()->where('status', '!=', 'completed')->latest()->limit(8)->get(),
             'assets' => $employee->assets()->latest()->get(),
             'documents' => $canSeeDocs ? $employee->documents()->latest()->get() : collect(),
+            'canIssueLetters' => \App\Services\HrLetterService::canManage($user),
+            'letterTemplates' => $this->letterOpen ? \App\Models\LetterTemplate::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
             // Home address and emergency contact: the person, HR and admins (the same people who see documents).
             'canSeeContact' => $canSeeDocs,
             'showSalary' => $showSalary,

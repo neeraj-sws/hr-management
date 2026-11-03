@@ -106,6 +106,7 @@ return [
     ]],
     ['heading' => 'Employee Lifecycle', 'items' => [
         ['label' => 'Documents', 'route' => 'lifecycle.documents', 'icon' => 'file'],
+        ['label' => 'Letter Templates', 'route' => 'lifecycle.letters', 'icon' => 'file'],
         ['label' => 'Assets', 'route' => 'lifecycle.assets', 'icon' => 'monitor'],
         ['label' => 'Onboarding', 'route' => 'lifecycle.onboarding', 'icon' => 'user-plus'],
         ['label' => 'Offboarding', 'route' => 'lifecycle.offboarding', 'icon' => 'user-minus'],

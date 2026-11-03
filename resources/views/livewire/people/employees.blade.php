@@ -7,6 +7,12 @@
             <button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />{{ $traineesOnly ? 'Add trainee' : 'Add employee' }}</button>
         </div>
     </div>
+    @if($letterOffer)
+        <div class="alert alert-info" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+            <span><strong>{{ $letterOffer[1] }}</strong> was added. Make their appointment letter now?</span>
+            <span class="row-actions"><a class="btn btn-sm btn-primary" href="{{ route('people.employees.show', ['employee' => $letterOffer[0], 'letter' => 'appointment']) }}">Make appointment letter</a><button type="button" class="btn btn-sm" wire:click="$set('letterOffer', null)">Later</button></span>
+        </div>
+    @endif
     @unless($showForm || $pwEmployee || $showImport)<x-errors />@endunless
     @if($reportsToManager)<div class="alert alert-info">Showing people who report to <strong>{{ $reportsToManager->name }}</strong> ({{ $employees->total() }}). <button type="button" class="btn btn-sm" wire:click="$set('reportsTo', null)">Show everyone</button></div>@endif
 

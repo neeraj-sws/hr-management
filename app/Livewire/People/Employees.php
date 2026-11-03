@@ -18,6 +18,8 @@ class Employees extends Component
     use InteractsWithHr, WithPagination, \Livewire\WithFileUploads;
 
     #[Url] public string $search = '';
+    /** Just added (HR / admin): offer to make the appointment letter. [id, name] */
+    public ?array $letterOffer = null;
     #[Url] public ?int $department = null;
     #[Url] public string $status = 'active';
     /** Joined between these dates (empty = any). */
@@ -190,7 +192,8 @@ class Employees extends Component
             $service->update($employee, $data, $this->user());
             $this->toast($left ? 'Saved as an ex-employee. Their login and devices are switched off; their records stay.' : 'Employee updated.');
         } else {
-            $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary === '' ? 0 : $this->monthlySalary, 'pay_basis' => $this->payBasis, 'daily_rate' => $this->payBasis === 'daily' ? $this->dailyRate : null], $this->user());
+            $added = $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary === '' ? 0 : $this->monthlySalary, 'pay_basis' => $this->payBasis, 'daily_rate' => $this->payBasis === 'daily' ? $this->dailyRate : null], $this->user());
+            if (! $left && \App\Services\HrLetterService::canManage($this->user()) && app(\App\Services\HrLetterService::class)->templateFor('appointment')) $this->letterOffer = [$added->id, $added->name];
             $this->toast($left ? 'Ex-employee added (inactive, no login). Their old attendance and salary can now be imported.' : 'Employee and login account created.');
         }
         // Saved as the other kind (e.g. made a trainee from Employees): say where they now are.

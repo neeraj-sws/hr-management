@@ -30,6 +30,8 @@ class Cases extends Component
     #[Url] public string $status = 'open';
 
     public bool $showForm = false;
+    /** Offboarding just closed (HR / admin): offer the relieving and experience letters. [id, name] */
+    public ?array $letterOffer = null;
     public ?int $employeeId = null;
     public string $effectiveOn = '';
     public string $notes = '';
@@ -108,6 +110,7 @@ class Cases extends Component
             if ($missing->isNotEmpty()) throw ValidationException::withMessages(['clearance' => 'Complete onboarding first: '.$missing->join(', ').'.']);
         }
         $people->closeLifecycle($case, auth()->id());
+        if ($case->kind === 'offboarding' && \App\Services\HrLetterService::canManage($this->user())) $this->letterOffer = [$case->employee_id, $case->employee?->name];
         $this->toast($case->kind === 'offboarding' ? 'Offboarding closed. The employee is now inactive and all access was revoked.' : 'Onboarding completed. The employee is active.');
     }
 
