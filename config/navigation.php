@@ -148,4 +148,10 @@ return [
         ['label' => 'Settings', 'route' => 'system.settings', 'icon' => 'settings'],
         ['label' => 'Telegram', 'route' => 'system.telegram', 'icon' => 'bell'],
     ]],
+    ['heading' => 'Help & Support', 'items' => [
+        ['label' => 'My requests', 'route' => 'support.my', 'icon' => 'message'],
+        ['label' => 'Support desk', 'route' => 'support.desk', 'icon' => 'inbox'],
+        ['label' => 'Support reports', 'route' => 'support.reports', 'icon' => 'chart'],
+        ['label' => 'Support settings', 'route' => 'support.settings', 'icon' => 'settings'],
+    ]],
 ];

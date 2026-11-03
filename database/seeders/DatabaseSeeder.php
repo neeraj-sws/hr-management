@@ -23,10 +23,13 @@ class DatabaseSeeder extends Seeder
         'penalties.manage', 'policies.manage', 'performance.review', 'reports.view', 'audit.view',
         'notes.manage', 'credentials.manage', 'credentials.view', 'lifecycle.manage', 'roles.manage',
         'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view', 'monitoring.manage', 'monitoring.team', 'monitoring.capture',
+        // Help & Support: manage = all tickets, assign, categories, reports; handle = reply on tickets given to them;
+        // payroll = also see Salary & Payroll (restricted) tickets.
+        'support.manage', 'support.handle', 'support.payroll',
     ];
 
     public const ROLE_PERMISSIONS = [
-        'HR' => ['employees.manage', 'teams.manage', 'projects.manage', 'tasks.manage', 'attendance.view', 'leave.manage', 'overtime.manage', 'approvals.manage', 'payroll.approve', 'salary.adjust', 'salary.advance', 'penalties.manage', 'policies.manage', 'performance.review', 'reports.view', 'audit.view', 'notes.manage', 'credentials.view', 'lifecycle.manage', 'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view', 'monitoring.team', 'monitoring.capture'],
+        'HR' => ['employees.manage', 'teams.manage', 'projects.manage', 'tasks.manage', 'attendance.view', 'leave.manage', 'overtime.manage', 'approvals.manage', 'payroll.approve', 'salary.adjust', 'salary.advance', 'penalties.manage', 'policies.manage', 'performance.review', 'reports.view', 'audit.view', 'notes.manage', 'credentials.view', 'lifecycle.manage', 'attendance.correct', 'shifts.manage', 'expenses.manage', 'announcements.manage', 'recruitment.manage', 'training.manage', 'training.assign', 'monitoring.view', 'monitoring.team', 'monitoring.capture', 'support.handle'],
         'Accounts' => ['payroll.manage', 'salary.adjust', 'salary.advance', 'penalties.manage', 'reports.view', 'audit.view', 'credentials.view', 'expenses.manage'],
         'Manager' => ['projects.manage', 'tasks.manage', 'attendance.view', 'leave.approve', 'overtime.manage', 'approvals.manage', 'performance.review', 'reports.view', 'notes.manage', 'credentials.view', 'training.assign', 'monitoring.team'],
         'Employee' => ['credentials.view'],

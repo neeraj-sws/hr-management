@@ -47,6 +47,7 @@ class Navigation
         'Monitoring' => ['Reports & System', 'monitor', '#0891B2'],
         'Security' => ['Reports & System', 'lock', '#5B6B86'],
         'System' => ['Reports & System', 'settings', '#5B6B86'],
+        'Help & Support' => ['Help & Support', 'message', '#0D9488'],
     ];
 
     /**
