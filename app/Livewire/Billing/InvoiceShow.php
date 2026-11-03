@@ -3,6 +3,7 @@
 namespace App\Livewire\Billing;
 
 use App\Livewire\Concerns\InteractsWithHr;
+use App\Models\AuditLog;
 use App\Models\BillingInvoice;
 use App\Models\BillingInvoicePayment;
 use App\Services\AuditLogger;
@@ -84,7 +85,42 @@ class InvoiceShow extends Component
     public function render(\App\Services\BillingService $billing)
     {
         $invoice = $this->invoice();
+        $taxes = $billing->taxSplit($invoice);
+        // One GST rate on the invoice → show it next to CGST / SGST / IGST; several rates → no single figure.
+        $rates = collect($taxes)->pluck('rate')->filter(fn ($r) => $r > 0)->unique()->values();
+        $rate = $rates->count() === 1 ? (float) $rates->first() : ($rates->isEmpty() ? 0.0 : null);
 
-        return $this->page('livewire.billing.invoice-show', ['invoice' => $invoice, 'taxes' => $billing->taxSplit($invoice), 'interState' => $billing->isInterState($invoice->place_of_supply ?: $invoice->customer?->billing_state)], 'Invoice');
+        return $this->page('livewire.billing.invoice-show', [
+            'invoice' => $invoice, 'taxes' => $taxes, 'taxRate' => $rate,
+            'interState' => $billing->isInterState($invoice->place_of_supply ?: $invoice->customer?->billing_state),
+            'terms' => (string) ($billing->company()['terms'] ?? ''),
+            'activity' => $this->activity($invoice),
+        ], 'Invoice');
+    }
+
+    /** What happened to this invoice (and its credit notes), newest first, in plain words with a colour for the pill. */
+    private function activity(BillingInvoice $invoice): \Illuminate\Support\Collection
+    {
+        $money = fn ($m) => isset($m['amount']) ? '₹'.number_format((float) $m['amount'], 2) : null;
+
+        return AuditLog::with('actor')
+            ->where(fn ($q) => $q->where(fn ($w) => $w->where('subject_type', BillingInvoice::class)->where('subject_id', $invoice->id))
+                ->when($invoice->creditNotes->isNotEmpty(), fn ($w) => $w->orWhere(fn ($c) => $c->where('subject_type', \App\Models\BillingCreditNote::class)->whereIn('subject_id', $invoice->creditNotes->pluck('id')))))
+            ->latest('created_at')->latest('id')->limit(50)->get()
+            ->map(function (AuditLog $log) use ($money) {
+                $m = (array) ($log->metadata ?? []);
+                [$label, $tone, $detail] = match ($log->action) {
+                    'billing.invoice_created' => ['Invoice created', 'blue', 'Invoice created.'],
+                    'billing.invoice_updated' => ['Invoice updated', 'violet', 'Invoice details changed.'],
+                    'billing.invoice_sent' => ['Marked as sent', 'blue', 'Invoice marked as sent.'],
+                    'billing.payment_recorded' => ['Payment added', 'green', 'Payment of '.($money($m) ?? '—').' recorded.'],
+                    'billing.payment_deleted' => ['Payment removed', 'red', 'Payment of '.($money($m) ?? '—').(! empty($m['date']) ? ' dated '.\Illuminate\Support\Carbon::parse($m['date'])->format('d M Y') : '').' removed.'],
+                    'billing.credit_note_created' => ['Credit note added', 'amber', 'A credit note was added against this invoice.'],
+                    'billing.credit_note_updated' => ['Credit note updated', 'amber', 'A credit note on this invoice was changed.'],
+                    default => [$log->describe()['title'], 'gray', $log->describe()['detail'] ?? '—'],
+                };
+
+                return (object) ['at' => $log->created_at, 'label' => $label, 'tone' => $tone, 'detail' => $detail, 'by' => $log->actor?->name ?? 'System'];
+            });
     }
 }
