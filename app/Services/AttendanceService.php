@@ -111,10 +111,12 @@ class AttendanceService
         if (! $employee->is_active) throw ValidationException::withMessages(['attendance' => 'Inactive employees cannot check in.']);
         $this->guardSource($employee, $source);
         $place = $this->locate($employee, $source, $location, 'check in');
+        $computer = $this->computerName($source);
+        if ($computer) $this->guardSharedComputer($employee, $computer, $at);
         $photoPath = $this->storeSelfie($employee, $source, $photo, 'in');
 
         try {
-            $session = $this->createCheckIn($employee, $source, $at, $place, $photoPath);
+            $session = $this->createCheckIn($employee, $source, $at, $place, $photoPath, $computer);
         } catch (\Throwable $error) {
             if ($photoPath) \Illuminate\Support\Facades\Storage::disk('local')->delete($photoPath);
             throw $error;
@@ -162,9 +164,35 @@ class AttendanceService
         return $stopped;
     }
 
-    private function createCheckIn(AttendanceEmployee $employee, string $source, ?CarbonInterface $at, array $place, ?string $photoPath): AttendanceSession
+    /** The computer the desktop app runs on (its Windows name, sent with every request). */
+    private function computerName(string $source): ?string
     {
-        return DB::transaction(function () use ($employee, $source, $at, $place, $photoPath) {
+        if ($source !== 'desktop') return null;
+        $name = trim((string) request()->header('X-Computer-Name'));
+
+        return $name !== '' ? mb_substr($name, 0, 255) : null;
+    }
+
+    /**
+     * One computer, one person a day: someone else already checked in on this computer
+     * today, so this check-in is refused (stops checking in for a colleague by signing
+     * out of the desktop app and signing in as them). HR can still correct attendance.
+     */
+    private function guardSharedComputer(AttendanceEmployee $employee, string $computer, ?CarbonInterface $at): void
+    {
+        $date = ($at ? $this->local($at) : now())->toDateString();
+        $other = AttendanceActivityEvent::with('session.employee')->where('event_type', 'check_in')->where('metadata->computer', $computer)
+            ->whereHas('session', fn ($q) => $q->whereDate('work_date', $date)->where('employee_id', '!=', $employee->id))->first();
+        if (! $other) return;
+
+        $first = $other->session?->employee;
+        $this->audit->record('attendance.shared_computer_blocked', $employee, ['computer' => $computer, 'date' => $date, 'already_used_by' => $first?->id]);
+        throw ValidationException::withMessages(['attendance' => "This computer ({$computer}) was already used today by ".($first?->name ?? 'another employee').' to check in. Each person checks in on their own computer. Ask HR to correct your attendance if this is a mistake.']);
+    }
+
+    private function createCheckIn(AttendanceEmployee $employee, string $source, ?CarbonInterface $at, array $place, ?string $photoPath, ?string $computer = null): AttendanceSession
+    {
+        return DB::transaction(function () use ($employee, $source, $at, $place, $photoPath, $computer) {
             AttendanceEmployee::whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $now = $at ? $this->local($at) : now();
             $open = $this->openSession($employee, $now);
@@ -172,7 +200,7 @@ class AttendanceService
             if (AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $now->toDateString())->exists()) throw ValidationException::withMessages(['attendance' => 'An attendance session already exists for this day.']);
             $session = AttendanceSession::create(['employee_id' => $employee->id, 'work_date' => $now->toDateString(), 'check_in' => $now, 'status' => 'working', 'last_sync_at' => $now,
                 'check_in_latitude' => $place['latitude'], 'check_in_longitude' => $place['longitude'], 'check_in_office_id' => $place['office_id'], 'check_in_distance_meters' => $place['distance'], 'check_in_photo_path' => $photoPath, 'check_in_ip' => $this->clientIp($source)]);
-            $this->event($session, 'check_in', $now, 0, ['source' => $source, 'photo' => (bool) $photoPath, 'located' => $place['latitude'] !== null]);
+            $this->event($session, 'check_in', $now, 0, ['source' => $source, 'photo' => (bool) $photoPath, 'located' => $place['latitude'] !== null] + ($computer ? ['computer' => $computer] : []));
             $this->audit->record('attendance.checked_in', $session, ['source' => $source, 'photo' => (bool) $photoPath]);
 
             return $session;
