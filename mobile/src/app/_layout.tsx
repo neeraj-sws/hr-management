@@ -55,6 +55,8 @@ function RootNavigator() {
         <Stack.Screen name="task" options={{ title: 'Task' }} />
         <Stack.Screen name="settings" options={{ title: 'My profile & settings' }} />
         <Stack.Screen name="notes" options={{ title: 'My notes' }} />
+        <Stack.Screen name="support" options={{ title: 'Help & Support' }} />
+        <Stack.Screen name="support-request" options={{ title: 'Support request' }} />
       </Stack.Protected>
       <Stack.Protected guard={!me}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
