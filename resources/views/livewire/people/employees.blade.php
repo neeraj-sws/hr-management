@@ -124,6 +124,7 @@
                         @unless($editingId || $employmentType === \App\Services\EmployeeService::EX_EMPLOYEE)<x-field label="Initial password" name="password" hint="12+ chars, letters & numbers"><input type="password" wire:model="password" autocomplete="new-password"></x-field>@endunless
                         <x-field label="Designation" name="designation"><input wire:model="designation" placeholder="e.g. Software Engineer"></x-field>
                         <x-field label="Phone" name="phone"><input wire:model="phone"></x-field>
+                        <x-field label="Address" name="address" hint="home address, used in letters" :full="true"><textarea wire:model="address" rows="2" maxlength="500" placeholder="House no., street, area, city, PIN"></textarea></x-field>
                         <x-field label="Department" name="departmentId"><select wire:model="departmentId"><option value="">—</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-field>
                         <x-field label="Manager" name="managerId"><select wire:model="managerId"><option value="">No manager</option>@foreach($managers as $m)@if($m->id !== $editingId)<option value="{{ $m->id }}">{{ $m->name }} ({{ $m->employee_code }})</option>@endif @endforeach</select></x-field>
                         <x-field label="Joining date" name="joinedAt"><input type="date" wire:model="joinedAt"></x-field>

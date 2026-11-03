@@ -81,6 +81,8 @@ class Employees extends Component
     public string $password = '';
     public string $designation = '';
     public string $phone = '';
+    /** Home address: HR / admin can fill it; the employee can also change their own (website profile, app settings). */
+    public string $address = '';
     public ?int $departmentId = null;
     public ?int $managerId = null;
     public string $joinedAt = '';
@@ -132,7 +134,7 @@ class Employees extends Component
         $this->editingId = $employee->id;
         $this->fill([
             'employeeCode' => $employee->employee_code, 'name' => $employee->name, 'email' => (string) $employee->email,
-            'designation' => (string) $employee->designation, 'phone' => (string) $employee->phone,
+            'designation' => (string) $employee->designation, 'phone' => (string) $employee->phone, 'address' => (string) $employee->address,
             'departmentId' => $employee->department_id, 'managerId' => $employee->manager_id,
             'joinedAt' => (string) $employee->joined_at?->toDateString(), 'dateOfBirth' => (string) $employee->date_of_birth?->toDateString(), 'employmentType' => $employee->employment_type ?: 'full_time', 'probationEndsOn' => (string) $employee->probation_ends_on?->toDateString(), 'noticePeriodDays' => (string) ($employee->notice_period_days ?? ''), 'workStart' => substr((string) $employee->work_start, 0, 5),
             'workEnd' => substr((string) $employee->work_end, 0, 5), 'dailyHours' => (string) (float) $employee->daily_work_hours,
@@ -152,6 +154,7 @@ class Employees extends Component
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($employee?->user_id)],
             'designation' => ['nullable', 'string', 'max:120'],
             'phone' => ['nullable', 'string', 'max:40'],
+            'address' => ['nullable', 'string', 'max:500'],
             'departmentId' => ['nullable', 'exists:departments,id'],
             'managerId' => ['nullable', 'exists:attendance_employees,id', Rule::notIn([$employee?->id ?? 0])],
             'joinedAt' => ['nullable', 'date'],
@@ -182,7 +185,7 @@ class Employees extends Component
 
         $data = [
             'employee_code' => $this->employeeCode, 'name' => $this->name, 'email' => $this->email,
-            'designation' => $this->designation ?: null, 'phone' => $this->phone ?: null,
+            'designation' => $this->designation ?: null, 'phone' => $this->phone ?: null, 'address' => trim($this->address) !== '' ? trim($this->address) : null,
             'department_id' => $this->departmentId ?: null, 'manager_id' => $this->managerId ?: null,
             'joined_at' => $this->joinedAt ?: null, 'date_of_birth' => $this->dateOfBirth ?: null, 'employment_type' => $this->employmentType, 'probation_ends_on' => $this->probationEndsOn ?: null, 'notice_period_days' => $this->noticePeriodDays === '' ? null : (int) $this->noticePeriodDays, 'work_start' => $this->workStart ?: null, 'work_end' => $this->workEnd ?: null,
             'daily_work_hours' => $this->dailyHours, 'team_ids' => array_map('intval', $this->teamIds), 'is_manager' => $this->isManager,
@@ -248,7 +251,7 @@ class Employees extends Component
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager');
+        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'address', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager');
         $this->resetValidation();
     }
 
