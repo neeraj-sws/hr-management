@@ -1500,3 +1500,8 @@ div.tm-card{cursor:default}
 
 /* Long text without spaces (pasted JSON, links, IDs) wraps inside popups instead of running past the edge. */
 .modal-body{overflow-wrap:anywhere;min-width:0}
+/* ...but amounts never break: a number stays on one line (the label column wraps instead). */
+.modal-body .num{overflow-wrap:normal;word-break:normal;white-space:nowrap}
+/* Payroll "Calculation" popup: label on the left, amount on the right. */
+.calc-table td{text-align:left;vertical-align:top}.calc-table td.num{text-align:right;width:1%}
+.calc-table td small{display:block;color:var(--muted);font-size:12px}

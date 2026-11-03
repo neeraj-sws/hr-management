@@ -47,7 +47,7 @@ class SalarySummaryService
         $sheets = LegacySalaryRecord::where('employee_id', $employee->id)->get()->keyBy('payroll_month');
         $keys = $items->keys()->merge($sheets->keys())->unique()->sortDesc()->take($months);
 
-        return $keys->map(function ($key) use ($items, $sheets) {
+        $done = $keys->map(function ($key) use ($items, $sheets) {
             $item = $items->get($key);
             // A payroll item built from the old sheet shows the sheet's own lines.
             if ($item && empty($item->calculation_breakdown['old_sheet'])) return $this->fromItem($item);
@@ -55,6 +55,38 @@ class SalarySummaryService
 
             return $sheet ? $this->fromSheet($sheet, $item) : $this->fromItem($item);
         })->values()->all();
+
+        return [...$this->waitingMonths($employee, $keys->first()), ...$done];
+    }
+
+    /**
+     * Months that have ended but whose payroll is not approved yet (e.g. October in early November): shown from the
+     * draft payroll, or worked out from attendance as payroll would, so the month never disappears from the history.
+     * Newer than the latest approved / old-sheet month only; at most the last 3 months (1 when there is none yet).
+     */
+    private function waitingMonths(AttendanceEmployee $employee, ?string $latest): array
+    {
+        $months = [];
+        $month = today()->subMonthNoOverflow()->startOfMonth();
+        for ($i = 0; $i < ($latest ? 3 : 1); $i++, $month = $month->copy()->subMonthNoOverflow()) {
+            $key = $month->format('Y-m');
+            if ($latest !== null && $key <= $latest) break;
+            $end = $month->copy()->endOfMonth();
+            if ($employee->joined_at && $employee->joined_at->gt($end)) break;
+            $draft = PayrollItem::with(['run', 'payments', 'payslip'])->where('employee_id', $employee->id)
+                ->whereHas('run', fn ($q) => $q->where('status', 'draft')->whereDate('period_starts_on', $month->toDateString()))->latest('id')->first();
+            if ($draft) {
+                $months[] = [...$this->fromItem($draft), 'status' => 'draft, waiting for approval', 'waiting' => true];
+                continue;
+            }
+            $estimate = $this->payroll->payEstimate($employee, $month->toDateString(), $end->toDateString());
+            if (! $estimate || (float) $estimate['gross'] <= 0) continue;
+            $months[] = [...$this->fromBreakdown($key, 'payroll', 'not run yet, worked out from attendance', [...$estimate['breakdown'], '_days' => $this->dayList($employee, $month->copy(), $end->copy()), '_employee_id' => $employee->id], $estimate['gross'], $estimate['net'], 0.0, [
+                'working' => $estimate['working_days'], 'present' => $estimate['present_days'], 'paid_leave' => $estimate['paid_leave_days'], 'unpaid_leave' => $estimate['unpaid_leave_days'],
+            ], $estimate), 'payslip_id' => null, 'paid_on' => null, 'waiting' => true];
+        }
+
+        return $months;
     }
 
     /** One payroll row as the employee sees it (payslip, payroll breakdown), with "why less than full salary". */
