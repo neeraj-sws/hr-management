@@ -8,9 +8,18 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\ReportExportController;
 use App\Livewire;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => auth()->check() ? redirect()->route('dashboard') : redirect()->route('login'));
+
+// Maintenance: clear caches after a deploy (config/route/view + Spatie permissions).
+Route::get('/clear-cache', function () {
+    Artisan::call('optimize:clear');
+    try { Artisan::call('permission:cache-reset'); } catch (\Throwable $e) {}
+
+    return 'Cache cleared: '.now()->toDateTimeString();
+});
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
@@ -47,6 +56,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Client timesheets and clients (staff)
     Route::middleware('access:projects.manage,hr.manage')->group(function () {
         Route::get('/work/timesheets', Livewire\Work\Timesheets::class)->name('work.timesheets');
+        Route::get('/work/timesheets/export', \App\Http\Controllers\TimesheetExportController::class)->name('work.timesheets.export');
         Route::get('/work/clients', Livewire\Work\Clients::class)->name('work.clients');
     });
 

@@ -8,7 +8,9 @@ use App\Models\Project;
 use App\Models\TimesheetEntry;
 use App\Models\TimesheetObjection;
 use App\Services\AuditLogger;
+use App\Services\PolicyConfigurationService;
 use App\Services\TimesheetService;
+use App\Support\WorkCalendar;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -70,6 +72,40 @@ class Timesheets extends Component
         $this->showEntry = true;
     }
 
+    /** The working-days calendar for a date: the entry's employee if set, otherwise the company default. */
+    private function workCalendar(string $date): array
+    {
+        $employee = ! empty($this->entry['employee_id']) ? AttendanceEmployee::find($this->entry['employee_id']) : null;
+
+        return app(PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', Carbon::parse($date)->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+    }
+
+    /** Live validation/aid as the entry form changes. */
+    public function updatedEntry($value, $key): void
+    {
+        // Non-working days (weekly off / holiday, per the company calendar) are not allowed — flag immediately.
+        if ($key === 'work_date') {
+            $this->resetValidation('entry.work_date');
+            if (! empty($this->entry['work_date'])) {
+                $cal = $this->workCalendar($this->entry['work_date']);
+                if (! WorkCalendar::isWorkday($this->entry['work_date'], $cal)) {
+                    $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($this->entry['work_date'], $cal).') — timesheet line add nahi kar sakte.');
+                }
+            }
+
+            return;
+        }
+        // Fill worked-minutes from start/end as soon as both are set (overnight shifts wrap past midnight).
+        if ($key !== 'start_time' && $key !== 'end_time') return;
+        $start = $this->entry['start_time'] ?? '';
+        $end = $this->entry['end_time'] ?? '';
+        if (! preg_match('/^\d{2}:\d{2}$/', $start) || ! preg_match('/^\d{2}:\d{2}$/', $end)) return;
+        $s = Carbon::createFromFormat('H:i', $start);
+        $e = Carbon::createFromFormat('H:i', $end);
+        if ($e->lessThanOrEqualTo($s)) $e->addDay();
+        $this->entry['minutes'] = (string) $s->diffInMinutes($e);
+    }
+
     public function saveEntry(TimesheetService $timesheets, AuditLogger $audit): void
     {
         $this->guard();
@@ -80,8 +116,10 @@ class Timesheets extends Component
             'entry.minutes' => ['required', 'integer', 'min:0', 'max:1440'], 'entry.billable_minutes' => ['nullable', 'integer', 'min:0', 'max:1440'],
             'entry.description' => ['required', 'string', 'max:5000'], 'entry.status' => ['nullable', 'string', 'max:40'], 'entry.remarks' => ['nullable', 'string', 'max:2000'],
         ], [], ['entry.work_date' => 'date', 'entry.minutes' => 'minutes', 'entry.billable_minutes' => 'billable minutes', 'entry.description' => 'task'])['entry'];
+        $cal = $this->workCalendar($data['work_date']);
+        if (! WorkCalendar::isWorkday($data['work_date'], $cal)) { $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($data['work_date'], $cal).') — timesheet line add nahi kar sakte.'); return; }
         if ($timesheets->isLocked($project, Carbon::parse($data['work_date'])->format('Y-m'))) { $this->addError('entry.work_date', 'That month is already approved by the client.'); return; }
-        $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => $data['employee_id'] ? null : ($data['developer_name'] ?: null),
+        $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => trim((string) $data['developer_name']) ?: null,
             'start_time' => $data['start_time'] ?: null, 'end_time' => $data['end_time'] ?: null, 'minutes' => (int) $data['minutes'],
             'billable_minutes' => $data['billable_minutes'] === '' || $data['billable_minutes'] === null ? (int) $data['minutes'] : (int) $data['billable_minutes'],
             'description' => $data['description'], 'status' => $data['status'] ?: null, 'remarks' => $data['remarks'] ?: null, 'visible_to_client' => (bool) $this->entry['visible_to_client']];

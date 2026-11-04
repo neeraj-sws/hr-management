@@ -17,6 +17,11 @@ class Estimates extends Component
     #[Url] public string $status = '';
     #[Url] public string $fy = '';
 
+    public function mount(\App\Services\BillingService $billing): void
+    {
+        if (! request()->has('fy')) $this->fy = $billing->financialYear(today());
+    }
+
     public function updatingSearch(): void { $this->resetPage(); }
     public function updatingStatus(): void { $this->resetPage(); }
     public function updatingFy(): void { $this->resetPage(); }
@@ -35,7 +40,7 @@ class Estimates extends Component
 
         return $this->page('livewire.billing.estimates', [
             'estimates' => $estimates,
-            'years' => BillingEstimate::query()->select('financial_year')->distinct()->orderByDesc('financial_year')->pluck('financial_year'),
+            'years' => BillingEstimate::query()->select('financial_year')->distinct()->orderBy('financial_year')->pluck('financial_year'),
         ], 'Estimates');
     }
 }

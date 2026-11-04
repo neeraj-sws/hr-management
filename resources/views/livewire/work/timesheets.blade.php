@@ -4,6 +4,7 @@
         @if($projectModel)<div class="row-actions">
             <button class="btn" wire:click="openSettings"><x-icon name="settings" class="icon-sm" />Rate & settings</button>
             <button class="btn" wire:click="$set('showImport', true)"><x-icon name="upload" class="icon-sm" />Import Excel</button>
+            <a class="btn" href="{{ route('work.timesheets.export', ['project' => $project, 'month' => $month]) }}"><x-icon name="download" class="icon-sm" />Export Excel</a>
             <button class="btn btn-primary" wire:click="openEntry"><x-icon name="plus" class="icon-sm" />Add line</button>
         </div>@endif</div>
     <x-errors />
@@ -45,7 +46,7 @@
                 @php($open = $e->objections->firstWhere('status', 'open'))
                 <tr wire:key="ts-{{ $e->id }}" @if($open) style="background:#fff7ed" @endif>
                     <td class="nowrap">{{ $e->work_date->format('D d M') }}</td>
-                    <td>{{ $e->developer() }}<small>{{ ['timer' => 'task timer', 'manual' => 'added', 'import' => 'imported'][$e->source] ?? $e->source }}</small></td>
+                    <td>{{ $e->developer() }}@if($e->developer_name && $e->employee && $e->employee->name !== $e->developer_name)<small>HRMS: {{ $e->employee->name }}</small>@endif<small>{{ ['timer' => 'task timer', 'manual' => 'added', 'import' => 'imported'][$e->source] ?? $e->source }}</small></td>
                     <td style="text-align:left;max-width:380px;white-space:normal">{{ \Illuminate\Support\Str::limit($e->description, 160) }}@if($e->remarks)<small>{{ $e->remarks }}</small>@endif
                         @foreach($e->objections as $o)
                             <div class="small" style="margin-top:4px;padding:4px 8px;border-left:3px solid {{ $o->status === 'open' ? 'var(--amber)' : ($o->status === 'accepted' ? 'var(--green)' : 'var(--line)') }}">
@@ -73,15 +74,18 @@
     @if($showEntry)
         <x-modal :title="$entryId ? 'Edit line' : 'Add timesheet line'" size="lg">
             <form wire:submit="saveEntry"><div class="modal-body"><x-errors /><div class="form-grid">
-                <x-field label="Date" name="entry.work_date"><input type="date" wire:model="entry.work_date"></x-field>
-                <x-field label="Developer" name="entry.employee_id"><select wire:model="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
-                @if(! $entry['employee_id'])<x-field label="Developer name" name="entry.developer_name"><input wire:model="entry.developer_name"></x-field>@endif
+                <x-field label="Date" name="entry.work_date" hint="working day hona chahiye (weekly off / holiday allowed nahi)"><input type="date" wire:model.live="entry.work_date"></x-field>
+                <x-field label="Developer" name="entry.employee_id" hint="HRMS employee (list me na ho to “— other —”)"><select wire:model.live="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
+                <x-field label="Developer name" name="entry.developer_name" hint="list/client me yahi naam dikhega · khali = upar wale developer ka naam"><input wire:model="entry.developer_name" placeholder="Type the developer's name"></x-field>
                 <x-field label="Task" name="entry.description" full><textarea wire:model="entry.description" rows="3"></textarea></x-field>
-                <x-field label="Start" name="entry.start_time"><input type="time" wire:model="entry.start_time"></x-field>
-                <x-field label="End" name="entry.end_time"><input type="time" wire:model="entry.end_time"></x-field>
-                <x-field label="Worked (minutes)" name="entry.minutes"><input type="number" min="0" wire:model="entry.minutes"></x-field>
+                <x-field label="Start" name="entry.start_time"><input type="time" wire:model.live="entry.start_time"></x-field>
+                <x-field label="End" name="entry.end_time"><input type="time" wire:model.live="entry.end_time"></x-field>
+                <x-field label="Worked (minutes)" name="entry.minutes" hint="auto from start/end — editable"><input type="number" min="0" wire:model="entry.minutes"></x-field>
                 <x-field label="Billable (minutes)" name="entry.billable_minutes" hint="blank = same as worked"><input type="number" min="0" wire:model="entry.billable_minutes"></x-field>
-                <x-field label="Status" name="entry.status"><select wire:model="entry.status"><option>Done</option><option>In progress</option><option>Not done</option></select></x-field>
+                <x-field label="Status" name="entry.status"><select wire:model="entry.status">
+                    <optgroup label="Progress"><option>In progress</option><option>Done</option><option>Not done</option></optgroup>
+                    <optgroup label="Stage"><option>Local</option><option>React</option><option>Live</option></optgroup>
+                </select></x-field>
                 <x-field label="Remarks" name="entry.remarks"><input wire:model="entry.remarks"></x-field>
                 <label class="check"><input type="checkbox" wire:model="entry.visible_to_client"> Show to the client</label>
             </div></div>

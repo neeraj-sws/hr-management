@@ -23,7 +23,9 @@ class EstimateForm extends Component
     public ?int $customerId = null;
     public string $issueDate = '';
     public string $expiryDate = '';
+    public string $refNumber = '';
     public string $notes = '';
+    public string $terms = '';
     /** @var array<int, array{product_id:?int,name:string,description:string,quantity:string,price:string,discount:string,tax_id:?int}> */
     public array $items = [];
 
@@ -34,7 +36,7 @@ class EstimateForm extends Component
             $estimate->load('items');
             $this->estimateId = $estimate->id;
             $this->fill(['customerId' => $estimate->customer_id, 'issueDate' => $estimate->issue_date->toDateString(),
-                'expiryDate' => $estimate->expiry_date?->toDateString() ?? '', 'notes' => (string) $estimate->notes]);
+                'expiryDate' => $estimate->expiry_date?->toDateString() ?? '', 'refNumber' => (string) $estimate->ref_number, 'notes' => (string) $estimate->notes, 'terms' => (string) $estimate->terms]);
             $this->items = $estimate->items->map(fn ($i) => ['product_id' => $i->product_id, 'name' => $i->name, 'description' => (string) $i->description,
                 'quantity' => (string) (float) $i->quantity, 'price' => (string) (float) $i->price, 'discount' => (string) (float) $i->discount, 'tax_id' => $i->tax_id])->all();
         } else {
@@ -76,7 +78,7 @@ class EstimateForm extends Component
         return round($sub + $sub * $rate / 100, 2);
     }
 
-    public function save(AuditLogger $audit, BillingService $billing): void
+    public function save(AuditLogger $audit, BillingService $billing, bool $send = false): void
     {
         abort_unless($this->user()->canAny(['hr.manage', 'payroll.manage']), 403);
         $this->validate([
@@ -90,17 +92,19 @@ class EstimateForm extends Component
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
         ], [], ['customerId' => 'customer', 'issueDate' => 'issue date', 'expiryDate' => 'expiry date']);
 
-        DB::transaction(function () use ($audit, $billing) {
+        DB::transaction(function () use ($audit, $billing, $send) {
             if ($this->estimateId) {
                 $estimate = BillingEstimate::findOrFail($this->estimateId);
                 $estimate->update(['customer_id' => $this->customerId, 'issue_date' => $this->issueDate,
-                    'expiry_date' => $this->expiryDate ?: null, 'notes' => $this->notes ?: null]);
+                    'expiry_date' => $this->expiryDate ?: null, 'ref_number' => $this->refNumber ?: null,
+                    'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null]);
                 $estimate->items()->delete();
             } else {
                 $n = $billing->nextEstimateNumber($this->issueDate);
                 $estimate = BillingEstimate::create(['number' => $n['number'], 'financial_year' => $n['financial_year'],
                     'customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'expiry_date' => $this->expiryDate ?: null,
-                    'notes' => $this->notes ?: null, 'status' => 'Draft', 'created_by' => auth()->id()]);
+                    'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null,
+                    'status' => $send ? 'Sent' : 'Draft', 'created_by' => auth()->id()]);
             }
             foreach ($this->items as $it) {
                 BillingEstimateItem::create(['estimate_id' => $estimate->id, 'product_id' => $it['product_id'] ?: null,
@@ -122,6 +126,7 @@ class EstimateForm extends Component
             'products' => BillingProduct::where('is_active', true)->orderBy('name')->get(['id', 'name', 'sale_price', 'tax_id']),
             'taxes' => BillingTax::orderBy('name')->get(['id', 'name', 'rate']),
             'subTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['quantity'] * (float) $it['price'] - (float) $it['discount']), 2),
+            'discountTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['discount']), 2),
             'grandTotal' => round(collect($this->items)->sum(fn ($it) => $this->lineTotal($it)), 2),
         ], $this->estimateId ? 'Edit estimate' : 'New estimate');
     }

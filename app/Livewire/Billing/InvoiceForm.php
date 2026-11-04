@@ -25,6 +25,7 @@ class InvoiceForm extends Component
     public string $dueDate = '';
     public string $refNumber = '';
     public string $notes = '';
+    public string $terms = '';
     /** State the supply is made to (CGST+SGST if it is our state, otherwise IGST). Defaults to the customer's billing state. */
     public string $placeOfSupply = '';
     public ?int $projectId = null;
@@ -38,7 +39,7 @@ class InvoiceForm extends Component
             $invoice->load('items');
             $this->invoiceId = $invoice->id;
             $this->fill(['customerId' => $invoice->customer_id, 'issueDate' => $invoice->issue_date->toDateString(),
-                'dueDate' => $invoice->due_date?->toDateString() ?? '', 'refNumber' => (string) $invoice->ref_number, 'notes' => (string) $invoice->notes, 'placeOfSupply' => (string) $invoice->place_of_supply, 'projectId' => $invoice->project_id]);
+                'dueDate' => $invoice->due_date?->toDateString() ?? '', 'refNumber' => (string) $invoice->ref_number, 'notes' => (string) $invoice->notes, 'terms' => (string) $invoice->terms, 'placeOfSupply' => (string) $invoice->place_of_supply, 'projectId' => $invoice->project_id]);
             $this->items = $invoice->items->map(fn ($i) => ['product_id' => $i->product_id, 'name' => $i->name, 'description' => (string) $i->description,
                 'quantity' => (string) (float) $i->quantity, 'price' => (string) (float) $i->price, 'discount' => (string) (float) $i->discount, 'tax_id' => $i->tax_id, 'hsn_sac' => (string) $i->hsn_sac])->all();
         } else {
@@ -89,7 +90,7 @@ class InvoiceForm extends Component
         return round($sub + $sub * $rate / 100, 2);
     }
 
-    public function save(AuditLogger $audit, BillingService $billing): void
+    public function save(AuditLogger $audit, BillingService $billing, bool $send = false): void
     {
         abort_unless($this->user()->canAny(['hr.manage', 'payroll.manage']), 403);
         $this->validate([
@@ -117,11 +118,11 @@ class InvoiceForm extends Component
             }
         }
 
-        DB::transaction(function () use ($audit, $billing) {
+        DB::transaction(function () use ($audit, $billing, $send) {
             if ($this->invoiceId) {
                 $invoice = BillingInvoice::findOrFail($this->invoiceId);
                 $changes = ['customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'place_of_supply' => $this->placeOfSupply ?: null, 'project_id' => $this->projectId ?: null,
-                    'due_date' => $this->dueDate ?: null, 'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null];
+                    'due_date' => $this->dueDate ?: null, 'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null];
                 // Moving the issue date into another financial year gives the invoice that year's next number.
                 if ($billing->financialYear($this->issueDate) !== $invoice->financial_year) $changes += $billing->nextInvoiceNumber($this->issueDate);
                 $invoice->update($changes);
@@ -130,7 +131,8 @@ class InvoiceForm extends Component
                 $n = $billing->nextInvoiceNumber($this->issueDate);
                 $invoice = BillingInvoice::create(['number' => $n['number'], 'financial_year' => $n['financial_year'],
                     'customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'due_date' => $this->dueDate ?: null,
-                    'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'status' => 'Draft', 'created_by' => auth()->id(),
+                    'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null,
+                    'status' => $send ? 'Sent' : 'Draft', 'send_date' => $send ? now()->toDateString() : null, 'created_by' => auth()->id(),
                     'place_of_supply' => $this->placeOfSupply ?: (BillingCustomer::find($this->customerId)?->billing_state ?: null), 'project_id' => $this->projectId ?: null]);
             }
             foreach ($this->items as $it) {
@@ -165,6 +167,7 @@ class InvoiceForm extends Component
             'taxRate' => $rates->count() === 1 ? (float) $rates->first() : ($rates->isEmpty() ? 0.0 : null),
             'terms' => (string) (app(BillingService::class)->company()['terms'] ?? ''),
             'subTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['quantity'] * (float) $it['price'] - (float) $it['discount']), 2),
+            'discountTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['discount']), 2),
             'grandTotal' => round(collect($this->items)->sum(fn ($it) => $this->lineTotal($it)), 2),
         ], $this->invoiceId ? 'Edit invoice' : 'New invoice');
     }

@@ -19,5 +19,5 @@ class TimesheetEntry extends Model
     public function employee(): BelongsTo { return $this->belongsTo(AttendanceEmployee::class, 'employee_id'); }
     public function objections(): HasMany { return $this->hasMany(TimesheetObjection::class)->latest('id'); }
 
-    public function developer(): string { return $this->employee?->name ?? $this->developer_name ?? '—'; }
+    public function developer(): string { return $this->developer_name ?: ($this->employee?->name ?? '—'); }
 }

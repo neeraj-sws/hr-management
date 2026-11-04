@@ -1,5 +1,6 @@
 <div>
-    <div class="page-head"><div><h1>{{ $estimate->number() }}</h1><p>{{ $estimate->customer?->name }} · {{ $estimate->issue_date->format('d M Y') }}</p></div>
+    @include('billing._ui')
+    <div class="page-head"><div><h1>{{ $estimate->number() }}<span class="bill-badge {{ billing_badge_class($estimate->status) }}">{{ $estimate->status }}</span></h1><p>{{ $estimate->customer?->name }} · {{ $estimate->issue_date->format('d M Y') }}</p></div>
         <div class="row-actions">
             <a class="btn" href="{{ route('billing.estimates.print', $estimate) }}" target="_blank"><x-icon name="download" class="icon-sm" />Print / PDF</a>
             @if($estimate->status !== 'Converted')
@@ -19,7 +20,7 @@
             <div><span>Issue date</span><strong>{{ $estimate->issue_date->format('d M Y') }}</strong></div>
             <div><span>Expiry date</span><strong>{{ $estimate->expiry_date?->format('d M Y') ?? '—' }}</strong></div>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table bill-items">
             <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Discount</th><th>Tax</th><th class="num">Amount</th></tr></thead>
             <tbody>
             @foreach($estimate->items as $it)
@@ -29,10 +30,10 @@
                     <td class="num">{{ number_format($it->lineSubtotal() + $it->lineTax(), 2) }}</td></tr>
             @endforeach
             </tbody></table></div>
-        <div class="stack" style="max-width:320px;margin-left:auto;margin-top:12px">
-            <div class="list-row"><span>Sub-total</span><strong>{{ number_format($estimate->subTotal(), 2) }}</strong></div>
-            <div class="list-row"><span>Tax</span><strong>{{ number_format($estimate->totalTax(), 2) }}</strong></div>
-            <div class="list-row"><span><strong>Total</strong></span><strong>{{ number_format($estimate->total(), 2) }}</strong></div>
+        <div class="inv-totals">
+            <div class="r"><span>Sub-total</span><strong>{{ number_format($estimate->subTotal(), 2) }}</strong></div>
+            <div class="r"><span>Tax</span><strong>{{ number_format($estimate->totalTax(), 2) }}</strong></div>
+            <div class="r total"><span>Total</span><strong>₹{{ number_format($estimate->total(), 2) }}</strong></div>
         </div>
     </section>
 </div>
