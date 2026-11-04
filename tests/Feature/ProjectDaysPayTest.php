@@ -93,6 +93,15 @@ class ProjectDaysPayTest extends TestCase
         $this->assertEquals(500, $b['project_days']['fines_not_cut']);
         $this->assertNull(EmployeePenalty::where('effective_on', '2026-10-09')->value('payroll_item_id'), 'The fine of an unpaid day is not taken by this payroll');
 
+        // Day-wise salary: the days without SKC work are present (times shown), not absent; no pay, fine not cut.
+        $dayWise = app(\App\Services\DayWiseSalaryService::class)->month($this->employee, '2026-10');
+        $rows = collect($dayWise['rows'])->keyBy('date');
+        $this->assertSame('Present · not on SKC World', $rows['2026-10-09']['status']);
+        $this->assertSame('10:00', $rows['2026-10-09']['in']->format('H:i'));
+        $this->assertSame([0.0, 0.0, 0.0], [$rows['2026-10-09']['pay'], $rows['2026-10-09']['fines_deducted'], $rows['2026-10-09']['net']]);
+        $this->assertSame('Present', $rows['2026-10-05']['status']);
+        $this->assertEqualsWithDelta((float) $item->net_amount, $dayWise['totals']['net'], 0.01, 'The days add up to the net salary');
+
         $s = app(SalarySummaryService::class)->forItem($item)['shortfall'];
         $line = collect($s['lines'])->first(fn ($l) => str_starts_with($l['label'], 'Not on project work'));
         $this->assertSame('Not on project work (SKC World) — 2 days', $line['label']);

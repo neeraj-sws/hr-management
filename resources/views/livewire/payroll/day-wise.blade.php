@@ -42,6 +42,7 @@
                                 <div class="small" style="margin-bottom:4px">
                                     @if($fine['status'] === 'waived')<s class="muted">{{ $rs($fine['amount']) }}</s> <x-badge tone="gray">Removed</x-badge>
                                     @elseif($fine['paid_back'])<s class="muted">{{ $rs($fine['amount']) }}</s> <x-badge tone="blue">Paid back next salary</x-badge>
+                                    @elseif(! $r['fines_deducted'] && $fine['status'] === 'approved' && str_contains($r['status'], ' · not on '))<s class="muted">{{ $rs($fine['amount']) }}</s> <x-badge tone="gray">Not cut: day not paid</x-badge>
                                     @elseif($fine['status'] === 'pending')<span style="color:var(--amber)">{{ $rs($fine['amount']) }}</span> <x-badge tone="amber">Pending</x-badge>
                                     @else<b style="color:var(--red)">−{{ $rs($fine['amount']) }}</b>@endif
                                     <small>{{ \Illuminate\Support\Str::limit($fine['reason'], 60) }}@if($fine['status'] === 'waived' && $fine['note']) · {{ \Illuminate\Support\Str::limit($fine['note'], 80) }}@endif</small>

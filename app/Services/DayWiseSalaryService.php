@@ -38,6 +38,9 @@ class DayWiseSalaryService
         // (no monthly grace); otherwise it stays one month item.
         $shortDays = (array) ($f['short']['days'] ?? []);
         $shortByDay = $shortDays && (int) ($f['short']['grace_seconds'] ?? 0) === 0 && (float) $f['shortAmount'] > 0;
+        // "Pay only for project days": days at work without a task of the project are shown as present, but not paid.
+        $notOnProject = array_flip(array_merge((array) ($f['projectDays']['not_paid'] ?? []), (array) ($f['projectDays']['extra_not_paid'] ?? [])));
+        $projectNames = implode(', ', (array) ($f['projectDays']['projects'] ?? []));
         $rows = [];
         for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
             $date = $day->toDateString();
@@ -49,6 +52,9 @@ class DayWiseSalaryService
 
             if (($joined && $date < $joined) || ($left && $date > $left)) {
                 [$status, $tone] = [$joined && $date < $joined ? 'Before joining' : 'After leaving', 'gray'];
+            } elseif (isset($notOnProject[$date])) {
+                // At work that day (times shown), but no task of the project: not paid, and its fines are not cut.
+                [$status, $tone, $note] = [($workday ? 'Present' : 'Worked (off day)').' · not on '.$projectNames, 'gray', 'no task of '.$projectNames.' this day: not paid'];
             } elseif (isset($f['extraWork']['dates'][$date])) {
                 $d = $f['extraWork']['dates'][$date];
                 [$status, $tone, $note] = ['Extra working', 'green', ($d['type'] === 'leave' ? 'on a leave day' : 'on an off day').((int) $d['seconds'] - (int) ($d['paid_seconds'] ?? $d['seconds']) >= 60 ? ' · paid '.\App\Support\Duration::hm((int) $d['paid_seconds']).' max' : '')];
@@ -93,7 +99,8 @@ class DayWiseSalaryService
                 $ot = $minutes ? round($f['hourly'] * $minutes / 60 * ($workday ? $f['multiplier'] : $f['holidayMultiplier']), 2) : 0.0;
             }
             $dayFines = collect($fines->get($date, []))->map(fn (EmployeePenalty $p) => ['id' => $p->id, 'amount' => (float) $p->amount, 'reason' => (string) $p->reason, 'status' => $p->status, 'paid_back' => $p->isPaidBack(), 'note' => $p->decision_note, 'can_remove' => $p->canBeRemoved()])->values()->all();
-            $deducted = (float) collect($dayFines)->where('status', 'approved')->where('paid_back', false)->sum('amount');
+            // A day not paid (not on project work) has its fines left uncut, as payroll does.
+            $deducted = isset($notOnProject[$date]) ? 0.0 : (float) collect($dayFines)->where('status', 'approved')->where('paid_back', false)->sum('amount');
 
             $rows[] = ['date' => $date, 'day' => $day->format('D'), 'status' => $status, 'tone' => $tone, 'note' => $note, 'workday' => $workday,
                 'in' => $session?->check_in, 'out' => $session?->check_out, 'at_work' => $session && $session->check_out ? (int) $this->attendance->officeSeconds($session) : null,
