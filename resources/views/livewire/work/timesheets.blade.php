@@ -81,7 +81,10 @@
                 <x-field label="End" name="entry.end_time"><input type="time" wire:model.live="entry.end_time"></x-field>
                 <x-field label="Worked (minutes)" name="entry.minutes" hint="auto from start/end — editable"><input type="number" min="0" wire:model="entry.minutes"></x-field>
                 <x-field label="Billable (minutes)" name="entry.billable_minutes" hint="blank = same as worked"><input type="number" min="0" wire:model="entry.billable_minutes"></x-field>
-                <x-field label="Status" name="entry.status"><select wire:model="entry.status"><option>Done</option><option>In progress</option><option>Not done</option></select></x-field>
+                <x-field label="Status" name="entry.status"><select wire:model="entry.status">
+                    <optgroup label="Progress"><option>In progress</option><option>Done</option><option>Not done</option></optgroup>
+                    <optgroup label="Stage"><option>Local</option><option>React</option><option>Live</option></optgroup>
+                </select></x-field>
                 <x-field label="Remarks" name="entry.remarks"><input wire:model="entry.remarks"></x-field>
                 <label class="check"><input type="checkbox" wire:model="entry.visible_to_client"> Show to the client</label>
             </div></div>
