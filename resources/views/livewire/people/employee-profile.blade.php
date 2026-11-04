@@ -91,7 +91,7 @@
                     <a class="btn btn-sm" href="{{ route('attendance.records', ['employee' => $employee->id, 'from' => $calendarMonth->toDateString(), 'to' => $calendarMonth->copy()->endOfMonth()->min(today())->toDateString()]) }}">Day-by-day list →</a>
                     <a class="link-sm" href="{{ route('reports.show', ['type' => 'attendance', 'employee' => $employee->id, 'from' => $calendarMonth->toDateString(), 'to' => $calendarMonth->copy()->endOfMonth()->min(today())->toDateString()]) }}">Report →</a>
                 </div></div>
-            <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" />
+            <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" :employee="$employee" />
         </section>
     </div>
 

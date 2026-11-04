@@ -105,6 +105,7 @@ class Salary extends Component
     public function saveProfile(AuditLogger $audit): void
     {
         abort_unless($this->canManage(), 403);
+        if (AttendanceEmployee::find($this->profileEmployeeId)?->isTrainee()) throw ValidationException::withMessages(['monthly' => 'This person is a trainee: trainees get no salary.']);
         $daily = $this->payBasis === 'daily';
         if ($daily) {
             $this->validate(['dailyRate' => ['required', 'numeric', 'gt:0', 'max:1000000']], [], ['dailyRate' => 'per-day salary']);

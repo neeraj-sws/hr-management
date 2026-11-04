@@ -1271,6 +1271,8 @@ div.tm-card{cursor:default}
 .why-less .why-total td{border-top:1px solid #E9C98F;font-weight:700;color:#13254F}
 .why-note{margin:6px 0 0;color:#8a96aa;font-size:11.5px}
 .att-cal-paid{display:block;font-size:11px;font-weight:700;color:#854F0B}
+/* Calendar pay notes: short time cut and fines of the day */
+.att-cal-short,.att-cal-fine{display:block;font-size:11px;font-weight:700;color:#A32D2D}
 
 /* ---------- Instructions ---------- */
 .ins-search{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:10px;padding:8px 12px;margin-bottom:10px;max-width:520px}
