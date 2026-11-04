@@ -31,6 +31,21 @@ class EmployeeProfile extends Component
     public string $recordDuration = 'full';
     public string $recordNote = '';
 
+    /** Tab shown first (?tab=docs from a link). */
+    public string $initialTab = 'overview';
+
+    /** "Generate letter" (HR / admin): template, the filled-in letter HR can edit, and profile fields that were empty. */
+    public bool $letterOpen = false;
+    public ?int $letterTemplateId = null;
+    public string $letterBody = '';
+    public array $letterMissing = [];
+
+    /** "Daily status for earlier days" (HR): how far back - N months, or from a date - and optionally until a date. */
+    public string $pastStatusBy = 'months';
+    public int $pastStatusMonths = 1;
+    public string $pastStatusFrom = '';
+    public string $pastStatusUntil = '';
+
     public function openRecordLeave(string $date): void
     {
         abort_unless($this->user()->canAny(['leave.manage', 'hr.manage']), 403);
@@ -80,6 +95,71 @@ class EmployeeProfile extends Component
         abort_unless($this->user()->can('view', $employee), 403);
         $this->employee = $employee;
         $this->leaveMonth = now()->format('Y-m');
+        $tab = (string) request()->query('tab', '');
+        if (in_array($tab, ['overview', 'attendance', 'leave', 'work', 'payroll', 'docs', 'compliance', 'settings', 'history'], true)) $this->initialTab = $tab;
+        // ?letter=appointment (after adding an employee) / relieving / experience_issued (after an exit): open that letter.
+        $letter = (string) request()->query('letter', '');
+        if ($letter !== '' && \App\Services\HrLetterService::canManage($this->user())) {
+            $this->initialTab = 'docs';
+            $this->openLetter($letter);
+        }
+    }
+
+    public function openLetter(?string $category = null): void
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $letters = app(\App\Services\HrLetterService::class);
+        $template = ($category ? $letters->templateFor($category) : null) ?? \App\Models\LetterTemplate::where('is_active', true)->orderBy('name')->first();
+        $this->resetErrorBag();
+        $this->letterOpen = true;
+        $this->letterTemplateId = $template?->id;
+        $this->fillLetter();
+    }
+
+    /** Another template chosen: its wording replaces the letter (run after the request's property updates). */
+    public function chooseTemplate($templateId = null): void
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $this->resetErrorBag();
+        $this->letterTemplateId = $templateId !== null && $templateId !== '' ? (int) $templateId : null;
+        $this->fillLetter();
+    }
+
+    /** The chosen template with this employee's data filled in (HR can still change any word before issuing). */
+    private function fillLetter(): void
+    {
+        $template = $this->letterTemplateId ? \App\Models\LetterTemplate::where('is_active', true)->find($this->letterTemplateId) : null;
+        $filled = $template ? app(\App\Services\HrLetterService::class)->fill($template->body, $this->employee) : ['html' => '', 'missing' => []];
+        $this->letterBody = $filled['html'];
+        $this->letterMissing = $filled['missing'];
+        // The editor keeps its own text; send it the new letter.
+        $this->dispatch('letter-editor-set', model: 'letterBody', html: $this->letterBody);
+    }
+
+    public function closeLetter(): void
+    {
+        $this->letterOpen = false;
+    }
+
+    /** The letter as it is now, as a PDF to check (not saved, not sent to the employee). */
+    public function letterPdf()
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $template = \App\Models\LetterTemplate::findOrFail((int) $this->letterTemplateId);
+        $pdf = app(\App\Services\HrLetterService::class)->pdf($this->letterBody, $template->name.' - '.$this->employee->name);
+
+        return response()->streamDownload(fn () => print($pdf), 'Draft - '.preg_replace('/[^A-Za-z0-9 ._-]+/', '-', $template->name.' - '.$this->employee->name).'.pdf', ['Content-Type' => 'application/pdf']);
+    }
+
+    /** Saves the letter as a PDF in the employee's documents (they are told and can download it). */
+    public function issueLetter(): void
+    {
+        $this->resetErrorBag();
+        $template = \App\Models\LetterTemplate::where('is_active', true)->find((int) $this->letterTemplateId);
+        if (! $template) throw \Illuminate\Validation\ValidationException::withMessages(['letterTemplateId' => 'Choose a template.']);
+        app(\App\Services\HrLetterService::class)->issue($this->employee, $template, $this->letterBody, $this->user());
+        $this->letterOpen = false;
+        $this->toast($template->name.' issued: saved in Docs & assets, and the employee was told.');
     }
 
     public function confirmEmployment(\App\Services\EmployeeService $employees): void
@@ -109,6 +189,33 @@ class EmployeeProfile extends Component
         else \App\Support\DailyStatusRule::set($this->employee, $mode, $this->user()->id);
         app(\App\Services\AuditLogger::class)->record('daily_status.rule_set', $this->employee, ['mode' => $mode]);
         $this->toast('Daily status: '.\App\Support\DailyStatusRule::MODES[\App\Support\DailyStatusRule::mode($this->employee)].' (from today).');
+    }
+
+    /** HR lets this person write a daily status for days in previous months (not only the last 2 days). */
+    public function savePastStatus(): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        \App\Services\ImpersonationService::block();
+        $this->validate([
+            'pastStatusBy' => ['required', 'in:months,date'],
+            'pastStatusMonths' => ['required_if:pastStatusBy,months', 'integer', 'min:1', 'max:'.\App\Support\PastDailyStatus::MAX_MONTHS],
+            'pastStatusFrom' => ['required_if:pastStatusBy,date', 'nullable', 'date', 'before:today'],
+            'pastStatusUntil' => ['nullable', 'date', 'after_or_equal:today'],
+        ], ['pastStatusFrom.required_if' => 'Choose the earliest day.'], ['pastStatusMonths' => 'months', 'pastStatusFrom' => 'earliest day', 'pastStatusUntil' => 'allowed until']);
+        $byDate = $this->pastStatusBy === 'date';
+        \App\Support\PastDailyStatus::set($this->employee, $byDate ? null : $this->pastStatusMonths, $byDate ? $this->pastStatusFrom : null, $this->pastStatusUntil ?: null, $this->user()->id);
+        $earliest = \App\Support\PastDailyStatus::earliest($this->employee);
+        app(\App\Services\AuditLogger::class)->record('daily_status.past_days_set', $this->employee, ['months' => $byDate ? null : $this->pastStatusMonths, 'from' => $byDate ? $this->pastStatusFrom : null, 'until' => $this->pastStatusUntil ?: null, 'earliest' => $earliest]);
+        $this->toast($this->employee->name.' can now write a daily status for days from '.($earliest ? \Illuminate\Support\Carbon::parse($earliest)->format('d M Y') : 'the joining date').($this->pastStatusUntil ? ' (until '.\Illuminate\Support\Carbon::parse($this->pastStatusUntil)->format('d M Y').')' : '').'.');
+    }
+
+    public function stopPastStatus(): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        \App\Services\ImpersonationService::block();
+        \App\Support\PastDailyStatus::stop($this->employee);
+        app(\App\Services\AuditLogger::class)->record('daily_status.past_days_off', $this->employee);
+        $this->toast('Daily status for earlier days turned off: the normal 2-day limit applies again.');
     }
 
     public function toggleAppUsage(\App\Services\AppUsageService $usage): void
@@ -163,7 +270,7 @@ class EmployeeProfile extends Component
             if ($day['date'] < today()->toDateString()) {
                 $status = $statuses->get($day['date']);
                 if (! $status && \App\Support\DailyStatusRule::required($employee, $day['date'])) $discipline->push(['date' => $day['date'], 'type' => 'no_status', 'label' => 'Daily status missing', 'detail' => 'Worked but no daily status was submitted']);
-                elseif ($status->submitted_at && $status->submitted_at->toDateString() > $day['date']) $discipline->push(['date' => $day['date'], 'type' => 'late_status', 'label' => 'Daily status late', 'detail' => 'Submitted '.$status->submitted_at->format('d M, h:i A')]);
+                elseif ($status && $status->submitted_at && $status->submitted_at->toDateString() > $day['date']) $discipline->push(['date' => $day['date'], 'type' => 'late_status', 'label' => 'Daily status late', 'detail' => 'Submitted '.$status->submitted_at->format('d M, h:i A')]);
             }
         }
         $canSeeDocs = $isSelf || $user->canAny(['lifecycle.manage', 'hr.manage', 'employees.manage']) || \App\Support\Access::isAdmin($user);
@@ -190,6 +297,8 @@ class EmployeeProfile extends Component
             'tasks' => $employee->tasks()->where('status', '!=', 'completed')->latest()->limit(8)->get(),
             'assets' => $employee->assets()->latest()->get(),
             'documents' => $canSeeDocs ? $employee->documents()->latest()->get() : collect(),
+            'canIssueLetters' => \App\Services\HrLetterService::canManage($user),
+            'letterTemplates' => $this->letterOpen ? \App\Models\LetterTemplate::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
             // Home address and emergency contact: the person, HR and admins (the same people who see documents).
             'canSeeContact' => $canSeeDocs,
             'showSalary' => $showSalary,
@@ -198,6 +307,8 @@ class EmployeeProfile extends Component
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
             'dailyStatusMode' => \App\Support\DailyStatusRule::mode($employee),
             'dailyStatusOwn' => \App\Support\DailyStatusRule::hasOwnChoice($employee),
+            'pastStatus' => \App\Support\PastDailyStatus::rule($employee),
+            'pastStatusEarliest' => \App\Support\PastDailyStatus::earliest($employee),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
             'attendanceSources' => app(\App\Services\AttendanceService::class)->allowedSources($employee),
             'appUsageOn' => $user->can('monitoring.manage') ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : null,

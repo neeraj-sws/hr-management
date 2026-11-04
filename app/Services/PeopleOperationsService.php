@@ -604,8 +604,9 @@ class PeopleOperationsService
             // Never cut twice: a day already paid only for the hours at work (half day, check-in after the cut-off,
             // half-day / short leave) has its lateness cut by that; no per-minute late fine on top.
             if($this->paidByHours($employee,$session)&&!$this->lateFineOnTop($employee,$session))continue;
-            // Extra working on an off day is never late.
+            // Extra working on an off day is never late; nor is someone with flexible hours.
             if(!app(AttendanceService::class)->isScheduledDay($employee,$session->work_date->toDateString()))continue;
+            if(app(AttendanceService::class)->flexibleHours($employee))continue;
             // Urgent work on a full-day leave: paid by the hours worked, never late.
             if($this->urgentWorkOnLeave($employee,$session->work_date->toDateString()))continue;
             // Late arrival told in advance and approved, checked in by the time given: no late fine.

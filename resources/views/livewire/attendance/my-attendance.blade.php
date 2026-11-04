@@ -41,6 +41,10 @@
                             () => { this.locating = false; if (@js($locationRequired)) { this.geoError = 'Allow location for this site: your company requires check-in at an office.'; } else { $wire[action](); } },
                             { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
                     } }">
+                {{-- Website attendance turned off (Settings → Attendance, or this person's Attendance methods): no buttons here. --}}
+                @if(! $webAllowed)
+                    @if(! $session || ! $session->check_out)<span class="small muted">Check in, take breaks and check out in the {{ $otherWays }}. The website can't track screen and idle time.</span>@else<x-badge status="completed">Day completed</x-badge>@endif
+                @else
                 @if($selfieRequired && (! $session || ! $session->check_out))
                     <label class="field" style="min-width:220px"><span>Selfie {{ ! $session ? 'for check-in' : 'for check-out' }}</span>
                         <input type="file" accept="image/*" capture="user" wire:model="photo">
@@ -62,6 +66,7 @@
                     <button class="btn btn-danger btn-lg" x-on:click="if (confirm('Check out for today? Any running task timer will be stopped.')) go('checkOut')" x-bind:disabled="locating" wire:loading.attr="disabled" @disabled($selfieRequired && ! $photo)><x-icon name="logout" />Check out</button>
                 @else
                     <x-badge status="completed">Day completed</x-badge>
+                @endif
                 @endif
                 <a class="btn btn-lg" href="{{ route('work.daily-status') }}"><x-icon name="edit" />Daily status</a>
             </div>

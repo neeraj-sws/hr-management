@@ -37,6 +37,8 @@ class DailyStatusController extends ApiController
             'team' => $this->team($request, $employee),
             // Missed days that can still be written (reason first): the last 2 days at work with no status.
             'missed_writable' => app(WorkService::class)->missedStatusDays($employee),
+            // HR allowed this person to write earlier days too (POST /daily-status/missed): the earliest day, else null.
+            'past_status_from' => \App\Support\PastDailyStatus::earliest($employee),
         ]);
     }
 

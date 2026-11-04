@@ -88,6 +88,9 @@ class MyAttendance extends Component
             'live' => $session ? $attendance->liveFigures($session) : null,
             'rules' => $attendance->rules($employee, today()->toDateString()),
             'late' => $session ? $attendance->isLate($session) : false,
+            // Website attendance turned off for this person: no check-in / break / check-out buttons here.
+            'webAllowed' => in_array('web', $sources = $attendance->allowedSources($employee), true),
+            'otherWays' => implode(' or ', array_map(fn ($s) => \App\Services\AttendanceService::SOURCES[$s], array_reverse($sources))),
             'selfieRequired' => $attendance->selfieRequired($employee, 'web'),
             'calendar' => app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]),
             'locationRequired' => (bool) (app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee, 'attendance.location', today()->toDateString(), [])['required_for_web'] ?? false),

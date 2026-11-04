@@ -36,9 +36,10 @@ class HrWorkflowService
      *
      * @return array{share: float, seconds: int, check_in: string}|null
      */
-    public function lateCheckInPay(AttendanceEmployee $employee, AttendanceSession $session, ?string $after = null, ?array $calendar = null): ?array
+    public function lateCheckInPay(AttendanceEmployee $employee, AttendanceSession $session, ?string $after = null, ?array $calendar = null, ?float $rateHours = null): ?array
     {
         if (! $session->check_in || ! $session->check_out) return null;
+        if (app(AttendanceService::class)->flexibleHours($employee)) return null; // flexible hours: a present day is a full day
         $date = $session->work_date->toDateString();
         if ($after === null) {
             $policy = app(PolicyConfigurationService::class)->forEmployee($employee, 'payroll.calculation', $date, []);
@@ -54,13 +55,58 @@ class HrWorkflowService
         $ownStart = $attendance->rules($employee, $date)['work_start'] ?? null;
         if ($ownStart && substr((string) $ownStart, 0, 5) >= $after) return null; // afternoon / night shift
         $net = (int) $attendance->officeSeconds($session);
-        $standard = max(1, (int) round($attendance->dailyHours($employee, $date) * 3600));
+        // Paid at the hourly rate (one day's pay ÷ 9 hours), at most one day.
+        $standard = max(1, (int) round(($rateHours ?? $this->hourlyRateHours($employee, $date)) * 3600));
 
         return ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'standard' => $standard, 'check_in' => $session->check_in->format('H:i')];
     }
 
+    /**
+     * "Pay only for project days" (Payroll > Salary) for a period: the days a rule covers (date => project ids), the days
+     * the employee worked on one of those projects (a task of the project with that work date, or time on its timer),
+     * and the project names. Null when no rule covers any day of the period.
+     */
+    public function projectDays(AttendanceEmployee $employee, string $start, string $end): ?array
+    {
+        $policies = app(PolicyConfigurationService::class);
+        $rule = [];
+        for ($day = \Illuminate\Support\Carbon::parse($start); $day->lte(\Illuminate\Support\Carbon::parse($end)); $day->addDay()) {
+            $projects = array_values(array_filter(array_map('intval', (array) ($policies->forEmployee($employee, 'payroll.project_days', $day->toDateString(), [])['projects'] ?? []))));
+            if ($projects) $rule[$day->toDateString()] = $projects;
+        }
+        if (! $rule) return null;
+        $ids = array_values(array_unique(array_merge(...array_values($rule))));
+        $worked = [];
+        foreach (\App\Models\Task::where('assignee_id', $employee->id)->whereIn('project_id', $ids)->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->get(['project_id', 'work_date']) as $task) {
+            $date = \Illuminate\Support\Carbon::parse($task->work_date)->toDateString();
+            if (in_array((int) $task->project_id, $rule[$date] ?? [], true)) $worked[$date] = true;
+        }
+        foreach (\App\Models\TaskTimeEntry::with('task:id,project_id')->where('employee_id', $employee->id)->whereBetween('started_at', [\Illuminate\Support\Carbon::parse($start)->startOfDay(), \Illuminate\Support\Carbon::parse($end)->endOfDay()])->get(['task_id', 'started_at']) as $entry) {
+            $date = \Illuminate\Support\Carbon::parse($entry->started_at)->toDateString();
+            if ($entry->task && in_array((int) $entry->task->project_id, $rule[$date] ?? [], true)) $worked[$date] = true;
+        }
+
+        return ['rule' => $rule, 'worked' => $worked, 'projects' => \App\Models\Project::whereIn('id', $ids)->orderBy('name')->pluck('name')->all(), 'not_paid' => [], 'extra_not_paid' => [], 'paid' => [], 'fines_not_cut' => 0.0];
+    }
+
     /** Half day pays half a day for days from this date (Settings > Payroll can change it or switch it off). */
     public const HALF_DAY_PAY_FROM = '2026-10-01';
+
+    /** Hours one day's pay is divided by for the hourly rate, as in the old salary sheet (Settings > Payroll can change it). */
+    public const HOURLY_RATE_HOURS = 9.0;
+
+    /**
+     * Hours for the hourly rate: one day's pay ÷ this. Used for hours-paid days (late check-in, half day,
+     * half-day leave), extra working, overtime, night work and short hours. The employee's working day
+     * (8h 30m etc.) does not change: attendance, late and half-day status still use it.
+     */
+    public function hourlyRateHours(AttendanceEmployee $employee, string $date, ?array $payrollPolicy = null): float
+    {
+        $payrollPolicy ??= app(PolicyConfigurationService::class)->forEmployee($employee, 'payroll.calculation', $date, []);
+        $hours = (float) ($payrollPolicy['hourly_rate_hours'] ?? 0);
+
+        return $hours > 0 ? $hours : self::HOURLY_RATE_HOURS;
+    }
 
     /** Old salary sheet working days per month, looked up once per request. */
     private array $sheetDaysCache = [];
@@ -414,12 +460,13 @@ class HrWorkflowService
                     'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,
                     'overtime_hours'=>$overtimeHours,'overtime_amount'=>$overtimeAmount,'penalties_amount'=>$penalties,'recovery_amount'=>$advanceRecovery,'adjustments_amount'=>$adjustmentTotal,
                     'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'reimbursements_amount'=>$reimbursements,
-                    'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
-                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'hours_paid_days'=>$hoursPaidSet,'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'night_work'=>$nightWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'penalty_lines'=>$penaltyLines,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
+                    'calculation_data'=>['monthly_salary'=>(float)$profile->monthly_salary,'pay_basis'=>$profile->pay_basis ?? 'monthly','daily_rate'=>$profile->isDaily() ? (float)$profile->daily_rate : null,'working_days_per_month'=>$workingDaysPerMonth,'divisor'=>$calendarDivisor ? 'calendar' : 'fixed','month_divisors'=>$monthDivisors,'standard_daily_hours'=>$standardDailyHours,'hourly_rate_hours'=>$rateHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave,'statutory_components'=>$statutory['components']],
+                    'calculation_breakdown'=>['base_salary'=>round($basePay,2),'salary_components'=>array_map(fn ($v) => round($v, 2), $componentTotals),'fixed_deductions'=>$fixedDeductions,'fixed_deductions_total'=>$fixedDeductionTotal,'salary_segments'=>$salarySegments,'working_days'=>$scheduledTotal,'present_days'=>$presentDays,'paid_leave_days'=>$paidLeaveDays,'unpaid_leave_days'=>$unpaidLeaveDays,'paid_holiday_days'=>count($paidHolidaySet),'half_days'=>array_keys($halfDaySet),'hours_paid_days'=>$hoursPaidSet,'half_holiday_paid'=>array_keys($halfHolidayAbsent),'unpaid_holiday_days'=>count($unpaidHolidaySet),'approved_overtime_minutes'=>$approvedMinutes,'holiday_overtime_minutes'=>$holidayMinutes,'overtime_multiplier'=>$multiplier,'holiday_overtime_multiplier'=>$holidayMultiplier,'overtime_amount'=>$overtimeAmount,'extra_work'=>$extraWork,'project_days'=>$projectDays ? \Illuminate\Support\Arr::except($projectDays, ['rule', 'worked']) : null,'night_work'=>$nightWork,'salary_adjustments'=>$adjustmentTotal,'salary_adjustment_lines'=>$adjustmentLines->all(),'penalties'=>$penalties,'penalty_lines'=>$penaltyLines,'short_hours'=>$short,'advances_disbursed'=>(float)$advanceRows->sum('disbursed_amount'),'advance_recovery'=>$advanceRecovery,'statutory_earnings'=>$statutory['earnings'],'statutory_deductions'=>$statutory['deductions'],'statutory_components'=>$statutory['components'],'reimbursements'=>$reimbursements,'gross_salary'=>$gross,'payable_salary'=>$net,'employer_policy'=>['working_days_per_month'=>$workingDaysPerMonth,'standard_daily_hours'=>$standardDailyHours,'attendance_proration'=>$attendanceProration,'include_paid_leave'=>$includePaidLeave]],
                 ]);
                 foreach ($adjustments as $adjustment) $adjustment->update(['payroll_item_id'=>$item->id]);
                 foreach ($claims as $claim) $claim->update(['payroll_item_id'=>$item->id]);
-                EmployeePenalty::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->whereNull('payroll_item_id')->update(['payroll_item_id'=>$item->id]);
+                // Only the fines this item cut (with pay only for project days, fines of unpaid days are left out).
+                EmployeePenalty::whereIn('id',$penaltyRows->pluck('id'))->whereNull('payroll_item_id')->update(['payroll_item_id'=>$item->id]);
                 foreach ($advanceRows as $advance) {
                     $recover = min((float)$advance->installment_amount,max(0,(float)$advance->disbursed_amount-(float)$advance->recovered_amount));
                     if ($recover <= 0) continue;
@@ -470,7 +517,7 @@ class HrWorkflowService
      * payroll was already approved/locked. Returns null when the employee has no
      * salary for the period. ($forUpdate locks advances and claims for the run.)
      */
-    private function employeePayFigures(AttendanceEmployee $employee, string $start, string $end, bool $forUpdate): ?array
+    private function employeePayFigures(AttendanceEmployee $employee, string $start, string $end, bool $forUpdate, ?float $rateHoursOverride = null): ?array
     {
         $profile = $employee->salaryProfiles()->whereDate('effective_from','<=',$end)->orderByDesc('effective_from')->orderByDesc('id')->first();
         if (! $profile) return null;
@@ -485,6 +532,9 @@ class HrWorkflowService
         $standardDailyHours = (float) ($payrollPolicy['standard_daily_hours'] ?? app(AttendanceService::class)->dailyHours($employee, $end));
         $attendanceProration = (bool) ($payrollPolicy['attendance_proration'] ?? true);
         $includePaidLeave = (bool) ($payrollPolicy['include_paid_leave'] ?? true);
+        // Per-hour rate = one day's pay ÷ these hours (9 by default, Settings > Payroll "Hours per day for the hourly rate").
+        // A payroll already closed is re-priced with the hours it was calculated with ($rateHoursOverride).
+        $rateHours = $rateHoursOverride ?? $this->hourlyRateHours($employee, $end, $payrollPolicy);
         $startDate = now()->parse($start)->startOfDay();
         $endDate = now()->parse($end)->startOfDay();
         if ($profile->effective_from?->gt($endDate)) return null;
@@ -534,6 +584,19 @@ class HrWorkflowService
             $date = now()->parse($workDate)->toDateString();
             if (! $this->isConfiguredWorkday($date, $calendar)) $extraDates[$date] = 'off';
         }
+        $projectDays = $this->projectDays($employee, $start, $end);
+        if ($projectDays) {
+            // Pay only for project days (Payroll > Salary): a day the rule covers is paid only when the employee has a task
+            // of those projects that day. Other days are not paid at all - no pay, no paid leave, no extra working, and
+            // (below) no short time or fines either.
+            $notOnProject = fn (string $date) => isset($projectDays['rule'][$date]) && ! isset($projectDays['worked'][$date]);
+            foreach (array_keys($presentSet) as $date) if ($notOnProject($date)) { unset($presentSet[$date]); $projectDays['not_paid'][] = $date; }
+            foreach (array_keys($extraDates) as $date) if ($notOnProject($date)) { unset($extraDates[$date]); $projectDays['extra_not_paid'][] = $date; }
+            foreach (array_keys($paidLeaveSet) as $date) if ($notOnProject($date)) { unset($paidLeaveSet[$date]); $unpaidLeaveSet[$date] = true; }
+            sort($projectDays['not_paid']);
+            $projectDays['paid'] = array_values(array_filter(array_keys($presentSet + $extraDates), fn ($d) => isset($projectDays['rule'][$d])));
+            sort($projectDays['paid']);
+        }
         // Half day (Settings > Payroll, from a start date): a finished working day under the half-day limit
         // (check-in to check-out less breaks; idle and meetings are not taken off) pays half a day, unless an
         // approved paid half-day or short leave covers that day. The same rule marks the day "Half day" in attendance.
@@ -562,7 +625,7 @@ class HrWorkflowService
                     // Approved half-day / short leave and some work: paid for the hours worked only.
                     if ($daySession && $daySession->check_in && $daySession->check_out) {
                         $net = (int) $halfRules->officeSeconds($daySession);
-                        $standard = max(1, (int) round($halfRules->dailyHours($employee, $date) * 3600));
+                        $standard = max(1, (int) round($rateHours * 3600));
                         $hoursPaidSet[$date] = ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'standard' => $standard, 'check_in' => $daySession->check_in->format('H:i'),
                             'leave' => ($partLeaveOn[$date]->duration === 'half' ? 'Half-day leave' : 'Short leave').' · '.($partLeaveOn[$date]->typeName() ?? 'Leave')];
                     }
@@ -570,14 +633,14 @@ class HrWorkflowService
                 }
                 if ($date < $halfDayFrom || isset($paidPartLeave[$date])) continue;
                 if (! $daySession) continue;
-                if ($lateHoursPay && ($late = $this->lateCheckInPay($employee, $daySession, $lateAfter, $calendar))) {
+                if ($lateHoursPay && ($late = $this->lateCheckInPay($employee, $daySession, $lateAfter, $calendar, $rateHours))) {
                     $hoursPaidSet[$date] = $late;
                     continue; // paid by hours, not as a half day
                 }
                 if ($halfDayPay && $halfRules->isHalfDay($daySession)) {
                     if ($halfDayHoursOnly) {
                         $net = (int) $halfRules->officeSeconds($daySession);
-                        $standard = max(1, (int) round($halfRules->dailyHours($employee, $date) * 3600));
+                        $standard = max(1, (int) round($rateHours * 3600));
                         $hoursPaidSet[$date] = ['share' => round(min(1, $net / $standard), 4), 'seconds' => $net, 'standard' => $standard, 'check_in' => $daySession->check_in->format('H:i'), 'leave' => 'Half day · paid for the hours at work', 'half_day' => true];
                     } else {
                         $halfDaySet[$date] = true;
@@ -697,22 +760,21 @@ class HrWorkflowService
         if ($approvedMinutes > 0 && ! array_key_exists('multiplier', $overtimePolicy)) throw ValidationException::withMessages(['payroll' => 'Configure an employer overtime multiplier before calculating payroll with approved overtime.']);
         $multiplier = (float) ($overtimePolicy['multiplier'] ?? 0);
         $holidayMultiplier = isset($overtimePolicy['holiday_multiplier']) ? (float) $overtimePolicy['holiday_multiplier'] : $multiplier;
-        // Per-hour rate = one day's pay ÷ hours (Settings > Payroll "Hours per day for the hourly rate", else the working day).
-        $rateHours = (float) ($payrollPolicy['hourly_rate_hours'] ?? 0) > 0 ? (float) $payrollPolicy['hourly_rate_hours'] : $standardDailyHours;
+        // Per-hour rate = one day's pay ÷ $rateHours (set above).
         $hourly = $profile->isDaily()
             ? (float) $profile->daily_rate / max(0.25, $rateHours)
             : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
         $overtimeHours = $approvedMinutes/60;
         $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
         // Extra working: the hours worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set),
-        // at most one working day a day (e.g. 8h 30m): 10 hours on a Sunday is paid as one day, not as overtime.
+        // at most one day's pay a day (the hourly-rate hours, e.g. 9h): 10 hours on a Sunday is paid as one day, not as overtime.
         $extraWork = ['enabled' => $extraAuto, 'days' => 0, 'seconds' => 0, 'paid_seconds' => 0, 'multiplier' => isset($overtimePolicy['holiday_multiplier']) ? (float) $overtimePolicy['holiday_multiplier'] : 1.0, 'amount' => 0.0, 'overtime_minutes_not_paid_twice' => $overtimeOnExtraDays, 'dates' => []];
         if ($extraDates) {
             $extraSessions = AttendanceSession::with('employee')->where('employee_id', $employee->id)->whereDate('work_date', '>=', $start)->whereDate('work_date', '<=', $end)->get()->groupBy(fn ($s) => $s->work_date->toDateString());
             foreach ($extraDates as $date => $kind) {
                 $seconds = (int) collect($extraSessions->get($date, []))->sum(fn ($s) => app(AttendanceService::class)->workedSeconds($s));
                 if ($seconds <= 0) continue;
-                $paid = min($seconds, max(1, (int) round(app(AttendanceService::class)->dailyHours($employee, $date) * 3600)));
+                $paid = min($seconds, max(1, (int) round($rateHours * 3600)));
                 $extraWork['dates'][$date] = ['type' => $kind, 'seconds' => $seconds, 'paid_seconds' => $paid];
                 $extraWork['seconds'] += $seconds;
                 $extraWork['paid_seconds'] += $paid;
@@ -731,10 +793,13 @@ class HrWorkflowService
         // Also for chosen people only: their late rule (Compliance > Late attendance, e.g. an employee-specific rule)
         // says "Also cut the hours not worked" - then only the days that rule covers are counted.
         $everyone = ! empty($payrollPolicy['short_hours_deduction']);
+        // Old salary sheet: only days checked in after the start time + grace (e.g. after 10:16) are cut; on-time days never.
+        $shortLateOnly = ! empty($payrollPolicy['short_hours_late_only']);
         $hoursCutOn = fn (string $date) => $everyone || ! empty($policyResolver->forEmployee($employee, 'attendance.late_penalty', $date, [])['hours_cut']);
         $short = ['enabled' => $everyone || collect(array_keys($presentSet))->contains($hoursCutOn), 'required_seconds' => 0, 'actual_seconds' => 0, 'short_seconds' => 0, 'grace_seconds' => 0, 'amount' => 0.0];
         if ($short['enabled']) {
-            $partLeave = LeaveRequest::where('employee_id',$employee->id)->where('status','approved')->whereIn('duration',['half','short'])->whereDate('starts_on','>=',$start)->whereDate('starts_on','<=',$end)->get()
+            // Only a paid half-day / short leave lowers the hours due that day; unpaid leave time is cut like any short time.
+            $partLeave = LeaveRequest::where('employee_id',$employee->id)->where('status','approved')->whereIn('duration',['half','short'])->whereHas('leaveType', fn ($q) => $q->where('paid', true))->whereDate('starts_on','>=',$start)->whereDate('starts_on','<=',$end)->get()
                 ->groupBy(fn ($l) => $l->starts_on->toDateString())->map(fn ($g) => min(1, (float) $g->sum('days')));
             $daySessions = AttendanceSession::with('employee')->where('employee_id',$employee->id)->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->get()->keyBy(fn ($s) => $s->work_date->toDateString());
             $attendanceService = app(AttendanceService::class);
@@ -742,20 +807,33 @@ class HrWorkflowService
             foreach (array_keys($presentSet) as $date) {
                 if (isset($halfDaySet[$date]) || isset($hoursPaidSet[$date]) || \App\Support\WorkCalendar::halfDayHoliday($calendar, $date)) continue; // never cut twice / office closed early
                 if (! $hoursCutOn($date)) continue;
+                if ($attendanceService->flexibleHours($employee)) continue; // flexible hours: no time is cut
                 $daySession = $daySessions->get($date);
                 // Only finished days: a day still in progress (not checked out yet) is not short.
                 if (! $daySession || ! $daySession->check_out) continue;
+                if ($shortLateOnly && ! $attendanceService->isLate($daySession)) continue;
                 $required = (int) round($standardDailyHours * 3600 * (1 - (float) ($partLeave[$date] ?? 0)));
                 // "At work" (check-in to check-out less breaks), like the half-day check: idle is shown for
                 // productivity only and never cuts the salary.
                 $worked = (int) $attendanceService->officeSeconds($daySession);
                 $short['required_seconds'] += $required;
                 $short['actual_seconds'] += $worked;
-                $missing += max(0, $required - $worked);
+                // Cut in whole minutes (rounded to the nearest minute): 8:30:00 − 6:09:38 at work = 2:20:22 short = 140 min.
+                $dayShort = (int) round(max(0, $required - $worked) / 60) * 60;
+                $missing += $dayShort;
+                // Each short day with its times, so the salary page, payslip and app can show the cut date by date.
+                if ($dayShort > 0) $short['days'][$date] = ['in' => $daySession->check_in->format('H:i:s'), 'out' => $daySession->check_out->format('H:i:s'), 'break' => (int) $daySession->break_seconds,
+                    'worked' => $worked, 'required' => $required, 'short' => $dayShort, 'amount' => round($hourly * $dayShort / 3600, 2)];
             }
+            if (! empty($short['days'])) ksort($short['days']);
             $short['grace_seconds'] = (int) round((float) ($payrollPolicy['short_hours_grace'] ?? 0) * 3600);
             $short['short_seconds'] = max(0, $missing - $short['grace_seconds']);
             $short['amount'] = round($hourly * $short['short_seconds'] / 3600, 2);
+            // Without a grace the days add up to the total exactly: a rounding paisa goes on the last day.
+            if (! empty($short['days']) && $short['grace_seconds'] === 0) {
+                $last = array_key_last($short['days']);
+                $short['days'][$last]['amount'] = round($short['days'][$last]['amount'] + $short['amount'] - array_sum(array_column($short['days'], 'amount')), 2);
+            }
         }
         $shortAmount = (float) $short['amount'];
         // For an estimate ("so far"), items a draft payroll has taken still belong to this month: count them, so the
@@ -763,6 +841,12 @@ class HrWorkflowService
         $draftItemIds = $forUpdate ? [] : PayrollItem::where('employee_id', $employee->id)->whereHas('run', fn ($q) => $q->where('status', 'draft'))->pluck('id')->all();
         $unclaimed = fn ($q) => $q->where(fn ($q) => $q->whereNull('payroll_item_id')->when($draftItemIds, fn ($q) => $q->orWhereIn('payroll_item_id', $draftItemIds)));
         $penaltyRows = EmployeePenalty::where('employee_id',$employee->id)->where('status','approved')->whereDate('effective_on','>=',$start)->whereDate('effective_on','<=',$end)->where($unclaimed)->orderBy('effective_on')->get();
+        if ($projectDays) {
+            // Fines of days that are not paid (not on project work) are not cut.
+            $skippedFines = $penaltyRows->filter(fn ($p) => $notOnProject($p->effective_on->toDateString()));
+            $projectDays['fines_not_cut'] = round((float) $skippedFines->sum('amount'), 2);
+            $penaltyRows = $penaltyRows->reject(fn ($p) => $skippedFines->contains('id', $p->id))->values();
+        }
         $penalties = (float) $penaltyRows->sum('amount');
         // Each approved fine with its date and reason, so the salary page and payslip can list them one by one.
         $penaltyLines = $penaltyRows->map(fn ($p) => ['date' => $p->effective_on->toDateString(), 'reason' => (string) $p->reason, 'amount' => round((float) $p->amount, 2)])->values()->all();
@@ -822,9 +906,9 @@ class HrWorkflowService
             'gross' => (float) $f['gross'], 'net' => (float) $f['net'], 'working_days' => (int) $f['scheduledTotal'], 'present_days' => (float) $f['presentDays'],
             'paid_leave_days' => (float) $f['paidLeaveDays'], 'unpaid_leave_days' => (float) $f['unpaidLeaveDays'],
             'monthly_salary' => (float) $f['profile']->monthly_salary, 'pay_basis' => $f['profile']->pay_basis ?? 'monthly', 'daily_rate' => $f['profile']->isDaily() ? (float) $f['profile']->daily_rate : null,
-            'month_divisors' => $f['monthDivisors'], 'working_days_per_month' => $f['workingDaysPerMonth'], 'standard_daily_hours' => $f['standardDailyHours'],
+            'month_divisors' => $f['monthDivisors'], 'working_days_per_month' => $f['workingDaysPerMonth'], 'standard_daily_hours' => $f['standardDailyHours'], 'hourly_rate_hours' => $f['rateHours'],
             'breakdown' => [
-                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'], 'night_work' => $f['nightWork'],
+                'base_salary' => round((float) $f['basePay'], 2), 'paid_holiday_days' => count($f['paidHolidaySet']), 'half_days' => array_keys($f['halfDaySet']), 'hours_paid_days' => $f['hoursPaidSet'], 'half_holiday_paid' => array_keys($f['halfHolidayAbsent']), 'overtime_amount' => (float) $f['overtimeAmount'], 'extra_work' => $f['extraWork'], 'project_days' => $f['projectDays'] ? \Illuminate\Support\Arr::except($f['projectDays'], ['rule', 'worked']) : null, 'night_work' => $f['nightWork'],
                 'salary_adjustment_lines' => $f['adjustmentLines']->all(), 'reimbursements' => (float) $f['reimbursements'], 'statutory_components' => $f['statutory']['components'],
                 'penalties' => (float) $f['penalties'], 'penalty_lines' => $f['penaltyLines'] ?? [], 'short_hours' => $f['short'], 'advance_recovery' => (float) $f['advanceRecovery'], 'fixed_deductions' => $f['fixedDeductions'],
             ],
@@ -835,9 +919,9 @@ class HrWorkflowService
      * The attendance-driven part of an employee's pay for a period as it stands
      * now: days paid (base), overtime, extra working, and the short-hours deduction.
      */
-    public function attendancePay(AttendanceEmployee $employee, string $start, string $end): ?array
+    public function attendancePay(AttendanceEmployee $employee, string $start, string $end, ?float $rateHours = null): ?array
     {
-        $f = $this->employeePayFigures($employee, $start, $end, false);
+        $f = $this->employeePayFigures($employee, $start, $end, false, $rateHours);
         if ($f === null) return null;
         $base = round((float) $f['basePay'], 2);
         $overtime = round((float) $f['overtimeAmount'], 2);

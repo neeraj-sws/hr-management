@@ -148,6 +148,10 @@
                 </div>
                 <x-field label="Automatic check-out after (minutes without keyboard/mouse after the shift)" name="autoCheckoutMinutes"><input type="number" min="10" max="240" wire:model="autoCheckoutMinutes"></x-field>
                 <x-field label="Desktop app: ask 'Are you sitting idle?' after (minutes)" name="idleMinutes" hint="the popup shows while the computer is untouched this long (checked in, not on a break) · also asks about breaks after a locked screen or sleep · 0 = never ask · field / mobile staff (Compliance → Policies → Work type) are not asked"><input type="number" min="0" max="240" wire:model="idleMinutes"></x-field>
+                <div class="full"><span class="label">Where people can check in (the desktop app always works)</span>
+                    <label class="check"><input type="checkbox" wire:model="webAttendance"> Allow check-in, break and check-out on the website</label>
+                    <label class="check"><input type="checkbox" wire:model="mobileAttendance"> Allow check-in, break and check-out in the mobile app</label>
+                    <span class="small muted">Off: the website / mobile app hides these buttons, because screen and idle time are tracked only by the desktop app. To allow one person (e.g. cleaning staff on the mobile app), turn it on in their profile → Attendance methods.</span></div>
                 <div class="full"><span class="label">Selfie at check-in / check-out</span>
                     <label class="check"><input type="checkbox" wire:model="selfieWeb"> Required on the website</label>
                     <label class="check"><input type="checkbox" wire:model="selfieMobile"> Required in the mobile app</label>
@@ -239,8 +243,14 @@
             </x-modal>
         @endif
     @elseif($tab === 'payroll')
+        {{-- Every rule that decides the salary, in one place (from the form below, plus the fines set in Compliance). --}}
+        <section class="card mb">
+            <div class="card-head"><div><h2>How salary is worked out</h2><p>Every rule in one place, as set below{{ $payrollFrom ? ', from '.\Illuminate\Support\Carbon::parse($payrollFrom)->format('d M Y') : '' }}. The fines are set in Compliance.</p></div><button type="button" class="btn" wire:click="useOldSheetRules" title="Fills the switches below like the old Excel salary sheet; nothing is saved until Save policies">Use old salary sheet rules</button></div>
+            <div class="card-body"><table class="table"><tbody>@foreach($this->salaryRules() as [$label, $text, $on])<tr><td style="width:170px"><strong>{{ $label }}</strong></td><td class="small" style="{{ $on ? '' : 'color:var(--muted)' }}">{{ $text }}</td></tr>@endforeach</tbody></table></div>
+        </section>
         <section class="card">
             <form class="card-body" wire:submit="savePayroll"><div class="form-grid">
+                <x-field label="Salary rules apply from" name="payrollFrom" hint="an earlier date (e.g. 01 Oct) re-prices draft payroll from that day; approved or locked payroll is refused · overtime and leave settings start today" full><input type="date" wire:model.live="payrollFrom"></x-field>
                 @if($otEnabled)
                     <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model.live="otEnabled"> <span><strong>Overtime is allowed</strong> <span class="muted small">— untick to switch overtime off: it disappears from every screen, nobody can request it and payroll pays none</span></span></label>
                     <x-field label="Overtime multiplier" name="otMultiplier" hint="required before paying approved OT"><input type="number" step="0.05" min="0" max="10" wire:model="otMultiplier" placeholder="employer-defined"></x-field>
@@ -261,9 +271,10 @@
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="halfDayHoursOnly"> <span><strong>Half day: pay only the hours at work</strong> <span class="muted small">— a day under the half-day limit (e.g. 4 h 30 min at work) is paid as hours at work ÷ the working day (e.g. 3 h of 8 h 30 min = 3 h's pay), not a fixed half day. Untick: a half day pays half a day, as before.</span></span></label>
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="halfLeaveHoursOnly"> <span><strong>Approved half-day / short leave: pay only the hours worked</strong> <span class="muted small">— on a day with an approved half-day or short leave, only the hours actually at work are paid (hours at work ÷ the working day), whatever the leave type. Not at work at all that day = not paid. Untick: a paid half-day leave makes the day a full day, as before.</span></span></label>
                 <x-field label="Late check-in after" name="lateCheckinAfter" hint="e.g. 12:00 — check-in at 12:01 or later"><input type="time" wire:model="lateCheckinAfter"></x-field>
-                <label class="check"><input type="checkbox" wire:model="shortHoursDeduction"> Deduct short hours: on days present, time worked below the employee's working day is deducted at the hourly rate</label>
+                <label class="check"><input type="checkbox" wire:model.live="shortHoursDeduction"> Deduct short hours: on days present, time worked below the employee's working day is deducted at the hourly rate</label>
+                <label class="check"><input type="checkbox" wire:model.live="shortHoursLateOnly"> Only on late days: cut short hours only when the employee checked in after the start time + grace (as in the old salary sheet); a day checked in on time is never cut</label>
                 <x-field label="Short-hours grace per month (hours)" name="shortHoursGrace" hint="not deducted"><input type="number" step="0.25" min="0" max="200" wire:model="shortHoursGrace"></x-field>
-                <x-field label="Hours per day for the hourly rate" name="hourlyRateHours" hint="per-day salary ÷ this = hourly rate for short-hour / late deductions and extra work · blank = each employee's working day (the old salary sheet used 9)"><input type="number" step="0.25" min="0.25" max="24" wire:model="hourlyRateHours" placeholder="employee's hours"></x-field>
+                <x-field label="Hours per day for the hourly rate" name="hourlyRateHours" hint="per-day salary ÷ this = hourly rate for late check-in / half day pay, short hours, overtime and extra work (extra work at most one day's pay a day) · blank = 9, as in the old salary sheet · the employee's working day does not change"><input type="number" step="0.25" min="0.25" max="24" wire:model="hourlyRateHours" placeholder="9"></x-field>
                 <label class="check"><input type="checkbox" wire:model="attendanceProration"> Prorate salary by attendance (unpaid absence reduces pay)</label>
                 <label class="check"><input type="checkbox" wire:model="includePaidLeave"> Count approved paid leave as paid days</label>
                 <label class="check"><input type="checkbox" wire:model="encashmentEnabled"> Encash remaining paid leave in final settlement</label>

@@ -249,7 +249,9 @@ class WorkService
     public function writeMissedStatus(AttendanceEmployee $employee, string $date, string $reason, array $fields, User $user): \App\Models\DailyWorkStatus
     {
         $reason = trim($reason);
-        if (! in_array($date, $this->missedStatusDays($employee), true)) {
+        $recent = in_array($date, $this->missedStatusDays($employee), true);
+        // HR can let a person write days in previous months too (Employee profile > Daily status for earlier days).
+        if (! $recent && ! \App\Support\PastDailyStatus::allows($employee, $date)) {
             throw ValidationException::withMessages(['date' => 'A missed daily status can be written only for a day in the last '.self::MISSED_DAYS_BACK.' days you were at work and did not write it.']);
         }
         if (mb_strlen($reason) < 5) throw ValidationException::withMessages(['late_reason' => 'First write why the status was not written that day (at least 5 characters).']);
@@ -258,7 +260,8 @@ class WorkService
 
         $status = DB::transaction(fn () => \App\Models\DailyWorkStatus::create([...$keep, 'employee_id' => $employee->id, 'work_date' => $date, 'submitted_at' => now(), 'submitted_by' => $user->id, 'late_reason' => mb_substr($reason, 0, 1000), 'server_version' => 1]));
         $this->audit->record('work_status.written_late', $status, ['reason' => $reason]);
-        $removed = app(PeopleOperationsService::class)->removeStatusFine($employee, $date, $reason, $user->id);
+        // An older day (allowed by HR) keeps its fine: the person can still ask on the Penalties page.
+        $removed = $recent ? app(PeopleOperationsService::class)->removeStatusFine($employee, $date, $reason, $user->id) : null;
         $day = $status->work_date->format('d M');
         $fine = $removed ? ' The fine of '.number_format((float) $removed->amount, 2).' was removed.' : '';
         Notifier::send($employee->user, 'DailyStatusSubmitted', $status->id, "Your daily status for {$day} is saved.{$fine}", route('work.daily-status', [], false));

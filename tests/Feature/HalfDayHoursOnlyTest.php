@@ -71,8 +71,8 @@ class HalfDayHoursOnlyTest extends TestCase
         $item = $this->item();
         $b = $item->calculation_breakdown;
         $this->assertSame([], $b['half_days'], 'Not a fixed half day');
-        $this->assertSame(0.375, (float) $b['hours_paid_days']['2026-10-13']['share']);
-        $this->assertEqualsWithDelta(1375, (float) $b['base_salary'], 0.01, '1 day + 3 h of 8 h (375), not 500');
+        $this->assertSame(0.3333, (float) $b['hours_paid_days']['2026-10-13']['share'], '3 h ÷ 9 h (hourly rate = one day ÷ 9)');
+        $this->assertEqualsWithDelta(1333.3, (float) $b['base_salary'], 0.01, '1 day + 3 h of 9 h (333.30), not 500');
 
         // Attendance still says Half day; the salary page explains it in hours and rupees.
         $this->assertTrue(app(AttendanceService::class)->isHalfDay(AttendanceSession::whereDate('work_date', '2026-10-13')->first()));
@@ -95,9 +95,9 @@ class HalfDayHoursOnlyTest extends TestCase
         $this->day('2026-10-18', '09:00', '20:00'); // Sunday: 11 h worked, the working day is 8 h
         $extra = $this->item()->calculation_breakdown['extra_work'];
         $this->assertSame(11 * 3600, $extra['seconds']);
-        $this->assertSame(8 * 3600, $extra['paid_seconds']);
-        $this->assertEqualsWithDelta(1000, (float) $extra['amount'], 0.01, '8 h x 125 an hour, the 3 h above are not paid');
-        $this->assertSame('paid 8h 00m of 11h 00m worked', app(\App\Services\SalarySummaryService::class)->soFar($this->employee)['shortfall']['extra']['hours']);
+        $this->assertSame(9 * 3600, $extra['paid_seconds'], 'At most one day of pay: 9 h at one day ÷ 9');
+        $this->assertEqualsWithDelta(1000, (float) $extra['amount'], 0.01, '9 h x 111.11 an hour (one day ÷ 9) = one day, the 2 h above are not paid');
+        $this->assertSame('paid 9h 00m of 11h 00m worked', app(\App\Services\SalarySummaryService::class)->soFar($this->employee)['shortfall']['extra']['hours']);
     }
 
     public function test_extra_working_on_an_off_day_is_shown_where_gross_is_explained(): void
@@ -123,10 +123,10 @@ class HalfDayHoursOnlyTest extends TestCase
         $this->day('2026-10-13', '12:30', '22:30'); // in after 12:00, 10 h at work on an 8 h day
         $this->assertSame(1.0, (float) $this->item()->calculation_breakdown['hours_paid_days']['2026-10-13']['share'], 'Never more than one day');
         \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $this->employee])
-            ->assertSee('paid 8h 00m (max) · +2h 00m extra, not paid')->assertDontSee('paid for 10h 00m');
+            ->assertSee('paid 9h 00m (max) · +1h 00m extra, not paid')->assertDontSee('paid for 10h 00m');
         // The same words in the mobile app's day list.
         \Laravel\Sanctum\Sanctum::actingAs($this->employee->user);
         $days = collect($this->getJson('/api/attendance/history?from=2026-10-13&to=2026-10-13')->assertOk()->json('data'));
-        $this->assertSame('paid 8h 00m (max) · +2h 00m extra, not paid', $days->firstWhere('date', '2026-10-13')['pay_note']);
+        $this->assertSame('paid 9h 00m (max) · +1h 00m extra, not paid', $days->firstWhere('date', '2026-10-13')['pay_note']);
     }
 }

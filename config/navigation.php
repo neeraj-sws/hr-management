@@ -107,6 +107,7 @@ return [
     ]],
     ['heading' => 'Employee Lifecycle', 'items' => [
         ['label' => 'Documents', 'route' => 'lifecycle.documents', 'icon' => 'file'],
+        ['label' => 'Letter Templates', 'route' => 'lifecycle.letters', 'icon' => 'file'],
         ['label' => 'Assets', 'route' => 'lifecycle.assets', 'icon' => 'monitor'],
         ['label' => 'Onboarding', 'route' => 'lifecycle.onboarding', 'icon' => 'user-plus'],
         ['label' => 'Offboarding', 'route' => 'lifecycle.offboarding', 'icon' => 'user-minus'],
@@ -147,5 +148,11 @@ return [
         ['label' => 'Roles & Permissions', 'route' => 'system.roles', 'icon' => 'lock'],
         ['label' => 'Settings', 'route' => 'system.settings', 'icon' => 'settings'],
         ['label' => 'Telegram', 'route' => 'system.telegram', 'icon' => 'bell'],
+    ]],
+    ['heading' => 'Help & Support', 'items' => [
+        ['label' => 'My requests', 'route' => 'support.my', 'icon' => 'message'],
+        ['label' => 'Support desk', 'route' => 'support.desk', 'icon' => 'inbox'],
+        ['label' => 'Support reports', 'route' => 'support.reports', 'icon' => 'chart'],
+        ['label' => 'Support settings', 'route' => 'support.settings', 'icon' => 'settings'],
     ]],
 ];

@@ -10,15 +10,14 @@
         @include('partials.import-form', ['type' => 'attendance', 'kind' => 'Attendance', 'action' => route('attendance.records.import')])
     </section>
 
-    {{-- Filters: applied with Search (or Enter); Reset goes back to today, everyone. --}}
-    <form class="card ar-filters" wire:submit="search">
-        <label class="field"><span>From</span><input type="date" wire:model="from"></label>
-        <label class="field"><span>To</span><input type="date" wire:model="to" x-bind:min="$wire.from"></label>
-        <label class="field ar-grow"><span>Employee</span><select wire:model="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }} ({{ $e->employee_code }})</option>@endforeach</select></label>
-        <label class="field ar-grow"><span>Department</span><select wire:model="department"><option value="">All departments</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
-        <label class="field"><span>Session</span><select wire:model="status"><option value="">Any</option><option value="working">Working</option><option value="on_break">On break</option><option value="completed">Completed</option></select></label>
+    {{-- Filters: the list updates as soon as a filter changes; Reset goes back to today, everyone. --}}
+    <form class="card ar-filters" wire:submit.prevent>
+        <label class="field"><span>From</span><input type="date" wire:model.live="from"></label>
+        <label class="field"><span>To</span><input type="date" wire:model.live="to" x-bind:min="$wire.from"></label>
+        <label class="field ar-grow"><span>Employee</span><select wire:model.live="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }} ({{ $e->employee_code }})</option>@endforeach</select></label>
+        <label class="field ar-grow"><span>Department</span><select wire:model.live="department"><option value="">All departments</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></label>
+        <label class="field"><span>Session</span><select wire:model.live="status"><option value="">Any</option><option value="working">Working</option><option value="on_break">On break</option><option value="completed">Completed</option></select></label>
         <div class="ar-filter-actions">
-            <button type="submit" class="btn btn-primary"><span wire:loading wire:target="search" class="spinner"></span><x-icon name="search" class="icon-sm" wire:loading.remove wire:target="search" />Search</button>
             <button type="button" class="btn" wire:click="resetFilters"><x-icon name="refresh" class="icon-sm" />Reset</button>
         </div>
     </form>
@@ -112,7 +111,7 @@
             <p class="small muted" style="padding:0 18px">{{ $dayEmployee->name }} · {{ $calendarMonth->format('F Y') }} (the month of “From”)</p>
             <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" />
         @else
-        <div class="table-wrap" wire:loading.class="ar-loading" wire:target="search,resetFilters,gotoPage,nextPage,previousPage,perPage"><table class="table ar-table">
+        <div class="table-wrap" wire:loading.class="ar-loading" wire:target="from,to,employee,department,status,resetFilters,gotoPage,nextPage,previousPage,perPage"><table class="table ar-table">
             <thead><tr><th>Date</th><th>Employee</th>
                 <th data-col="in">In</th><th data-col="out">Out</th>
                 <th data-col="worked" class="num" title="Worked: in–out time less break and idle · at work: in–out less break only (decides a half day)">Worked</th>
@@ -195,7 +194,7 @@
 
                 <div class="sa-body">
                     <div class="sa-tiles">
-                        <div class="sa-tile sa-t-blue"><span>Total in use (incl. meetings)</span><strong x-text="hms(v.active + v.meeting)">@hms($t['active'] + $t['meeting'])</strong></div>
+                        <div class="sa-tile sa-t-blue"><span>Total in use (incl. meetings)</span><strong x-text="hms(v.active + v.meeting + v.corrected)">@hms($t['active'] + $t['meeting'] + $t['corrected'])</strong></div>
                         <div class="sa-tile sa-t-gray"><span>Meetings</span><strong x-text="hms(v.meeting)">@hms($t['meeting'])</strong></div>
                         <div class="sa-tile sa-t-amber"><span>Idle time</span><strong x-text="hms(v.sIdle)">@hms($t['idle'])</strong></div>
                         <div class="sa-tile sa-t-violet"><span>Active</span><strong>@if($tTotal > 0)<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $tTotal) }}</span>%@else — @endif</strong></div>
@@ -259,7 +258,7 @@
                             <div><span>Late by</span><strong @class(['ar-red' => $attendance->lateMinutes($d)])>{{ $attendance->lateMinutes($d) ? \App\Support\Duration::fromMinutes($attendance->lateMinutes($d)) : '—' }}</strong></div>
                         </div>
                         <section class="ar-box">
-                            <h3>Check-in &amp; check-out · <x-badge :status="$attendance->isHalfDay($d) ? 'half_day' : ($attendance->isLate($d) ? 'late' : $d->status)" /></h3>
+                            <h3>Check-in &amp; check-out · <x-badge :status="$attendance->isHalfDay($d) ? 'half_day' : ($attendance->isLate($d) ? 'late' : $d->status)" />@if($activity['corrections']) <span class="badge badge-amber" title="This day's time was changed by an approved correction (see Corrections below)">Corrected</span>@endif</h3>
                             <dl class="kv">
                                 <dt>Check-in</dt><dd><strong>{{ $d->check_in?->format('h:i A') ?? '—' }}</strong>@if($d->check_in_photo_path) · <a href="{{ route('attendance.photo', [$d, 'in']) }}" target="_blank" rel="noopener">selfie</a>@endif
                                     @if($d->check_in_latitude !== null)<small>{{ $d->checkInOffice ? 'at '.$d->checkInOffice->name : ($d->check_in_distance_meters !== null ? number_format($d->check_in_distance_meters).' m from office' : 'location shared') }} ({{ $d->check_in_latitude }}, {{ $d->check_in_longitude }})</small>@endif
@@ -273,6 +272,21 @@
                                 <dt>Session</dt><dd>{{ str_replace('_', ' ', ucfirst($d->status)) }}</dd>
                             </dl>
                         </section>
+                        @if($activity['corrections'])
+                            {{-- Every approved change to this day: by whom, when, why, and the times before → after. --}}
+                            <section class="ar-box">
+                                <h3>Corrections ({{ count($activity['corrections']) }})</h3>
+                                @foreach($activity['corrections'] as $c)
+                                    <div style="padding:8px 0;border-top:1px solid var(--line-2)">
+                                        <div class="small"><strong>{{ $c['direct'] ? 'Changed by '.$c['by'] : 'Request approved by '.$c['by'] }}</strong> <span class="muted">· {{ $c['at'] }}</span></div>
+                                        @if($c['reason'] !== '')<div class="small">Reason: {{ $c['reason'] }}</div>@endif
+                                        @if($c['changes'])
+                                            <dl class="kv" style="margin-top:4px">@foreach($c['changes'] as [$label, $from, $to])<dt>{{ $label }}</dt><dd><span class="muted" style="text-decoration:line-through">{{ $from }}</span> → <strong>{{ $to }}</strong></dd>@endforeach</dl>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </section>
+                        @endif
                         <section class="ar-box">
                             <h3>Screen time (desktop app)</h3>
                             <div class="ar-screen-full">@include('livewire.attendance.partials.screen-time', ['s' => $d, 'f' => $f])</div>

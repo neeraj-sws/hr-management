@@ -1,121 +1,142 @@
-<div>
-    @include('billing._ui')
-    @php
-        $cust = $invoice->customer;
-        $initials = \Illuminate\Support\Str::of(trim($cust?->name ?? '?'))->explode(' ')->filter()->take(2)->map(fn ($w) => mb_strtoupper(mb_substr($w, 0, 1)))->join('') ?: '?';
-        $gstin = \App\Services\BillingService::cleanGstin($cust?->tax_number);
-        $pos = $invoice->place_of_supply ?: $cust?->billing_state;
-        $posLabel = $pos ? \App\Services\BillingService::stateLabel($pos) : '—';
-        $due = max(0, $invoice->due());
-        $overdue = $invoice->due_date && $invoice->due_date->isPast() && $due > 0;
-        $creator = $invoice->created_by ? \App\Models\User::find($invoice->created_by)?->name : null;
-    @endphp
-
-    <div class="page-head">
-        <div><h1>{{ $invoice->number() }}<span class="bill-badge dot {{ billing_badge_class($invoice->status) }}">{{ $invoice->status }}</span></h1>
-            <p>{{ $cust?->name }} · Created on {{ $invoice->created_at?->format('d M Y') ?? $invoice->issue_date->format('d M Y') }}</p></div>
-        <div class="row-actions">
-            @if($invoice->status === 'Draft')<button class="btn" wire:click="markSent"><x-icon name="mail" class="icon-sm" />Send invoice</button>@endif
-            <a class="btn" href="{{ route('billing.invoices.print', $invoice) }}" target="_blank"><x-icon name="printer" class="icon-sm" />Print / PDF</a>
+@php
+    $customer = $invoice->customer;
+    $state = $invoice->place_of_supply ?: $customer?->billing_state;
+    $gstin = \App\Services\BillingService::cleanGstin($customer?->tax_number);
+    $initials = collect(preg_split('/\s+/', trim((string) $customer?->name)))->filter()->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->join('') ?: '—';
+    $statusTone = ['Paid' => 'green', 'Partially Paid' => 'amber', 'Unpaid' => 'red', 'Sent' => 'blue', 'Draft' => 'gray'][$invoice->status] ?? 'gray';
+    $due = max(0, $invoice->due());
+    $lastPaid = $invoice->payments->max('date');
+    $discount = $invoice->items->sum(fn ($i) => (float) $i->discount);
+    $pct = fn (float $r) => rtrim(rtrim(number_format($r, 2), '0'), '.').'%';
+    $rupee = fn ($v) => '₹'.number_format((float) $v, 2);
+@endphp
+<div class="inv-page">
+    <div class="page-head inv-head">
+        <div>
+            <div class="inv-title"><h1>{{ $invoice->number() }}</h1><x-badge :tone="$statusTone" class="inv-status-badge">@if($invoice->status === 'Paid')<x-icon name="check-circle" class="icon-sm" />@endif{{ $invoice->status }}</x-badge></div>
+            <p>{{ $customer?->name ?? '—' }} <span class="inv-dot">·</span> Created on {{ $invoice->created_at?->format('d M Y, h:i A') ?? $invoice->issue_date->format('d M Y') }}</p>
+        </div>
+        <div class="row-actions inv-actions">
+            @if($invoice->status === 'Draft')<button class="btn" wire:click="markSent"><x-icon name="mail" class="icon-sm" />Mark as sent</button>@endif
+            <a class="btn" href="{{ route('billing.invoices.print', $invoice) }}" target="_blank"><x-icon name="download" class="icon-sm" />Print / PDF</a>
             <a class="btn" href="{{ route('billing.invoices.edit', $invoice) }}"><x-icon name="edit" class="icon-sm" />Edit</a>
-            @if($due > 0)<button class="btn btn-primary" wire:click="openPayment"><x-icon name="plus" class="icon-sm" />Record payment</button>@endif
+            @if($invoice->due() > 0)<button class="btn btn-primary" wire:click="openPayment"><x-icon name="plus" class="icon-sm" />Record payment</button>@endif
+            <details class="menu inv-more">
+                <summary class="btn btn-icon" aria-label="More actions"><x-icon name="more" class="icon-sm" /></summary>
+                <div class="menu-panel inv-more-panel">
+                    <a class="menu-item" href="{{ route('billing.invoices.print', $invoice) }}" target="_blank"><x-icon name="printer" class="icon-sm" />Print / PDF</a>
+                    <a class="menu-item" href="{{ route('billing.credit-notes') }}"><x-icon name="receipt" class="icon-sm" />Credit notes</a>
+                    <a class="menu-item" href="{{ route('billing.customers') }}"><x-icon name="users" class="icon-sm" />Customers</a>
+                    <a class="menu-item" href="{{ route('billing.invoices') }}"><x-icon name="arrow-left" class="icon-sm" />All invoices</a>
+                </div>
+            </details>
         </div>
     </div>
     <x-errors />
 
-    {{-- Customer + meta --}}
-    <section class="card mb">
-        <div class="inv-cust">
-            <div class="inv-cust-main">
-                <div class="inv-avatar">{{ $initials }}</div>
-                <div>
-                    <div class="nm">{{ $cust?->name ?? '—' }}</div>
-                    <div class="sub">Customer{!! $cust?->billing_city ? '<br>'.e($cust->billing_city) : '' !!}{!! $gstin ? '<br>GSTIN: '.e($gstin) : '' !!}</div>
-                </div>
-            </div>
-            <div class="inv-cmeta">
-                <div><span>Invoice number</span><strong>{{ $invoice->number() }}</strong></div>
-                <div><span>Issue date</span><strong>{{ $invoice->issue_date->format('d M Y') }}</strong></div>
-                <div><span>Due date</span><strong class="{{ $overdue ? 'ov-red' : '' }}">{{ $invoice->due_date?->format('d M Y') ?? '—' }}</strong></div>
-                <div><span>Place of supply</span><strong>{{ $posLabel }}</strong><small>{{ $interState ? 'IGST' : 'CGST + SGST' }}</small></div>
-                @php($paidOn = $invoice->payments->max('date'))
-                <div><span>Status</span><strong class="meta-dot" style="color:{{ $invoice->status === 'Paid' ? 'var(--green,#059669)' : ($invoice->status === 'Partially Paid' ? 'var(--amber,#b45309)' : 'inherit') }}">{{ $invoice->status }}</strong>
-                    @if($invoice->status === 'Paid' && $paidOn)<small>Paid on {{ \Illuminate\Support\Carbon::parse($paidOn)->format('d M Y') }}</small>
-                    @elseif($invoice->send_date)<small>Sent on {{ $invoice->send_date->format('d M Y') }}</small>@endif</div>
-                @if($invoice->project)<div><span>Project</span><strong>{{ $invoice->project->name }}</strong></div>@endif
+    <section class="card inv-strip mb">
+        <div class="inv-customer">
+            <div class="inv-avatar">{{ $initials }}</div>
+            <div class="inv-customer-copy">
+                <strong>{{ $customer?->name ?? '—' }}</strong>
+                <span class="inv-sub">Customer</span>
+                @if($customer?->billing_city)<span class="inv-line"><x-icon name="building" class="icon-sm" />{{ $customer->billing_city }}</span>@endif
+                <span class="inv-line"><x-icon name="file" class="icon-sm" />GSTIN: {{ $gstin ?: '—' }}</span>
+                @if($invoice->project)<span class="inv-line"><x-icon name="folder" class="icon-sm" />{{ $invoice->project->name }}</span>@endif
             </div>
         </div>
+        <div class="inv-meta"><span>Invoice number</span><strong class="inv-plain">{{ $invoice->number() }}</strong>@if($invoice->ref_number)<small>Ref: {{ $invoice->ref_number }}</small>@endif</div>
+        <div class="inv-meta"><span>Issue date</span><strong class="inv-plain"><x-icon name="calendar" class="icon-sm" />{{ $invoice->issue_date->format('d M Y') }}</strong></div>
+        <div class="inv-meta"><span>Due date</span><strong class="inv-plain"><x-icon name="calendar" class="icon-sm" />{{ $invoice->due_date?->format('d M Y') ?? '—' }}</strong></div>
+        <div class="inv-meta"><span>Place of supply</span><strong>{{ $state ? \App\Services\BillingService::stateLabel($state) : '—' }}</strong><small>{{ $interState ? 'IGST' : 'CGST + SGST' }}</small></div>
+        <div class="inv-meta"><span>Status</span><strong class="inv-state inv-tone-{{ $statusTone }}"><i></i>{{ $invoice->status }}</strong>
+            <small>@if($invoice->status === 'Paid' && $lastPaid)Paid on {{ $lastPaid->format('d M Y') }}@elseif($invoice->send_date)Sent on {{ $invoice->send_date->format('d M Y') }}@elseif($invoice->due_date)Due on {{ $invoice->due_date->format('d M Y') }}@endif</small></div>
     </section>
 
-    {{-- Items + summary --}}
-    <div class="inv-grid mb">
-        <section class="card">
-            <div class="card-head"><h2><x-icon name="receipt" class="icon-sm" /> Items</h2><a class="btn btn-sm" href="{{ route('billing.invoices.edit', $invoice) }}"><x-icon name="plus" class="icon-sm" />Add item</a></div>
-            <div class="table-wrap"><table class="table bill-items">
-                <thead><tr><th>#</th><th>Item / description</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Discount</th><th class="num">Tax</th><th class="num">Amount</th></tr></thead>
-                <tbody>
-                @foreach($invoice->items as $i => $it)
-                    <tr><td>{{ $i + 1 }}</td>
-                        <td><strong>{{ $it->name }}</strong>@if($it->description)<small>{{ $it->description }}</small>@endif</td>
-                        <td>{{ $it->hsn_sac ?: '—' }}</td><td class="num">{{ (float) $it->quantity }}</td><td class="num">{{ number_format($it->price, 2) }}</td>
-                        <td class="num">{{ number_format($it->discount, 2) }}</td><td class="num">{{ $it->tax?->name ?? '—' }}</td>
-                        <td class="num">{{ number_format($it->lineTotal(), 2) }}</td></tr>
-                @endforeach
-                </tbody>
-            </table></div>
-        </section>
-        <section class="card">
-            <div class="card-head"><h2><x-icon name="list" class="icon-sm" /> Invoice summary</h2></div>
-            <div class="inv-sum">
-                <div class="r"><span>Sub-total</span><strong>₹{{ number_format($invoice->subTotal(), 2) }}</strong></div>
-                @if($interState)<div class="r"><span>IGST</span><strong>₹{{ number_format(collect($taxes)->sum('igst'), 2) }}</strong></div>
-                @else<div class="r"><span>CGST</span><strong>₹{{ number_format(collect($taxes)->sum('cgst'), 2) }}</strong></div><div class="r"><span>SGST</span><strong>₹{{ number_format(collect($taxes)->sum('sgst'), 2) }}</strong></div>@endif
-                @if($invoice->creditTotal() > 0)<div class="r"><span>Credit notes</span><strong>− ₹{{ number_format($invoice->creditTotal(), 2) }}</strong></div>@endif
-                <div class="r tot"><span>Total amount</span><strong>₹{{ number_format($invoice->total(), 2) }}</strong></div>
-                <div class="r"><span>Paid amount</span><strong class="pos">₹{{ number_format($invoice->paidAmount(), 2) }}</strong></div>
-                <div class="inv-bal {{ $due <= 0 ? 'clear' : '' }}">
-                    <div><span class="lbl">@if($due <= 0)<x-icon name="check-circle" class="icon-sm" />@endif{{ $due <= 0 ? 'Fully paid' : 'Balance due' }}</span><b>₹{{ number_format($due, 2) }}</b></div>
-                    @if($due <= 0)<span class="inv-bal-ic"><x-icon name="check" /></span>@endif
-                </div>
+    <div class="inv-grid">
+        <div class="inv-main">
+            <section class="card inv-card inv-items">
+                <div class="inv-card-head"><h2><x-icon name="receipt" class="icon-sm" />Items</h2><a class="btn btn-sm" href="{{ route('billing.invoices.edit', $invoice) }}"><x-icon name="plus" class="icon-sm" />Add Item</a></div>
+                <div class="table-wrap"><table class="table inv-table">
+                    <thead><tr><th class="inv-n">#</th><th>Item / Description</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Price (₹)</th><th class="num">Discount (₹)</th><th>Tax</th><th class="num">Amount (₹)</th></tr></thead>
+                    <tbody>
+                    @forelse($invoice->items as $it)
+                        <tr><td class="inv-n">{{ $loop->iteration }}</td>
+                            <td><strong>{{ $it->name }}</strong>@if($it->description)<small class="inv-desc">{{ $it->description }}</small>@endif</td>
+                            <td>{{ $it->hsn_sac ?: '—' }}</td><td class="num">{{ (float) $it->quantity }}</td><td class="num">{{ number_format($it->price, 2) }}</td>
+                            <td class="num">{{ number_format($it->discount, 2) }}</td><td>{{ $it->tax?->name ?? '—' }}</td>
+                            <td class="num"><strong>{{ number_format($it->lineTotal(), 2) }}</strong></td></tr>
+                    @empty<tr><td colspan="8"><x-empty title="No items yet" icon="receipt" /></td></tr>@endforelse
+                    </tbody></table></div>
+            </section>
+
+            <div class="inv-pair">
+                <section class="card inv-card">
+                    <div class="inv-card-head"><h2><x-icon name="notes" class="icon-sm" />Notes</h2><a class="btn btn-sm" href="{{ route('billing.invoices.edit', $invoice) }}"><x-icon name="edit" class="icon-sm" />Edit</a></div>
+                    <div class="inv-text">{{ $invoice->notes ?: '—' }}</div>
+                </section>
+                <section class="card inv-card">
+                    <div class="inv-card-head"><h2><x-icon name="file" class="icon-sm" />Terms &amp; Conditions</h2><a class="btn btn-sm" href="{{ route('billing.settings') }}" title="Terms are the same on every invoice; change them in Billing settings"><x-icon name="edit" class="icon-sm" />Edit</a></div>
+                    <div class="inv-text">{{ $terms ?: '—' }}</div>
+                </section>
             </div>
-        </section>
+        </div>
+
+        <aside class="inv-side">
+            <section class="card inv-card inv-summary">
+                <div class="inv-card-head"><h2><x-icon name="list" class="icon-sm" />Invoice Summary</h2></div>
+                <dl class="inv-sum">
+                    <div><dt>Sub-total</dt><dd>{{ $rupee($invoice->subTotal()) }}</dd></div>
+                    <div><dt>Discount</dt><dd>{{ $rupee($discount) }}</dd></div>
+                    @if($interState)
+                        <div><dt>IGST{{ $taxRate !== null ? ' ('.$pct($taxRate).')' : '' }}</dt><dd>{{ $rupee(collect($taxes)->sum('igst')) }}</dd></div>
+                    @else
+                        <div><dt>CGST{{ $taxRate !== null ? ' ('.$pct($taxRate / 2).')' : '' }}</dt><dd>{{ $rupee(collect($taxes)->sum('cgst')) }}</dd></div>
+                        <div><dt>SGST{{ $taxRate !== null ? ' ('.$pct($taxRate / 2).')' : '' }}</dt><dd>{{ $rupee(collect($taxes)->sum('sgst')) }}</dd></div>
+                    @endif
+                </dl>
+                <dl class="inv-total">
+                    <div><dt>Total Amount</dt><dd>{{ $rupee($invoice->total()) }}</dd></div>
+                    <div class="inv-paid"><dt>Paid Amount</dt><dd>{{ $rupee($invoice->paidAmount()) }}</dd></div>
+                    @if($invoice->creditTotal() > 0)<div class="inv-credit"><dt>Credit notes</dt><dd>{{ $rupee($invoice->creditTotal()) }}</dd></div>@endif
+                </dl>
+                @if($due <= 0)
+                    <div class="inv-balance inv-balance-ok">
+                        <div><span><x-icon name="check-circle" class="icon-sm" />Fully Paid</span><strong>₹0.00</strong></div>
+                        <i class="inv-tick"><x-icon name="check" /></i>
+                    </div>
+                @else
+                    <div class="inv-balance inv-balance-due">
+                        <div><span><x-icon name="alert" class="icon-sm" />Balance Due</span><strong>{{ $rupee($due) }}</strong></div>
+                        <button class="btn btn-sm btn-primary" wire:click="openPayment">Record payment</button>
+                    </div>
+                @endif
+            </section>
+        </aside>
     </div>
 
-    {{-- Notes + terms --}}
-    <div class="two-col mb">
-        <section class="card"><div class="card-head"><h2><x-icon name="note" class="icon-sm" /> Notes</h2><a class="btn btn-sm" href="{{ route('billing.invoices.edit', $invoice) }}"><x-icon name="edit" class="icon-sm" />Edit</a></div>
-            <p style="white-space:pre-wrap;margin:4px 2px;{{ $invoice->notes ? '' : 'color:var(--muted)' }}">{{ $invoice->notes ?: '—' }}</p></section>
-        <section class="card"><div class="card-head"><h2><x-icon name="file" class="icon-sm" /> Terms &amp; conditions</h2></div>
-            <p style="white-space:pre-wrap;margin:4px 2px;{{ $invoice->terms ? '' : 'color:var(--muted)' }}">{{ $invoice->terms ?: '—' }}</p></section>
-    </div>
-
-    {{-- Payment history --}}
-    <section class="card mb">
-        <div class="card-head"><h2><x-icon name="credit-card" class="icon-sm" /> Payment history</h2>@if($due > 0)<button class="btn btn-sm btn-primary" wire:click="openPayment"><x-icon name="plus" class="icon-sm" />Add payment</button>@endif</div>
-        <div class="table-wrap"><table class="table">
-            <thead><tr><th>#</th><th>Date</th><th>Method</th><th>Reference</th><th class="num">Amount</th><th>Notes</th><th>Added by</th><th>Action</th></tr></thead>
+    <section class="card inv-card mb">
+        <div class="inv-card-head"><h2><x-icon name="credit-card" class="icon-sm" />Payment History</h2>@if($invoice->due() > 0)<button class="btn btn-sm" wire:click="openPayment"><x-icon name="plus" class="icon-sm" />Record payment</button>@endif</div>
+        <div class="table-wrap"><table class="table inv-table">
+            <thead><tr><th class="inv-n">#</th><th>Date</th><th>Method</th><th>Reference</th><th class="num">Amount (₹)</th><th>Notes</th><th>Added by</th><th class="inv-act">Action</th></tr></thead>
             <tbody>
-            @forelse($invoice->payments as $i => $p)
-                <tr><td>{{ $i + 1 }}</td><td class="nowrap">{{ $p->date->format('d M Y') }}</td><td>{{ $p->method ?: '—' }}</td><td>{{ $p->reference ?: '—' }}</td>
+            @forelse($invoice->payments as $p)
+                <tr><td class="inv-n">{{ $loop->iteration }}</td><td class="nowrap">{{ $p->date->format('d M Y') }}</td><td>{{ $p->method ?: '—' }}</td><td>{{ $p->reference ?: '—' }}</td>
                     <td class="num"><strong>{{ number_format($p->amount, 2) }}</strong></td><td>{{ $p->note ?: '—' }}</td>
-                    <td>{{ $p->recorder?->name ?? '—' }}<small class="muted-dash">{{ $p->created_at?->format('d M Y, h:i A') }}</small></td>
-                    <td><button class="btn btn-sm btn-danger" wire:click="deletePayment({{ $p->id }})" wire:confirm="Remove this payment of {{ number_format($p->amount, 2) }}? The invoice will show it as due again."><x-icon name="trash" class="icon-sm" /></button></td></tr>
-            @empty<tr><td colspan="8"><x-empty title="No payments yet" icon="credit-card" /></td></tr>@endforelse
+                    <td>{{ $p->recorder?->name ?? '—' }}@if($p->created_at)<small class="inv-desc">{{ $p->created_at->format('d M Y, h:i A') }}</small>@endif</td>
+                    <td class="inv-act"><button class="btn btn-sm btn-danger btn-icon" wire:click="deletePayment({{ $p->id }})" wire:confirm="Remove this payment of {{ number_format($p->amount, 2) }}? The invoice will show it as due again." title="Remove payment" aria-label="Remove payment of {{ number_format($p->amount, 2) }}"><x-icon name="trash" class="icon-sm" /></button></td></tr>
+            @empty<tr><td colspan="8"><x-empty title="No payments yet" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>
     </section>
 
-    {{-- Activity log --}}
-    <section class="card">
-        <div class="card-head"><h2><x-icon name="activity" class="icon-sm" /> Activity log</h2></div>
-        <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date &amp; time</th><th>Action</th><th>Details</th><th>By</th></tr></thead>
+    <section class="card inv-card">
+        <div class="inv-card-head"><h2><x-icon name="activity" class="icon-sm" />Activity Log</h2></div>
+        <div class="table-wrap"><table class="table inv-table">
+            <thead><tr><th>Date &amp; Time</th><th>Action</th><th>Details</th><th>By</th></tr></thead>
             <tbody>
-            @foreach($invoice->payments->sortByDesc('created_at') as $p)
-                <tr><td class="nowrap">{{ $p->created_at?->format('d M Y, h:i A') }}</td><td><span class="act-pill green"><x-icon name="check-circle" class="icon-sm" />Payment added</span></td>
-                    <td>Payment of ₹{{ number_format($p->amount, 2) }} recorded ({{ $p->method ?: 'Manual' }}).</td><td>{{ $p->recorder?->name ?? '—' }}</td></tr>
-            @endforeach
-                <tr><td class="nowrap">{{ $invoice->created_at?->format('d M Y, h:i A') ?? $invoice->issue_date->format('d M Y') }}</td><td><span class="act-pill blue"><x-icon name="receipt" class="icon-sm" />Invoice created</span></td>
-                    <td>Invoice created with total amount ₹{{ number_format($invoice->total(), 2) }}.</td><td>{{ $creator ?? '—' }}</td></tr>
+            @forelse($activity as $a)
+                <tr><td class="nowrap">{{ $a->at?->format('d M Y, h:i A') }}</td><td><x-badge :tone="$a->tone" class="inv-pill">{{ $a->label }}</x-badge></td><td class="inv-detail">{{ $a->detail }}</td><td>{{ $a->by }}</td></tr>
+            @empty<tr><td colspan="4"><x-empty title="No activity yet" icon="activity" /></td></tr>@endforelse
             </tbody></table></div>
     </section>
 

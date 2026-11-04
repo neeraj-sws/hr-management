@@ -113,12 +113,12 @@ class Oct21BatchETest extends TestCase
         $policy = ['working_days_per_month' => 25, 'attendance_proration' => true, 'include_paid_leave' => true, 'short_hours_deduction' => true, 'short_hours_grace' => 0, 'divisor' => 'fixed'];
 
         $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', $policy, null, $this->admin->id, '2026-09-01');
-        $shortAt85 = app(HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id)->items->firstWhere('employee_id', $e->id)->calculation_breakdown['short_hours']['amount'];
-        $this->assertEqualsWithDelta(400 / 8.5 * 1.5, $shortAt85, 0.01);
+        $shortBlank = app(HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id)->items->firstWhere('employee_id', $e->id)->calculation_breakdown['short_hours']['amount'];
+        $this->assertEqualsWithDelta(400 / 9 * 1.5, $shortBlank, 0.01, 'Blank = 9, same as the old salary sheet: per-day ÷ 9');
 
-        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', [...$policy, 'hourly_rate_hours' => 9], null, $this->admin->id, '2026-09-01');
-        $shortAt9 = app(HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id)->items->firstWhere('employee_id', $e->id)->calculation_breakdown['short_hours']['amount'];
-        $this->assertEqualsWithDelta(400 / 9 * 1.5, $shortAt9, 0.01, 'Same as the old salary sheet: per-day ÷ 9');
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', [...$policy, 'hourly_rate_hours' => 8.5], null, $this->admin->id, '2026-09-01');
+        $shortAt85 = app(HrWorkflowService::class)->calculatePayroll('2026-09-01', '2026-09-30', $this->admin->id)->items->firstWhere('employee_id', $e->id)->calculation_breakdown['short_hours']['amount'];
+        $this->assertEqualsWithDelta(400 / 8.5 * 1.5, $shortAt85, 0.01, 'The setting changes the rate');
     }
 
     public function test_task_time_is_capped_at_the_days_actual_working_time(): void

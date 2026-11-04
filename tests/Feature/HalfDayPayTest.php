@@ -137,7 +137,7 @@ class HalfDayPayTest extends TestCase
         $this->assertSame([], $item->calculation_breakdown['half_days']);
         $this->assertSame(['2026-10-14', '2026-10-15'], array_keys($item->calculation_breakdown['hours_paid_days']));
         $this->assertSame('Half-day leave · Casual', $item->calculation_breakdown['hours_paid_days']['2026-10-14']['leave']);
-        $this->assertEqualsWithDelta(1750, (float) $item->calculation_breakdown['base_salary'], 0.01);
+        $this->assertEqualsWithDelta(1666.6, (float) $item->calculation_breakdown['base_salary'], 0.01, '1,000 + 2 × 3 ÷ 9 × 1,000');
 
         // Settings > Payroll switch off: as before (a paid half-day leave = full day, an unpaid one = half day).
         app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'half_day_hours_only' => false, 'half_leave_hours_only' => false], null, $this->admin->id, '2026-01-01');

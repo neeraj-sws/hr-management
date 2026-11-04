@@ -49,6 +49,8 @@ class DailyStatus extends Component
     public string $missedPlan = '';
     public string $missedBlockers = '';
     public string $missedNotes = '';
+    /** "Add status for an earlier day" (only for people HR allowed it): the day picked. */
+    public string $pastDate = '';
 
     public function mount(): void
     {
@@ -153,6 +155,21 @@ class DailyStatus extends Component
         $this->fill(['missed' => $date, 'missedStep' => 1, 'lateReason' => '', 'missedSummary' => '', 'missedPlan' => '', 'missedBlockers' => '', 'missedNotes' => '']);
     }
 
+    /** An earlier day picked by someone HR allowed (Employee profile > Daily status for earlier days). */
+    public function openPastDay(): void
+    {
+        $employee = $this->requireEmployee();
+        $this->validate(['pastDate' => ['required', 'date_format:Y-m-d']], ['pastDate.required' => 'Pick the day.'], ['pastDate' => 'day']);
+        if (! \App\Support\PastDailyStatus::allows($employee, $this->pastDate)) {
+            $earliest = \App\Support\PastDailyStatus::earliest($employee);
+            throw \Illuminate\Validation\ValidationException::withMessages(['pastDate' => \App\Models\DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', $this->pastDate)->exists()
+                ? 'A status for that day is already written.'
+                : 'Pick a day from '.($earliest ? \Illuminate\Support\Carbon::parse($earliest)->format('d M Y') : '-').' to yesterday.']);
+        }
+        $this->openMissed($this->pastDate);
+        $this->pastDate = '';
+    }
+
     /** Step 1 -> 2: the reason comes first; only then the status can be written. */
     public function missedNext(): void
     {
@@ -165,9 +182,10 @@ class DailyStatus extends Component
         $employee = $this->requireEmployee();
         $this->validate(['lateReason' => ['required', 'string', 'min:5', 'max:1000'], 'missedSummary' => ['required', 'string', 'min:5', 'max:4000'], 'missedPlan' => ['nullable', 'string', 'max:4000'], 'missedBlockers' => ['nullable', 'string', 'max:2000'], 'missedNotes' => ['nullable', 'string', 'max:2000']],
             ['missedSummary.required' => 'Write what you completed that day.'], ['missedSummary' => 'completed work']);
+        $recent = in_array($this->missed, $work->missedStatusDays($employee), true);
         $status = $work->writeMissedStatus($employee, $this->missed, $this->lateReason, ['summary' => $this->missedSummary, 'plan' => $this->missedPlan ?: null, 'blockers' => $this->missedBlockers ?: null, 'notes' => $this->missedNotes ?: null], $this->user());
         $this->missed = '';
-        $this->toast('Daily status for '.$status->work_date->format('d M').' saved. Any fine for that day is removed.');
+        $this->toast('Daily status for '.$status->work_date->format('d M').' saved.'.($recent ? ' Any fine for that day is removed.' : ''));
     }
 
     /** "Edit my status" in View details: close the drawer, open the form. */
@@ -431,6 +449,8 @@ class DailyStatus extends Component
             'canSetRules' => $this->canSetRules(),
             // Missed days still writable (last 2 days at work with no status), newest first.
             'missedDays' => $own ? app(\App\Services\WorkService::class)->missedStatusDays($own) : [],
+            // Earlier days HR allowed this person to write (null = the normal 2-day limit).
+            'pastFrom' => $own ? \App\Support\PastDailyStatus::earliest($own) : null,
             'statuses' => $statuses,
             'own' => $own,
             'canSeeTeam' => $canSeeTeam,

@@ -31,6 +31,7 @@ class NotificationPresenter
         'payroll' => ['Payroll', 'currency', 'currency-inr', '#EEEDFE', '#3C3489', 'payroll'],
         'leave' => ['Leave', 'calendar', 'calendar-blank-outline', '#FAEEDA', '#854F0B', 'leave'],
         'attendance' => ['Attendance', 'clock', 'clock-outline', '#E6F1FB', '#185FA5', 'attendance'],
+        'support' => ['Help & Support', 'message', 'lifebuoy', '#E1F5EE', '#085041', 'other'],
         'other' => ['Update', 'bell', 'bell-outline', '#F1EFE8', '#5F5E5A', 'other'],
     ];
 
@@ -43,7 +44,7 @@ class NotificationPresenter
         'TaskAssignment' => 'task', 'TaskCompleted' => 'task', 'TaskOverdue' => 'task', 'TaskComment' => 'task', 'ProjectMember' => 'task', 'ProjectManager' => 'task', 'TrainingAssignment' => 'task', 'PerformanceGoal' => 'task', 'PerformanceReview' => 'task', 'PerformanceFeedback' => 'task',
         'PayrollRun' => 'payroll', 'SalaryPayment' => 'payroll', 'Payslip' => 'payroll', 'SalaryAdjustment' => 'payroll', 'SalaryAdvance' => 'payroll', 'SalaryProfile' => 'payroll', 'EmployeeFinalSettlement' => 'payroll', 'EmployeeFinalSettlementPayment' => 'payroll',
         'LeaveRequest' => 'leave', 'OvertimeRequest' => 'leave', 'LeaveBalance' => 'leave', 'ExpenseClaim' => 'leave', 'NightWork' => 'leave', 'LateArrival' => 'leave',
-        'MonitoringRequest' => 'other', 'ScreenCapture' => 'other',
+        'MonitoringRequest' => 'other', 'ScreenCapture' => 'other', 'SupportTicket' => 'support',
         'AttendanceAbsent' => 'attendance', 'AttendanceBreak' => 'attendance', 'AttendanceLongBreak' => 'attendance', 'AttendanceSession' => 'attendance', 'ShiftReminder' => 'attendance', 'CheckoutReminder' => 'attendance', 'AutoCheckout' => 'attendance', 'Shift' => 'attendance', 'WeeklyOff' => 'attendance',
     ];
 

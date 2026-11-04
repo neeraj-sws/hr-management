@@ -114,4 +114,24 @@ class BillingInvoiceTest extends TestCase
         Livewire::actingAs($this->admin)->test(InvoiceForm::class, ['invoice' => $invoice])->set('issueDate', '2027-04-02')->set('dueDate', '2027-04-10')->call('save')->assertHasNoErrors();
         $this->assertSame('SWS/2027-28/00001', $invoice->fresh()->number());
     }
+
+    public function test_invoice_page_shows_summary_payments_and_activity_log(): void
+    {
+        $invoice = $this->invoiceFor($this->customer('Madhya Pradesh'));
+        Livewire::actingAs($this->admin)->test(InvoiceShow::class, ['invoice' => $invoice])
+            ->assertSee(['Invoice Summary', 'CGST (9%)', 'SGST (9%)', 'Balance Due', '₹11,800.00', 'Web development', 'Notes', 'Terms &amp; Conditions'], false)
+            ->assertSee('Invoice created')
+            ->call('openPayment')->set('payAmount', '11800')->set('payMethod', 'Cash')->call('recordPayment')->assertHasNoErrors()
+            ->assertSee(['Fully Paid', 'Paid on 30 Oct 2026', 'Payment added', 'Payment of ₹11,800.00 recorded.', 'Payment History']);
+
+        $this->get(route('billing.invoices.show', $invoice))->assertOk()->assertSee('inv-strip', false);
+    }
+
+    public function test_edit_page_shows_cards_and_summary_with_gst_split(): void
+    {
+        $invoice = $this->invoiceFor($this->customer('Madhya Pradesh'));
+        Livewire::actingAs($this->admin)->test(InvoiceForm::class, ['invoice' => $invoice])
+            ->assertSee(['Edit Invoice', 'Customer &amp; dates', 'Invoice summary', 'CGST (9%)', 'SGST (9%)', '₹11,800.00', 'Add Item', 'Terms &amp; Conditions', 'Save Invoice'], false)
+            ->call('addItem')->assertSee('— custom item —')->call('save')->assertHasErrors('items.1.name');
+    }
 }

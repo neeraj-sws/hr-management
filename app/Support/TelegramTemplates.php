@@ -24,7 +24,7 @@ class TelegramTemplates
         'DailyStatusSubmitted' => 'Daily status', 'AttendanceLate' => 'Late arrival', 'AttendanceAbsent' => 'Not checked in', 'AttendanceSession' => 'Attendance',
         'CheckoutReminder' => 'Check-out reminder', 'ShiftReminder' => 'Shift reminder', 'LeaveBalance' => 'Leave balance updated', 'SalaryAdjustment' => 'Salary adjustment',
         'SalaryAdvance' => 'Salary advance', 'OvertimeRequest' => 'Overtime', 'ExpenseClaim' => 'Expense claim', 'NightWork' => 'Night work', 'LateArrival' => 'Late arrival', 'TaskComment' => 'Task comment', 'TaskCompleted' => 'Task completed',
-        'TaskOverdue' => 'Task overdue', 'TaskUpdated' => 'Task updated', 'PayslipRequest' => 'Payslip request', 'LeaveReminder' => 'Leave waiting for you', 'LeaveEscalated' => 'Leave not decided for 24 hours', 'LeaveUrgent' => 'Urgent: leave not decided', 'EmployeeDocument' => 'Document', 'TrainingAssignment' => 'Training', 'Announcement' => 'Announcement',
+        'TaskOverdue' => 'Task overdue', 'TaskUpdated' => 'Task updated', 'PayslipRequest' => 'Payslip request', 'LeaveReminder' => 'Leave waiting for you', 'LeaveEscalated' => 'Leave not decided for 24 hours', 'LeaveUrgent' => 'Urgent: leave not decided', 'EmployeeDocument' => 'Document', 'TrainingAssignment' => 'Training', 'Announcement' => 'Announcement', 'SupportTicket' => 'Help & Support',
     ];
 
     private static function money(float $v): string

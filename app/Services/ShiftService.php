@@ -21,6 +21,13 @@ class ShiftService
     public function shiftFor(AttendanceEmployee $employee, string $date): ?Shift
     {
         $key = $employee->id.'|'.$date;
+        if (! array_key_exists($key, $this->cache) && \App\Services\PolicyConfigurationService::on()) {
+            // Page being drawn: the person's shift dates are read once, the one for this date picked here (same order).
+            $day = \Illuminate\Support\Carbon::parse($date)->toDateString();
+            $this->cache[$key] = \App\Services\PolicyConfigurationService::memo('rows|shifts|'.$employee->id, fn () => EmployeeShift::with('shift')->where('employee_id', $employee->id)->get())
+                ->filter(fn ($s) => $s->starts_on && $s->starts_on->toDateString() <= $day && (! $s->ends_on || $s->ends_on->toDateString() >= $day))
+                ->sort(fn ($a, $b) => [$b->starts_on->toDateString(), $b->id] <=> [$a->starts_on->toDateString(), $a->id])->first()?->shift;
+        }
         if (! array_key_exists($key, $this->cache)) {
             $this->cache[$key] = EmployeeShift::with('shift')->where('employee_id', $employee->id)
                 ->whereDate('starts_on', '<=', $date)

@@ -21,6 +21,14 @@
     @foreach($missedDays as $md)
         <div class="ds-nudge" style="border-color:var(--red);background:var(--red-soft, #ffedf0)"><x-icon name="alert" class="icon-sm" /><span>You did not write the daily status for <b>{{ \Illuminate\Support\Carbon::parse($md)->format('D, d M') }}</b>. Give the reason and write it now - any fine for that day is then removed.</span><button type="button" class="btn btn-sm btn-primary" wire:click="openMissed('{{ $md }}')">Write the missed day</button></div>
     @endforeach
+    {{-- HR allowed this person to write days in previous months too: pick the day, then the reason and the status. --}}
+    @if($own && $pastFrom)
+        <form class="ds-nudge" wire:submit="openPastDay"><x-icon name="calendar" class="icon-sm" /><span>You can add a missed daily status for an earlier day (from <b>{{ \Illuminate\Support\Carbon::parse($pastFrom)->format('d M Y') }}</b> to yesterday).</span>
+            <label class="field" style="margin:0"><span class="sr-only">Day</span><input type="date" wire:model="pastDate" min="{{ $pastFrom }}" max="{{ today()->subDay()->toDateString() }}"></label>
+            <button class="btn btn-sm btn-primary" wire:loading.attr="disabled">Add status for this day</button>
+            @error('pastDate')<span class="error" style="flex-basis:100%">{{ $message }}</span>@enderror
+        </form>
+    @endif
     @if($own && ! $savedToday && ! $canSeeTeam)
         <div class="ds-nudge"><x-icon name="message-plus" class="icon-sm" /><span>You haven't written today's status yet.</span><button type="button" class="btn btn-sm btn-primary" wire:click="openStatusForm">Add today's status</button></div>
     @endif
@@ -136,7 +144,7 @@
         @endif
     </div>
 
-    @if($missed && $own && in_array($missed, $missedDays, true))
+    @if($missed && $own && (in_array($missed, $missedDays, true) || \App\Support\PastDailyStatus::allows($own, $missed)))
         <x-modal title="Missed daily status · {{ \Illuminate\Support\Carbon::parse($missed)->format('D, d M Y') }}">
             <form wire:submit="{{ $missedStep === 1 ? 'missedNext' : 'saveMissed' }}"><div class="modal-body"><x-errors /><div class="form-grid">
                 @if($missedStep === 1)

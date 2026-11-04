@@ -30,6 +30,7 @@ function screenFor(n: NotificationItem): Href | null {
   if (kind === 'ExpenseClaim') return '/expenses';
   if (kind === 'TrainingAssignment') return '/training';
   if (kind === 'Announcement') return '/announcements';
+  if (kind === 'SupportTicket') return n.record_id ? { pathname: '/support-request', params: { id: String(n.record_id) } } : '/support';
   if (kind.startsWith('Performance')) return '/performance';
   if (kind.startsWith('Attendance') || kind.includes('Shift') || kind.includes('Checkout')) return '/(tabs)/attendance';
   return null;

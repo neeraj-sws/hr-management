@@ -104,12 +104,15 @@ class PayrollCarryOverTest extends TestCase
         $workflow = app(HrWorkflowService::class);
         $leave = $workflow->requestLeave($this->employee, ['leave_type_id' => $unpaid->id, 'duration' => 'full', 'starts_on' => Carbon::parse('2026-09-14'), 'ends_on' => Carbon::parse('2026-09-14'), 'reason' => 'Family function']);
         $workflow->decideLeave($leave, $this->managerUser->id, true, 'Informed by phone');
+        // Approved full-day leave on a worked day: the 8 h become extra working at one day ÷ 9 (888.89), so 111.11 is recovered.
+        $carried = SalaryAdjustment::where('carried_from_payroll_item_id', $item->id)->get();
+        $this->assertSame([['arrear_recovery', '111.11']], $carried->map(fn ($a) => [$a->kind, $a->amount])->all());
         app(\App\Services\LeaveConflictService::class)->resolve($leave, '2026-09-14', 'leave', $this->admin->id);
 
-        $carried = SalaryAdjustment::where('carried_from_payroll_item_id', $item->id)->get();
-        $this->assertCount(1, $carried, 'Approving the leave alone changes nothing (the day counts as worked); resolving it as leave does');
-        $this->assertSame(['arrear_recovery', '1000.00'], [$carried[0]->kind, $carried[0]->amount]);
-        $this->assertEquals(-1000, $carried[0]->signedAmount());
+        // Resolved as leave: the work is ignored, the rest of the day (888.89) is recovered too - one day in all.
+        $carried = SalaryAdjustment::where('carried_from_payroll_item_id', $item->id)->orderBy('id')->get();
+        $this->assertSame([['arrear_recovery', '111.11'], ['arrear_recovery', '888.89']], $carried->map(fn ($a) => [$a->kind, $a->amount])->all());
+        $this->assertEquals(-1000, round($carried->sum(fn ($a) => $a->signedAmount()), 2));
     }
 
     public function test_employee_sees_actual_working_time_and_the_payroll_notice_when_asking(): void

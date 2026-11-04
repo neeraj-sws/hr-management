@@ -61,6 +61,17 @@ class AttendanceRecordsFiltersTest extends TestCase
             ->call('resetFilters')->assertSet('from', '2026-10-30');
     }
 
+    public function test_filters_apply_as_soon_as_they_change_without_a_search_button(): void
+    {
+        $this->day('2026-10-29', '10:30', '19:00');
+
+        Livewire::actingAs($this->admin)->test(Records::class)
+            ->assertDontSeeHtml('wire:target="search"')->assertSeeHtml('wire:model.live="from"')->assertSeeHtml('wire:model.live="employee"')
+            ->set('from', '2026-10-29')->set('to', '2026-10-29')
+            ->assertSee('Present · yesterday')->assertViewHas('summary', fn ($s) => $s['people'] === 1)
+            ->set('status', 'working')->assertViewHas('summary', fn ($s) => $s['people'] === 1);
+    }
+
     public function test_one_employee_gets_their_range_at_a_glance_and_coloured_rows(): void
     {
         $this->day('2026-10-26', '10:00', '19:00');           // present

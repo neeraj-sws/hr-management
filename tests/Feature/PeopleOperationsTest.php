@@ -112,10 +112,10 @@ class PeopleOperationsTest extends TestCase
         $run=app(HrWorkflowService::class)->calculatePayroll('2026-10-01','2026-10-31',$admin->id);
         $item=PayrollItem::where('payroll_run_id',$run->id)->where('employee_id',$employee->id)->firstOrFail();
         $this->assertSame(250.0,(float)$item->recovery_amount);
-        $this->assertSame(375.0,(float)$item->overtime_amount);
+        $this->assertSame(333.33,(float)$item->overtime_amount); // 22000/(22*9) × 2 h × 1.5
         $this->assertSame(100.0,(float)$item->penalties_amount);
         $this->assertSame(200.0,(float)$item->adjustments_amount);
-        $this->assertSame(225.0,(float)$item->net_amount);
+        $this->assertSame(183.33,(float)$item->net_amount);
         $this->assertSame(250.0,(float)$advance->fresh()->recovered_amount);
         $this->assertSame(1000.0,(float)$item->calculation_breakdown['advances_disbursed']);
         $workflow=app(HrWorkflowService::class);
