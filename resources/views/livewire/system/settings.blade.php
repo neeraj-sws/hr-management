@@ -223,7 +223,7 @@
                 <thead><tr><th>Office</th><th>Latitude, longitude</th><th class="num">Radius</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                 @forelse($offices as $o)
-                    <tr wire:key="office-{{ $o->id }}"><td><strong>{{ $o->name }}</strong></td><td>{{ $o->latitude }}, {{ $o->longitude }}</td><td class="num">{{ $o->radius_meters }} m</td><td><x-badge :status="$o->is_active ? 'active' : 'inactive'" /></td><td><button class="btn btn-sm" wire:click="editOffice({{ $o->id }})">Edit</button></td></tr>
+                    <tr wire:key="office-{{ $o->id }}"><td><strong>{{ $o->name }}</strong></td><td>{{ $o->latitude }}, {{ $o->longitude }}</td><td class="num">{{ $o->radius_meters }} m</td><td><x-badge :status="$o->is_active ? 'active' : 'inactive'" /></td><td class="nowrap"><button class="btn btn-sm" wire:click="editOffice({{ $o->id }})">Edit</button> @php($officeUsed = \App\Models\AttendanceSession::where('check_in_office_id', $o->id)->orWhere('check_out_office_id', $o->id)->count())<button class="btn btn-sm btn-danger" wire:click="deleteOffice({{ $o->id }})" wire:confirm="Delete the office &quot;{{ $o->name }}&quot;?{{ $officeUsed ? ' '.$officeUsed.' attendance day(s) were marked here: they keep their time and map position, only the office name goes. To keep it, untick Active (Edit) instead.' : '' }}">Delete</button></td></tr>
                 @empty
                     <tr><td colspan="5"><x-empty title="No offices yet" icon="building" /></td></tr>
                 @endforelse

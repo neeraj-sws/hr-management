@@ -774,6 +774,25 @@ class Settings extends Component
         $this->toast('Office location saved.');
     }
 
+    /**
+     * Deletes an office location. Attendance already marked there keeps its time and map position; only the office
+     * name goes from those days. The last active office cannot go while check-in needs a location.
+     */
+    public function deleteOffice(int $id, AuditLogger $audit): void
+    {
+        $this->authorizeSettings();
+        $office = OfficeLocation::findOrFail($id);
+        if (($this->requireLocation || $this->requireLocationWeb) && $office->is_active && OfficeLocation::where('is_active', true)->whereKeyNot($office->id)->doesntExist()) {
+            $this->toast('This is the only active office and check-in needs a location: add another office, or turn the location rule off first.', 'error');
+
+            return;
+        }
+        $used = \App\Models\AttendanceSession::where('check_in_office_id', $office->id)->orWhere('check_out_office_id', $office->id)->count();
+        $audit->record('office_location.deleted', $office, ['name' => $office->name, 'latitude' => (float) $office->latitude, 'longitude' => (float) $office->longitude, 'radius_meters' => (int) $office->radius_meters, 'attendance_days' => $used]);
+        $office->delete();
+        $this->toast("Office \"{$office->name}\" deleted.".($used ? " {$used} attendance day(s) keep their time and position, without the office name." : ''));
+    }
+
     public function addStructureRow(string $type = 'earning'): void
     {
         $this->structureRows[] = ['name' => '', 'type' => $type, 'value' => ''];
