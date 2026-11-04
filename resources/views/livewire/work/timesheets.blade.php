@@ -4,6 +4,7 @@
         @if($projectModel)<div class="row-actions">
             <button class="btn" wire:click="openSettings"><x-icon name="settings" class="icon-sm" />Rate & settings</button>
             <button class="btn" wire:click="$set('showImport', true)"><x-icon name="upload" class="icon-sm" />Import Excel</button>
+            <a class="btn" href="{{ route('work.timesheets.export', ['project' => $project, 'month' => $month]) }}"><x-icon name="download" class="icon-sm" />Export Excel</a>
             <button class="btn btn-primary" wire:click="openEntry"><x-icon name="plus" class="icon-sm" />Add line</button>
         </div>@endif</div>
     <x-errors />

@@ -55,6 +55,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Client timesheets and clients (staff)
     Route::middleware('access:projects.manage,hr.manage')->group(function () {
         Route::get('/work/timesheets', Livewire\Work\Timesheets::class)->name('work.timesheets');
+        Route::get('/work/timesheets/export', \App\Http\Controllers\TimesheetExportController::class)->name('work.timesheets.export');
         Route::get('/work/clients', Livewire\Work\Clients::class)->name('work.clients');
     });
 
