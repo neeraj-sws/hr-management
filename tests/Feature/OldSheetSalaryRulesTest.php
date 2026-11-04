@@ -110,6 +110,14 @@ class OldSheetSalaryRulesTest extends TestCase
         $note = collect($s['after'])->firstWhere('label', 'Short working hours')['detail'];
         $this->assertStringContainsString('751 min below the working day', $note);
         $this->assertStringContainsString('14 Oct: 10:30:00 AM–1:30:00 PM, break 00:00:00, at work 03:00:00 of 08:30:00 = 330 min short, ₹855.56', $note);
+        // Day-wise salary: each short day shows its cut on its own row, and the days add up to the net salary.
+        $dayWise = app(\App\Services\DayWiseSalaryService::class)->month($this->employee, '2026-10');
+        $row = collect($dayWise['rows'])->firstWhere('date', '2026-10-16');
+        $this->assertSame([235.92, 91 * 60, 1164.08], [$row['short'], $row['short_seconds'], $row['net']], '₹1,400 − 91 min (₹235.92) = ₹1,164.08 that day');
+        $this->assertEqualsWithDelta(1947.04, $dayWise['totals']['short'], 0.01);
+        $this->assertEqualsWithDelta(17652.96, $dayWise['totals']['net'], 0.01, 'Days total = net salary');
+        $this->assertFalse(collect($dayWise['items'])->contains('label', 'Short hours'), 'No separate month line any more');
+
         Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $run->id)->set('breakdownItemId', $item->id)
             ->assertSeeText('Fri, 16 Oct')->assertSeeText('11:31:00 AM – 7:30:00 PM')->assertSeeText('91 min')->assertSeeText('−₹235.92'); // 855.56 + 855.56 + 235.92 = 1,947.04, the total
     }

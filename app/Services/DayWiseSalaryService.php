@@ -34,6 +34,10 @@ class DayWiseSalaryService
         $joined = $employee->joined_at?->toDateString();
         $left = $employee->exit_date?->toDateString();
 
+        // Short time per day (payroll keeps each short day): shown on its day when the days add up to the month's cut
+        // (no monthly grace); otherwise it stays one month item.
+        $shortDays = (array) ($f['short']['days'] ?? []);
+        $shortByDay = $shortDays && (int) ($f['short']['grace_seconds'] ?? 0) === 0 && (float) $f['shortAmount'] > 0;
         $rows = [];
         for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
             $date = $day->toDateString();
@@ -94,10 +98,12 @@ class DayWiseSalaryService
             $rows[] = ['date' => $date, 'day' => $day->format('D'), 'status' => $status, 'tone' => $tone, 'note' => $note, 'workday' => $workday,
                 'in' => $session?->check_in, 'out' => $session?->check_out, 'at_work' => $session && $session->check_out ? (int) $this->attendance->officeSeconds($session) : null,
                 'rate' => $workday ? round($rate, 2) : null, 'share' => $share, 'pay' => $pay, 'extra' => $extra, 'overtime' => round($ot + $night, 2), 'night' => $night, 'fines' => $dayFines, 'fines_deducted' => $deducted,
-                'net' => round($pay + $extra + $ot + $night - $deducted, 2)];
+                // Short time cut on this day (minutes under the working day × per-minute rate), when payroll lists it by day.
+                'short' => $shortByDay ? round((float) ($shortDays[$date]['amount'] ?? 0), 2) : 0.0, 'short_seconds' => $shortByDay ? (int) ($shortDays[$date]['short'] ?? 0) : 0,
+                'net' => round($pay + $extra + $ot + $night - $deducted - ($shortByDay ? (float) ($shortDays[$date]['amount'] ?? 0) : 0), 2)];
         }
 
-        $totals = ['pay' => round(array_sum(array_column($rows, 'pay')), 2), 'extra' => round(array_sum(array_column($rows, 'extra')), 2), 'overtime' => round(array_sum(array_column($rows, 'overtime')), 2), 'fines' => round(array_sum(array_column($rows, 'fines_deducted')), 2), 'net' => round(array_sum(array_column($rows, 'net')), 2)];
+        $totals = ['pay' => round(array_sum(array_column($rows, 'pay')), 2), 'extra' => round(array_sum(array_column($rows, 'extra')), 2), 'overtime' => round(array_sum(array_column($rows, 'overtime')), 2), 'fines' => round(array_sum(array_column($rows, 'fines_deducted')), 2), 'short' => round(array_sum(array_column($rows, 'short')), 2), 'net' => round(array_sum(array_column($rows, 'net')), 2)];
 
         // Month items (not tied to one day), so the total is exactly what payroll pays.
         $items = [];
@@ -106,7 +112,7 @@ class DayWiseSalaryService
         // Fines the month deducts that are not on a listed day (e.g. a fine dated in this month but already counted).
         $fineGap = round($totals['fines'] - (float) $f['penalties'], 2);
         if (abs($fineGap) >= 0.01) $items[] = ['label' => 'Fines already settled elsewhere', 'detail' => 'counted in another payroll', 'amount' => $fineGap];
-        if ((float) $f['shortAmount'] > 0) $items[] = ['label' => 'Short hours', 'detail' => \App\Support\Duration::hm((int) $f['short']['short_seconds']).' below the working day this month', 'amount' => -(float) $f['shortAmount']];
+        if ((float) $f['shortAmount'] > 0 && ! $shortByDay) $items[] = ['label' => 'Short hours', 'detail' => \App\Support\Duration::hm((int) $f['short']['short_seconds']).' below the working day this month', 'amount' => -(float) $f['shortAmount']];
         foreach ($f['adjustmentLines'] as $line) $items[] = ['label' => $line['label'], 'detail' => $line['reason'], 'amount' => (float) $line['amount']];
         if ((float) $f['statutory']['earnings'] > 0) $items[] = ['label' => 'Statutory earnings', 'detail' => null, 'amount' => (float) $f['statutory']['earnings']];
         if ((float) $f['statutory']['deductions'] > 0) $items[] = ['label' => 'Statutory deductions', 'detail' => null, 'amount' => -(float) $f['statutory']['deductions']];
