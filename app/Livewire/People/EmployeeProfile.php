@@ -40,6 +40,12 @@ class EmployeeProfile extends Component
     public string $letterBody = '';
     public array $letterMissing = [];
 
+    /** "Daily status for earlier days" (HR): how far back - N months, or from a date - and optionally until a date. */
+    public string $pastStatusBy = 'months';
+    public int $pastStatusMonths = 1;
+    public string $pastStatusFrom = '';
+    public string $pastStatusUntil = '';
+
     public function openRecordLeave(string $date): void
     {
         abort_unless($this->user()->canAny(['leave.manage', 'hr.manage']), 403);
@@ -185,6 +191,33 @@ class EmployeeProfile extends Component
         $this->toast('Daily status: '.\App\Support\DailyStatusRule::MODES[\App\Support\DailyStatusRule::mode($this->employee)].' (from today).');
     }
 
+    /** HR lets this person write a daily status for days in previous months (not only the last 2 days). */
+    public function savePastStatus(): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        \App\Services\ImpersonationService::block();
+        $this->validate([
+            'pastStatusBy' => ['required', 'in:months,date'],
+            'pastStatusMonths' => ['required_if:pastStatusBy,months', 'integer', 'min:1', 'max:'.\App\Support\PastDailyStatus::MAX_MONTHS],
+            'pastStatusFrom' => ['required_if:pastStatusBy,date', 'nullable', 'date', 'before:today'],
+            'pastStatusUntil' => ['nullable', 'date', 'after_or_equal:today'],
+        ], ['pastStatusFrom.required_if' => 'Choose the earliest day.'], ['pastStatusMonths' => 'months', 'pastStatusFrom' => 'earliest day', 'pastStatusUntil' => 'allowed until']);
+        $byDate = $this->pastStatusBy === 'date';
+        \App\Support\PastDailyStatus::set($this->employee, $byDate ? null : $this->pastStatusMonths, $byDate ? $this->pastStatusFrom : null, $this->pastStatusUntil ?: null, $this->user()->id);
+        $earliest = \App\Support\PastDailyStatus::earliest($this->employee);
+        app(\App\Services\AuditLogger::class)->record('daily_status.past_days_set', $this->employee, ['months' => $byDate ? null : $this->pastStatusMonths, 'from' => $byDate ? $this->pastStatusFrom : null, 'until' => $this->pastStatusUntil ?: null, 'earliest' => $earliest]);
+        $this->toast($this->employee->name.' can now write a daily status for days from '.($earliest ? \Illuminate\Support\Carbon::parse($earliest)->format('d M Y') : 'the joining date').($this->pastStatusUntil ? ' (until '.\Illuminate\Support\Carbon::parse($this->pastStatusUntil)->format('d M Y').')' : '').'.');
+    }
+
+    public function stopPastStatus(): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        \App\Services\ImpersonationService::block();
+        \App\Support\PastDailyStatus::stop($this->employee);
+        app(\App\Services\AuditLogger::class)->record('daily_status.past_days_off', $this->employee);
+        $this->toast('Daily status for earlier days turned off: the normal 2-day limit applies again.');
+    }
+
     public function toggleAppUsage(\App\Services\AppUsageService $usage): void
     {
         $on = ! $usage->enabledFor($this->employee);
@@ -274,6 +307,8 @@ class EmployeeProfile extends Component
             'canEdit' => $user->canAny(['employees.manage', 'hr.manage']),
             'dailyStatusMode' => \App\Support\DailyStatusRule::mode($employee),
             'dailyStatusOwn' => \App\Support\DailyStatusRule::hasOwnChoice($employee),
+            'pastStatus' => \App\Support\PastDailyStatus::rule($employee),
+            'pastStatusEarliest' => \App\Support\PastDailyStatus::earliest($employee),
             'capture' => $user->can('monitoring.manage') ? app(\App\Services\ScreenCaptureService::class)->policy($employee) : null,
             'attendanceSources' => app(\App\Services\AttendanceService::class)->allowedSources($employee),
             'appUsageOn' => $user->can('monitoring.manage') ? app(\App\Services\AppUsageService::class)->enabledFor($employee) : null,

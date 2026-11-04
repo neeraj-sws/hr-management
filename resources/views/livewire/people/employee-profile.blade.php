@@ -236,6 +236,24 @@
                 </select></label>
                 <p class="small muted">Everyone at once: Work &gt; Daily status &gt; Who must write it.</p>
             </div></section>
+            <section class="card"><div class="card-head"><div><h2>Daily status for earlier days</h2><p>Let {{ $employee->name }} write a missed daily status for days in previous months (with a reason), not only the last 2 days. Never before the joining date.</p></div>
+                @if($pastStatus)<button type="button" class="btn" wire:click="stopPastStatus" wire:loading.attr="disabled">Turn off</button>@endif</div><div class="card-body">
+                @if($pastStatus)
+                    <p class="small" style="margin-top:0"><x-badge tone="green">On</x-badge> Days from <b>{{ $pastStatusEarliest ? \Illuminate\Support\Carbon::parse($pastStatusEarliest)->format('d M Y') : '-' }}</b> to yesterday{{ $pastStatus['until'] ? ', until '.\Illuminate\Support\Carbon::parse($pastStatus['until'])->format('d M Y') : '' }}. Change it below.</p>
+                @else
+                    <p class="small muted" style="margin-top:0">Off: the normal 2-day limit.</p>
+                @endif
+                <form wire:submit="savePastStatus" class="form-grid">
+                    <x-field label="How far back" name="pastStatusBy"><select wire:model.live="pastStatusBy"><option value="months">Previous months</option><option value="date">From a date</option></select></x-field>
+                    @if($pastStatusBy === 'date')
+                        <x-field label="Earliest day" name="pastStatusFrom"><input type="date" wire:model="pastStatusFrom" max="{{ today()->subDay()->toDateString() }}"></x-field>
+                    @else
+                        <x-field label="Months back" name="pastStatusMonths"><select wire:model="pastStatusMonths">@for($m = 1; $m <= \App\Support\PastDailyStatus::MAX_MONTHS; $m++)<option value="{{ $m }}">{{ $m }} {{ str('month')->plural($m) }} (from {{ today()->startOfMonth()->subMonthsNoOverflow($m)->format('M Y') }})</option>@endfor</select></x-field>
+                    @endif
+                    <x-field label="Allowed until (optional)" name="pastStatusUntil"><input type="date" wire:model="pastStatusUntil" min="{{ today()->toDateString() }}"></x-field>
+                    <div style="grid-column:1/-1"><button class="btn btn-primary" wire:loading.attr="disabled">{{ $pastStatus ? 'Save changes' : 'Turn on' }}</button></div>
+                </form>
+            </div></section>
         @endif
         @if($appUsageOn !== null)
             <section class="card"><div class="card-head"><div><h2>Application usage</h2><p>@if($appUsageOn)On — records which app is in front and for how long, while checked in and working. App name and time only; no titles or content.@else Off.@endif</p></div>
