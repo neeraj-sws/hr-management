@@ -26,6 +26,32 @@ class AttendanceService
         private readonly ShiftService $shifts,
     ) {}
 
+    /** Per-instance memo of settings lookups, on only after rememberLookups() (null = off). */
+    private ?array $lookupMemo = null;
+
+    /**
+     * For pages that show many sessions at once (Attendance records): the same settings (late rules,
+     * calendar, work hours, shift) are read once instead of once per row and call.
+     * Without this one page load ran thousands of queries and could run out of memory on the server.
+     * Only for read-only rendering: a policy changed later in the same request is not seen.
+     */
+    public function rememberLookups(): static
+    {
+        $this->lookupMemo ??= [];
+        // The same remembering policy service for sessions (field / desk work) during this render.
+        app()->instance(PolicyConfigurationService::class, $this->policies->remember());
+
+        return $this;
+    }
+
+    private function memo(string $key, callable $resolve): mixed
+    {
+        if ($this->lookupMemo === null) return $resolve();
+        if (! array_key_exists($key, $this->lookupMemo)) $this->lookupMemo[$key] = $resolve();
+
+        return $this->lookupMemo[$key];
+    }
+
     /** Default longest a session may stay open before it is treated as a missed check-out. */
     public const DEFAULT_MAX_SESSION_HOURS = 16;
 
@@ -660,6 +686,12 @@ class AttendanceService
     public function dailyHours(AttendanceEmployee $employee, ?string $date = null): float
     {
         $date ??= today()->toDateString();
+
+        return $this->memo('hours|'.$employee->id.'|'.$date, fn () => $this->resolveDailyHours($employee, $date));
+    }
+
+    private function resolveDailyHours(AttendanceEmployee $employee, string $date): float
+    {
         $override = \App\Models\EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', 'work.hours')
             ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date))
             ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $date))
@@ -673,6 +705,11 @@ class AttendanceService
 
     /** Attendance rules for an employee: work start, grace minutes and half-day threshold. */
     public function rules(AttendanceEmployee $employee, string $date): array
+    {
+        return $this->memo('rules|'.$employee->id.'|'.$date, fn () => $this->resolveRules($employee, $date));
+    }
+
+    private function resolveRules(AttendanceEmployee $employee, string $date): array
     {
         $configured = $this->policies->forEmployee($employee, 'attendance.rules', $date, []);
         // Grace and the half-day threshold are current operational settings, not historical values:
