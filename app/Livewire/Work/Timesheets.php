@@ -70,9 +70,20 @@ class Timesheets extends Component
         $this->showEntry = true;
     }
 
-    /** Fill worked-minutes from start/end as soon as both are set (overnight shifts wrap past midnight). */
+    /** Live validation/aid as the entry form changes. */
     public function updatedEntry($value, $key): void
     {
+        // Weekend dates are not allowed for timesheet lines — flag it immediately.
+        if ($key === 'work_date') {
+            if (! empty($this->entry['work_date']) && Carbon::parse($this->entry['work_date'])->isWeekend()) {
+                $this->addError('entry.work_date', 'Weekend (Sat / Sun) pe timesheet line add nahi kar sakte.');
+            } else {
+                $this->resetValidation('entry.work_date');
+            }
+
+            return;
+        }
+        // Fill worked-minutes from start/end as soon as both are set (overnight shifts wrap past midnight).
         if ($key !== 'start_time' && $key !== 'end_time') return;
         $start = $this->entry['start_time'] ?? '';
         $end = $this->entry['end_time'] ?? '';
@@ -93,6 +104,7 @@ class Timesheets extends Component
             'entry.minutes' => ['required', 'integer', 'min:0', 'max:1440'], 'entry.billable_minutes' => ['nullable', 'integer', 'min:0', 'max:1440'],
             'entry.description' => ['required', 'string', 'max:5000'], 'entry.status' => ['nullable', 'string', 'max:40'], 'entry.remarks' => ['nullable', 'string', 'max:2000'],
         ], [], ['entry.work_date' => 'date', 'entry.minutes' => 'minutes', 'entry.billable_minutes' => 'billable minutes', 'entry.description' => 'task'])['entry'];
+        if (Carbon::parse($data['work_date'])->isWeekend()) { $this->addError('entry.work_date', 'Weekend (Sat / Sun) pe timesheet line add nahi kar sakte.'); return; }
         if ($timesheets->isLocked($project, Carbon::parse($data['work_date'])->format('Y-m'))) { $this->addError('entry.work_date', 'That month is already approved by the client.'); return; }
         $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => $data['employee_id'] ? null : ($data['developer_name'] ?: null),
             'start_time' => $data['start_time'] ?: null, 'end_time' => $data['end_time'] ?: null, 'minutes' => (int) $data['minutes'],
