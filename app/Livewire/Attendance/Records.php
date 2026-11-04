@@ -249,8 +249,17 @@ class Records extends Component
         ];
     }
 
+    /** The page is drawn: settings are asked from the database again (a later change is seen). */
+    public function rendered(): void
+    {
+        app(\App\Services\PolicyConfigurationService::class)->forget();
+        app()->forgetInstance(\App\Services\PolicyConfigurationService::class);
+    }
+
     public function render(AttendanceService $attendance)
     {
+        // Many rows share the same employee settings: look each one up once for this render.
+        $attendance->rememberLookups();
         if (! strtotime($this->from)) $this->from = today()->toDateString();
         if (! strtotime($this->to) || $this->to < $this->from) $this->to = max($this->from, today()->toDateString());
         if (! in_array($this->perPage, self::PER_PAGE, true)) $this->perPage = 25;
