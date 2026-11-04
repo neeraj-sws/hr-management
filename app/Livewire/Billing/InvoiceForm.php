@@ -152,12 +152,20 @@ class InvoiceForm extends Component
 
     public function render()
     {
+        $taxes = BillingTax::orderBy('name')->get(['id', 'name', 'rate']);
+        $interState = app(BillingService::class)->isInterState($this->placeOfSupply ?: ($this->customerId ? BillingCustomer::find($this->customerId)?->billing_state : null));
+        // Summary box: discount, tax and the GST rate when every taxed line uses the same one.
+        $rates = collect($this->items)->map(fn ($it) => $it['tax_id'] ? (float) ($taxes->firstWhere('id', (int) $it['tax_id'])?->rate ?? 0) : 0.0)->filter(fn ($r) => $r > 0)->unique()->values();
+
         return $this->page('livewire.billing.invoice-form', [
             'customers' => BillingCustomer::orderBy('name')->get(['id', 'name']),
             'projects' => \App\Models\Project::orderBy('name')->get(['id', 'name']),
-            'interState' => app(BillingService::class)->isInterState($this->placeOfSupply ?: ($this->customerId ? BillingCustomer::find($this->customerId)?->billing_state : null)),
+            'interState' => $interState,
             'products' => BillingProduct::where('is_active', true)->orderBy('name')->get(['id', 'name', 'sale_price', 'tax_id', 'hsn_sac']),
-            'taxes' => BillingTax::orderBy('name')->get(['id', 'name', 'rate']),
+            'taxes' => $taxes,
+            'discountTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['discount']), 2),
+            'taxRate' => $rates->count() === 1 ? (float) $rates->first() : ($rates->isEmpty() ? 0.0 : null),
+            'terms' => (string) (app(BillingService::class)->company()['terms'] ?? ''),
             'subTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['quantity'] * (float) $it['price'] - (float) $it['discount']), 2),
             'discountTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['discount']), 2),
             'grandTotal' => round(collect($this->items)->sum(fn ($it) => $this->lineTotal($it)), 2),

@@ -267,8 +267,8 @@ class HardCasesTest extends TestCase
         $this->at('2026-11-02 10:00:00');
         $run = app(HrWorkflowService::class)->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id);
         $item = PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $this->employee->id)->firstOrFail();
-        // hourly = 20800 / (26*8) = 100 → weekday 1h × 1.5 = 150, Sunday 6h × 2 = 1200 (holiday rate replaces, never stacks).
-        $this->assertEquals(1350.0, (float) $item->overtime_amount);
+        // hourly = 20800 / (26*9) = 88.89 → weekday 1h × 1.5 = 133.33, Sunday 6h × 2 = 1066.67 (holiday rate replaces, never stacks).
+        $this->assertEquals(1200.0, (float) $item->overtime_amount);
     }
 
     public function test_12_penalty_waived_after_draft_payroll_is_removed_on_recalculation(): void
@@ -329,7 +329,7 @@ class HardCasesTest extends TestCase
         $workflow->decideLeave($leave, $this->managerUser->id, true); // unpaid leave on a day already unpaid: no difference
         $carried = SalaryAdjustment::where('carried_from_payroll_item_id', $item->id)->get();
         $this->assertCount(1, $carried);
-        $this->assertSame(['arrear', '187.50', '2026-11-01', 'approved'], [$carried[0]->kind, $carried[0]->amount, $carried[0]->effective_on->toDateString(), $carried[0]->status], '60 min × 1.5 × ₹125/h');
+        $this->assertSame(['arrear', '166.67', '2026-11-01', 'approved'], [$carried[0]->kind, $carried[0]->amount, $carried[0]->effective_on->toDateString(), $carried[0]->status], '60 min × 1.5 × ₹111.11/h (one day ÷ 9)');
         $this->assertSame('locked', $run->fresh()->status);
         $this->assertEquals($net, (float) $item->fresh()->net_amount, 'Untouched');
     }
@@ -520,24 +520,24 @@ class HardCasesTest extends TestCase
         $this->at('2026-11-02 10:00:00');
         $run = $workflow->calculatePayroll('2026-10-01', '2026-10-31', $this->managerUser->id);
         $item = PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $this->employee->id)->firstOrFail();
-        // Hand calculation (also in docs): base 50000/26×24 = 46153.846…, OT 50000/(26×8)×8×1.5 = 2884.62,
-        // gross 46153.846 + 2884.62 + 3000 = 52038.47, net 52038.47 − 1000 − 5000 = 46038.47.
+        // Hand calculation (also in docs): base 50000/26×24 = 46153.846…, OT 50000/(26×9)×8×1.5 = 2564.10,
+        // gross 46153.846 + 2564.10 + 3000 = 51717.95, net 51717.95 − 1000 − 5000 = 45717.95.
         $this->assertEquals([26, 23, 1, 2], [(int) $item->working_days, (float) $item->present_days, (float) $item->paid_leave_days, (float) $item->unpaid_leave_days]);
         $this->assertEquals(46153.85, $item->calculation_breakdown['base_salary']);
-        $this->assertEquals(2884.62, (float) $item->overtime_amount);
-        $this->assertEquals(52038.47, (float) $item->gross_amount);
+        $this->assertEquals(2564.10, (float) $item->overtime_amount);
+        $this->assertEquals(51717.95, (float) $item->gross_amount);
         $this->assertEquals(1000.0, (float) $item->penalties_amount);
         $this->assertEquals(5000.0, (float) $item->recovery_amount);
-        $this->assertEquals(46038.47, (float) $item->net_amount);
+        $this->assertEquals(45717.95, (float) $item->net_amount);
 
         $this->expectFailure(fn () => $workflow->approvePayroll($run, $this->managerUser->id), null, 'cannot approve'); // separation of duties
         $workflow->approvePayroll($run, $this->admin->id);
         $workflow->lockPayroll($run->fresh(), $this->admin->id);
         $workflow->pay($item->fresh(), ['amount' => 20000, 'paid_on' => '2026-11-03', 'reference' => 'NEFT-1', 'method' => 'bank_transfer'], $this->admin->id);
-        $workflow->pay($item->fresh(), ['amount' => 26038.47, 'paid_on' => '2026-11-05', 'reference' => 'NEFT-2', 'method' => 'bank_transfer'], $this->admin->id);
+        $workflow->pay($item->fresh(), ['amount' => 25717.95, 'paid_on' => '2026-11-05', 'reference' => 'NEFT-2', 'method' => 'bank_transfer'], $this->admin->id);
         $this->expectFailure(fn () => $workflow->pay($item->fresh(), ['amount' => 5000, 'paid_on' => '2026-11-06', 'reference' => 'X', 'method' => 'bank_transfer'], $this->admin->id));
-        $this->assertEquals(46038.47, (float) $item->fresh()->payments()->sum('amount'));
-        $this->actingAs($this->employeeUser)->get(route('hr.payslips.show', $item->fresh()->payslip))->assertOk()->assertSee('46,038.47');
+        $this->assertEquals(45717.95, (float) $item->fresh()->payments()->sum('amount'));
+        $this->actingAs($this->employeeUser)->get(route('hr.payslips.show', $item->fresh()->payslip))->assertOk()->assertSee('45,717.95');
         $this->assertSame('recovered', SalaryAdvance::first()->status);
         foreach (['payroll.calculated', 'payroll.approved', 'payroll.locked'] as $action) $this->assertTrue(AuditLog::where('action', $action)->exists(), $action);
     }

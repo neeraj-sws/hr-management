@@ -78,6 +78,24 @@
         "APP_ENV": "local",
         "CACHE_STORE": "file"
       }
+    },
+    {
+      "name": "sws-hr-local-live",
+      "runtimeExecutable": "php",
+      "runtimeArgs": [
+        "artisan",
+        "serve",
+        "--host=127.0.0.1",
+        "--port=8030"
+      ],
+      "port": 8030,
+      "env": {
+        "QUEUE_CONNECTION": "sync",
+        "MAIL_MAILER": "log",
+        "APP_URL": "http://localhost:8030",
+        "SESSION_SECURE_COOKIE": "false",
+        "SESSION_DOMAIN": ""
+      }
     }
   ]
 }

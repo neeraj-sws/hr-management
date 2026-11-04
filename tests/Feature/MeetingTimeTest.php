@@ -63,11 +63,38 @@ class MeetingTimeTest extends TestCase
         $s->refresh();
         $this->assertSame(9000, $s->correctedScreenSeconds(), '8:30 in–out − 6:00 the app measured = 2:30 added');
 
-        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('02:30:00 added by approved correction')->assertSeeText('98% working');
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Dashboard::class)->assertSee('02:30:00 added by approved correction')->assertSeeText('98% working')
+            ->assertSeeText('08:20:00 in use')->assertDontSeeText('05:50:00 in use'); // in use = 5:50 the app measured + 2:30 the correction confirmed
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Records::class)->set('from', '2026-10-22')->set('to', '2026-10-22')
+            ->assertSeeText('08:20:00 in use')->assertDontSeeText('05:50:00 in use');
         $row = app(ReportService::class)->rows($admin, 'attendance', ['from' => '2026-10-22', 'to' => '2026-10-22', 'employee_id' => $e->id])->first();
         $this->assertSame('02:30:00', $row['screen_corrected_time']);
         Sanctum::actingAs($user, ['*']);
         $this->getJson('/api/attendance/today')->assertOk()->assertJsonPath('data.screen_corrected_seconds', 9000);
+
+        // Day details shows that the day was corrected: who, why, and the break before → after.
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Records::class)->set('from', '2026-10-22')->set('to', '2026-10-22')
+            ->call('openDetail', $s->id, 'details')
+            ->assertSeeText('Corrected')->assertSeeText('Corrections (1)')->assertSeeText('Request approved by '.$admin->name)
+            ->assertSeeText('Reason: Desktop app stopped; I was working')->assertSeeText('02:30:00')->assertSeeText('00:00:00');
+    }
+
+    public function test_a_time_change_by_hr_shows_in_day_details_with_before_and_after(): void
+    {
+        $this->seed();
+        Carbon::setTestNow('2026-10-31 12:00:00');
+        $admin = User::where('email', 'admin@example.com')->first();
+        $e = AttendanceEmployee::create(['employee_code' => 'MT-9', 'name' => 'Person MT-9', 'is_active' => true, 'joined_at' => '2026-01-01', 'work_start' => '10:00:00', 'work_end' => '19:00:00', 'daily_work_hours' => 8.5]);
+        // Checked in at 11:31 and out at 11:42 by mistake; HR sets the real day.
+        $s = AttendanceSession::create(['employee_id' => $e->id, 'work_date' => '2026-10-30', 'check_in' => '2026-10-30 11:31:00', 'check_out' => '2026-10-30 11:42:00', 'status' => 'completed', 'break_seconds' => 0, 'last_sync_at' => now()]);
+        $page = Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Records::class)->set('from', '2026-10-30')->set('to', '2026-10-30')->call('openDetail', $s->id, 'details');
+        $page->assertDontSeeText('Corrections (');
+
+        app(\App\Services\AttendanceCorrectionService::class)->adminChange($e, '2026-10-30', '10:14', '19:42', 45, 'Forgot to check out', $admin);
+
+        Livewire::actingAs($admin)->test(\App\Livewire\Attendance\Records::class)->set('from', '2026-10-30')->set('to', '2026-10-30')->call('openDetail', $s->id, 'details')
+            ->assertSeeText('Corrected')->assertSeeText('Corrections (1)')->assertSeeText('Changed by '.$admin->name)->assertSeeText('Reason: Forgot to check out')
+            ->assertSeeText('11:31 AM')->assertSeeText('10:14 AM')->assertSeeText('11:42 AM')->assertSeeText('07:42 PM')->assertSeeText('00:45:00');
     }
 
     public function test_away_time_answered_as_working_is_meeting_time_with_the_same_figures_everywhere(): void

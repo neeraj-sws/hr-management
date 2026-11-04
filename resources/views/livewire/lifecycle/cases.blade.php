@@ -4,6 +4,12 @@
             <p>{{ $kind === 'offboarding' ? 'Clearance → asset return → leave balance → salary & advance recovery → final settlement → payment → inactive.' : 'Department → team → manager → salary → leave policy → documents → assets → active.' }}</p></div>
         <div class="actions">@if($kind === 'onboarding')<a class="btn" href="{{ route('people.employees') }}"><x-icon name="user-plus" class="icon-sm" />Add employee</a>@endif<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Open {{ $kind }} case</button></div>
     </div>
+    @if($letterOffer)
+        <div class="alert alert-info" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+            <span>Exit completed for <strong>{{ $letterOffer[1] }}</strong>. Make their letters now?</span>
+            <span class="row-actions"><a class="btn btn-sm btn-primary" href="{{ route('people.employees.show', ['employee' => $letterOffer[0], 'letter' => 'relieving']) }}">Relieving letter</a><a class="btn btn-sm btn-primary" href="{{ route('people.employees.show', ['employee' => $letterOffer[0], 'letter' => 'experience_issued']) }}">Experience letter</a><button type="button" class="btn btn-sm" wire:click="$set('letterOffer', null)">Later</button></span>
+        </div>
+    @endif
     <x-errors />
     <div class="grid grid-master">
         <section class="card">

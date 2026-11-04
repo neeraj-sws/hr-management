@@ -74,7 +74,7 @@ class LeaveUrgentWorkNightWorkAnnouncementTest extends TestCase
 
         $extra = app(HrWorkflowService::class)->payEstimate($this->employee, '2026-10-01', '2026-10-31')['breakdown']['extra_work'];
         $this->assertSame(5400, $extra['dates']['2026-10-28']['seconds']);
-        $this->assertEqualsWithDelta(187.5, $extra['amount'], 0.01, '1.5 h x 125 an hour');
+        $this->assertEqualsWithDelta(166.67, $extra['amount'], 0.01, '1.5 h x 111.11 an hour (one day ÷ 9)');
     }
 
     public function test_announcement_can_leave_out_a_department(): void
@@ -130,7 +130,7 @@ class LeaveUrgentWorkNightWorkAnnouncementTest extends TestCase
             $this->assertSame('approved', $request->fresh()->status);
             $night = app(HrWorkflowService::class)->payEstimate($this->employee, '2026-10-01', '2026-10-31')['breakdown']['night_work'];
             $this->assertSame(210, $night['minutes']);
-            $this->assertEqualsWithDelta(437.5, $night['amount'], 0.01, '3.5 h x 125 an hour');
+            $this->assertEqualsWithDelta(388.89, $night['amount'], 0.01, '3.5 h x 111.11 an hour (one day ÷ 9)');
             $this->assertStringContainsString('is approved and will be paid', $this->employee->user->notifications()->latest('created_at')->first()->data['message']);
         }
     }

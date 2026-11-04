@@ -18,6 +18,8 @@ class Employees extends Component
     use InteractsWithHr, WithPagination, \Livewire\WithFileUploads;
 
     #[Url] public string $search = '';
+    /** Just added (HR / admin): offer to make the appointment letter. [id, name] */
+    public ?array $letterOffer = null;
     #[Url] public ?int $department = null;
     #[Url] public string $status = 'active';
     /** Joined between these dates (empty = any). */
@@ -79,6 +81,8 @@ class Employees extends Component
     public string $password = '';
     public string $designation = '';
     public string $phone = '';
+    /** Home address: HR / admin can fill it; the employee can also change their own (website profile, app settings). */
+    public string $address = '';
     public ?int $departmentId = null;
     public ?int $managerId = null;
     public string $joinedAt = '';
@@ -99,6 +103,8 @@ class Employees extends Component
     public string $exitReason = '';
     public array $teamIds = [];
     public bool $isManager = false;
+    /** No fixed working hours (e.g. cleaning staff): no late / early / half-day / short-hour cuts. */
+    public bool $flexibleHours = false;
 
     public ?int $pwEmployeeId = null;
     public string $pwPassword = '';
@@ -130,11 +136,11 @@ class Employees extends Component
         $this->editingId = $employee->id;
         $this->fill([
             'employeeCode' => $employee->employee_code, 'name' => $employee->name, 'email' => (string) $employee->email,
-            'designation' => (string) $employee->designation, 'phone' => (string) $employee->phone,
+            'designation' => (string) $employee->designation, 'phone' => (string) $employee->phone, 'address' => (string) $employee->address,
             'departmentId' => $employee->department_id, 'managerId' => $employee->manager_id,
             'joinedAt' => (string) $employee->joined_at?->toDateString(), 'dateOfBirth' => (string) $employee->date_of_birth?->toDateString(), 'employmentType' => $employee->employment_type ?: 'full_time', 'probationEndsOn' => (string) $employee->probation_ends_on?->toDateString(), 'noticePeriodDays' => (string) ($employee->notice_period_days ?? ''), 'workStart' => substr((string) $employee->work_start, 0, 5),
             'workEnd' => substr((string) $employee->work_end, 0, 5), 'dailyHours' => (string) (float) $employee->daily_work_hours,
-            'teamIds' => $employee->teams->pluck('id')->map(fn ($id) => (string) $id)->all(), 'isManager' => (bool) $employee->user?->hasRole('Manager'),
+            'teamIds' => $employee->teams->pluck('id')->map(fn ($id) => (string) $id)->all(), 'isManager' => (bool) $employee->user?->hasRole('Manager'), 'flexibleHours' => app(\App\Services\AttendanceService::class)->flexibleHours($employee),
             'exitDate' => (string) $employee->exit_date?->toDateString(), 'exitType' => $employee->exit_type ?: 'resignation', 'exitReason' => (string) $employee->exit_reason,
         ]);
         $this->showForm = true;
@@ -150,6 +156,7 @@ class Employees extends Component
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($employee?->user_id)],
             'designation' => ['nullable', 'string', 'max:120'],
             'phone' => ['nullable', 'string', 'max:40'],
+            'address' => ['nullable', 'string', 'max:500'],
             'departmentId' => ['nullable', 'exists:departments,id'],
             'managerId' => ['nullable', 'exists:attendance_employees,id', Rule::notIn([$employee?->id ?? 0])],
             'joinedAt' => ['nullable', 'date'],
@@ -180,7 +187,7 @@ class Employees extends Component
 
         $data = [
             'employee_code' => $this->employeeCode, 'name' => $this->name, 'email' => $this->email,
-            'designation' => $this->designation ?: null, 'phone' => $this->phone ?: null,
+            'designation' => $this->designation ?: null, 'phone' => $this->phone ?: null, 'address' => trim($this->address) !== '' ? trim($this->address) : null,
             'department_id' => $this->departmentId ?: null, 'manager_id' => $this->managerId ?: null,
             'joined_at' => $this->joinedAt ?: null, 'date_of_birth' => $this->dateOfBirth ?: null, 'employment_type' => $this->employmentType, 'probation_ends_on' => $this->probationEndsOn ?: null, 'notice_period_days' => $this->noticePeriodDays === '' ? null : (int) $this->noticePeriodDays, 'work_start' => $this->workStart ?: null, 'work_end' => $this->workEnd ?: null,
             'daily_work_hours' => $this->dailyHours, 'team_ids' => array_map('intval', $this->teamIds), 'is_manager' => $this->isManager,
@@ -188,9 +195,12 @@ class Employees extends Component
         ];
         if ($employee) {
             $service->update($employee, $data, $this->user());
+            $this->saveFlexibleHours($employee);
             $this->toast($left ? 'Saved as an ex-employee. Their login and devices are switched off; their records stay.' : 'Employee updated.');
         } else {
-            $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary === '' ? 0 : $this->monthlySalary, 'pay_basis' => $this->payBasis, 'daily_rate' => $this->payBasis === 'daily' ? $this->dailyRate : null], $this->user());
+            $added = $service->create([...$data, 'password' => $this->password, 'monthly_salary' => $this->monthlySalary === '' ? 0 : $this->monthlySalary, 'pay_basis' => $this->payBasis, 'daily_rate' => $this->payBasis === 'daily' ? $this->dailyRate : null], $this->user());
+            $this->saveFlexibleHours($added);
+            if (! $left && \App\Services\HrLetterService::canManage($this->user()) && app(\App\Services\HrLetterService::class)->templateFor('appointment')) $this->letterOffer = [$added->id, $added->name];
             $this->toast($left ? 'Ex-employee added (inactive, no login). Their old attendance and salary can now be imported.' : 'Employee and login account created.');
         }
         // Saved as the other kind (e.g. made a trainee from Employees): say where they now are.
@@ -243,9 +253,28 @@ class Employees extends Component
         $this->resetForm();
     }
 
+    /**
+     * Flexible hours on / off for this person (for all their days). Switched on: their late and early fines that are not in a
+     * locked payroll are removed, as those days are now on time.
+     */
+    private function saveFlexibleHours(AttendanceEmployee $employee): void
+    {
+        $attendance = app(\App\Services\AttendanceService::class);
+        if ($attendance->flexibleHours($employee) === $this->flexibleHours) return;
+        $people = app(\App\Services\PeopleOperationsService::class);
+        $people->setPolicy(\App\Services\AttendanceService::FLEXIBLE_KEY, 'attendance', 'Flexible working hours', ['on' => $this->flexibleHours ? 1 : 0], $employee->id, $this->user()->id, '2000-01-01');
+        $attendance->forgetFlexible($employee);
+        app(\App\Services\AuditLogger::class)->record($this->flexibleHours ? 'employee.flexible_hours_on' : 'employee.flexible_hours_off', $employee, ['employee' => $employee->name]);
+        if (! $this->flexibleHours) return;
+        $dates = \App\Models\EmployeePenalty::where('employee_id', $employee->id)->whereIn('status', ['pending', 'approved'])
+            ->where(fn ($q) => $q->where('source_key', 'like', 'late:%')->orWhere('source_key', 'like', 'early:%'))
+            ->pluck('effective_on')->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->toDateString())->unique();
+        foreach ($dates as $date) $people->reassessDay($employee, $date, $this->user()->id, 'flexible working hours switched on');
+    }
+
     private function resetForm(): void
     {
-        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager');
+        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'address', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager', 'flexibleHours');
         $this->resetValidation();
     }
 

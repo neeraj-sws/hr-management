@@ -111,10 +111,12 @@ class AttendanceService
         if (! $employee->is_active) throw ValidationException::withMessages(['attendance' => 'Inactive employees cannot check in.']);
         $this->guardSource($employee, $source);
         $place = $this->locate($employee, $source, $location, 'check in');
+        $computer = $this->computerName($source);
+        if ($computer) $this->guardSharedComputer($employee, $computer, $at);
         $photoPath = $this->storeSelfie($employee, $source, $photo, 'in');
 
         try {
-            $session = $this->createCheckIn($employee, $source, $at, $place, $photoPath);
+            $session = $this->createCheckIn($employee, $source, $at, $place, $photoPath, $computer);
         } catch (\Throwable $error) {
             if ($photoPath) \Illuminate\Support\Facades\Storage::disk('local')->delete($photoPath);
             throw $error;
@@ -162,9 +164,35 @@ class AttendanceService
         return $stopped;
     }
 
-    private function createCheckIn(AttendanceEmployee $employee, string $source, ?CarbonInterface $at, array $place, ?string $photoPath): AttendanceSession
+    /** The computer the desktop app runs on (its Windows name, sent with every request). */
+    private function computerName(string $source): ?string
     {
-        return DB::transaction(function () use ($employee, $source, $at, $place, $photoPath) {
+        if ($source !== 'desktop') return null;
+        $name = trim((string) request()->header('X-Computer-Name'));
+
+        return $name !== '' ? mb_substr($name, 0, 255) : null;
+    }
+
+    /**
+     * One computer, one person a day: someone else already checked in on this computer
+     * today, so this check-in is refused (stops checking in for a colleague by signing
+     * out of the desktop app and signing in as them). HR can still correct attendance.
+     */
+    private function guardSharedComputer(AttendanceEmployee $employee, string $computer, ?CarbonInterface $at): void
+    {
+        $date = ($at ? $this->local($at) : now())->toDateString();
+        $other = AttendanceActivityEvent::with('session.employee')->where('event_type', 'check_in')->where('metadata->computer', $computer)
+            ->whereHas('session', fn ($q) => $q->whereDate('work_date', $date)->where('employee_id', '!=', $employee->id))->first();
+        if (! $other) return;
+
+        $first = $other->session?->employee;
+        $this->audit->record('attendance.shared_computer_blocked', $employee, ['computer' => $computer, 'date' => $date, 'already_used_by' => $first?->id]);
+        throw ValidationException::withMessages(['attendance' => "This computer ({$computer}) was already used today by ".($first?->name ?? 'another employee').' to check in. Each person checks in on their own computer. Ask HR to correct your attendance if this is a mistake.']);
+    }
+
+    private function createCheckIn(AttendanceEmployee $employee, string $source, ?CarbonInterface $at, array $place, ?string $photoPath, ?string $computer = null): AttendanceSession
+    {
+        return DB::transaction(function () use ($employee, $source, $at, $place, $photoPath, $computer) {
             AttendanceEmployee::whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $now = $at ? $this->local($at) : now();
             $open = $this->openSession($employee, $now);
@@ -172,7 +200,7 @@ class AttendanceService
             if (AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $now->toDateString())->exists()) throw ValidationException::withMessages(['attendance' => 'An attendance session already exists for this day.']);
             $session = AttendanceSession::create(['employee_id' => $employee->id, 'work_date' => $now->toDateString(), 'check_in' => $now, 'status' => 'working', 'last_sync_at' => $now,
                 'check_in_latitude' => $place['latitude'], 'check_in_longitude' => $place['longitude'], 'check_in_office_id' => $place['office_id'], 'check_in_distance_meters' => $place['distance'], 'check_in_photo_path' => $photoPath, 'check_in_ip' => $this->clientIp($source)]);
-            $this->event($session, 'check_in', $now, 0, ['source' => $source, 'photo' => (bool) $photoPath, 'located' => $place['latitude'] !== null]);
+            $this->event($session, 'check_in', $now, 0, ['source' => $source, 'photo' => (bool) $photoPath, 'located' => $place['latitude'] !== null] + ($computer ? ['computer' => $computer] : []));
             $this->audit->record('attendance.checked_in', $session, ['source' => $source, 'photo' => (bool) $photoPath]);
 
             return $session;
@@ -660,10 +688,16 @@ class AttendanceService
     public function dailyHours(AttendanceEmployee $employee, ?string $date = null): float
     {
         $date ??= today()->toDateString();
-        $override = \App\Models\EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', 'work.hours')
-            ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date))
-            ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $date))
-            ->orderByRaw('effective_from IS NULL')->orderByDesc('effective_from')->orderByDesc('id')->first()?->configuration ?? [];
+        $override = PolicyConfigurationService::on()
+            // Page being drawn: the person's work-hours overrides are read once, the one for this date picked here (same order).
+            ? PolicyConfigurationService::memo('rows|employee|'.$employee->id.'|work.hours', fn () => \App\Models\EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', 'work.hours')->get())
+                ->filter(fn ($o) => (! $o->effective_from || $o->effective_from->toDateString() <= $date) && (! $o->effective_until || $o->effective_until->toDateString() >= $date))
+                ->sort(fn ($a, $b) => [$a->effective_from === null, $b->effective_from?->toDateString(), $b->id] <=> [$b->effective_from === null, $a->effective_from?->toDateString(), $a->id])
+                ->first()?->configuration ?? []
+            : \App\Models\EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', 'work.hours')
+                ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date))
+                ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $date))
+                ->orderByRaw('effective_from IS NULL')->orderByDesc('effective_from')->orderByDesc('id')->first()?->configuration ?? [];
         if (isset($override['standard_daily_hours']) && (float) $override['standard_daily_hours'] > 0) return (float) $override['standard_daily_hours'];
         if ((float) $employee->daily_work_hours > 0) return (float) $employee->daily_work_hours;
         $company = $this->policies->forEmployee(null, 'work.hours', $date, []);
@@ -673,6 +707,11 @@ class AttendanceService
 
     /** Attendance rules for an employee: work start, grace minutes and half-day threshold. */
     public function rules(AttendanceEmployee $employee, string $date): array
+    {
+        return PolicyConfigurationService::memo('rules|'.$employee->id.'|'.$date, fn () => $this->resolveRules($employee, $date));
+    }
+
+    private function resolveRules(AttendanceEmployee $employee, string $date): array
     {
         $configured = $this->policies->forEmployee($employee, 'attendance.rules', $date, []);
         // Grace and the half-day threshold are current operational settings, not historical values:
@@ -704,10 +743,30 @@ class AttendanceService
         return \App\Support\WorkCalendar::isWorkday($date, $this->policies->forEmployee($employee, 'calendar.working_days', $date, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]));
     }
 
+    /** People with no fixed working hours (e.g. cleaning staff): never late, early or a half day; no time is cut. */
+    public const FLEXIBLE_KEY = 'attendance.flexible';
+
+    /** @var array<int, bool> */
+    private array $flexibleCache = [];
+
+    /** Flexible hours (People > Employees > Edit): a present day is a full day, whatever the time. */
+    public function flexibleHours(?AttendanceEmployee $employee): bool
+    {
+        if (! $employee) return false;
+
+        return $this->flexibleCache[$employee->id] ??= ! empty($this->policies->forEmployee($employee, self::FLEXIBLE_KEY, today()->toDateString(), [])['on']);
+    }
+
+    public function forgetFlexible(AttendanceEmployee $employee): void
+    {
+        unset($this->flexibleCache[$employee->id]);
+    }
+
     public function isLate(AttendanceSession $session, ?array $rules = null): bool
     {
         $employee = $session->employee;
         if (! $employee || ! $session->check_in) return false;
+        if ($this->flexibleHours($employee)) return false;
         if (! $this->isScheduledDay($employee, $session->work_date->toDateString())) return false;
         $rules ??= $this->rules($employee, $session->work_date->toDateString());
         if (! $rules['work_start']) return false;
@@ -735,6 +794,7 @@ class AttendanceService
     {
         $employee = $session->employee;
         if (! $employee || ! $session->check_in) return 0;
+        if ($this->flexibleHours($employee)) return 0;
         if (! $this->isScheduledDay($employee, $session->work_date->toDateString())) return 0;
         $rules = $this->rules($employee, $session->work_date->toDateString());
         if (! $rules['work_start']) return 0;
@@ -782,6 +842,7 @@ class AttendanceService
     public function earlyMinutes(AttendanceSession $session): int
     {
         if (! $session->check_out || ! $session->employee) return 0;
+        if ($this->flexibleHours($session->employee)) return 0;
         if (! $this->isScheduledDay($session->employee, $session->work_date->toDateString())) return 0;
         $end = $this->expectedEnd($session->employee, $session->work_date->toDateString());
 
@@ -791,6 +852,7 @@ class AttendanceService
     public function isHalfDay(AttendanceSession $session, ?array $rules = null): bool
     {
         if (! $session->check_out || ! $session->employee) return false;
+        if ($this->flexibleHours($session->employee)) return false;
         if (! $this->isScheduledDay($session->employee, $session->work_date->toDateString())) return false;
         // A half-day holiday (office closes early): coming in counts as a full day.
         if ($this->halfDayHoliday($session->employee, $session->work_date->toDateString())) return false;

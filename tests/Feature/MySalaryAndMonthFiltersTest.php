@@ -48,7 +48,7 @@ class MySalaryAndMonthFiltersTest extends TestCase
         $this->assertSame('estimate', $json['current']['source']);
         $this->assertSame(800.0, (float) $json['current']['gross'], '2 days × 400');
         $this->assertSame('Short working hours', $json['current']['deductions'][0][0]);
-        $this->assertEqualsWithDelta(400 / 8.5 * 1.5, $json['current']['deductions'][0][1], 0.01);
+        $this->assertEqualsWithDelta(400 / 9 * 1.5, $json['current']['deductions'][0][1], 0.01);
         $sep = $json['history'][0];
         $this->assertSame(['September 2026', 'old_sheet', 8562.96, 6000.0, 2562.96], [$sep['label'], $sep['source'], (float) $sep['net'], (float) $sep['paid'], (float) $sep['remaining']]);
         $this->assertSame('Late coming', $sep['deductions'][0][0]);

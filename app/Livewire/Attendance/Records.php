@@ -51,7 +51,7 @@ class Records extends Component
         if (! in_array($name, ['detail', 'detailTab'], true)) $this->resetPage();
     }
 
-    /** "Search": the filters are applied when this is pressed (and when the page loads from a link). */
+    /** Filters now apply as soon as they change (wire:model.live); kept for older callers. */
     public function search(): void
     {
         $this->resetPage();
@@ -159,7 +159,47 @@ class Records extends Component
             'canMonitor' => $canMonitor,
             'prev' => $neighbour('<', 'desc'),
             'next' => $neighbour('>', 'asc'),
+            'corrections' => $this->corrections($session),
         ];
+    }
+
+    /**
+     * Approved changes to this day, newest last: who changed it (HR / admin directly, or the employee's request
+     * approved), when, why, and the check-in, check-out and break before and after.
+     *
+     * @return array<int, array{at: string, by: string, direct: bool, reason: string, changes: array<int, array{0: string, 1: string, 2: string}>}>
+     */
+    private function corrections(AttendanceSession $session): array
+    {
+        $events = $session->events()->where('event_type', 'correction')->orderBy('event_time')->get();
+        if ($events->isEmpty()) return [];
+        $rows = \App\Models\AttendanceCorrection::with('decider')->whereIn('id', $events->pluck('metadata.correction_id')->filter())->get()->keyBy('id');
+        $time = fn ($v) => $v ? Carbon::parse($v)->format('h:i A') : '—';
+
+        return $events->map(function ($event) use ($rows, $time) {
+            $meta = (array) $event->metadata;
+            $correction = $rows->get($meta['correction_id'] ?? 0);
+            $before = (array) ($meta['before'] ?? []);
+            $after = (array) ($meta['after'] ?? []);
+            $reason = (string) ($correction?->reason ?? '');
+            $direct = str_starts_with($reason, 'Changed by ');
+            $changes = [];
+            foreach (['check_in' => 'Check-in', 'check_out' => 'Check-out'] as $key => $label) {
+                if (($before[$key] ?? null) !== ($after[$key] ?? null)) $changes[] = [$label, $time($before[$key] ?? null), $time($after[$key] ?? null)];
+            }
+            if (array_key_exists('break_minutes', $after) && (int) ($before['break_minutes'] ?? 0) !== (int) $after['break_minutes']) {
+                $changes[] = ['Break', \App\Support\Duration::fromMinutes((int) ($before['break_minutes'] ?? 0)), \App\Support\Duration::fromMinutes((int) $after['break_minutes'])];
+            }
+
+            return [
+                'at' => Carbon::parse($event->event_time)->format('d M Y, h:i A'),
+                'by' => $correction?->decider?->name ?? \App\Models\User::find($meta['approved_by'] ?? 0)?->name ?? 'HR',
+                'direct' => $direct,
+                // "Changed by SWS Admin: Forgot to check out" → "Forgot to check out"
+                'reason' => $direct ? (string) \Illuminate\Support\Str::after($reason, ': ') : $reason,
+                'changes' => $changes,
+            ];
+        })->values()->all();
     }
 
     /**
@@ -249,8 +289,21 @@ class Records extends Component
         ];
     }
 
+    /** The page is drawn: forget the rules again, so the next action reads fresh ones. */
+    public function rendered(): void
+    {
+        \App\Services\PolicyConfigurationService::stop();
+    }
+
+    public function exception($e, $stopPropagation): void
+    {
+        \App\Services\PolicyConfigurationService::stop();
+    }
+
     public function render(AttendanceService $attendance)
     {
+        // The rows and cards ask the same rule (shift, grace, working days) many times: read each once while drawing.
+        \App\Services\PolicyConfigurationService::start();
         if (! strtotime($this->from)) $this->from = today()->toDateString();
         if (! strtotime($this->to) || $this->to < $this->from) $this->to = max($this->from, today()->toDateString());
         if (! in_array($this->perPage, self::PER_PAGE, true)) $this->perPage = 25;

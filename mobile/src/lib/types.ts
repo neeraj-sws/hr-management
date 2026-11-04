@@ -121,3 +121,16 @@ export type Announcement = { id: number; title: string; body: string; pinned: bo
 export type Celebration = { employee: string; type: 'birthday' | 'anniversary'; date: string; years: number | null; today: boolean };
 export type Holiday = { date: string; name: string };
 export type Training = { id: number; title: string; description: string | null; category: string | null; duration_hours: number | null; material_url: string | null; mandatory: boolean; due_on: string | null; status: string; completed_at: string | null };
+/** Help & Support: the employee's own requests and the chat (staff internal notes never come to the app). */
+export type SupportCategory = { id: number; name: string; description: string | null };
+export type SupportAttachment = { id: number; name: string; mime_type: string | null; size: number; is_image: boolean; url: string };
+export type SupportMessage = {
+  id: number; mine: boolean; sender: string; role: string; sender_type: 'employee' | 'staff'; body: string | null;
+  removed: boolean; removed_text: string | null; created_at: string; attachments: SupportAttachment[];
+};
+export type SupportTicket = {
+  id: number; number: string; subject: string; category: string | null; category_id: number; status: string; status_label: string;
+  handled_by: string | null; unread: boolean; created_at: string; last_message_at: string | null; resolved_at: string | null;
+  can_reopen: boolean; reopen_until: string | null;
+};
+export type SupportTicketDetail = SupportTicket & { description: string; can_reply: boolean; messages: SupportMessage[] };

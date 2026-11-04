@@ -250,7 +250,16 @@ class DesktopApp:
         self.client.token = ""
         self._show_login("Your session has ended. Please sign in again.")
 
+    def checked_in(self) -> bool:
+        """Checked in today and not checked out yet (also while on a break)."""
+        session = self.session or {}
+        return bool(session.get("check_in")) and not session.get("check_out")
+
     def logout(self):
+        # Checked in: no signing out until check-out, so nobody else can sign in here and check in.
+        if self.checked_in():
+            messagebox.showinfo("Sign out", "You are checked in. Check out first, then you can sign out.")
+            return
         if not messagebox.askyesno("Sign out", "Sign out of SWS HR on this computer?"):
             return
         self._run(self.client.logout, lambda _r: None, lambda _e: None)
@@ -1408,16 +1417,33 @@ class DesktopApp:
             self.away_tracker = presence.AwayTracker(minutes)
 
     def _poll_policies(self):
-        """Every few minutes: pick up monitoring settings an admin changed (app usage, window titles)."""
+        """Every few minutes: pick up monitoring settings an admin changed (app usage, window titles),
+        and today's attendance as the server has it (checked in on the phone / website, or checked out by HR)."""
         if self.client.token:
-            def done(me):
+            def done(result):
+                me, session = result
                 if isinstance(me, dict):
                     self.me = me
                     policies = me.get("policies") or {}
                     self._apply_usage_flags({"enabled": policies.get("app_usage"), "titles_enabled": policies.get("window_titles")})
                     self._apply_attendance_policies(policies)
-            self._run(self.client.me, done, lambda _e: None)
+                self._take_server_session(session)
+            self._run(lambda: (self.client.me(), self.client.today()), done, lambda _e: None)
         self.root.after(POLICY_INTERVAL_MS, self._poll_policies)
+
+    def _take_server_session(self, session: dict | None):
+        """Today's session from the server. Without this the app never learnt about a check-in made
+        elsewhere, so it sent no screen time all day. Skipped while offline actions wait to be sent."""
+        pill = getattr(self, "status_pill", None)
+        if not pill or not pill.winfo_exists() or self.offline.counts()["queued"]:
+            return
+        if isinstance(session, dict) and session.get("id"):
+            if (self.session or {}).get("id") == session["id"]:
+                self._sync_session(session)
+            else:
+                self._set_session(session)
+        elif session is None and self.session:
+            self._set_session(None)
 
     def _auto_sync(self):
         if not self.client.token or not hasattr(self, "sync_label") or not self.sync_label.winfo_exists():

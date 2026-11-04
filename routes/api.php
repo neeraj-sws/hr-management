@@ -140,6 +140,14 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/payslip-requests', [\App\Http\Controllers\Api\PayslipRequestController::class, 'store'])->name('api.payslip-requests.store');
     Route::get('/payslips/{payslip}', [PayslipController::class, 'show'])->name('api.payslips.show');
 
+    // Help & Support (the employee's own requests)
+    Route::get('/support/categories', [\App\Http\Controllers\Api\SupportController::class, 'categories'])->name('api.support.categories');
+    Route::get('/support/tickets', [\App\Http\Controllers\Api\SupportController::class, 'index'])->name('api.support.index');
+    Route::post('/support/tickets', [\App\Http\Controllers\Api\SupportController::class, 'store'])->middleware('throttle:20,1')->name('api.support.store');
+    Route::get('/support/tickets/{ticket}', [\App\Http\Controllers\Api\SupportController::class, 'show'])->whereNumber('ticket')->name('api.support.show');
+    Route::post('/support/tickets/{ticket}/messages', [\App\Http\Controllers\Api\SupportController::class, 'reply'])->whereNumber('ticket')->middleware('throttle:60,1')->name('api.support.reply');
+    Route::post('/support/tickets/{ticket}/reopen', [\App\Http\Controllers\Api\SupportController::class, 'reopen'])->whereNumber('ticket')->name('api.support.reopen');
+
     Route::get('/desktop/latest', [\App\Http\Controllers\Api\DesktopReleaseController::class, 'latest'])->name('api.desktop.latest');
     Route::post('/push-tokens', [\App\Http\Controllers\Api\PushTokenController::class, 'store'])->name('api.push-tokens.store');
     Route::post('/push-tokens/remove', [\App\Http\Controllers\Api\PushTokenController::class, 'destroy'])->name('api.push-tokens.destroy');

@@ -74,6 +74,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'Celebration' => 'dashboard',
         'Interview' => 'recruitment.interviews',
         'TrainingAssignment' => 'training.my',
+        'SupportTicket' => 'support.my',
     ];
 
     /** group => [label, can be muted in the app] — everything not listed is "important" and always shown in the app. */

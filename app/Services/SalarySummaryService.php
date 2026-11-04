@@ -47,7 +47,7 @@ class SalarySummaryService
         $sheets = LegacySalaryRecord::where('employee_id', $employee->id)->get()->keyBy('payroll_month');
         $keys = $items->keys()->merge($sheets->keys())->unique()->sortDesc()->take($months);
 
-        return $keys->map(function ($key) use ($items, $sheets) {
+        $done = $keys->map(function ($key) use ($items, $sheets) {
             $item = $items->get($key);
             // A payroll item built from the old sheet shows the sheet's own lines.
             if ($item && empty($item->calculation_breakdown['old_sheet'])) return $this->fromItem($item);
@@ -55,6 +55,38 @@ class SalarySummaryService
 
             return $sheet ? $this->fromSheet($sheet, $item) : $this->fromItem($item);
         })->values()->all();
+
+        return [...$this->waitingMonths($employee, $keys->first()), ...$done];
+    }
+
+    /**
+     * Months that have ended but whose payroll is not approved yet (e.g. October in early November): shown from the
+     * draft payroll, or worked out from attendance as payroll would, so the month never disappears from the history.
+     * Newer than the latest approved / old-sheet month only; at most the last 3 months (1 when there is none yet).
+     */
+    private function waitingMonths(AttendanceEmployee $employee, ?string $latest): array
+    {
+        $months = [];
+        $month = today()->subMonthNoOverflow()->startOfMonth();
+        for ($i = 0; $i < ($latest ? 3 : 1); $i++, $month = $month->copy()->subMonthNoOverflow()) {
+            $key = $month->format('Y-m');
+            if ($latest !== null && $key <= $latest) break;
+            $end = $month->copy()->endOfMonth();
+            if ($employee->joined_at && $employee->joined_at->gt($end)) break;
+            $draft = PayrollItem::with(['run', 'payments', 'payslip'])->where('employee_id', $employee->id)
+                ->whereHas('run', fn ($q) => $q->where('status', 'draft')->whereDate('period_starts_on', $month->toDateString()))->latest('id')->first();
+            if ($draft) {
+                $months[] = [...$this->fromItem($draft), 'status' => 'draft, waiting for approval', 'waiting' => true];
+                continue;
+            }
+            $estimate = $this->payroll->payEstimate($employee, $month->toDateString(), $end->toDateString());
+            if (! $estimate || (float) $estimate['gross'] <= 0) continue;
+            $months[] = [...$this->fromBreakdown($key, 'payroll', 'not run yet, worked out from attendance', [...$estimate['breakdown'], '_days' => $this->dayList($employee, $month->copy(), $end->copy()), '_employee_id' => $employee->id], $estimate['gross'], $estimate['net'], 0.0, [
+                'working' => $estimate['working_days'], 'present' => $estimate['present_days'], 'paid_leave' => $estimate['paid_leave_days'], 'unpaid_leave' => $estimate['unpaid_leave_days'],
+            ], $estimate), 'payslip_id' => null, 'paid_on' => null, 'waiting' => true];
+        }
+
+        return $months;
     }
 
     /** One payroll row as the employee sees it (payslip, payroll breakdown), with "why less than full salary". */
@@ -103,7 +135,8 @@ class SalarySummaryService
             if ((float) ($c['amount'] ?? 0) <= 0) continue;
             if (($c['type'] ?? '') === 'earning') $earnings[] = [$c['name'], $money($c['amount']), null]; else $deductions[] = [$c['name'], $money($c['amount']), null];
         }
-        if ((float) ($b['short_hours']['amount'] ?? 0) > 0) $deductions[] = ['Short working hours', $money($b['short_hours']['amount']), Duration::hms((int) ($b['short_hours']['short_seconds'] ?? 0)).' below your working hours'];
+        $shortDays = self::shortDays($b);
+        if ((float) ($b['short_hours']['amount'] ?? 0) > 0) $deductions[] = ['Short working hours', $money($b['short_hours']['amount']), self::shortNote($b, $shortDays)];
         // Fines, one line each (date and reason); older breakdowns without the list show one total.
         if ($lines = (array) ($b['penalty_lines'] ?? [])) {
             foreach ($lines as $line) $deductions[] = ['Fine: '.($line['reason'] ?? 'penalty'), $money($line['amount'] ?? 0), isset($line['date']) ? Carbon::parse($line['date'])->format('d M') : null];
@@ -120,6 +153,8 @@ class SalarySummaryService
             $shortfall['after'] = array_values(array_map(fn ($d) => ['label' => $d[0], 'amount' => (float) $d[1], 'detail' => $d[2] ?? null], array_filter($deductions, fn ($d) => (float) $d[1] > 0)));
             $shortfall['added'] = array_values(array_map(fn ($e) => ['label' => $e[0], 'amount' => (float) $e[1], 'detail' => $e[2] ?? null], array_filter($earnings, fn ($e) => ! in_array($e[0], ['Salary for days worked', 'Extra working (off days)', 'Overtime'], true) && (float) $e[1] > 0)));
             $shortfall['net'] = $money($net);
+            // Date by date: in, out, break, at work, minutes short and the cut (the website shows a table).
+            $shortfall['short_days'] = $shortDays;
             $shortfall['pending_fines'] = $this->pendingFines($b['_employee_id'] ?? null, $month);
         }
         if ((float) ($b['reimbursements'] ?? 0) > 0) $earnings[] = ['Expense reimbursements', $money($b['reimbursements']), 'approved claims, paid on top'];
@@ -202,6 +237,9 @@ class SalarySummaryService
         if ($half) $add('Half day'.(count($half) === 1 ? '' : 's').' — '.$dates($half), 'came in, but less than the half-day hours at work: half of the day is paid', 0.5 * count($half));
         $halfHoliday = (array) ($b['half_holiday_paid'] ?? []);
         if ($halfHoliday) $add('Half-day holiday, not at work — '.$dates($halfHoliday), 'the holiday half is paid, the working half is not', 0.5 * count($halfHoliday));
+        // Pay only for project days: days at work but not on the project(s) are not paid.
+        $notOnProject = array_values((array) ($b['project_days']['not_paid'] ?? []));
+        if ($notOnProject) $add('Not on project work ('.implode(', ', (array) ($b['project_days']['projects'] ?? [])).') — '.count($notOnProject).' '.(count($notOnProject) === 1 ? 'day' : 'days'), $dates($notOnProject).' · at work, but no task of the project that day: not paid'.((float) ($b['project_days']['fines_not_cut'] ?? 0) > 0 ? ' (their fines ₹'.number_format((float) $b['project_days']['fines_not_cut'], 2).' not cut either)' : ''), min((float) count($notOnProject), max(0, $left)));
         $unpaid = (float) ($days['unpaid_leave'] ?? 0);
         if ($unpaid > 0) $add('Unpaid leave — '.$num($unpaid).' '.($unpaid == 1 ? 'day' : 'days'), null, min($unpaid, max(0, $left)));
         if ($left > 0.005) {
@@ -217,7 +255,8 @@ class SalarySummaryService
         }
         $estimate = $source === 'estimate';
 
-        $standardSeconds = (int) (collect((array) ($b['hours_paid_days'] ?? []))->first()['standard'] ?? round((float) ($data['standard_daily_hours'] ?? 0) * 3600));
+        // Hours one day's pay is divided by for the hourly rate (9 by default); older payroll rows fall back to what they used.
+        $standardSeconds = (int) (isset($data['hourly_rate_hours']) ? round((float) $data['hourly_rate_hours'] * 3600) : (collect((array) ($b['hours_paid_days'] ?? []))->first()['standard'] ?? round((float) ($data['standard_daily_hours'] ?? 0) * 3600)));
 
         return ['rate' => round($rate, 2), 'days_paid' => $paidDays, 'working' => $working, 'estimate' => $estimate,
             'late' => $late, 'late_cut' => round(array_sum(array_column($late, 'cut')), 2), 'late_title' => self::byHoursTitle(array_column($late, 'kind')),
@@ -233,6 +272,31 @@ class SalarySummaryService
                 'hours' => 'paid '.Duration::hm((int) ($b['extra_work']['paid_seconds'] ?? $b['extra_work']['seconds'] ?? 0)).((int) ($b['extra_work']['seconds'] ?? 0) - (int) ($b['extra_work']['paid_seconds'] ?? $b['extra_work']['seconds'] ?? 0) >= 60 ? ' of '.Duration::hm((int) $b['extra_work']['seconds']).' worked' : ''),
                 'dates' => collect((array) ($b['extra_work']['dates'] ?? []))->map(fn ($d, $date) => Carbon::parse($date)->format('d M').' ('.Duration::hm((int) ($d['seconds'] ?? 0)).((int) ($d['seconds'] ?? 0) - (int) ($d['paid_seconds'] ?? $d['seconds'] ?? 0) >= 60 ? ', paid '.Duration::hm((int) $d['paid_seconds']).' max' : '').')')->values()->join(', '),
             ] : null];
+    }
+
+    /** Each day cut for short hours: date, in–out, break and at work to the second, the minutes cut (rounded to the nearest minute) and rupees (older breakdowns: none). */
+    private static function shortDays(array $b): array
+    {
+        $rows = [];
+        foreach ((array) ($b['short_hours']['days'] ?? []) as $date => $d) {
+            $rows[] = ['date' => Carbon::parse($date)->format('d M'), 'day' => Carbon::parse($date)->format('D'), 'in' => Carbon::parse($d['in'])->format('g:i:s A'), 'out' => Carbon::parse($d['out'])->format('g:i:s A'),
+                'break' => Duration::hms((int) $d['break']), 'worked' => Duration::hms((int) $d['worked']), 'of' => Duration::hms((int) $d['required']),
+                'short' => intdiv((int) $d['short'], 60).' min', 'amount' => round((float) $d['amount'], 2)];
+        }
+
+        return $rows;
+    }
+
+    /** The short-hours line in words, each date included (the app shows this note; the website a table). */
+    private static function shortNote(array $b, array $days): string
+    {
+        $seconds = (int) ($b['short_hours']['short_seconds'] ?? 0);
+        $perMinute = $seconds > 0 ? (float) $b['short_hours']['amount'] / ($seconds / 60) : 0;
+        $grace = (int) ($b['short_hours']['grace_seconds'] ?? 0);
+        $head = intdiv($seconds, 60).' min below the working day (breaks / lunch taken off) × ₹'.number_format($perMinute, 4).' a minute'.($grace > 0 ? ' (after '.Duration::hm($grace).' grace)' : '');
+        if (! $days) return Duration::hms($seconds).' below your working hours';
+
+        return $head.' · '.collect($days)->map(fn ($d) => "{$d['date']}: {$d['in']}–{$d['out']}, break {$d['break']}, at work {$d['worked']} of {$d['of']} = {$d['short']} short, ₹".number_format($d['amount'], 2))->join(' · ');
     }
 
     /** "05–09 Oct, 12 Oct" from a list of dates. */

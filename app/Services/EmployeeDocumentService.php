@@ -32,12 +32,15 @@ class EmployeeDocumentService
         'appointment' => 'Appointment letter',
         'relieving' => 'Relieving letter',
         'noc' => 'NOC (No Objection Certificate)',
+        'offer' => 'Offer letter',
+        'experience_issued' => 'Experience letter (issued by us)',
+        'hr_letter' => 'HR letter',
         'policy' => 'Signed policy',
         'other' => 'Other',
     ];
 
     /** Types the company issues: only HR uploads these. */
-    public const HR_ONLY = ['employment', 'appointment', 'relieving', 'noc'];
+    public const HR_ONLY = ['employment', 'appointment', 'relieving', 'noc', 'offer', 'experience_issued', 'hr_letter'];
 
     /** "photo": a photo handed in as a document (the profile picture is changed only from the profile). */
     public const PHOTO = 'photo';

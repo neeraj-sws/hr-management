@@ -1,4 +1,4 @@
-<div x-data="{ tab: 'overview' }">
+<div x-data="{ tab: @js($initialTab) }">
     <div class="page-head">
         <div class="profile-chip">
             <x-avatar :employee="$employee" size="lg" />
@@ -185,7 +185,7 @@
 
     {{-- DOCS & ASSETS --}}
     <div x-show="tab === 'docs'" x-cloak>
-        <section class="card"><div class="card-head"><h2>Assets & documents</h2></div><div class="list">
+        <section class="card"><div class="card-head"><h2>Assets & documents</h2>@if($canIssueLetters)<button type="button" class="btn btn-primary btn-sm" wire:click="openLetter"><x-icon name="file" class="icon-sm" />Generate letter</button>@endif</div><div class="list">
             @foreach($assets as $asset)<div class="list-row"><div><strong>{{ $asset->name }}</strong><small>{{ $asset->asset_tag }} · since {{ $asset->assigned_on?->format('d M Y') }}</small></div><x-badge :status="$asset->status" /></div>@endforeach
             @foreach($documents as $doc)<div class="list-row"><div><strong><a href="{{ route('hr.documents.view', $doc) }}" target="_blank" rel="noopener">{{ $doc->original_name }}</a></strong><small>{{ \App\Livewire\Lifecycle\Documents::CATEGORIES[$doc->category] ?? ucfirst($doc->category) }} · added {{ $doc->created_at?->format('d M Y') }} @if($doc->expires_on)· expires {{ $doc->expires_on->format('d M Y') }}@endif</small></div><div class="row-actions"><a class="btn btn-sm" href="{{ route('hr.documents.view', $doc) }}" target="_blank" rel="noopener">View</a><a class="btn btn-sm" href="{{ route('hr.documents.download', $doc) }}">Download</a></div></div>@endforeach
             @if($assets->isEmpty() && $documents->isEmpty())<x-empty title="No assets or documents" icon="monitor" />@endif
@@ -235,6 +235,24 @@
                     @foreach(\App\Support\DailyStatusRule::MODES as $key => $label)<option value="{{ $key }}" @selected($dailyStatusOwn && $dailyStatusMode === $key)>{{ $label }}</option>@endforeach
                 </select></label>
                 <p class="small muted">Everyone at once: Work &gt; Daily status &gt; Who must write it.</p>
+            </div></section>
+            <section class="card"><div class="card-head"><div><h2>Daily status for earlier days</h2><p>Let {{ $employee->name }} write a missed daily status for days in previous months (with a reason), not only the last 2 days. Never before the joining date.</p></div>
+                @if($pastStatus)<button type="button" class="btn" wire:click="stopPastStatus" wire:loading.attr="disabled">Turn off</button>@endif</div><div class="card-body">
+                @if($pastStatus)
+                    <p class="small" style="margin-top:0"><x-badge tone="green">On</x-badge> Days from <b>{{ $pastStatusEarliest ? \Illuminate\Support\Carbon::parse($pastStatusEarliest)->format('d M Y') : '-' }}</b> to yesterday{{ $pastStatus['until'] ? ', until '.\Illuminate\Support\Carbon::parse($pastStatus['until'])->format('d M Y') : '' }}. Change it below.</p>
+                @else
+                    <p class="small muted" style="margin-top:0">Off: the normal 2-day limit.</p>
+                @endif
+                <form wire:submit="savePastStatus" class="form-grid">
+                    <x-field label="How far back" name="pastStatusBy"><select wire:model.live="pastStatusBy"><option value="months">Previous months</option><option value="date">From a date</option></select></x-field>
+                    @if($pastStatusBy === 'date')
+                        <x-field label="Earliest day" name="pastStatusFrom"><input type="date" wire:model="pastStatusFrom" max="{{ today()->subDay()->toDateString() }}"></x-field>
+                    @else
+                        <x-field label="Months back" name="pastStatusMonths"><select wire:model="pastStatusMonths">@for($m = 1; $m <= \App\Support\PastDailyStatus::MAX_MONTHS; $m++)<option value="{{ $m }}">{{ $m }} {{ str('month')->plural($m) }} (from {{ today()->startOfMonth()->subMonthsNoOverflow($m)->format('M Y') }})</option>@endfor</select></x-field>
+                    @endif
+                    <x-field label="Allowed until (optional)" name="pastStatusUntil"><input type="date" wire:model="pastStatusUntil" min="{{ today()->toDateString() }}"></x-field>
+                    <div style="grid-column:1/-1"><button class="btn btn-primary" wire:loading.attr="disabled">{{ $pastStatus ? 'Save changes' : 'Turn on' }}</button></div>
+                </form>
             </div></section>
         @endif
         @if($appUsageOn !== null)
@@ -298,6 +316,28 @@
                     <x-field label="Reason" name="recordNote" full><input type="text" wire:model="recordNote" maxlength="500" placeholder="e.g. Informed HR on phone: fever"></x-field>
                 </div>
             </div><div class="modal-foot"><button type="button" class="btn" wire:click="$set('showRecordLeave', false)">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Record leave</button></div></form>
+        </x-modal>
+    @endif
+    @if($letterOpen)
+        <x-modal title="Generate letter · {{ $employee->name }}" close="closeLetter" size="lg">
+            <form wire:submit="issueLetter">
+                <div class="modal-body stack">
+                    <x-field label="Template" name="letterTemplateId"><select wire:model="letterTemplateId" wire:change="chooseTemplate($event.target.value)"><option value="">Choose</option>@foreach($letterTemplates as $lt)<option value="{{ $lt->id }}">{{ $lt->name }}</option>@endforeach</select></x-field>
+                    @if($letterTemplates->isEmpty())<div class="alert alert-info" style="margin:0">No letter templates are on. Add or turn one on under Employee Lifecycle &gt; Letter templates.</div>@endif
+                    @if($letterMissing)<div class="alert alert-info" style="margin:0">Not in {{ $employee->name }}'s profile, so shown as a blank line ({{ \App\Services\HrLetterService::BLANK }}): <strong>{{ implode(', ', $letterMissing) }}</strong>. Type it in the letter below, or add it to the profile and choose the template again.</div>@endif
+                    @if($letterTemplateId)
+                        <div>
+                            <p class="small muted" style="margin:0 0 6px">This is the letter with {{ $employee->name }}'s data. Change any word before issuing; {signature} is where the signature goes.</p>
+                            <x-letter-editor model="letterBody" :error="$errors->first('letterBody')" />
+                        </div>
+                    @endif
+                </div>
+                <div class="modal-foot">
+                    <button type="button" class="btn" wire:click="closeLetter">Cancel</button>
+                    @if($letterTemplateId)<button type="button" class="btn" wire:click="letterPdf"><x-icon name="download" class="icon-sm" />Download PDF to check</button>
+                    <button class="btn btn-primary" wire:loading.attr="disabled" wire:confirm="Issue this letter? It is saved as a PDF in {{ $employee->name }}'s documents and they are told.">Issue &amp; save to documents</button>@endif
+                </div>
+            </form>
         </x-modal>
     @endif
 </div>

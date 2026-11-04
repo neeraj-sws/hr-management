@@ -37,6 +37,7 @@ Route::get('/files/documents/{document}', [HrFileController::class, 'signedDocum
 Route::get('/files/documents/{document}/viewer', [HrFileController::class, 'documentViewer'])->middleware(['signed', 'throttle:30,1'])->name('files.document.viewer');
 Route::get('/files/payslips/{payslip}', [HrFileController::class, 'signedPayslip'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip');
 Route::get('/files/payslip-requests/{payslipRequest}', [\App\Http\Controllers\PayslipRequestController::class, 'signed'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip-request');
+Route::get('/files/support/{attachment}', [\App\Http\Controllers\SupportAttachmentController::class, 'signed'])->middleware(['signed', 'throttle:60,1'])->name('files.support-attachment');
 
 Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -196,6 +197,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/lifecycle/documents', Livewire\Lifecycle\Documents::class)->middleware('access:profile,lifecycle.manage')->name('lifecycle.documents');
     Route::get('/lifecycle/documents/{document}/download', [EmployeeDocumentController::class, 'download'])->name('hr.documents.download');
     Route::get('/lifecycle/documents/{document}/view', [EmployeeDocumentController::class, 'view'])->name('hr.documents.view');
+    Route::get('/lifecycle/letters', Livewire\Lifecycle\LetterTemplates::class)->middleware('access:lifecycle.manage,hr.manage')->name('lifecycle.letters');
     Route::get('/lifecycle/assets', Livewire\Lifecycle\Assets::class)->middleware('access:profile,lifecycle.manage')->name('lifecycle.assets');
     Route::get('/lifecycle/onboarding', Livewire\Lifecycle\Cases::class)->middleware('access:lifecycle.manage')->name('lifecycle.onboarding');
     Route::get('/lifecycle/offboarding', Livewire\Lifecycle\Cases::class)->middleware('access:lifecycle.manage')->name('lifecycle.offboarding');
@@ -209,6 +211,14 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Security
     Route::get('/security/vault', Livewire\Security\Vault::class)->middleware('access:credentials.manage,credentials.view')->name('security.vault');
     Route::get('/security/audit', Livewire\Security\AuditLogs::class)->middleware('access:audit.view')->name('security.audit');
+
+    // Help & Support: employees (own requests), support staff (desk), admins (reports, categories). The request page checks access itself.
+    Route::get('/support', Livewire\Support\MyRequests::class)->middleware('access:profile')->name('support.my');
+    Route::get('/support/desk', Livewire\Support\Desk::class)->middleware('access:support.manage,support.handle')->name('support.desk');
+    Route::get('/support/reports', Livewire\Support\Reports::class)->middleware('access:support.manage')->name('support.reports');
+    Route::get('/support/settings', Livewire\Support\Settings::class)->middleware('access:support.manage')->name('support.settings');
+    Route::get('/support/requests/{ticket}', Livewire\Support\TicketShow::class)->whereNumber('ticket')->name('support.show');
+    Route::get('/support/attachments/{attachment}', [\App\Http\Controllers\SupportAttachmentController::class, 'show'])->whereNumber('attachment')->name('support.attachments.show');
 
     // System
     Route::get('/notifications', Livewire\System\Notifications::class)->name('system.notifications');

@@ -186,7 +186,7 @@ class ReviewRoundThreeTest extends TestCase
         $b = $run->items()->where('employee_id', $e->id)->firstOrFail()->calculation_breakdown;
         $this->assertSame(['2026-09-19' => 'off', '2026-09-20' => 'off', '2026-09-22' => 'leave'], array_map(fn ($d) => $d['type'], $b['extra_work']['dates']), 'Only the 3rd Saturday, Sunday and the leave day are extra; the 2nd Saturday is a normal day');
         $this->assertEquals([3, 9 * 3600, 2.0], [$b['extra_work']['days'], $b['extra_work']['seconds'], $b['extra_work']['multiplier']]);
-        $this->assertEquals(round(26000 / (26 * 8) * 9 * 2, 2), $b['extra_work']['amount'], '9 h × hourly rate × the weekly-off multiplier');
+        $this->assertEquals(round(26000 / (26 * 9) * 9 * 2, 2), $b['extra_work']['amount'], '9 h × hourly rate × the weekly-off multiplier');
         $this->assertSame(60, $b['extra_work']['overtime_minutes_not_paid_twice']);
         $this->assertEquals(0, (float) $b['overtime_amount'], 'The night on 23 Sep is not paid without an overtime request');
         $this->assertSame(1, \App\Models\LeaveRequest::where('employee_id', $e->id)->where('status', 'approved')->count(), 'The leave stays');
@@ -388,7 +388,7 @@ class ReviewRoundThreeTest extends TestCase
         $run = app(\App\Services\HrWorkflowService::class)->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id);
         $b = \App\Models\PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $e->id)->firstOrFail()->calculation_breakdown;
 
-        $hourly = 22000 / (22 * 8);
+        $hourly = 22000 / (22 * 9);
         $this->assertSame(['2026-10-17'], array_keys($b['extra_work']['dates']), 'Only the off day is extra working');
         $this->assertEquals(round($hourly * 4 * 2, 2), $b['extra_work']['amount'], '4 h × hourly × weekly-off multiplier 2');
         $this->assertSame(240, $b['extra_work']['overtime_minutes_not_paid_twice']);
