@@ -300,7 +300,7 @@ class Settings extends Component
         $this->holidays = implode("\n", collect($this->holidayList())->push($this->newHoliday)->unique()->sort()->values()->all());
         $this->validate(['newHolidayCategory' => ['required', Rule::in(array_keys(\App\Support\WorkCalendar::HOLIDAY_CATEGORIES))], 'newHolidayClosesAt' => ['nullable', 'date_format:H:i']], [], ['newHolidayCategory' => 'holiday type', 'newHolidayClosesAt' => 'closing time']);
         if (trim($this->newHolidayName) !== '') $this->holidayNames[$this->newHoliday] = trim($this->newHolidayName);
-        $this->holidayTypes[$this->newHoliday] = ['category' => $this->newHolidayCategory, 'paid' => $this->newHolidayPaid, ...($this->newHolidayClosesAt !== '' && $this->newHolidayCategory !== 'optional' ? ['closes_at' => $this->newHolidayClosesAt] : [])];
+        $this->holidayTypes[$this->newHoliday] = ['category' => $this->newHolidayCategory, 'paid' => true, ...($this->newHolidayClosesAt !== '' && $this->newHolidayCategory !== 'optional' ? ['closes_at' => $this->newHolidayClosesAt] : [])];
         $this->newHoliday = '';
         $this->newHolidayName = '';
         $this->newHolidayCategory = 'public';
@@ -313,14 +313,6 @@ class Settings extends Component
         $this->authorizeSettings();
         $this->holidays = implode("\n", collect($this->holidayList())->reject(fn ($d) => $d === $date)->values()->all());
         unset($this->holidayNames[$date], $this->holidayTypes[$date]);
-    }
-
-    /** Flips a listed holiday between paid and unpaid (kept after "Save calendar"). */
-    public function toggleHolidayPaid(string $date): void
-    {
-        $this->authorizeSettings();
-        $type = \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $this->holidayTypes], $date);
-        $this->holidayTypes[$date] = [...$type, 'paid' => ! $type['paid']];
     }
 
     public function saveLeaveYear(PeopleOperationsService $people): void
@@ -702,7 +694,7 @@ class Settings extends Component
         return [
             ['Per day', 'Monthly salary ÷ '.($this->salaryDivisor === 'calendar' ? "that month's working days (Sundays, off Saturdays and holidays left out)" : "{$days} days").' — e.g. ₹35,000 ÷ '.$days.' = '.$rs($perDay), true],
             ['Per hour / minute', 'Per day ÷ '.$num($hours).' = '.$rs($perDay / $hours).' an hour; ÷ 60 = '.$rs($perMinute).' a minute', true],
-            ['Days paid', $this->attendanceProration ? 'Days present'.($this->includePaidLeave ? ' + approved paid leave' : '').' + paid holidays, × per day' : 'Every working day (attendance does not reduce pay)', true],
+            ['Days paid', $this->attendanceProration ? 'Days present'.($this->includePaidLeave ? ' + approved paid leave' : '').', × per day (holidays are not working days, so they never cut the salary)' : 'Every working day (attendance does not reduce pay)', true],
             ['Short time', $this->shortHoursDeduction ? ($this->shortHoursLateOnly ? 'Each day checked in after the start time + grace (e.g. after '.$this->graceExample().')' : 'Each day present').': minutes under the working day (check-in to check-out, breaks taken off) × per minute — e.g. 751 min × '.$rs($perMinute).' = '.$rs(751 * $perMinute).((float) $this->shortHoursGrace > 0 ? '; the first '.$num((float) $this->shortHoursGrace).' h a month are not cut' : '') : 'Off — time under the working day is not cut', $this->shortHoursDeduction],
             ['Late check-in', $this->lateCheckinPay ? 'In after '.$this->lateCheckinAfter.': that day is paid only for the hours at work' : 'Not a separate rule — the time lost is cut as short time', $this->lateCheckinPay],
             ['Half day', $this->halfDayPay ? 'Under the half-day limit: '.($this->halfDayHoursOnly ? 'paid for the hours at work' : 'half a day') : 'Not a separate rule — the time lost is cut as short time', $this->halfDayPay],

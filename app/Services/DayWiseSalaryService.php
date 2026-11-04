@@ -59,8 +59,7 @@ class DayWiseSalaryService
                 $d = $f['extraWork']['dates'][$date];
                 [$status, $tone, $note] = ['Extra working', 'green', ($d['type'] === 'leave' ? 'on a leave day' : 'on an off day').((int) $d['seconds'] - (int) ($d['paid_seconds'] ?? $d['seconds']) >= 60 ? ' · paid '.\App\Support\Duration::hm((int) $d['paid_seconds']).' max' : '')];
             } elseif (! $workday) {
-                if (isset($f['paidHolidaySet'][$date])) [$status, $tone] = ['Holiday (paid)', 'violet'];
-                elseif (isset($f['unpaidHolidaySet'][$date])) [$status, $tone] = ['Holiday (unpaid)', 'gray'];
+                if (isset($f['paidHolidaySet'][$date]) || isset($f['unpaidHolidaySet'][$date])) [$status, $tone] = [(string) ($f['calendar']['holiday_names'][$date] ?? '') ?: 'Holiday', 'violet'];
                 else [$status, $tone] = ['Weekly off', 'gray'];
             } elseif (isset($f['presentSet'][$date])) {
                 if (isset($f['hoursPaidSet'][$date])) {

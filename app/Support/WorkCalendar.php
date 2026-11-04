@@ -40,7 +40,9 @@ class WorkCalendar
         $category = isset(self::HOLIDAY_CATEGORIES[$type['category'] ?? '']) ? $type['category'] : 'public';
         $closesAt = preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', substr((string) ($type['closes_at'] ?? ''), 0, 5)) ? substr((string) $type['closes_at'], 0, 5) : null;
 
-        return ['category' => $category, 'paid' => (bool) ($type['paid'] ?? true), ...($closesAt && $category !== 'optional' ? ['closes_at' => $closesAt] : [])];
+        // Every holiday is a paid day off: the month's salary is divided by its working days (holidays left out), so a
+        // holiday never cuts the salary. There is no "unpaid holiday" any more (an old saved "paid: false" is ignored).
+        return ['category' => $category, 'paid' => true, ...($closesAt && $category !== 'optional' ? ['closes_at' => $closesAt] : [])];
     }
 
     /** Holidays that close the office for the whole day (every listed holiday except optional and half-day ones). */
