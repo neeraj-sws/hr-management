@@ -23,7 +23,7 @@ class TimesheetExportController extends Controller
         $headers = ['Date', 'Developer', 'Task', 'Start', 'End', 'Worked (min)', 'Billable (min)', 'Status', 'Remarks'];
         $rows = $timesheets->entries($project, $month)->map(fn ($e) => [
             $e->work_date->format('d M Y'),
-            $e->employee?->name ?? $e->developer_name ?? '',
+            $e->developer_name ?: ($e->employee?->name ?? ''),
             (string) $e->description,
             $e->start_time ? substr($e->start_time, 0, 5) : '',
             $e->end_time ? substr($e->end_time, 0, 5) : '',

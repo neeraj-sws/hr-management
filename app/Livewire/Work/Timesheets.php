@@ -119,7 +119,7 @@ class Timesheets extends Component
         $cal = $this->workCalendar($data['work_date']);
         if (! WorkCalendar::isWorkday($data['work_date'], $cal)) { $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($data['work_date'], $cal).') — timesheet line add nahi kar sakte.'); return; }
         if ($timesheets->isLocked($project, Carbon::parse($data['work_date'])->format('Y-m'))) { $this->addError('entry.work_date', 'That month is already approved by the client.'); return; }
-        $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => $data['employee_id'] ? null : ($data['developer_name'] ?: null),
+        $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => trim((string) $data['developer_name']) ?: null,
             'start_time' => $data['start_time'] ?: null, 'end_time' => $data['end_time'] ?: null, 'minutes' => (int) $data['minutes'],
             'billable_minutes' => $data['billable_minutes'] === '' || $data['billable_minutes'] === null ? (int) $data['minutes'] : (int) $data['billable_minutes'],
             'description' => $data['description'], 'status' => $data['status'] ?: null, 'remarks' => $data['remarks'] ?: null, 'visible_to_client' => (bool) $this->entry['visible_to_client']];

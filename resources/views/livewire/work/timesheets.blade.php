@@ -46,7 +46,7 @@
                 @php($open = $e->objections->firstWhere('status', 'open'))
                 <tr wire:key="ts-{{ $e->id }}" @if($open) style="background:#fff7ed" @endif>
                     <td class="nowrap">{{ $e->work_date->format('D d M') }}</td>
-                    <td>{{ $e->developer() }}<small>{{ ['timer' => 'task timer', 'manual' => 'added', 'import' => 'imported'][$e->source] ?? $e->source }}</small></td>
+                    <td>{{ $e->developer() }}@if($e->developer_name && $e->employee && $e->employee->name !== $e->developer_name)<small>HRMS: {{ $e->employee->name }}</small>@endif<small>{{ ['timer' => 'task timer', 'manual' => 'added', 'import' => 'imported'][$e->source] ?? $e->source }}</small></td>
                     <td style="text-align:left;max-width:380px;white-space:normal">{{ \Illuminate\Support\Str::limit($e->description, 160) }}@if($e->remarks)<small>{{ $e->remarks }}</small>@endif
                         @foreach($e->objections as $o)
                             <div class="small" style="margin-top:4px;padding:4px 8px;border-left:3px solid {{ $o->status === 'open' ? 'var(--amber)' : ($o->status === 'accepted' ? 'var(--green)' : 'var(--line)') }}">
@@ -75,8 +75,8 @@
         <x-modal :title="$entryId ? 'Edit line' : 'Add timesheet line'" size="lg">
             <form wire:submit="saveEntry"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Date" name="entry.work_date" hint="working day hona chahiye (weekly off / holiday allowed nahi)"><input type="date" wire:model.live="entry.work_date"></x-field>
-                <x-field label="Developer" name="entry.employee_id" hint="list me na ho to “— other —” choose karo"><select wire:model.live="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
-                @if(empty($entry['employee_id']))<x-field label="Developer name" name="entry.developer_name"><input wire:model="entry.developer_name" placeholder="Type the developer's name"></x-field>@endif
+                <x-field label="Developer" name="entry.employee_id" hint="HRMS employee (list me na ho to “— other —”)"><select wire:model.live="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
+                <x-field label="Developer name" name="entry.developer_name" hint="list/client me yahi naam dikhega · khali = upar wale developer ka naam"><input wire:model="entry.developer_name" placeholder="Type the developer's name"></x-field>
                 <x-field label="Task" name="entry.description" full><textarea wire:model="entry.description" rows="3"></textarea></x-field>
                 <x-field label="Start" name="entry.start_time"><input type="time" wire:model.live="entry.start_time"></x-field>
                 <x-field label="End" name="entry.end_time"><input type="time" wire:model.live="entry.end_time"></x-field>
