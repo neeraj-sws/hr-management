@@ -12,6 +12,14 @@
             </div>
         @endif
     </div>
+    @foreach($myFees as $fee)
+        @php($nextFee = $fee->nextDue())
+        <section class="card mb" style="border-left:4px solid {{ $nextFee && $nextFee['status'] === 'overdue' ? 'var(--red)' : 'var(--blue)' }}">
+            <div class="card-head"><div><h2>My course: {{ $fee->course_name }}</h2>
+                <p>To pay ₹{{ number_format($fee->payable(), 2) }} · paid ₹{{ number_format($fee->paid(), 2) }} · <strong>still due ₹{{ number_format($fee->balance(), 2) }}</strong>@if($nextFee) · next installment ₹{{ number_format($nextFee['left'], 2) }} {{ $nextFee['status'] === 'overdue' ? 'was due' : 'due' }} on {{ \Illuminate\Support\Carbon::parse($nextFee['due_on'])->format('d M Y') }}@endif</p></div>
+                <a class="btn btn-sm" href="{{ route('training.my-fees') }}">Installments &amp; receipts</a></div>
+        </section>
+    @endforeach
 
     @if($capture)
         <div class="alert {{ $capture['acknowledged'] ? 'alert-info' : 'alert-warn' }}" role="status">

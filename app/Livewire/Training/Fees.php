@@ -43,6 +43,15 @@ class Fees extends Component
     public string $endsOn = '';
     public string $enrollStatus = 'active';
     public string $notes = '';
+    /** @var list<array{amount: string|float, due_on: string}> Installments: amount and due date each (HR can change them). */
+    public array $planRows = [];
+    /** True once HR changed an installment by hand; until then the plan follows the fee, discount and count. */
+    public bool $planEdited = false;
+
+    public function updatedPlanRows(): void
+    {
+        $this->planEdited = true;
+    }
 
     // Payment form
     public ?int $payingId = null;
@@ -83,6 +92,7 @@ class Fees extends Component
             $this->courseName = $course->title;
             $this->totalFee = (string) (float) $course->fee;
             $this->applyDiscountRule();
+            $this->equalPlan();
         }
     }
 
@@ -90,6 +100,16 @@ class Fees extends Component
     public function updatedInstallments(): void
     {
         $this->applyDiscountRule();
+        $this->equalPlan();
+    }
+
+    /** Fills the installments as equal monthly amounts of the fee less the discount, from the start date. */
+    public function equalPlan(): void
+    {
+        $payable = max(0, (float) $this->totalFee - (float) $this->discount);
+        $this->planEdited = false;
+        $this->planRows = array_map(fn ($r) => ['amount' => number_format($r['amount'], 2, '.', ''), 'due_on' => $r['due_on']],
+            TrainingEnrollment::equalPlan($payable, max(1, min(36, (int) $this->installments)), $this->startsOn ?: today()->toDateString()));
     }
 
     private function applyDiscountRule(): void
@@ -114,6 +134,12 @@ class Fees extends Component
         $this->endsOn = (string) $e?->ends_on?->toDateString();
         $this->enrollStatus = $e?->status ?? 'active';
         $this->notes = (string) $e?->notes;
+        if ($e) {
+            $this->planRows = array_map(fn ($r) => ['amount' => number_format((float) $r['amount'], 2, '.', ''), 'due_on' => (string) $r['due_on']], $e->plan());
+            $this->planEdited = ! empty($e->schedule);
+        } else {
+            $this->equalPlan();
+        }
         $this->showEnroll = true;
     }
 
@@ -131,8 +157,18 @@ class Fees extends Component
             'enrollStatus' => ['required', Rule::in(array_keys(TrainingEnrollment::STATUSES))],
             'notes' => ['nullable', 'string', 'max:2000'],
         ], [], ['employeeId' => 'trainee', 'courseName' => 'course', 'totalFee' => 'fee', 'endsOn' => 'end date']);
+        // The installments must be one row each and add up to the fee less the discount. Not changed by hand: they
+        // simply follow the fee, discount, count and start date as saved.
+        if (! $this->planEdited) { $this->totalFee = (string) $data['totalFee']; $this->discount = (string) ($data['discount'] ?: 0); $this->equalPlan(); }
+        $this->validate(['planRows' => ['array'], 'planRows.*.amount' => ['required', 'numeric', 'gt:0'], 'planRows.*.due_on' => ['required', 'date']], [], ['planRows.*.amount' => 'installment amount', 'planRows.*.due_on' => 'due date']);
+        $payable = round(max(0, (float) $data['totalFee'] - (float) ($data['discount'] ?: 0)), 2);
+        $sum = round(array_sum(array_map(fn ($r) => (float) $r['amount'], $this->planRows)), 2);
+        if (count($this->planRows) !== (int) $data['installments'] || abs($sum - $payable) >= 0.01) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['planRows' => 'The '.count($this->planRows).' installments add up to '.number_format($sum, 2).', but '.(int) $data['installments'].' installments of '.number_format($payable, 2).' are needed. Press "Equal monthly" or fix the amounts.']);
+        }
+        $schedule = array_map(fn ($r) => ['amount' => round((float) $r['amount'], 2), 'due_on' => \Illuminate\Support\Carbon::parse($r['due_on'])->toDateString()], array_values($this->planRows));
         $course = $data['feeCourseId'] ? TrainingCourse::find($data['feeCourseId']) : null;
-        $values = ['training_course_id' => $course?->id, 'course_name' => $course?->title ?? $data['courseName'], 'total_fee' => $data['totalFee'], 'discount' => $data['discount'] ?: 0,
+        $values = ['schedule' => $schedule, 'training_course_id' => $course?->id, 'course_name' => $course?->title ?? $data['courseName'], 'total_fee' => $data['totalFee'], 'discount' => $data['discount'] ?: 0,
             'installments' => (int) $data['installments'], 'starts_on' => $data['startsOn'] ?: null, 'ends_on' => $data['endsOn'] ?: null, 'notes' => $data['notes'] ?: null];
         if ($this->enrollmentId) {
             $fees->updateEnrollment(TrainingEnrollment::findOrFail($this->enrollmentId), [...$values, 'status' => $data['enrollStatus']]);

@@ -83,6 +83,7 @@ return [
         ['label' => 'Productivity', 'route' => 'performance.productivity', 'icon' => 'activity'],
     ]],
     ['heading' => 'Training', 'items' => [
+        ['label' => 'My course & fees', 'route' => 'training.my-fees', 'icon' => 'wallet'],
         ['label' => 'My Training', 'route' => 'training.my', 'icon' => 'star'],
         ['label' => 'Courses', 'route' => 'training.courses', 'icon' => 'list'],
         ['label' => 'Course fees', 'route' => 'training.fees', 'icon' => 'wallet'],

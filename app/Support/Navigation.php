@@ -82,6 +82,8 @@ class Navigation
         if (($routeName === 'leave.overtime' || ($routeName === 'reports.show' && ($params['type'] ?? '') === 'overtime')) && ! app(\App\Services\PeopleOperationsService::class)->overtimeEnabled()) return false;
 
         if ($routeName === 'performance.goals' && ! config('features.goals')) return false;
+        // My course & fees: for trainees, and anyone with a course fee on record.
+        if ($routeName === 'training.my-fees') return (bool) ($user->employeeProfile && ($user->employeeProfile->isTrainee() || \App\Models\TrainingEnrollment::where('employee_id', $user->employeeProfile->id)->exists()));
         // Trainees pay a fee and get no salary: no salary, payslip, advance or fine pages in their menu (HR / payroll staff keep them).
         if (in_array($routeName, ['payroll.salary', 'payroll.day-wise', 'payroll.payslips', 'payroll.advances', 'compliance.penalties'], true)
             && $user->employeeProfile?->isTrainee() && ! $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage', 'penalties.manage'])) return false;

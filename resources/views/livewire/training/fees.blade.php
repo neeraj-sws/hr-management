@@ -125,6 +125,12 @@
                 <x-field label="Ends" name="endsOn"><input type="date" wire:model="endsOn"></x-field>
                 @if($enrollmentId)<x-field label="Status" name="enrollStatus"><select wire:model="enrollStatus">@foreach(\App\Models\TrainingEnrollment::STATUSES as $k => $v)<option value="{{ $k }}">{{ $v }}</option>@endforeach</select></x-field>@endif
                 <x-field label="Notes" name="notes" full><textarea wire:model="notes" rows="2"></textarea></x-field>
+                {{-- The installment plan: each installment's amount and due date (the trainee sees it and is reminded before each). --}}
+                <div class="field" style="grid-column:1/-1"><span class="label" style="display:flex;justify-content:space-between;align-items:center">Installments: amount and due date <button type="button" class="btn btn-sm" wire:click="equalPlan" title="Fee less discount in equal monthly installments from the start date">Equal monthly</button></span>
+                    <div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>Due on</th><th class="num">Amount</th></tr></thead><tbody>
+                        @foreach($planRows as $i => $row)<tr wire:key="plan-{{ $i }}"><td>{{ $i + 1 }}</td><td><input type="date" wire:model="planRows.{{ $i }}.due_on"></td><td class="num"><input type="number" step="0.01" min="0.01" wire:model="planRows.{{ $i }}.amount" style="text-align:right"></td></tr>@endforeach
+                    </tbody></table></div>
+                    @error('planRows')<span class="error">{{ $message }}</span>@enderror @error('planRows.*')<span class="error">{{ $message }}</span>@enderror</div>
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Save</button></div></form>
         </x-modal>
@@ -150,6 +156,9 @@
         <x-modal title="Payments · {{ $viewing->employee?->name }} · {{ $viewing->course_name }}" size="lg">
             <div class="modal-body">
                 <p class="small" style="margin-top:0">Fee {{ $money($viewing->payable()) }} · paid {{ $money($viewing->paid()) }} · <strong>due {{ $money($viewing->balance()) }}</strong> · {{ $viewing->payments->count() }} of {{ $viewing->installments }} installments</p>
+                <h3 class="small" style="margin:6px 0">Installments</h3>
+                @include('partials.fee-installments', ['enrollment' => $viewing])
+                <h3 class="small" style="margin:12px 0 6px">Payments</h3>
                 <div class="table-wrap"><table class="table">
                     <thead><tr><th>Receipt</th><th>Date</th><th>Installment</th><th class="num">Amount</th><th>Paid by</th><th>Reference</th><th>Received by</th></tr></thead>
                     <tbody>

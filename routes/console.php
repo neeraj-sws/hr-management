@@ -10,6 +10,7 @@ Artisan::command('inspire', function () {
 
 Schedule::command('leave:accrue')->monthlyOn(1, '00:15')->withoutOverlapping();
 Schedule::command('hr:celebrations')->dailyAt('09:00')->withoutOverlapping();
+Schedule::command('training:fee-reminders')->dailyAt('09:30')->withoutOverlapping();
 Schedule::command('attendance:close-stale')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::command('monitoring:purge-screenshots')->dailyAt('02:30')->withoutOverlapping();
 Schedule::command('monitoring:notify-capture')->hourly()->withoutOverlapping();

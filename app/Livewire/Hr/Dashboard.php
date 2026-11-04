@@ -123,6 +123,8 @@ class Dashboard extends Component
         $capture = $capturePolicy && $capturePolicy['enabled'] ? ['terms' => $captures->describe($capturePolicy), 'acknowledged' => $captures->isAcknowledged($this->user(), $capturePolicy)] : null;
 
         return $this->page('livewire.hr.dashboard', [
+            // A trainee's course fee at a glance: still due and the next installment.
+            'myFees' => $profile ? \App\Models\TrainingEnrollment::with('payments')->where('employee_id', $profile->id)->where('status', 'active')->latest('id')->get() : collect(),
             'capture' => $capture,
             'details' => $this->detail === '' ? null : ['title' => self::DETAILS[$this->detail], ...$this->detailRows($this->detail, [
                 'employees' => $employees, 'sessions' => $sessions, 'presentIds' => $presentIds, 'onLeaveIds' => $onLeaveIds, 'onLeave' => $onLeave,

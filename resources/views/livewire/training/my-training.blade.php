@@ -2,7 +2,7 @@
     <div class="page-head"><div><h1>My Training</h1><p>Courses assigned to you. Open the material, then mark the course as completed.</p></div></div>
     @if($fees->isNotEmpty())
         <section class="card mb">
-            <div class="card-head"><div><h2>My course fees</h2><p>What you have paid for your course and what is still due.</p></div></div>
+            <div class="card-head"><div><h2>My course fees</h2><p>What you have paid for your course and what is still due.</p></div><a class="btn btn-sm" href="{{ route('training.my-fees') }}">Installments &amp; receipts</a></div>
             @foreach($fees as $e)
                 <div class="card-body">
                     <p style="margin-top:0"><strong>{{ $e->course_name }}</strong> · fee {{ number_format($e->payable(), 2) }} · paid {{ number_format($e->paid(), 2) }} · <strong style="color:{{ $e->balance() > 0 ? 'var(--amber)' : 'var(--green)' }}">due {{ number_format($e->balance(), 2) }}</strong> · {{ $e->payments->count() }} of {{ $e->installments }} installments</p>
