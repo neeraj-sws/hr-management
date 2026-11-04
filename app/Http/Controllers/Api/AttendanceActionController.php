@@ -80,6 +80,9 @@ class AttendanceActionController extends ApiController
         $from = Carbon::parse($data['from'] ?? now()->startOfMonth());
         $to = Carbon::parse($data['to'] ?? today());
         abort_if($from->diffInDays($to) > 92, 422, 'History range may not exceed 92 days.');
+        // Pay by day for the app's day list (same as the website calendar): short time cut, fines, days not paid.
+        $pay = ['short' => [], 'fines' => [], 'not_paid' => []];
+        for ($m = $from->copy()->startOfMonth(); $m->lte($to); $m->addMonthNoOverflow()) $pay = array_merge_recursive($pay, \App\Support\CalendarPay::month($employee, $m->copy()));
 
         return response()->json(['data' => $this->attendance->days($employee, $from, $to)->map(fn ($day) => [
             'date' => $day['date'],
@@ -87,7 +90,7 @@ class AttendanceActionController extends ApiController
             // Absent with a leave request still waiting for a decision: the app shows "Leave pending".
             'leave_pending' => (bool) ($day['leave_pending'] ?? false), 'label' => $day['label'] ?? null,
             'session' => $day['session'] ? (new AttendanceSessionResource($day['session']))->resolve() : null,
-            'pay_note' => $day['session'] ? $this->payNote($employee, $day['session']) : null,
+            'pay_note' => $this->dayPayNote($employee, $day, $pay),
         ])->values()]);
     }
 
@@ -101,6 +104,20 @@ class AttendanceActionController extends ApiController
         $extra = $pay['seconds'] - $pay['standard'];
 
         return 'paid '.$hm($pay['standard']).' (max)'.($extra >= 60 ? ' · +'.$hm($extra).' extra, not paid' : '');
+    }
+
+    /** The day's pay note: paid by hours (late check-in rule), minutes short and the cut, not paid (project days), fines. */
+    private function dayPayNote($employee, array $day, array $pay): ?string
+    {
+        $date = (string) $day['date'];
+        $notes = array_filter([
+            $day['session'] ? $this->payNote($employee, $day['session']) : null,
+            isset($pay['short'][$date]) ? intdiv((int) $pay['short'][$date]['seconds'], 60).' min short · −₹'.number_format((float) $pay['short'][$date]['amount'], 2) : null,
+            isset($pay['not_paid'][$date]) ? 'not paid (no project work)' : null,
+            ...array_map(fn ($f) => 'Fine −₹'.number_format((float) $f['amount'], 2).(isset($pay['not_paid'][$date]) ? ' (not cut: day not paid)' : ($f['pending'] ? ' (pending)' : '')), (array) ($pay['fines'][$date] ?? [])),
+        ]);
+
+        return $notes ? implode(' · ', $notes) : null;
     }
 
     /** Position sent by the phone at check-in/out (validated in AttendanceService::locate). */

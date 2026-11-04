@@ -131,4 +131,19 @@ class OldSheetSalaryRulesTest extends TestCase
         Livewire::actingAs($this->admin)->test(Settings::class)->set('tab', 'payroll')->call('useOldSheetRules')->call('savePayroll')->assertHasErrors('payroll');
         $this->assertTrue((bool) PolicyRule::where('rule_key', 'payroll.calculation')->whereDate('effective_from', '2026-10-30')->value('is_active'), 'Nothing changed');
     }
+
+    public function test_the_app_day_list_shows_the_short_time_cut_and_fines(): void
+    {
+        Livewire::actingAs($this->admin)->test(Settings::class)->set('tab', 'payroll')->call('useOldSheetRules')->call('savePayroll')->assertHasNoErrors();
+        $user = User::factory()->create(['email' => 'kv@example.com']);
+        $user->assignRole('Employee');
+        $this->employee->update(['user_id' => $user->id]);
+        $this->day('2026-10-14', '10:30', '13:30', 0); // 330 min short
+        \App\Models\EmployeePenalty::create(['employee_id' => $this->employee->id, 'effective_on' => '2026-10-14', 'amount' => 500, 'reason' => 'Late', 'status' => 'approved']);
+
+        \Laravel\Sanctum\Sanctum::actingAs($user, ['*']);
+        $days = collect($this->getJson('/api/attendance/history?from=2026-10-01&to=2026-10-31')->assertOk()->json('data'))->keyBy('date');
+        $this->assertSame('330 min short · −₹855.56 · Fine −₹500.00', $days['2026-10-14']['pay_note']);
+        $this->assertNull($days['2026-10-13']['pay_note']);
+    }
 }
