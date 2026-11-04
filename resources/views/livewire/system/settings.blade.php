@@ -262,7 +262,14 @@
                     <label class="check small muted" style="grid-column:1/-1"><input type="checkbox" wire:model.live="otEnabled"> Overtime is off (not used in this company). Tick only to start using it.</label>
                 @endif
                 <x-field label="Per-day salary" name="salaryDivisor" hint="what the monthly salary is divided by" full><select wire:model.live="salaryDivisor"><option value="calendar">Each month's own working days from the calendar (e.g. Sep 25, Jul 26, Aug 24)</option><option value="fixed">A fixed number of days (below), every month</option></select></x-field>
-                <x-field label="Working days per month (salary divisor)" name="workingDaysPerMonth"><input type="number" min="1" max="31" wire:model="workingDaysPerMonth"></x-field>
+                @if($salaryDivisor === 'fixed')
+                    <x-field label="Working days per month (salary divisor)" name="workingDaysPerMonth"><input type="number" min="1" max="31" wire:model="workingDaysPerMonth"></x-field>
+                @else
+                    {{-- Each month's own working days: shown for this month and the next two (nothing to type). --}}
+                    <div class="field"><span class="label">Working days (from the calendar)</span>
+                        <p class="small" style="margin:6px 0 0">@foreach([today()->subMonthNoOverflow(), today(), today()->addMonthNoOverflow()] as $m)<span class="pill" style="margin:0 6px 4px 0"><b>{{ $m->format('M Y') }}</b> = {{ $this->monthWorkingDays($m->copy()->startOfMonth()) }} days</span>@endforeach</p>
+                        <small class="muted">Each month's salary ÷ that month's working days (Sundays, off Saturdays and holidays left out).</small></div>
+                @endif
                 <x-field label="Advance paid leave limit (days)" name="advanceLeaveMax"><input type="number" step="0.5" min="0" wire:model="advanceLeaveMax"></x-field>
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="extraWorkAuto"> <span><strong>Pay extra working automatically</strong> <span class="muted small">— work on a weekly off, 3rd Saturday, holiday or full-day leave is paid on top (hours worked × hourly rate{{ $otEnabled ? ' × the weekly-off / holiday multiplier, 1× if blank' : '' }}).@if($otEnabled) Extra hours on a normal working day are paid only through an approved overtime request.@endif</span></span></label>
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="halfDayPay"> <span><strong>Half day pays half a day</strong> <span class="muted small">— a day marked "Half day" in attendance (check-in to check-out less breaks below the half-day limit in Work hours &amp; attendance; idle and meetings are not taken off) is paid as ½ day. An approved paid half-day or short leave that day keeps it a full day. Untick to pay every day present in full, as before.</span></span></label>

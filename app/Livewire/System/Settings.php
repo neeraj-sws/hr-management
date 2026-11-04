@@ -682,7 +682,9 @@ class Settings extends Component
         $absence = $policies->forEmployee(null, 'attendance.unauthorized_absence', today()->toDateString(), []);
         $late = $policies->forEmployee(null, 'attendance.late_penalty', today()->toDateString(), []);
         $hours = (float) ($this->hourlyRateHours !== '' ? $this->hourlyRateHours : \App\Services\HrWorkflowService::HOURLY_RATE_HOURS);
-        $days = $this->salaryDivisor === 'calendar' ? 25 : max(1, (int) $this->workingDaysPerMonth);
+        // The example month: the month the rules apply from (its real working days from the calendar).
+        $exampleMonth = \Illuminate\Support\Carbon::parse($this->payrollFrom ?: today()->toDateString())->startOfMonth();
+        $days = $this->salaryDivisor === 'calendar' ? $this->monthWorkingDays($exampleMonth) : max(1, (int) $this->workingDaysPerMonth);
         $perDay = 35000 / $days;
         $perMinute = $perDay / max(0.25, $hours) / 60;
         $rs = fn (float $v) => '₹'.number_format($v, 2);
@@ -692,7 +694,7 @@ class Settings extends Component
         $num = fn (float $v) => rtrim(rtrim(number_format($v, 2), '0'), '.');
 
         return [
-            ['Per day', 'Monthly salary ÷ '.($this->salaryDivisor === 'calendar' ? "that month's working days (Sundays, off Saturdays and holidays left out)" : "{$days} days").' — e.g. ₹35,000 ÷ '.$days.' = '.$rs($perDay), true],
+            ['Per day', 'Monthly salary ÷ '.($this->salaryDivisor === 'calendar' ? "that month's working days (Sundays, off Saturdays and holidays left out)" : "{$days} days").' — e.g. '.($this->salaryDivisor === 'calendar' ? $exampleMonth->format('F Y').': ' : '').'₹35,000 ÷ '.$days.' = '.$rs($perDay), true],
             ['Per hour / minute', 'Per day ÷ '.$num($hours).' = '.$rs($perDay / $hours).' an hour; ÷ 60 = '.$rs($perMinute).' a minute', true],
             ['Days paid', $this->attendanceProration ? 'Days present'.($this->includePaidLeave ? ' + approved paid leave' : '').', × per day (holidays are not working days, so they never cut the salary)' : 'Every working day (attendance does not reduce pay)', true],
             ['Short time', $this->shortHoursDeduction ? ($this->shortHoursLateOnly ? 'Each day checked in after the start time + grace (e.g. after '.$this->graceExample().')' : 'Each day present').': minutes under the working day (check-in to check-out, breaks taken off) × per minute — e.g. 751 min × '.$rs($perMinute).' = '.$rs(751 * $perMinute).((float) $this->shortHoursGrace > 0 ? '; the first '.$num((float) $this->shortHoursGrace).' h a month are not cut' : '') : 'Off — time under the working day is not cut', $this->shortHoursDeduction],
@@ -702,6 +704,21 @@ class Settings extends Component
             ['Late fine', $lateOn ? 'On: '.$lateHow.' after '.(int) ($late['grace_minutes'] ?? 0).' min grace'.((float) ($late['max_amount'] ?? 0) > 0 ? ', at most '.$rs((float) $late['max_amount']).' a day' : '').' (Compliance > Late attendance)'.($this->shortHoursDeduction ? '. A late day gets both: the fine and the short minutes.' : '') : 'Off (Compliance > Late attendance)', $lateOn],
             ['Extra working', $this->extraWorkAuto ? "Work on a weekly off / 3rd Saturday / holiday: hours × per hour, at most one day's pay a day" : 'Off', $this->extraWorkAuto],
         ];
+    }
+
+    /**
+     * Working days of a month by the company calendar (Sundays, the off Saturdays and holidays left out): what a
+     * month's salary is divided by when "Each month's own working days" is chosen. E.g. Oct 2026 = 25, Nov 2026 = 24.
+     */
+    public function monthWorkingDays(\Illuminate\Support\Carbon $month): int
+    {
+        $calendar = app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'calendar.working_days', $month->copy()->endOfMonth()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+        $days = 0;
+        for ($d = $month->copy()->startOfMonth(); $d->lte($month->copy()->endOfMonth()); $d->addDay()) {
+            if (\App\Support\WorkCalendar::isWorkday($d->toDateString(), $calendar)) $days++;
+        }
+
+        return max(1, $days);
     }
 
     /** "10:16": the company start time + grace, for the rule text. */

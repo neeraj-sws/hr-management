@@ -64,6 +64,9 @@ class OldSheetSalaryRulesTest extends TestCase
             ->assertSee('How salary is worked out')->assertSee('Use old salary sheet rules')
             ->call('useOldSheetRules')
             ->assertSet('payrollFrom', '2026-10-01')->assertSet('shortHoursDeduction', true)->assertSet('shortHoursLateOnly', false)->assertSet('lateCheckinPay', false)->assertSet('halfDayPay', false)->assertSet('hourlyRateHours', '9')
+            // Each month's own working days: no fixed-days box, the real days instead (Oct 25, Nov 24, Dec 26).
+            ->assertDontSee('Working days per month (salary divisor)')->assertSeeText('Oct 2026 = 25 days')->assertSeeText('Nov 2026 = 24 days')->assertSeeText('Dec 2026 = 26 days')
+            ->assertSeeText('October 2026: ₹35,000 ÷ 25')
             ->assertSee('₹1,400.00')->assertSee('₹155.56 an hour')->assertSee('Each day present')->assertSee('751 min × ₹2.59 = ₹1,947.04');
         $page->call('savePayroll')->assertHasNoErrors();
 
