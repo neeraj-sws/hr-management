@@ -107,8 +107,8 @@ class WorkAndPayrollExtrasTest extends TestCase
         app(PeopleOperationsService::class)->setPolicy('payroll.calculation', 'payroll', 'Payroll', ['working_days_per_month' => 22, 'short_hours_deduction' => true, 'short_hours_grace' => 1], null, $this->admin->id, '2026-01-01');
         $on = $workflow->calculatePayroll('2026-10-01', '2026-10-31', $this->admin->id)->items()->where('employee_id', $this->employee->id)->firstOrFail();
         $short = $on->calculation_breakdown['short_hours'];
-        $this->assertSame([16 * 3600, 12 * 3600, 3 * 3600, 300.0], [$short['required_seconds'], $short['actual_seconds'], $short['short_seconds'], (float) $short['amount']], '4 h short − 1 h grace = 3 h × 100');
-        $this->assertEqualsWithDelta((float) $off->net_amount - 300, (float) $on->net_amount, 0.01);
+        $this->assertSame([16 * 3600, 12 * 3600, 3 * 3600, 266.67], [$short['required_seconds'], $short['actual_seconds'], $short['short_seconds'], (float) $short['amount']], '4 h short − 1 h grace = 3 h × 88.89 (one day ÷ 9)');
+        $this->assertEqualsWithDelta((float) $off->net_amount - 266.67, (float) $on->net_amount, 0.01);
         $this->actingAs($this->admin)->get(route('hr.payslips.show', \App\Models\Payslip::where('payroll_item_id', $on->id)->value('id') ?? 0))->assertStatus(\App\Models\Payslip::where('payroll_item_id', $on->id)->exists() ? 200 : 404);
     }
 }

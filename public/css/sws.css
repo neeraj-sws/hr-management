@@ -726,6 +726,8 @@ details.nav-group[data-current]>summary.nav-mod{background:#ffffff12;color:#fff}
 .ds-mine > .card,.ds-mine > section{border:0;box-shadow:none}
 .ds-mine summary{cursor:pointer}
 .ds-drawer-backdrop{position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:80;display:flex;justify-content:flex-end}
+/* A popup opened from the side panel (e.g. Change time) sits above the panel, not under it. */
+.ds-drawer-backdrop ~ .modal-backdrop{z-index:90}
 .ds-drawer{width:min(1080px,100%);height:100%;background:#F6F8FB;display:flex;flex-direction:column;box-shadow:-20px 0 40px rgba(0,0,0,.18);animation:ds-in .18s ease}
 @keyframes ds-in{from{transform:translateX(40px);opacity:.6}to{transform:none;opacity:1}}
 .ds-drawer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:18px 22px;background:#fff;border-bottom:1px solid #EEF1F5;flex-wrap:wrap}

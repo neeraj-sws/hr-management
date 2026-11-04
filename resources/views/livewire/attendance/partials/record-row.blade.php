@@ -22,7 +22,7 @@
     <td data-col="screen" data-label="Screen time" class="ar-c ar-screen">
         @if($t && ($t['active'] + $t['idle'] + $t['meeting']) > 0)
             @php($total = $t['active'] + $t['idle'] + $t['meeting'] + $t['corrected'])
-            <strong title="Computer in use plus meetings"><span x-text="hms(v.active + v.meeting)">@hms($t['active'] + $t['meeting'])</span> in use</strong>
+            <strong title="Computer in use plus meetings, plus time an approved correction confirmed"><span x-text="hms(v.active + v.meeting + v.corrected)">@hms($t['active'] + $t['meeting'] + $t['corrected'])</span> in use</strong>
             <small>@if($t['meeting'])incl. <span x-text="hms(v.meeting)">@hms($t['meeting'])</span> meet · @endif<span x-text="hms(v.sIdle)">@hms($t['idle'])</span> idle · @if($t['untracked'] >= 60)@hms($t['untracked']) not tracked @else<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $total) }}</span>% working @endif</small>
             @if(! ($f['idle_deducted'] ?? true))<small class="ar-field">Field / mobile · idle not taken off</small>@endif
         @else

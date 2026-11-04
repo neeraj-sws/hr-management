@@ -194,7 +194,7 @@
 
                 <div class="sa-body">
                     <div class="sa-tiles">
-                        <div class="sa-tile sa-t-blue"><span>Total in use (incl. meetings)</span><strong x-text="hms(v.active + v.meeting)">@hms($t['active'] + $t['meeting'])</strong></div>
+                        <div class="sa-tile sa-t-blue"><span>Total in use (incl. meetings)</span><strong x-text="hms(v.active + v.meeting + v.corrected)">@hms($t['active'] + $t['meeting'] + $t['corrected'])</strong></div>
                         <div class="sa-tile sa-t-gray"><span>Meetings</span><strong x-text="hms(v.meeting)">@hms($t['meeting'])</strong></div>
                         <div class="sa-tile sa-t-amber"><span>Idle time</span><strong x-text="hms(v.sIdle)">@hms($t['idle'])</strong></div>
                         <div class="sa-tile sa-t-violet"><span>Active</span><strong>@if($tTotal > 0)<span x-text="pct">{{ (int) round(($t['active'] + $t['meeting'] + $t['corrected']) * 100 / $tTotal) }}</span>%@else — @endif</strong></div>
@@ -258,7 +258,7 @@
                             <div><span>Late by</span><strong @class(['ar-red' => $attendance->lateMinutes($d)])>{{ $attendance->lateMinutes($d) ? \App\Support\Duration::fromMinutes($attendance->lateMinutes($d)) : '—' }}</strong></div>
                         </div>
                         <section class="ar-box">
-                            <h3>Check-in &amp; check-out · <x-badge :status="$attendance->isHalfDay($d) ? 'half_day' : ($attendance->isLate($d) ? 'late' : $d->status)" /></h3>
+                            <h3>Check-in &amp; check-out · <x-badge :status="$attendance->isHalfDay($d) ? 'half_day' : ($attendance->isLate($d) ? 'late' : $d->status)" />@if($activity['corrections']) <span class="badge badge-amber" title="This day's time was changed by an approved correction (see Corrections below)">Corrected</span>@endif</h3>
                             <dl class="kv">
                                 <dt>Check-in</dt><dd><strong>{{ $d->check_in?->format('h:i A') ?? '—' }}</strong>@if($d->check_in_photo_path) · <a href="{{ route('attendance.photo', [$d, 'in']) }}" target="_blank" rel="noopener">selfie</a>@endif
                                     @if($d->check_in_latitude !== null)<small>{{ $d->checkInOffice ? 'at '.$d->checkInOffice->name : ($d->check_in_distance_meters !== null ? number_format($d->check_in_distance_meters).' m from office' : 'location shared') }} ({{ $d->check_in_latitude }}, {{ $d->check_in_longitude }})</small>@endif
@@ -272,6 +272,21 @@
                                 <dt>Session</dt><dd>{{ str_replace('_', ' ', ucfirst($d->status)) }}</dd>
                             </dl>
                         </section>
+                        @if($activity['corrections'])
+                            {{-- Every approved change to this day: by whom, when, why, and the times before → after. --}}
+                            <section class="ar-box">
+                                <h3>Corrections ({{ count($activity['corrections']) }})</h3>
+                                @foreach($activity['corrections'] as $c)
+                                    <div style="padding:8px 0;border-top:1px solid var(--line-2)">
+                                        <div class="small"><strong>{{ $c['direct'] ? 'Changed by '.$c['by'] : 'Request approved by '.$c['by'] }}</strong> <span class="muted">· {{ $c['at'] }}</span></div>
+                                        @if($c['reason'] !== '')<div class="small">Reason: {{ $c['reason'] }}</div>@endif
+                                        @if($c['changes'])
+                                            <dl class="kv" style="margin-top:4px">@foreach($c['changes'] as [$label, $from, $to])<dt>{{ $label }}</dt><dd><span class="muted" style="text-decoration:line-through">{{ $from }}</span> → <strong>{{ $to }}</strong></dd>@endforeach</dl>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </section>
+                        @endif
                         <section class="ar-box">
                             <h3>Screen time (desktop app)</h3>
                             <div class="ar-screen-full">@include('livewire.attendance.partials.screen-time', ['s' => $d, 'f' => $f])</div>

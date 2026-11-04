@@ -35,7 +35,10 @@ class PayrollCarryOver
         $created = collect();
         foreach ($items as $item) {
             $run = $item->run;
-            $now = $this->payroll->attendancePay($employee, $run->period_starts_on->toDateString(), $run->period_ends_on->toDateString());
+            // Priced with the hourly-rate hours this payroll used (older rows: the working day), so a later rule change is not carried.
+            $data = (array) $item->calculation_data;
+            $rateHours = isset($data['hourly_rate_hours']) ? (float) $data['hourly_rate_hours'] : (isset($data['standard_daily_hours']) ? (float) $data['standard_daily_hours'] : null);
+            $now = $this->payroll->attendancePay($employee, $run->period_starts_on->toDateString(), $run->period_ends_on->toDateString(), $rateHours);
             if ($now === null) continue;
             $breakdown = $item->calculation_breakdown ?? [];
             $paid = round((float) ($breakdown['base_salary'] ?? 0) + (float) $item->overtime_amount + (float) ($breakdown['extra_work']['amount'] ?? 0) + (float) ($breakdown['night_work']['amount'] ?? 0) - (float) ($breakdown['short_hours']['amount'] ?? 0), 2);

@@ -136,6 +136,8 @@ class Settings extends Component
     public bool $attendanceProration = true;
     public bool $includePaidLeave = true;
     public bool $shortHoursDeduction = false;
+    /** Short time is cut only on days checked in after the start time + grace (the old salary sheet). */
+    public bool $shortHoursLateOnly = false;
     /** A half day (attendance) pays half a day, for days from $halfDayPayFrom. */
     public bool $halfDayPay = true;
     public string $halfDayPayFrom = \App\Services\HrWorkflowService::HALF_DAY_PAY_FROM;
@@ -153,6 +155,8 @@ class Settings extends Component
     public string $shortHoursGrace = '0';
     /** Hours one day's pay is divided by for the per-hour rate (deductions, extra work); blank = each employee's working day. */
     public string $hourlyRateHours = '';
+    /** Date the payroll calculation rules apply from (an earlier date re-prices draft payroll from then on). */
+    public string $payrollFrom = '';
     public string $advanceLeaveMax = '5';
     public bool $encashmentEnabled = false;
     public string $encashmentRate = '0';
@@ -225,7 +229,7 @@ class Settings extends Component
             'dailyHours' => (string) ($hours['standard_daily_hours'] ?? 8),
             'graceMinutes' => (string) ($rules['grace_minutes'] ?? 0), 'halfDayHours' => (string) ($rules['half_day_hours'] ?? 4),
             'otEnabled' => (bool) ($ot['enabled'] ?? true), 'otMultiplier' => (string) ($ot['multiplier'] ?? ''), 'otMaxPerDay' => (string) ($ot['max_minutes_per_day'] ?? ''), 'otHolidayMultiplier' => (string) ($ot['holiday_multiplier'] ?? ''), 'otMaxPerMonthHours' => isset($ot['max_minutes_per_month']) ? (string) round($ot['max_minutes_per_month'] / 60, 2) : '',
-            'workingDaysPerMonth' => (string) ($payroll['working_days_per_month'] ?? 22),
+            'workingDaysPerMonth' => (string) ($payroll['working_days_per_month'] ?? 22), 'payrollFrom' => today()->toDateString(), 'shortHoursLateOnly' => (bool) ($payroll['short_hours_late_only'] ?? false),
             'attendanceProration' => (bool) ($payroll['attendance_proration'] ?? true), 'includePaidLeave' => (bool) ($payroll['include_paid_leave'] ?? true), 'shortHoursDeduction' => (bool) ($payroll['short_hours_deduction'] ?? false), 'halfDayPay' => (bool) ($payroll['half_day_pay'] ?? true), 'halfDayPayFrom' => (string) ($payroll['half_day_pay_from'] ?? \App\Services\HrWorkflowService::HALF_DAY_PAY_FROM), 'lateCheckinPay' => (bool) ($payroll['late_checkin_hours_pay'] ?? true), 'halfLeaveHoursOnly' => (bool) ($payroll['half_leave_hours_only'] ?? true), 'halfDayHoursOnly' => (bool) ($payroll['half_day_hours_only'] ?? true), 'lateCheckinAfter' => (string) ($payroll['late_checkin_after'] ?? '12:00'), 'extraWorkAuto' => (bool) ($payroll['extra_work_auto'] ?? true), 'salaryDivisor' => ($payroll['divisor'] ?? 'fixed') === 'calendar' ? 'calendar' : 'fixed', 'shortHoursGrace' => (string) ($payroll['short_hours_grace'] ?? 0), 'hourlyRateHours' => isset($payroll['hourly_rate_hours']) ? (string) (float) $payroll['hourly_rate_hours'] : '',
             'advanceLeaveMax' => (string) ($advance['max_days'] ?? 5),
             'encashmentEnabled' => (bool) ($settlement['leave_encashment_enabled'] ?? false), 'encashmentRate' => (string) ($settlement['rate_per_day'] ?? 0),
@@ -663,13 +667,78 @@ class Settings extends Component
         return ! is_array($allowed) || $allowed === [] || in_array($source, $allowed, true);
     }
 
+    /**
+     * Fills the payroll switches the way the old Excel salary sheet worked (nothing is saved until Save):
+     * per day = salary ÷ the month's working days, per hour = per day ÷ 9, a present day counts as a full day,
+     * and every minute under the working day (check-in to check-out less breaks) is cut at the per-minute rate.
+     * No pay-by-hours for late check-in, no half-day rule; extra working on off days stays.
+     */
+    public function useOldSheetRules(): void
+    {
+        $this->authorizeSettings();
+        $this->fill(['salaryDivisor' => 'calendar', 'hourlyRateHours' => '9', 'attendanceProration' => true, 'includePaidLeave' => true,
+            'shortHoursDeduction' => true, 'shortHoursLateOnly' => false, 'shortHoursGrace' => '0', 'lateCheckinPay' => false, 'halfDayPay' => false, 'halfLeaveHoursOnly' => false,
+            'extraWorkAuto' => true, 'payrollFrom' => today()->subMonthNoOverflow()->startOfMonth()->toDateString()]);
+        $this->toast('Old salary sheet rules filled in. Check the "Salary rules apply from" date and press Save policies.');
+    }
+
+    /** Every rule that decides the salary, in plain words: the form as it stands plus the fines set in Compliance. */
+    public function salaryRules(): array
+    {
+        $policies = app(\App\Services\PolicyConfigurationService::class);
+        // The fines as they stand today (Compliance); they are added to a day when it is checked, not by payroll.
+        $absence = $policies->forEmployee(null, 'attendance.unauthorized_absence', today()->toDateString(), []);
+        $late = $policies->forEmployee(null, 'attendance.late_penalty', today()->toDateString(), []);
+        $hours = (float) ($this->hourlyRateHours !== '' ? $this->hourlyRateHours : \App\Services\HrWorkflowService::HOURLY_RATE_HOURS);
+        $days = $this->salaryDivisor === 'calendar' ? 25 : max(1, (int) $this->workingDaysPerMonth);
+        $perDay = 35000 / $days;
+        $perMinute = $perDay / max(0.25, $hours) / 60;
+        $rs = fn (float $v) => '₹'.number_format($v, 2);
+        $lateOn = (float) ($late['fixed_amount'] ?? 0) > 0 || (float) ($late['amount_per_minute'] ?? 0) > 0 || ! empty($late['salary_rate']);
+        $lateHow = (float) ($late['fixed_amount'] ?? 0) > 0 ? $rs((float) $late['fixed_amount']).' a late day' : (! empty($late['salary_rate']) ? 'salary per late minute' : $rs((float) ($late['amount_per_minute'] ?? 0)).' a late minute');
+        $absenceFine = (float) ($absence['amount_per_day'] ?? 0) > 0 && ! empty($absence['also_fine']);
+        $num = fn (float $v) => rtrim(rtrim(number_format($v, 2), '0'), '.');
+
+        return [
+            ['Per day', 'Monthly salary ÷ '.($this->salaryDivisor === 'calendar' ? "that month's working days (Sundays, off Saturdays and holidays left out)" : "{$days} days").' — e.g. ₹35,000 ÷ '.$days.' = '.$rs($perDay), true],
+            ['Per hour / minute', 'Per day ÷ '.$num($hours).' = '.$rs($perDay / $hours).' an hour; ÷ 60 = '.$rs($perMinute).' a minute', true],
+            ['Days paid', $this->attendanceProration ? 'Days present'.($this->includePaidLeave ? ' + approved paid leave' : '').' + paid holidays, × per day' : 'Every working day (attendance does not reduce pay)', true],
+            ['Short time', $this->shortHoursDeduction ? ($this->shortHoursLateOnly ? 'Each day checked in after the start time + grace (e.g. after '.$this->graceExample().')' : 'Each day present').': minutes under the working day (check-in to check-out, breaks taken off) × per minute — e.g. 751 min × '.$rs($perMinute).' = '.$rs(751 * $perMinute).((float) $this->shortHoursGrace > 0 ? '; the first '.$num((float) $this->shortHoursGrace).' h a month are not cut' : '') : 'Off — time under the working day is not cut', $this->shortHoursDeduction],
+            ['Late check-in', $this->lateCheckinPay ? 'In after '.$this->lateCheckinAfter.': that day is paid only for the hours at work' : 'Not a separate rule — the time lost is cut as short time', $this->lateCheckinPay],
+            ['Half day', $this->halfDayPay ? 'Under the half-day limit: '.($this->halfDayHoursOnly ? 'paid for the hours at work' : 'half a day') : 'Not a separate rule — the time lost is cut as short time', $this->halfDayPay],
+            ['Absent, no leave', 'The day is not paid'.($absenceFine ? ' + '.$rs((float) $absence['amount_per_day']).' fine'.(($absence['auto_deduct'] ?? 1) ? ', deducted automatically' : ', after HR approves') : '').' (Compliance > Unauthorized absence)', true],
+            ['Late fine', $lateOn ? 'On: '.$lateHow.' after '.(int) ($late['grace_minutes'] ?? 0).' min grace'.((float) ($late['max_amount'] ?? 0) > 0 ? ', at most '.$rs((float) $late['max_amount']).' a day' : '').' (Compliance > Late attendance)'.($this->shortHoursDeduction ? '. A late day gets both: the fine and the short minutes.' : '') : 'Off (Compliance > Late attendance)', $lateOn],
+            ['Extra working', $this->extraWorkAuto ? "Work on a weekly off / 3rd Saturday / holiday: hours × per hour, at most one day's pay a day" : 'Off', $this->extraWorkAuto],
+        ];
+    }
+
+    /** "10:16": the company start time + grace, for the rule text. */
+    private function graceExample(): string
+    {
+        $policies = app(\App\Services\PolicyConfigurationService::class);
+        $date = $this->payrollFrom ?: today()->toDateString();
+        $start = (string) ($policies->forEmployee(null, 'work.hours', $date, [])['start_time'] ?? '10:00');
+        $grace = (int) ($policies->forEmployee(null, 'attendance.rules', $date, [])['grace_minutes'] ?? 0);
+
+        return \Illuminate\Support\Carbon::parse('2000-01-01 '.substr($start, 0, 5))->addMinutes($grace)->format('H:i');
+    }
+
     public function savePayroll(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0'], 'hourlyRateHours' => ['nullable', 'numeric', 'gt:0', 'max:24'], 'halfDayPayFrom' => ['required', 'date'], 'lateCheckinAfter' => ['required', 'date_format:H:i']], [], ['halfDayPayFrom' => 'half-day pay start date', 'lateCheckinAfter' => 'late check-in time']);
+        $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0'], 'hourlyRateHours' => ['nullable', 'numeric', 'gt:0', 'max:24'], 'halfDayPayFrom' => ['required', 'date'], 'lateCheckinAfter' => ['required', 'date_format:H:i'], 'payrollFrom' => ['required', 'date']], [], ['halfDayPayFrom' => 'half-day pay start date', 'lateCheckinAfter' => 'late check-in time', 'payrollFrom' => 'apply from date']);
+        $from = \Illuminate\Support\Carbon::parse($this->payrollFrom)->toDateString();
+        // From an earlier date: approved / locked payroll in that time is refused; drafts are marked for recalculation.
+        if ($from < today()->toDateString()) app(\App\Services\PayrollLockGuard::class)->changed(null, $from, 'payroll rules', '2999-12-31');
         $ot = array_filter(['multiplier' => $this->otMultiplier === '' ? null : (float) $this->otMultiplier, 'max_minutes_per_day' => $this->otMaxPerDay === '' ? null : (int) $this->otMaxPerDay, 'holiday_multiplier' => $this->otHolidayMultiplier === '' ? null : (float) $this->otHolidayMultiplier, 'max_minutes_per_month' => $this->otMaxPerMonthHours === '' ? null : (int) round((float) $this->otMaxPerMonthHours * 60)], fn ($v) => $v !== null);
         $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['enabled' => $this->otEnabled, ...$ot], null, auth()->id(), today()->toDateString());
-        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'half_day_pay' => $this->halfDayPay, 'half_day_pay_from' => \Illuminate\Support\Carbon::parse($this->halfDayPayFrom)->toDateString(), 'late_checkin_hours_pay' => $this->lateCheckinPay, 'half_leave_hours_only' => $this->halfLeaveHoursOnly, 'half_day_hours_only' => $this->halfDayHoursOnly, 'late_checkin_after' => $this->lateCheckinAfter, 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace, ...($this->hourlyRateHours !== '' ? ['hourly_rate_hours' => (float) $this->hourlyRateHours] : [])], null, auth()->id(), today()->toDateString());
+        $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'short_hours_late_only' => $this->shortHoursLateOnly, 'half_day_pay' => $this->halfDayPay, 'half_day_pay_from' => \Illuminate\Support\Carbon::parse($this->halfDayPayFrom)->toDateString(), 'late_checkin_hours_pay' => $this->lateCheckinPay, 'half_leave_hours_only' => $this->halfLeaveHoursOnly, 'half_day_hours_only' => $this->halfDayHoursOnly, 'late_checkin_after' => $this->lateCheckinAfter, 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace, ...($this->hourlyRateHours !== '' ? ['hourly_rate_hours' => (float) $this->hourlyRateHours] : [])], null, auth()->id(), $from);
+        // Rules saved for later dates are replaced by these (otherwise they would still win for those days).
+        $replaced = \App\Models\PolicyRule::where('rule_key', 'payroll.calculation')->where('is_active', true)->whereDate('effective_from', '>', $from)->pluck('id');
+        if ($replaced->isNotEmpty()) {
+            \App\Models\PolicyRule::whereIn('id', $replaced)->update(['is_active' => false]);
+            app(\App\Services\AuditLogger::class)->record('policy.replaced', null, ['rule_key' => 'payroll.calculation', 'from' => $from, 'rule_ids' => $replaced->all()]);
+        }
         $people->setPolicy('leave.advance_limit', 'leave', 'Advance leave limit', ['max_days' => (float) $this->advanceLeaveMax], null, auth()->id(), today()->toDateString());
         $people->setPolicy('leave.final_settlement', 'leave', 'Final settlement leave encashment', ['leave_encashment_enabled' => $this->encashmentEnabled, 'rate_per_day' => (float) $this->encashmentRate], null, auth()->id(), today()->toDateString());
         $this->toast($this->otEnabled ? 'Payroll, overtime and leave policies saved.' : 'Payroll and leave policies saved.');

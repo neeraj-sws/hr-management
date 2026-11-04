@@ -4,7 +4,7 @@
 @php($rs = fn ($v) => '₹'.number_format((float) $v, 2))
 <div class="why-less">
     <div class="why-less-head"><strong>{{ ($s['lines'] || $s['late']) ? 'Why the salary is less than full' : 'Full salary — nothing cut' }}</strong>@if($s['estimate'])<small>this month so far · final after month end</small>@endif</div>
-    <div class="wl-row wl-full"><span>{{ $s['full_label'] }}<small>{{ $rs($s['rate']) }} a day{{ $s['hourly'] ? ' · '.$s['day_hours'].' a day = '.$rs($s['hourly']).' an hour' : '' }}</small></span><b>{{ $rs($s['full']) }}</b></div>
+    <div class="wl-row wl-full"><span>{{ $s['full_label'] }}<small>{{ $rs($s['rate']) }} a day{{ $s['hourly'] ? ' ÷ '.$s['day_hours'].' = '.$rs($s['hourly']).' an hour' : '' }}</small></span><b>{{ $rs($s['full']) }}</b></div>
 
     @if($s['late'])
         <div class="wl-block">
@@ -29,7 +29,18 @@
     @if(isset($s['net']))
         {{-- Every cut after the salary for days worked, one line each, then what is added, then the net salary. --}}
         @foreach($s['after'] ?? [] as $d)
-            <div class="wl-row"><span>− {{ $d['label'] }}@if($d['detail'])<small>{{ $d['detail'] }}</small>@endif</span><b class="wl-neg">−{{ $rs($d['amount']) }}</b></div>
+            @if($d['label'] === 'Short working hours' && ! empty($s['short_days']))
+                {{-- Short hours, date by date: each day at work less than the working day (check-in to check-out, breaks taken off). --}}
+                <div class="wl-block">
+                    <div class="wl-row wl-title"><span>− Short working hours<small>{{ \Illuminate\Support\Str::before($d['detail'], ' · ') }} · {{ count($s['short_days']) }} {{ count($s['short_days']) === 1 ? 'day' : 'days' }}</small></span><b class="wl-neg">−{{ $rs($d['amount']) }}</b></div>
+                    <div class="table-wrap"><table class="wl-table">
+                        <thead><tr><th>Date</th><th>In – out</th><th>Break</th><th>At work</th><th class="num">Short</th><th class="num">Cut</th></tr></thead>
+                        <tbody>@foreach($s['short_days'] as $r)<tr><td class="nowrap">{{ $r['day'] }}, {{ $r['date'] }}</td><td class="nowrap">{{ $r['in'] }} – {{ $r['out'] }}</td><td class="nowrap">{{ $r['break'] }}</td><td class="nowrap">{{ $r['worked'] }} <span class="muted">of {{ $r['of'] }}</span></td><td class="num nowrap">{{ $r['short'] }}</td><td class="num wl-neg">−{{ $rs($r['amount']) }}</td></tr>@endforeach</tbody>
+                    </table></div>
+                </div>
+            @else
+                <div class="wl-row"><span>− {{ $d['label'] }}@if($d['detail'])<small>{{ $d['detail'] }}</small>@endif</span><b class="wl-neg">−{{ $rs($d['amount']) }}</b></div>
+            @endif
         @endforeach
         @foreach($s['added'] ?? [] as $a)
             <div class="wl-row"><span>+ {{ $a['label'] }}@if($a['detail'])<small>{{ $a['detail'] }}</small>@endif</span><b class="wl-pos">+{{ $rs($a['amount']) }}</b></div>

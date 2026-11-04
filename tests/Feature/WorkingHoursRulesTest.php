@@ -87,8 +87,8 @@ class WorkingHoursRulesTest extends TestCase
             ['2026-10-06', '10:00', '19:30', 90, null, '08:00:00', 'present', 1],        // B long break (1:30) taken off, still full
             ['2026-10-07', '10:00', '14:00', 0, null, '04:00:00', 'half_day', 0.5],      // C under 4:30 = half day
             ['2026-10-08', '10:00', '14:45', 15, null, '04:30:00', 'present', 1],        // D exactly 4:30 = not a half day
-            ['2026-10-09', '12:30', '19:30', 30, null, '06:30:00', 'late', 0.7647],      // E in after 12:00: 6.5 / 8.5
-            ['2026-10-12', '14:00', '17:00', 0, null, '03:00:00', 'half_day', 0.3529],   // F in after 12:00 and under 4:30: by hours (3 / 8.5)
+            ['2026-10-09', '12:30', '19:30', 30, null, '06:30:00', 'late', 0.7222],      // E in after 12:00: 6.5 / 9 (hourly rate = one day ÷ 9)
+            ['2026-10-12', '14:00', '17:00', 0, null, '03:00:00', 'half_day', 0.3333],   // F in after 12:00 and under 4:30: by hours (3 / 9)
             ['2026-10-13', '12:00', '19:30', 30, null, '07:00:00', 'late', 1],           // G in at 12:00 exactly: not "after 12"
             ['2026-10-14', '10:00', '19:30', 45, 3.0, '08:45:00', 'present', 1],         // H mostly idle (meetings, calls): not cut
             ['2026-10-15', '13:00', '23:00', 0, null, '10:00:00', 'late', 1],            // I in after 12:00, 10 h: at most one day
@@ -105,7 +105,7 @@ class WorkingHoursRulesTest extends TestCase
         $b = $item->calculation_breakdown;
         $this->assertSame(['2026-10-07'], $b['half_days'], 'Only C is paid as a half day');
         $this->assertSame(['2026-10-09', '2026-10-12', '2026-10-15'], array_keys($b['hours_paid_days']), 'E, F, I are paid by hours; G (12:00 exactly) is not');
-        $this->assertSame([0.7647, 0.3529, 1.0], array_map(fn ($d) => (float) $d['share'], array_values($b['hours_paid_days'])));
+        $this->assertSame([0.7222, 0.3333, 1.0], array_map(fn ($d) => (float) $d['share'], array_values($b['hours_paid_days'])));
         $expected = 1020 * array_sum(array_column($cases, 7));
         $this->assertEqualsWithDelta($expected, (float) $b['base_salary'], 0.05, 'Salary = 1,020 × days paid');
         $this->assertSame(0.0, (float) $b['short_hours']['amount'], 'Idle never cut (short hours off)');
@@ -124,9 +124,9 @@ class WorkingHoursRulesTest extends TestCase
         $items = $this->payroll();
         $this->assertSame([], $items->get($afternoon->id)->calculation_breakdown['hours_paid_days'], 'Own day starts after 12:00: normal day');
         $this->assertEqualsWithDelta(1020, (float) $items->get($afternoon->id)->calculation_breakdown['base_salary'], 0.01);
-        // Approved half-day leave (morning off), at work 2:00–7:00 PM = 5 h of 8 h 30 m: only those hours are paid.
+        // Approved half-day leave (morning off), at work 2:00–7:00 PM = 5 h of 9 h (one day ÷ 9): only those hours are paid.
         $this->assertSame(['2026-10-05'], array_keys($items->get($leaveTaker->id)->calculation_breakdown['hours_paid_days']));
-        $this->assertEqualsWithDelta(1020 * 0.5882, (float) $items->get($leaveTaker->id)->calculation_breakdown['base_salary'], 0.01);
+        $this->assertEqualsWithDelta(1020 * 0.5556, (float) $items->get($leaveTaker->id)->calculation_breakdown['base_salary'], 0.01);
     }
 
     public function test_late_check_in_rule_can_be_switched_off_or_moved(): void
@@ -153,20 +153,20 @@ class WorkingHoursRulesTest extends TestCase
 
         $this->assertSame(22.0, (float) $s['working']);
         $this->assertEqualsWithDelta(22 * 1020, $s['full'], 0.01);
-        // Late check-in in hours and rupees, never as a fraction of a day: 6h 30m of 8h 30m, ₹780 paid, ₹240 not paid.
-        $this->assertSame([['date' => '09 Oct', 'day' => 'Fri', 'in' => '12:30 PM', 'leave' => null, 'kind' => 'late', 'worked' => '6h 30m', 'of' => '8h 30m', 'short' => '2h 00m', 'paid' => 779.99, 'cut' => 240.01]], $s['late']);
-        $this->assertSame(120.0, $s['hourly'], '₹1,020 a day ÷ 8h 30m');
+        // Late check-in in hours and rupees, never as a fraction of a day: 6h 30m of 9h 00m (one day ÷ 9), ₹736.64 paid, ₹283.36 not paid.
+        $this->assertSame([['date' => '09 Oct', 'day' => 'Fri', 'in' => '12:30 PM', 'leave' => null, 'kind' => 'late', 'worked' => '6h 30m', 'of' => '9h 00m', 'short' => '2h 30m', 'paid' => 736.64, 'cut' => 283.36]], $s['late']);
+        $this->assertSame(113.33, $s['hourly'], '₹1,020 a day ÷ 9 h');
         $labels = array_column($s['lines'], 'label');
         $this->assertSame(['Half day — 07 Oct', 'Absent, no leave — 12 days', 'Days still to come — 5 days'], $labels);
         $this->assertSame('01–02 Oct, 12–16 Oct, 19–23 Oct', $s['lines'][1]['detail']);
         $this->assertEqualsWithDelta($s['full'] - $s['late_cut'] - array_sum(array_column($s['lines'], 'amount')), $s['earned'], 0.05, 'Full − cuts = salary for days worked');
         $this->assertEqualsWithDelta((float) $item->calculation_breakdown['base_salary'], $s['earned'], 0.01);
 
-        // Shown in the payroll breakdown and on the calendar ("paid for 6h 30m of 8h 30m"); no day fractions anywhere.
+        // Shown in the payroll breakdown and on the calendar ("paid for 6h 30m of 9h 00m"); no day fractions anywhere.
         \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $item->payroll_run_id)->set('breakdownItemId', $item->id)
             ->assertSee('Why the salary is less than full')->assertSee('Came after the late check-in time — paid only for the hours worked')
-            ->assertSee('6h 30m')->assertSee('−₹240.01')->assertSee('Days still to come — 5 days')->assertDontSee('0.76 day');
-        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $e])->assertSee('paid for 6h 30m of 8h 30m')->assertDontSee('0.76 day');
+            ->assertSee('6h 30m')->assertSee('−₹283.36')->assertSee('Days still to come — 5 days')->assertDontSee('0.76 day');
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $e])->assertSee('paid for 6h 30m of 9h 00m')->assertDontSee('0.76 day');
     }
 
     public function test_salary_page_and_payslip_explain_days_paid_by_hours(): void
@@ -178,7 +178,7 @@ class WorkingHoursRulesTest extends TestCase
             ?? app(\App\Services\SalarySummaryService::class)->soFar($e);
         $this->assertStringContainsString('1 late check-in day paid for the hours worked', $month['earnings'][0][2]);
         \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Runs::class)->set('run', $item->payroll_run_id)->set('breakdownItemId', $item->id)
-            ->assertSee('Came after the late check-in time, paid for hours worked')->assertSee('09 Oct: came 12:30 PM, worked 6h 30m of 8h 30m');
+            ->assertSee('Came after the late check-in time, paid for hours worked')->assertSee('09 Oct: came 12:30 PM, worked 6h 30m of 9h 00m');
     }
 
     public function test_short_day_person_is_not_a_half_day_for_working_their_full_short_day(): void

@@ -72,6 +72,26 @@
         </section>
     @endif
 
+    @if($canManage)
+        {{-- Pay only for project days: for people who get paid just for the days they work on certain projects. --}}
+        <section class="card mb">
+            <div class="card-head"><div><h2>Pay only for project days</h2><p>For an employee paid only for the days they work on certain projects (e.g. on training, or an adjustment agreed with them). Payroll then pays only the days they have a task of those projects (the task's work date, or time on its timer); other days get no pay, and their short time and fines are not cut either.</p></div><button type="button" class="btn" wire:click="newProjectRule"><x-icon name="plus" class="icon-sm" />Add</button></div>
+            @if($projectRules->isNotEmpty())
+                <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Projects</th><th>From – until</th><th>Reason</th><th></th></tr></thead><tbody>
+                    @foreach($projectRules as $r)
+                        <tr wire:key="pr-{{ $r->id }}"><td><strong>{{ $r->employee?->name }}</strong><small>{{ $r->employee?->employee_code }}</small></td>
+                            <td>{{ collect($r->configuration['projects'] ?? [])->map(fn ($id) => $projectNames[$id] ?? '#'.$id)->join(', ') }}</td>
+                            <td class="nowrap">{{ $r->effective_from?->format('d M Y') }} – {{ $r->effective_until?->format('d M Y') ?? 'until stopped' }}</td>
+                            <td>{{ $r->configuration['reason'] ?? '' }}</td>
+                            <td>@if(! $r->effective_until || $r->effective_until->gte(today()->startOfMonth()))<button type="button" class="btn btn-sm" wire:click="stopProjectRule({{ $r->id }})" wire:confirm="Stop this from {{ today()->format('M Y') }}? Earlier months keep it.">Stop</button>@endif</td></tr>
+                    @endforeach
+                </tbody></table></div>
+            @else
+                <div class="card-body"><p class="small muted" style="margin:0">Nobody yet.</p></div>
+            @endif
+        </section>
+    @endif
+
     <section class="card">
         <div class="card-head"><div><h2>Salary adjustments</h2><p>Increments raise the monthly salary from the effective date (old salary stays in history). Bonus and deductions apply in the payroll covering their effective date — once, or every month when recurring. All need approval.</p></div></div>
         <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Type</th><th class="num">Amount</th><th>Effective</th><th>Repeats</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>
@@ -116,6 +136,21 @@
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Save profile</button></div></form>
         </x-modal>
     @endif
+    @if($showProjectRule)
+        <x-modal title="Pay only for project days">
+            <form wire:submit="saveProjectRule"><div class="modal-body"><x-errors /><div class="form-grid">
+                <x-field label="Employee" name="prEmployeeId" full><select wire:model="prEmployeeId"><option value="">Choose…</option>@foreach($projectEmployees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></x-field>
+                <div class="field" style="grid-column:1/-1"><span class="label">Projects (a day with a task of any of these is paid)</span>
+                    <div class="pill-row">@foreach($projectNames as $id => $name)<label class="check pill"><input type="checkbox" value="{{ $id }}" wire:model="prProjects"> {{ $name }}</label>@endforeach</div>
+                    @error('prProjects')<span class="error">{{ $message }}</span>@enderror</div>
+                <x-field label="From" name="prFrom" hint="e.g. 01 Oct for October's payroll"><input type="date" wire:model="prFrom"></x-field>
+                <x-field label="Until (optional)" name="prUntil" hint="empty = until stopped"><input type="date" wire:model="prUntil"></x-field>
+                <x-field label="Reason" name="prReason" full><input wire:model="prReason" placeholder="e.g. On training; paid only for SKC work (agreed with sir)"></x-field>
+            </div></div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Save</button></div></form>
+        </x-modal>
+    @endif
+
     @if($showAdjustment)
         <x-modal title="{{ auth()->user()->can('salary.adjust') ? 'New salary adjustment' : 'Request salary adjustment' }}">
             <form wire:submit="saveAdjustment"><div class="modal-body"><x-errors /><div class="form-grid">

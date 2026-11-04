@@ -181,11 +181,65 @@ class Salary extends Component
         $this->toast('Recurring adjustment stopped after '.$lastMonth->format('M Y').'.');
     }
 
+    /** "Pay only for project days": who, which projects, from / until and why (see HrWorkflowService::projectDays). */
+    public bool $showProjectRule = false;
+    public ?int $prEmployeeId = null;
+    /** @var array<int, int|string> */
+    public array $prProjects = [];
+    public string $prFrom = '';
+    public string $prUntil = '';
+    public string $prReason = '';
+
+    public const PROJECT_DAYS_RULE = 'payroll.project_days';
+
+    public function newProjectRule(): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->fill(['showProjectRule' => true, 'prEmployeeId' => null, 'prProjects' => [], 'prFrom' => today()->subMonthNoOverflow()->startOfMonth()->toDateString(), 'prUntil' => '', 'prReason' => '']);
+        $this->resetValidation();
+    }
+
+    /**
+     * Saves the rule for the employee from the date (until the date, if given): payroll then pays only the days the
+     * employee has a task of these projects. Draft payroll in that time is marked for recalculation; an approved or
+     * locked payroll is refused (an administrator can reopen it).
+     */
+    public function saveProjectRule(PeopleOperationsService $people, AuditLogger $audit): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->validate([
+            'prEmployeeId' => ['required', 'exists:attendance_employees,id'],
+            'prProjects' => ['required', 'array', 'min:1'], 'prProjects.*' => ['integer', 'exists:projects,id'],
+            'prFrom' => ['required', 'date'], 'prUntil' => ['nullable', 'date', 'after_or_equal:prFrom'],
+            'prReason' => ['required', 'string', 'min:3', 'max:255'],
+        ], ['prProjects.required' => 'Tick at least one project.'], ['prEmployeeId' => 'employee', 'prProjects' => 'projects', 'prFrom' => 'from date', 'prUntil' => 'until date', 'prReason' => 'reason']);
+        $until = $this->prUntil !== '' ? $this->prUntil : null;
+        app(\App\Services\PayrollLockGuard::class)->changed((int) $this->prEmployeeId, $this->prFrom, 'salary', $until ?? '2999-12-31');
+        $config = ['projects' => array_values(array_unique(array_map('intval', $this->prProjects))), 'reason' => trim($this->prReason)];
+        $people->setPolicy(self::PROJECT_DAYS_RULE, 'payroll', 'Pay only for project days', $config, (int) $this->prEmployeeId, auth()->id(), $this->prFrom, $until);
+        $employee = AttendanceEmployee::with('user')->find($this->prEmployeeId);
+        $audit->record('payroll.project_days_set', $employee, ['projects' => $config['projects'], 'from' => $this->prFrom, 'until' => $until, 'reason' => $config['reason']]);
+        $this->showProjectRule = false;
+        $this->toast("{$employee->name} is now paid only for project days. Recalculate the draft payroll to see it.");
+    }
+
+    /** Stops the rule from today's month on (earlier months keep it); a rule that starts later is removed. */
+    public function stopProjectRule(int $id, PeopleOperationsService $people): void
+    {
+        abort_unless($this->canManage(), 403);
+        $row = \App\Models\EmployeePolicyOverride::where('rule_key', self::PROJECT_DAYS_RULE)->findOrFail($id);
+        $from = today()->startOfMonth()->toDateString();
+        app(\App\Services\PayrollLockGuard::class)->changed($row->employee_id, $from, 'salary', '2999-12-31');
+        $people->stopOverride($row, $from, auth()->id());
+        $this->toast('Stopped: from '.today()->format('M Y').' the full salary applies again.');
+    }
+
     public function closeModal(): void
     {
         $this->profileEmployeeId = null;
         $this->correcting = false;
         $this->showAdjustment = false;
+        $this->showProjectRule = false;
     }
 
     public function render(ApprovalInbox $inbox)
@@ -209,6 +263,9 @@ class Salary extends Component
             'mySoFar' => $own ? app(\App\Services\SalarySummaryService::class)->soFar($own) : null,
             'myHistory' => $own ? app(\App\Services\SalarySummaryService::class)->history($own) : [],
             'adjustments' => $adjustments,
+            'projectRules' => $this->canManage() ? \App\Models\EmployeePolicyOverride::with('employee')->where('rule_key', self::PROJECT_DAYS_RULE)->orderByDesc('effective_from')->get() : collect(),
+            'projectEmployees' => $this->canManage() ? AttendanceEmployee::where('is_active', true)->onPayroll()->orderBy('name')->get(['id', 'name']) : collect(),
+            'projectNames' => $this->canManage() ? \App\Models\Project::orderBy('name')->pluck('name', 'id') : collect(),
             'decidable' => $inbox->pending($user, SalaryAdjustment::class)->pluck('approvable_id')->all(),
             'canManage' => $this->canManage(),
             'allEmployees' => $user->can('salary.adjust') ? AttendanceEmployee::where('is_active', true)->onPayroll()->orderBy('name')->get(['id', 'name']) : collect(),
