@@ -75,8 +75,8 @@
         <x-modal :title="$entryId ? 'Edit line' : 'Add timesheet line'" size="lg">
             <form wire:submit="saveEntry"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Date" name="entry.work_date"><input type="date" wire:model="entry.work_date"></x-field>
-                <x-field label="Developer" name="entry.employee_id"><select wire:model="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
-                @if(! $entry['employee_id'])<x-field label="Developer name" name="entry.developer_name"><input wire:model="entry.developer_name"></x-field>@endif
+                <x-field label="Developer" name="entry.employee_id"><select wire:model.live="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
+                @if(empty($entry['employee_id']))<x-field label="Developer name" name="entry.developer_name"><input wire:model="entry.developer_name" placeholder="Type the developer's name"></x-field>@endif
                 <x-field label="Task" name="entry.description" full><textarea wire:model="entry.description" rows="3"></textarea></x-field>
                 <x-field label="Start" name="entry.start_time"><input type="time" wire:model.live="entry.start_time"></x-field>
                 <x-field label="End" name="entry.end_time"><input type="time" wire:model.live="entry.end_time"></x-field>
