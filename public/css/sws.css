@@ -1003,6 +1003,8 @@ div.tm-card{cursor:default}
 
 .ds-nudge{display:flex;align-items:center;gap:10px;background:#FFF9EE;border:1px solid #F5DDB0;border-radius:12px;padding:10px 14px;margin-bottom:14px;color:#854F0B;font-weight:600;font-size:13.5px}
 .ds-nudge span{flex:1}
+/* Add a missed daily status for an earlier day: text, then the date and the button side by side (they wrap below the text on a phone). */
+.ds-past{flex-wrap:wrap}.ds-past .ds-past-text{flex:1 1 280px;margin:0;min-width:0}.ds-past-pick{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap}.ds-past-pick input{width:170px;margin:0}.ds-past-err{flex-basis:100%;margin:0}
 .ds-form-modal .ds-form{padding:16px 20px}
 .ds-form-modal .card-body{padding:0}
 
