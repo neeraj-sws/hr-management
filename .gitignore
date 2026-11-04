@@ -36,3 +36,12 @@ Thumbs.db
 *.spec.bak
 /python/.build-venv/
 /python/*.spec
+
+# Only the website lives in git. The mobile app, desktop app, builds and deploy bundles stay on the computer.
+/mobile/
+/python/
+/_deploy/
+/deploy-*/
+/.claude/
+/resources.zip
+/.github/workflows/build-apps.yml
