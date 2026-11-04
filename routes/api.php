@@ -73,6 +73,10 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/night-work', [\App\Http\Controllers\Api\NightWorkController::class, 'index'])->name('api.night-work.index');
     Route::post('/night-work', [\App\Http\Controllers\Api\NightWorkController::class, 'store'])->name('api.night-work.store');
     Route::post('/night-work/{nightWork}/cancel', [\App\Http\Controllers\Api\NightWorkController::class, 'cancel'])->name('api.night-work.cancel');
+    Route::get('/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'index'])->name('api.timesheet.index');
+    Route::post('/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'store'])->name('api.timesheet.store');
+    Route::post('/timesheet/{entry}', [\App\Http\Controllers\Api\TimesheetController::class, 'update'])->name('api.timesheet.update');
+    Route::post('/timesheet/{entry}/delete', [\App\Http\Controllers\Api\TimesheetController::class, 'destroy'])->name('api.timesheet.destroy');
     Route::get('/expenses', [ExpenseController::class, 'index'])->name('api.expenses.index');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('api.expenses.store');
     Route::post('/expenses/{claim}/cancel', [ExpenseController::class, 'cancel'])->name('api.expenses.cancel');

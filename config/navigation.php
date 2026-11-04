@@ -43,6 +43,7 @@ return [
         ['label' => 'My Projects', 'route' => 'work.my-projects', 'icon' => 'folder'],
         ['label' => 'Tasks', 'route' => 'work.tasks', 'icon' => 'check-square'],
         ['label' => 'My Tasks', 'route' => 'work.my-tasks', 'icon' => 'list'],
+        ['label' => 'My Timesheet', 'route' => 'work.my-timesheet', 'icon' => 'clock'],
         ['label' => 'Task Timer', 'route' => 'work.timer', 'icon' => 'timer'],
         ['label' => 'Daily Work Status', 'route' => 'work.daily-status', 'icon' => 'edit'],
     ]],

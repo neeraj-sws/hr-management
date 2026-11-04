@@ -38,6 +38,71 @@ class TimesheetService
         return (bool) TimesheetMonth::where('project_id', $project->id)->where('month', $month)->value('approved_at');
     }
 
+    /** Projects an employee works on (and so may fill a timesheet for): manager, member, or has a task on it. */
+    public function employeeProjects(AttendanceEmployee $employee): \Illuminate\Database\Eloquent\Builder
+    {
+        return Project::query()->where(fn ($q) => $q->where('manager_id', $employee->id)
+            ->orWhereHas('members', fn ($m) => $m->where('attendance_employees.id', $employee->id))
+            ->orWhereHas('tasks', fn ($t) => $t->where('assignee_id', $employee->id)));
+    }
+
+    /** Whether the employee may still change this line: their own, added by hand, month not approved by the client. */
+    public function employeeCanEdit(AttendanceEmployee $employee, TimesheetEntry $line): bool
+    {
+        return $line->employee_id === $employee->id && $line->source === 'manual' && ! $this->isLocked($line->project, $line->work_date->format('Y-m'));
+    }
+
+    /**
+     * An employee adds or edits their own timesheet line (app / My Timesheet). The line is always theirs and
+     * shown to the client; billable follows the worked minutes unless a manager already changed it.
+     * $data: project_id, work_date, start_time?, end_time?, minutes?, description, status?, remarks?
+     */
+    public function saveEmployeeLine(AttendanceEmployee $employee, array $data, ?TimesheetEntry $line = null, ?int $userId = null): TimesheetEntry
+    {
+        $project = $this->employeeProjects($employee)->find($data['project_id'] ?? 0);
+        if (! $project) throw ValidationException::withMessages(['project_id' => 'Aap is project me nahi ho.']);
+        if ($line && ! $this->employeeCanEdit($employee, $line)) throw ValidationException::withMessages(['work_date' => 'Ye line aap edit nahi kar sakte.']);
+
+        $date = Carbon::parse($data['work_date'])->startOfDay();
+        if ($date->isAfter(today())) throw ValidationException::withMessages(['work_date' => 'Aage ki date ka timesheet nahi bhar sakte.']);
+        $calendar = app(PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', $date->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+        if (! \App\Support\WorkCalendar::isWorkday($date->toDateString(), $calendar)) {
+            throw ValidationException::withMessages(['work_date' => 'Ye din off hai ('.\App\Support\WorkCalendar::offDayReason($date->toDateString(), $calendar).') — timesheet line add nahi kar sakte.']);
+        }
+        if ($this->isLocked($project, $date->format('Y-m'))) throw ValidationException::withMessages(['work_date' => 'Is mahine ka timesheet client approve kar chuka hai.']);
+
+        $start = $data['start_time'] ?? null ?: null;
+        $end = $data['end_time'] ?? null ?: null;
+        $minutes = isset($data['minutes']) && $data['minutes'] !== '' && $data['minutes'] !== null ? (int) $data['minutes'] : null;
+        if ($minutes === null && $start && $end) {
+            $s = Carbon::createFromFormat('H:i', $start);
+            $e = Carbon::createFromFormat('H:i', $end);
+            if ($e->lessThanOrEqualTo($s)) $e->addDay();
+            $minutes = (int) $s->diffInMinutes($e);
+        }
+        if (! $minutes || $minutes < 1 || $minutes > 1440) throw ValidationException::withMessages(['minutes' => 'Start/End time ya minutes bharo.']);
+
+        $billable = $line && $line->billable_minutes !== $line->minutes ? $line->billable_minutes : $minutes;
+        $values = ['project_id' => $project->id, 'work_date' => $date->toDateString(), 'employee_id' => $employee->id, 'developer_name' => null,
+            'start_time' => $start, 'end_time' => $end, 'minutes' => $minutes, 'billable_minutes' => $billable,
+            'description' => trim((string) $data['description']), 'status' => ($data['status'] ?? null) ?: null, 'remarks' => ($data['remarks'] ?? null) ?: null];
+        if ($line) {
+            $line->update($values);
+        } else {
+            $line = TimesheetEntry::create($values + ['source' => 'manual', 'visible_to_client' => true, 'created_by' => $userId]);
+        }
+        $this->audit->record($line->wasRecentlyCreated ? 'timesheet.entry_added' : 'timesheet.entry_updated', $line, ['billable_minutes' => $line->billable_minutes, 'by_employee' => $employee->id]);
+
+        return $line;
+    }
+
+    public function deleteEmployeeLine(AttendanceEmployee $employee, TimesheetEntry $line): void
+    {
+        if (! $this->employeeCanEdit($employee, $line)) throw ValidationException::withMessages(['line' => 'Ye line aap delete nahi kar sakte.']);
+        $this->audit->record('timesheet.entry_deleted', $line, ['minutes' => $line->minutes, 'description' => $line->description, 'by_employee' => $employee->id]);
+        $line->delete();
+    }
+
     /** Turns finished task-timer sessions on this project's tasks in $month into timesheet lines (once each; edits are kept). */
     public function syncFromTimers(Project $project, string $month): int
     {

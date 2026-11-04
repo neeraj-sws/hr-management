@@ -118,6 +118,88 @@ class ClientPortalTest extends TestCase
         Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class)->call('openObjection', $hidden->id)->assertForbidden();
     }
 
+    public function test_employees_fill_their_own_timesheet_only_on_their_projects(): void
+    {
+        $devUser = $this->dev->user;
+        $other = Project::create(['name' => 'Not my project', 'status' => 'active']);
+        $this->project->members()->attach($this->dev->id);
+        $colleague = AttendanceEmployee::create(['employee_code' => 'EMP-03', 'name' => 'Neeraj', 'is_active' => true, 'joined_at' => '2026-01-01']);
+        $theirs = TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $colleague->id, 'work_date' => '2026-10-07', 'minutes' => 30, 'billable_minutes' => 30, 'description' => 'Colleague work', 'source' => 'manual']);
+
+        $this->actingAs($devUser)->get(route('work.my-timesheet'))->assertOk()->assertSee('My Timesheet')->assertSee('Source India')->assertDontSee('Not my project')->assertDontSee('Colleague work');
+        $this->get(route('work.timesheets'))->assertForbidden();
+        $this->get(route('work.timesheets.export', ['project' => $this->project->id]))->assertForbidden();
+
+        $page = fn () => Livewire::withQueryParams(['project' => $this->project->id, 'month' => '2026-10'])->actingAs($devUser)->test(\App\Livewire\Work\Timesheets::class, ['mine' => true]);
+
+        // Adds a line: always their own, billable = worked, shown to the client; no future dates, no off days.
+        $page()->call('openEntry')->set('entry.work_date', '2026-10-31')->set('entry.employee_id', (string) $colleague->id)
+            ->set('entry.description', 'Search API fix')->set('entry.start_time', '10:00')->set('entry.end_time', '11:30')->assertSet('entry.minutes', '90')
+            ->set('entry.billable_minutes', '500')->call('saveEntry')->assertHasErrors('entry.work_date'); // 31 Oct 2026 is after "today" (30 Oct)
+        $page()->call('openEntry')->set('entry.work_date', '2026-10-29')->set('entry.employee_id', (string) $colleague->id)
+            ->set('entry.description', 'Search API fix')->set('entry.start_time', '10:00')->set('entry.end_time', '11:30')
+            ->set('entry.billable_minutes', '500')->call('saveEntry')->assertHasNoErrors()->assertSee('Search API fix')->assertDontSee('Colleague work');
+        $mineLine = TimesheetEntry::where('description', 'Search API fix')->firstOrFail();
+        $this->assertSame([$this->dev->id, null, 90, 90, true, 'manual'], [$mineLine->employee_id, $mineLine->developer_name, $mineLine->minutes, $mineLine->billable_minutes, $mineLine->visible_to_client, $mineLine->source]);
+
+        // Cannot touch a colleague's line or the manager tools.
+        $page()->call('openEntry', $theirs->id)->assertForbidden();
+        $page()->call('deleteEntry', $theirs->id)->assertForbidden();
+        $page()->call('setBillable', $mineLine->id, '5')->assertForbidden();
+        $page()->call('openSettings')->assertForbidden();
+        $this->assertSame([30, 90], [$theirs->fresh()->minutes, $mineLine->fresh()->billable_minutes]);
+
+        // A project they don't work on is not reachable.
+        Livewire::withQueryParams(['project' => $other->id, 'month' => '2026-10'])->actingAs($devUser)->test(\App\Livewire\Work\Timesheets::class, ['mine' => true])
+            ->assertSet('project', $this->project->id);
+
+        // Edits and removes their own line.
+        $page()->call('openEntry', $mineLine->id)->set('entry.end_time', '12:00')->call('saveEntry')->assertHasNoErrors();
+        $this->assertSame([120, 120], [$mineLine->fresh()->minutes, $mineLine->fresh()->billable_minutes]);
+        $page()->call('deleteEntry', $mineLine->id);
+        $this->assertNull($mineLine->fresh());
+    }
+
+    public function test_the_app_lets_employees_fill_their_own_timesheet(): void
+    {
+        $this->project->members()->attach($this->dev->id);
+        Project::create(['name' => 'Not my project', 'status' => 'active']);
+        \Laravel\Sanctum\Sanctum::actingAs($this->dev->user, ['*']);
+
+        $list = $this->getJson('/api/timesheet?month=2026-10')->assertOk();
+        $this->assertSame(['Source India'], collect($list->json('projects'))->pluck('name')->all());
+
+        $this->postJson('/api/timesheet', ['project_id' => $this->project->id, 'work_date' => '2026-10-31', 'start_time' => '10:00', 'end_time' => '11:00', 'description' => 'Future work'])
+            ->assertStatus(422)->assertJsonValidationErrors('work_date');
+        $created = $this->postJson('/api/timesheet', ['project_id' => $this->project->id, 'work_date' => '2026-10-29', 'start_time' => '22:30', 'end_time' => '00:15', 'description' => 'Night deploy', 'status' => 'Live'])
+            ->assertCreated()->assertJsonPath('data.minutes', 105)->assertJsonPath('data.editable', true);
+        $id = $created->json('data.id');
+        $this->assertSame([$this->dev->id, 105, true], [TimesheetEntry::find($id)->employee_id, TimesheetEntry::find($id)->billable_minutes, TimesheetEntry::find($id)->visible_to_client]);
+
+        $this->postJson("/api/timesheet/{$id}", ['project_id' => $this->project->id, 'work_date' => '2026-10-29', 'start_time' => '22:30', 'end_time' => '23:30', 'description' => 'Night deploy'])
+            ->assertOk()->assertJsonPath('data.minutes', 60);
+        $this->getJson('/api/timesheet?month=2026-10')->assertJsonPath('total_minutes', 60)->assertJsonCount(1, 'data');
+
+        $theirs = TimesheetEntry::create(['project_id' => $this->project->id, 'work_date' => '2026-10-07', 'minutes' => 30, 'billable_minutes' => 30, 'description' => 'Someone else', 'source' => 'manual']);
+        $this->postJson("/api/timesheet/{$theirs->id}/delete")->assertNotFound();
+        $this->postJson("/api/timesheet/{$id}/delete")->assertOk();
+        $this->assertNull(TimesheetEntry::find($id));
+    }
+
+    public function test_excel_export_follows_the_client_sheet_layout_with_totals(): void
+    {
+        $this->project->update(['hourly_rate' => 600]);
+        app(TimesheetService::class)->month($this->project, '2026-10')->update(['opening_remaining_minutes' => 30]);
+        TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'developer_name' => 'Abheeshri Parmar', 'work_date' => '2026-10-07', 'start_time' => '15:30', 'end_time' => '17:18', 'minutes' => 108, 'billable_minutes' => 90, 'description' => 'PPT on platform overview', 'status' => 'Done']);
+
+        $response = $this->actingAs($this->admin)->get(route('work.timesheets.export', ['project' => $this->project->id, 'month' => '2026-10']))->assertOk();
+        $sheet = \App\Support\XlsxReader::rows($response->getFile()->getPathname());
+        $flat = json_encode($sheet, JSON_UNESCAPED_UNICODE);
+        foreach (['Task Details', 'In Minutes', 'Old remaining (carried in)', 'PPT on platform overview', '1 h 48 min', 'Abheeshri Parmar', 'Total', 'Amount'] as $text) {
+            $this->assertStringContainsString($text, $flat, $text);
+        }
+    }
+
     public function test_old_timesheet_workbook_imports_like_the_source_india_sheet(): void
     {
         $sheet = fn (string $name, array $rows) => ['name' => $name, 'columns' => array_map(fn ($h) => [$h, 'text', 12], ['Date', 'Task Details', 'Start Time', 'End Time', 'Hours', 'In Minutes', '', 'Developer', 'Status', 'Remarks']), 'rows' => $rows];

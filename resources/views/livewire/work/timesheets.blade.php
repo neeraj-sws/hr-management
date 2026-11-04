@@ -1,5 +1,9 @@
 <div>
     @php($fmt = fn ($m) => \App\Support\Duration::fromMinutes((int) $m))
+    @if($mine)
+    <div class="page-head"><div><h1>My Timesheet</h1><p>Jin projects par aap kaam karte ho (member / manager / task assigned), unka apna kaam yahan likho. Task timer ka time apne aap aata hai; baaki kaam "Add line" se daalo. Manager isse client ko dikhata aur bill karta hai.</p></div>
+        @if($projectModel && ! ($summary['approved_at'] ?? null))<div class="row-actions"><button class="btn btn-primary" wire:click="openEntry"><x-icon name="plus" class="icon-sm" />Add line</button></div>@endif</div>
+    @else
     <div class="page-head"><div><h1>Timesheets</h1><p>The project's monthly timesheet the client sees in their portal. Lines come in automatically from the team's task timers; you can add lines, import an old sheet, change the minutes charged and answer the client's objections.</p></div>
         @if($projectModel)<div class="row-actions">
             <button class="btn" wire:click="openSettings"><x-icon name="settings" class="icon-sm" />Rate & settings</button>
@@ -7,6 +11,7 @@
             <a class="btn" href="{{ route('work.timesheets.export', ['project' => $project, 'month' => $month]) }}"><x-icon name="download" class="icon-sm" />Export Excel</a>
             <button class="btn btn-primary" wire:click="openEntry"><x-icon name="plus" class="icon-sm" />Add line</button>
         </div>@endif</div>
+    @endif
     <x-errors />
     @if(session('timesheet_import'))
         @php($r = session('timesheet_import'))
@@ -17,10 +22,17 @@
 
     <section class="card mb">
         <div class="toolbar">
-            <label class="field grow"><span>Project</span><select wire:model.live="project">@foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}{{ $p->client ? ' — '.$p->client->name : ' (no client)' }}</option>@endforeach</select></label>
+            <label class="field grow"><span>Project</span><select wire:model.live="project">@if($projects->isEmpty())<option value="">— aap kisi project me nahi ho —</option>@endif @foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}{{ $p->client ? ' — '.$p->client->name : ' (no client)' }}</option>@endforeach</select></label>
             <div class="field"><span>Month</span><div class="row-actions"><button class="btn btn-sm" wire:click="moveMonth(-1)">‹</button><input type="month" wire:model.live="month" style="width:auto"><button class="btn btn-sm" wire:click="moveMonth(1)">›</button></div></div>
         </div>
-        @if($projectModel && $summary)
+        @if($mine && $projectModel && $summary)
+            <div class="pill-row" style="padding:0 18px 14px">
+                <span class="pill">Client <b>{{ $projectModel->client?->name ?? '—' }}</b></span>
+                <span class="pill">My lines <b>{{ $entries->count() }}</b></span>
+                <span class="pill">My time <b>{{ $fmt($entries->sum('minutes')) }}</b></span>
+                @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Month approved by the client — lines locked</span>@endif
+            </div>
+        @elseif($projectModel && $summary)
             <div class="pill-row" style="padding:0 18px 14px">
                 <span class="pill">Client <b>{{ $projectModel->client?->name ?? '— set in Work → Clients' }}</b></span>
                 <span class="pill">Carried in <b>{{ $fmt($summary['opening_minutes']) }}</b></span>
@@ -40,31 +52,31 @@
     @if($projectModel)
     <section class="card">
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th><th>Developer</th><th>Task</th><th>Time</th><th class="num">Worked</th><th class="num">Billable (min)</th><th>Status</th><th>Client</th><th></th></tr></thead>
+            <thead><tr><th>Date</th>@unless($mine)<th>Developer</th>@endunless<th>Task</th><th>Time</th><th class="num">Worked</th>@unless($mine)<th class="num">Billable (min)</th>@endunless<th>Status</th>@unless($mine)<th>Client</th>@endunless<th></th></tr></thead>
             <tbody>
             @forelse($entries as $e)
                 @php($open = $e->objections->firstWhere('status', 'open'))
                 <tr wire:key="ts-{{ $e->id }}" @if($open) style="background:#fff7ed" @endif>
                     <td class="nowrap">{{ $e->work_date->format('D d M') }}</td>
-                    <td>{{ $e->developer() }}@if($e->developer_name && $e->employee && $e->employee->name !== $e->developer_name)<small>HRMS: {{ $e->employee->name }}</small>@endif<small>{{ ['timer' => 'task timer', 'manual' => 'added', 'import' => 'imported'][$e->source] ?? $e->source }}</small></td>
+                    @unless($mine)<td>{{ $e->developer() }}@if($e->developer_name && $e->employee && $e->employee->name !== $e->developer_name)<small>HRMS: {{ $e->employee->name }}</small>@endif<small>{{ ['timer' => 'task timer', 'manual' => 'added', 'import' => 'imported'][$e->source] ?? $e->source }}</small></td>@endunless
                     <td style="text-align:left;max-width:380px;white-space:normal">{{ \Illuminate\Support\Str::limit($e->description, 160) }}@if($e->remarks)<small>{{ $e->remarks }}</small>@endif
                         @foreach($e->objections as $o)
                             <div class="small" style="margin-top:4px;padding:4px 8px;border-left:3px solid {{ $o->status === 'open' ? 'var(--amber)' : ($o->status === 'accepted' ? 'var(--green)' : 'var(--line)') }}">
                                 <strong>Objection</strong> by {{ $o->raiser?->name }} · {{ $o->created_at->format('d M') }}: “{{ $o->reason }}”@if($o->proposed_minutes !== null) (asks {{ $fmt($o->proposed_minutes) }})@endif
-                                @if($o->status === 'open')<button class="btn btn-sm" wire:click="openAnswer({{ $o->id }})">Answer</button>
+                                @if($o->status === 'open')@unless($mine)<button class="btn btn-sm" wire:click="openAnswer({{ $o->id }})">Answer</button>@else<span class="muted">(manager answer karega)</span>@endunless
                                 @else<br><span class="muted">{{ ucfirst($o->status) }} by {{ $o->responder?->name }}: {{ $o->response }}</span>@endif
                             </div>
                         @endforeach</td>
                     <td class="nowrap">{{ $e->start_time ? substr($e->start_time, 0, 5) : '' }}{{ $e->end_time ? '–'.substr($e->end_time, 0, 5) : '' }}</td>
                     <td class="num">{{ $fmt($e->minutes) }}</td>
-                    <td class="num">@if($summary['approved_at']){{ $e->billable_minutes }}@else<input type="number" min="0" max="1440" value="{{ $e->billable_minutes }}" style="width:76px" x-on:change="$wire.setBillable({{ $e->id }}, $event.target.value)" aria-label="Billable minutes">@endif
-                        @if($e->billable_minutes !== $e->minutes)<small class="muted">{{ $e->billable_minutes < $e->minutes ? '−' : '+' }}{{ abs($e->billable_minutes - $e->minutes) }}</small>@endif</td>
+                    @unless($mine)<td class="num">@if($summary['approved_at']){{ $e->billable_minutes }}@else<input type="number" min="0" max="1440" value="{{ $e->billable_minutes }}" style="width:76px" x-on:change="$wire.setBillable({{ $e->id }}, $event.target.value)" aria-label="Billable minutes">@endif
+                        @if($e->billable_minutes !== $e->minutes)<small class="muted">{{ $e->billable_minutes < $e->minutes ? '−' : '+' }}{{ abs($e->billable_minutes - $e->minutes) }}</small>@endif</td>@endunless
                     <td>{{ $e->status ?: '—' }}</td>
-                    <td><button class="btn btn-sm" wire:click="toggleVisible({{ $e->id }})" title="Show / hide this line in the client portal">{{ $e->visible_to_client ? 'Shown' : 'Hidden' }}</button></td>
-                    <td><div class="row-actions">@unless($summary['approved_at'])<button class="btn btn-sm" wire:click="openEntry({{ $e->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="deleteEntry({{ $e->id }})" wire:confirm="Remove this line?">×</button>@endunless</div></td>
+                    @unless($mine)<td><button class="btn btn-sm" wire:click="toggleVisible({{ $e->id }})" title="Show / hide this line in the client portal">{{ $e->visible_to_client ? 'Shown' : 'Hidden' }}</button></td>@endunless
+                    <td><div class="row-actions">@if($mine && $e->source !== 'manual')<span class="small muted">{{ $e->source === 'timer' ? 'task timer' : 'imported' }}</span>@elseif(! $summary['approved_at'])<button class="btn btn-sm" wire:click="openEntry({{ $e->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="deleteEntry({{ $e->id }})" wire:confirm="Remove this line?">×</button>@endif</div></td>
                 </tr>
             @empty
-                <tr><td colspan="9"><x-empty title="No timesheet lines this month" icon="clock">Time the team logs on this project's tasks appears here automatically. You can also add a line or import the old Excel sheet.</x-empty></td></tr>
+                <tr><td colspan="{{ $mine ? 6 : 9 }}"><x-empty title="No timesheet lines this month" icon="clock">Time the team logs on this project's tasks appears here automatically. You can also add a line or import the old Excel sheet.</x-empty></td></tr>
             @endforelse
             </tbody>
         </table></div>
@@ -75,19 +87,19 @@
         <x-modal :title="$entryId ? 'Edit line' : 'Add timesheet line'" size="lg">
             <form wire:submit="saveEntry"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Date" name="entry.work_date" hint="working day hona chahiye (weekly off / holiday allowed nahi)"><input type="date" wire:model.live="entry.work_date"></x-field>
-                <x-field label="Developer" name="entry.employee_id" hint="HRMS employee (list me na ho to “— other —”)"><select wire:model.live="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
-                <x-field label="Developer name" name="entry.developer_name" hint="list/client me yahi naam dikhega · khali = upar wale developer ka naam"><input wire:model="entry.developer_name" placeholder="Type the developer's name"></x-field>
+                @unless($mine)<x-field label="Developer" name="entry.employee_id" hint="HRMS employee (list me na ho to “— other —”)"><select wire:model.live="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
+                <x-field label="Developer name" name="entry.developer_name" hint="list/client me yahi naam dikhega · khali = upar wale developer ka naam"><input wire:model="entry.developer_name" placeholder="Type the developer's name"></x-field>@endunless
                 <x-field label="Task" name="entry.description" full><textarea wire:model="entry.description" rows="3"></textarea></x-field>
                 <x-field label="Start" name="entry.start_time"><input type="time" wire:model.live="entry.start_time"></x-field>
                 <x-field label="End" name="entry.end_time"><input type="time" wire:model.live="entry.end_time"></x-field>
                 <x-field label="Worked (minutes)" name="entry.minutes" hint="auto from start/end — editable"><input type="number" min="0" wire:model="entry.minutes"></x-field>
-                <x-field label="Billable (minutes)" name="entry.billable_minutes" hint="blank = same as worked"><input type="number" min="0" wire:model="entry.billable_minutes"></x-field>
+                @unless($mine)<x-field label="Billable (minutes)" name="entry.billable_minutes" hint="blank = same as worked"><input type="number" min="0" wire:model="entry.billable_minutes"></x-field>@endunless
                 <x-field label="Status" name="entry.status"><select wire:model="entry.status">
                     <optgroup label="Progress"><option>In progress</option><option>Done</option><option>Not done</option></optgroup>
                     <optgroup label="Stage"><option>Local</option><option>React</option><option>Live</option></optgroup>
                 </select></x-field>
                 <x-field label="Remarks" name="entry.remarks"><input wire:model="entry.remarks"></x-field>
-                <label class="check"><input type="checkbox" wire:model="entry.visible_to_client"> Show to the client</label>
+                @unless($mine)<label class="check"><input type="checkbox" wire:model="entry.visible_to_client"> Show to the client</label>@endunless
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Save line</button></div></form>
         </x-modal>

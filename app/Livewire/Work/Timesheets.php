@@ -12,6 +12,7 @@ use App\Services\PolicyConfigurationService;
 use App\Services\TimesheetService;
 use App\Support\WorkCalendar;
 use Illuminate\Support\Carbon;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -21,6 +22,8 @@ class Timesheets extends Component
 {
     use InteractsWithHr, WithFileUploads;
 
+    /** "My Timesheet": an employee adds and edits only their own lines on the projects they work on. */
+    #[Locked] public bool $mine = false;
     #[Url] public ?int $project = null;
     #[Url] public string $month = '';
 
@@ -37,21 +40,58 @@ class Timesheets extends Component
     public bool $showDeveloper = true;
     public string $opening = '';
 
+    /** Who may open the page: managers/HR, or (My Timesheet) any employee. */
     private function guard(): void
     {
+        if ($this->mine) { abort_unless($this->ownEmployee(), 403); return; }
         abort_unless($this->user()->canAny(['projects.manage', 'hr.manage']), 403);
     }
 
-    public function mount(): void
+    /** Rates, billable minutes, client visibility, import, objections and invoices stay with managers/HR. */
+    private function managerGuard(): void
     {
+        abort_if($this->mine, 403);
+        $this->guard();
+    }
+
+    public function mount(bool $mine = false): void
+    {
+        $this->mine = $mine || request()->routeIs('work.my-timesheet');
         $this->guard();
         if (! preg_match('/^\d{4}-\d{2}$/', $this->month)) $this->month = today()->format('Y-m');
+        if ($this->mine) {
+            if ($this->project && ! $this->myProjects()->whereKey($this->project)->exists()) $this->project = null;
+            $this->project ??= $this->myProjects()->orderByRaw('client_id IS NULL')->orderBy('name')->value('id');
+
+            return;
+        }
         $this->project ??= Project::whereNotNull('client_id')->orderBy('name')->value('id') ?? Project::orderBy('name')->value('id');
+    }
+
+    /** Projects the employee works on: manager, member, or has a task on it. */
+    private function myProjects()
+    {
+        $own = $this->ownEmployee();
+
+        return $own ? app(TimesheetService::class)->employeeProjects($own) : Project::query()->whereRaw('1 = 0');
     }
 
     private function projectModel(): ?Project
     {
-        return $this->project ? Project::with(['client.billingCustomer', 'manager'])->find($this->project) : null;
+        if (! $this->project) return null;
+        $query = $this->mine ? $this->myProjects() : Project::query();
+
+        return $query->with(['client.billingCustomer', 'manager'])->find($this->project);
+    }
+
+    /** A line on the current project; in My Timesheet only the employee's own lines they added themselves. */
+    private function line(int $id): TimesheetEntry
+    {
+        abort_unless($this->projectModel(), 404);
+        $line = TimesheetEntry::where('project_id', $this->project)->findOrFail($id);
+        if ($this->mine) abort_unless($line->employee_id === $this->ownEmployee()->id && $line->source === 'manual', 403);
+
+        return $line;
     }
 
     public function moveMonth(int $by): void
@@ -62,9 +102,10 @@ class Timesheets extends Component
     public function openEntry(?int $id = null): void
     {
         $this->guard();
-        $e = $id ? TimesheetEntry::where('project_id', $this->project)->findOrFail($id) : null;
+        abort_unless($this->projectModel(), 404);
+        $e = $id ? $this->line($id) : null;
         $this->entryId = $e?->id;
-        $this->entry = ['work_date' => $e?->work_date->toDateString() ?? today()->toDateString(), 'employee_id' => (string) ($e?->employee_id ?? ''), 'developer_name' => (string) $e?->developer_name,
+        $this->entry = ['work_date' => $e?->work_date->toDateString() ?? today()->toDateString(), 'employee_id' => (string) ($e?->employee_id ?? ($this->mine ? $this->ownEmployee()->id : '')), 'developer_name' => (string) $e?->developer_name,
             'start_time' => (string) ($e?->start_time ? substr($e->start_time, 0, 5) : ''), 'end_time' => (string) ($e?->end_time ? substr($e->end_time, 0, 5) : ''),
             'minutes' => (string) ($e?->minutes ?? ''), 'billable_minutes' => (string) ($e?->billable_minutes ?? ''), 'description' => (string) $e?->description,
             'status' => (string) ($e?->status ?? 'Done'), 'remarks' => (string) $e?->remarks, 'visible_to_client' => $e?->visible_to_client ?? true];
@@ -110,6 +151,15 @@ class Timesheets extends Component
     {
         $this->guard();
         $project = $this->projectModel();
+        abort_unless($project, 404);
+        if ($this->mine) {
+            $existing = $this->entryId ? $this->line($this->entryId) : null;
+            $this->entry['employee_id'] = (string) $this->ownEmployee()->id;
+            $this->entry['developer_name'] = '';
+            $this->entry['visible_to_client'] = $existing?->visible_to_client ?? true;
+            // Billable follows the worked minutes unless a manager already changed it.
+            $this->entry['billable_minutes'] = $existing && $existing->billable_minutes !== $existing->minutes ? (string) $existing->billable_minutes : '';
+        }
         $data = $this->validate([
             'entry.work_date' => ['required', 'date'], 'entry.employee_id' => ['nullable', 'exists:attendance_employees,id'], 'entry.developer_name' => ['nullable', 'string', 'max:191'],
             'entry.start_time' => ['nullable', 'date_format:H:i'], 'entry.end_time' => ['nullable', 'date_format:H:i'],
@@ -118,12 +168,13 @@ class Timesheets extends Component
         ], [], ['entry.work_date' => 'date', 'entry.minutes' => 'minutes', 'entry.billable_minutes' => 'billable minutes', 'entry.description' => 'task'])['entry'];
         $cal = $this->workCalendar($data['work_date']);
         if (! WorkCalendar::isWorkday($data['work_date'], $cal)) { $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($data['work_date'], $cal).') — timesheet line add nahi kar sakte.'); return; }
+        if ($this->mine && Carbon::parse($data['work_date'])->isAfter(today())) { $this->addError('entry.work_date', 'Aage ki date ka timesheet nahi bhar sakte.'); return; }
         if ($timesheets->isLocked($project, Carbon::parse($data['work_date'])->format('Y-m'))) { $this->addError('entry.work_date', 'That month is already approved by the client.'); return; }
         $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => trim((string) $data['developer_name']) ?: null,
             'start_time' => $data['start_time'] ?: null, 'end_time' => $data['end_time'] ?: null, 'minutes' => (int) $data['minutes'],
             'billable_minutes' => $data['billable_minutes'] === '' || $data['billable_minutes'] === null ? (int) $data['minutes'] : (int) $data['billable_minutes'],
             'description' => $data['description'], 'status' => $data['status'] ?: null, 'remarks' => $data['remarks'] ?: null, 'visible_to_client' => (bool) $this->entry['visible_to_client']];
-        $line = $this->entryId ? tap(TimesheetEntry::where('project_id', $project->id)->findOrFail($this->entryId))->update($values) : TimesheetEntry::create($values + ['source' => 'manual', 'created_by' => auth()->id()]);
+        $line = $this->entryId ? tap($this->line($this->entryId))->update($values) : TimesheetEntry::create($values + ['source' => 'manual', 'created_by' => auth()->id()]);
         $audit->record($this->entryId ? 'timesheet.entry_updated' : 'timesheet.entry_added', $line, ['billable_minutes' => $values['billable_minutes']]);
         $this->showEntry = false;
         $this->toast('Timesheet line saved.');
@@ -132,7 +183,7 @@ class Timesheets extends Component
     /** Quick change of the minutes charged to the client, right in the table. */
     public function setBillable(int $id, string $minutes, TimesheetService $timesheets, AuditLogger $audit): void
     {
-        $this->guard();
+        $this->managerGuard();
         $line = TimesheetEntry::where('project_id', $this->project)->findOrFail($id);
         if ($timesheets->isLocked($line->project, $line->work_date->format('Y-m'))) { $this->toast('This month is approved; lines are locked.'); return; }
         $value = max(0, min(1440, (int) $minutes));
@@ -142,7 +193,7 @@ class Timesheets extends Component
 
     public function toggleVisible(int $id): void
     {
-        $this->guard();
+        $this->managerGuard();
         $line = TimesheetEntry::where('project_id', $this->project)->findOrFail($id);
         $line->update(['visible_to_client' => ! $line->visible_to_client]);
     }
@@ -150,7 +201,7 @@ class Timesheets extends Component
     public function deleteEntry(int $id, TimesheetService $timesheets, AuditLogger $audit): void
     {
         $this->guard();
-        $line = TimesheetEntry::where('project_id', $this->project)->findOrFail($id);
+        $line = $this->line($id);
         if ($timesheets->isLocked($line->project, $line->work_date->format('Y-m'))) { $this->toast('This month is approved; lines are locked.'); return; }
         $audit->record('timesheet.entry_deleted', $line, ['minutes' => $line->minutes, 'description' => $line->description]);
         $line->delete();
@@ -159,7 +210,7 @@ class Timesheets extends Component
 
     public function import(TimesheetService $timesheets): void
     {
-        $this->guard();
+        $this->managerGuard();
         $this->validate(['file' => ['required', 'file', 'max:5120', 'extensions:xlsx']], ['file.extensions' => 'Upload the Excel timesheet (.xlsx).']);
         $result = $timesheets->import($this->projectModel(), $this->file, auth()->id());
         $this->reset('file');
@@ -171,6 +222,7 @@ class Timesheets extends Component
 
     public function openAnswer(int $objectionId): void
     {
+        $this->managerGuard();
         $o = TimesheetObjection::with('entry')->findOrFail($objectionId);
         $this->answering = $o->id;
         $this->answer = '';
@@ -180,7 +232,7 @@ class Timesheets extends Component
 
     public function respond(bool $accept, TimesheetService $timesheets): void
     {
-        $this->guard();
+        $this->managerGuard();
         $this->validate(['answer' => ['required', 'string', 'min:2', 'max:2000'], 'answerMinutes' => [$accept ? 'required' : 'nullable', 'nullable', 'integer', 'min:0', 'max:1440']], [], ['answer' => 'answer', 'answerMinutes' => 'billable minutes']);
         $timesheets->respond(TimesheetObjection::findOrFail($this->answering), $this->user(), $accept, $this->answer, $accept ? (int) $this->answerMinutes : null);
         $this->answering = null;
@@ -189,7 +241,7 @@ class Timesheets extends Component
 
     public function openSettings(TimesheetService $timesheets): void
     {
-        $this->guard();
+        $this->managerGuard();
         $p = $this->projectModel();
         $this->rate = (string) ($p->hourly_rate !== null ? (float) $p->hourly_rate : '');
         $this->showDeveloper = (bool) $p->client_sees_developer;
@@ -199,7 +251,7 @@ class Timesheets extends Component
 
     public function saveSettings(TimesheetService $timesheets, AuditLogger $audit): void
     {
-        $this->guard();
+        $this->managerGuard();
         $this->validate(['rate' => ['nullable', 'numeric', 'min:0', 'max:1000000'], 'opening' => ['nullable', 'integer', 'min:-100000', 'max:100000']], [], ['rate' => 'hourly rate', 'opening' => 'carried-in minutes']);
         $p = $this->projectModel();
         $p->update(['hourly_rate' => $this->rate === '' ? null : $this->rate, 'client_sees_developer' => $this->showDeveloper]);
@@ -211,7 +263,7 @@ class Timesheets extends Component
 
     public function createInvoice(TimesheetService $timesheets): void
     {
-        $this->guard();
+        $this->managerGuard();
         abort_unless($this->user()->canAny(['hr.manage', 'payroll.manage']), 403);
         $invoice = $timesheets->createInvoice($this->projectModel(), $this->month, $this->user());
         $this->redirect(route('billing.invoices.show', $invoice));
@@ -228,15 +280,18 @@ class Timesheets extends Component
         $this->guard();
         $project = $this->projectModel();
         if ($project) $timesheets->syncFromTimers($project, $this->month);
+        $entries = $project ? $timesheets->entries($project, $this->month) : collect();
+        if ($this->mine) $entries = $entries->where('employee_id', $this->ownEmployee()->id)->values();
 
         return $this->page('livewire.work.timesheets', [
-            'projects' => Project::with('client:id,name')->orderByRaw('client_id IS NULL')->orderBy('name')->get(['id', 'name', 'client_id']),
+            'projects' => ($this->mine ? $this->myProjects() : Project::query())->with('client:id,name')->orderByRaw('client_id IS NULL')->orderBy('name')->get(['id', 'name', 'client_id']),
             'projectModel' => $project,
-            'entries' => $project ? $timesheets->entries($project, $this->month) : collect(),
+            'entries' => $entries,
             'summary' => $project ? $timesheets->summary($project, $this->month) : null,
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'answeringObjection' => $this->answering ? TimesheetObjection::with(['entry', 'raiser'])->find($this->answering) : null,
-            'canInvoice' => $this->user()->canAny(['hr.manage', 'payroll.manage']),
-        ], 'Timesheets');
+            'canInvoice' => ! $this->mine && $this->user()->canAny(['hr.manage', 'payroll.manage']),
+            'ownId' => $this->mine ? $this->ownEmployee()->id : null,
+        ], $this->mine ? 'My Timesheet' : 'Timesheets');
     }
 }

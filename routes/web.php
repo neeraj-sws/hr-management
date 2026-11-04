@@ -96,6 +96,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/work/my-projects', Livewire\Work\Projects::class)->middleware('access:profile')->name('work.my-projects');
     Route::get('/work/tasks', Livewire\Work\Tasks::class)->middleware('access:tasks.manage,hr.manage,manager')->name('work.tasks');
     Route::get('/work/my-tasks', Livewire\Work\Tasks::class)->middleware('access:profile')->name('work.my-tasks');
+    Route::get('/work/my-timesheet', Livewire\Work\Timesheets::class)->middleware('access:profile')->name('work.my-timesheet');
     Route::get('/work/timer', Livewire\Work\Timer::class)->middleware('access:profile')->name('work.timer');
     Route::get('/work/daily-status', Livewire\Work\DailyStatus::class)->middleware('access:profile,attendance.view,hr.manage')->name('work.daily-status');
 

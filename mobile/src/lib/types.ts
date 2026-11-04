@@ -115,6 +115,8 @@ export type Fine = {
 };
 export type LateArrival = { id: number; work_date: string; expected_at: string; reason: string; status: string; decision_note: string | null };
 export type NightWork = { id: number; work_date: string; starts_at: string; ends_at: string; minutes: number; tasks: { id: number; title: string }[]; work_done: string; status: string; decision_note: string | null };
+export type TimesheetProject = { id: number; name: string; client: string | null };
+export type TimesheetLine = { id: number; project_id: number; project: string | null; work_date: string; start_time: string | null; end_time: string | null; minutes: number; description: string; status: string | null; remarks: string | null; source: 'manual' | 'timer' | 'import'; editable: boolean };
 export type Correction = { id: number; work_date: string; check_in: string | null; check_out: string | null; reason: string; status: string; decision_note: string | null };
 export type ExpenseClaim = { id: number; category: string; spent_on: string; amount: number; description: string; has_receipt: boolean; status: string; decision_note: string | null };
 export type Announcement = { id: number; title: string; body: string; pinned: boolean; published_at: string; author: string | null };
