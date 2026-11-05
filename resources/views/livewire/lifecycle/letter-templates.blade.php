@@ -45,6 +45,23 @@
             </div>
             <div class="form-actions"><button class="btn btn-primary">Save signature</button></div>
         </form>
+        {{-- Signature and seal images: printed on every new letter and certificate (signature above the line, seal beside it). --}}
+        <div class="card-body" style="border-top:1px solid var(--line-2)">
+            <div class="form-grid">
+                @foreach(['signature' => 'Signature image', 'seal' => 'Company seal (stamp)'] as $kind => $label)
+                    <div wire:key="sign-{{ $kind }}">
+                        <x-field :label="$label" :name="$kind.'Upload'" :hint="$signImages[$kind] ? 'saved: printed on new letters' : 'PNG or JPG, up to 2 MB'">
+                            <input type="file" accept=".png,.jpg,.jpeg" wire:model="{{ $kind }}Upload">
+                        </x-field>
+                        <div class="row-actions" style="margin-top:6px">
+                            <button type="button" class="btn btn-sm btn-primary" wire:click="uploadSignImage('{{ $kind }}')" wire:loading.attr="disabled" @disabled(! ${$kind.'Upload'})>Save {{ $kind === 'seal' ? 'seal' : 'signature' }}</button>
+                            @if($signImages[$kind])<x-badge tone="green">On letters</x-badge><button type="button" class="btn btn-sm btn-danger" wire:click="removeSignImage('{{ $kind }}')" wire:confirm="Remove it from new letters?">Remove</button>@endif
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+            <p class="small muted" style="margin:8px 0 0">Tip: a signature on a white or transparent background looks best. Check it with "Sample PDF" in a template.</p>
+        </div>
     </section>
 
     @if($showForm)
@@ -54,6 +71,10 @@
                     <div class="form-grid">
                         <x-field label="Template name" name="templateName"><input type="text" wire:model="templateName" maxlength="120" placeholder="e.g. Internship completion letter"></x-field>
                         <x-field label="Saved in the employee's documents as" name="templateCategory"><select wire:model="templateCategory">@foreach($categories as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
+                    </div>
+                    <div class="toolbar" style="border:0;padding:0;align-items:flex-end">
+                        <x-field label="Start from a Word file (.docx)" name="wordFile" hint="its text replaces what is below"><input type="file" accept=".docx" wire:model="wordFile"></x-field>
+                        <button type="button" class="btn btn-sm" wire:click="importWord" wire:loading.attr="disabled" @disabled(! $wordFile)>Take in Word file</button>
                     </div>
                     <div>
                         <p class="small muted" style="margin:0 0 6px">Words in {curly brackets} are filled with the employee's data. Pick them from “Insert placeholder”.</p>

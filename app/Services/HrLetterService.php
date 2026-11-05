@@ -21,7 +21,7 @@ use Illuminate\Validation\ValidationException;
 class HrLetterService
 {
     /** Document types a letter can be saved as (labels from the documents list). */
-    public const CATEGORIES = ['offer', 'appointment', 'noc', 'relieving', 'experience_issued', 'hr_letter'];
+    public const CATEGORIES = ['offer', 'appointment', 'noc', 'relieving', 'experience_issued', 'hr_letter', 'training_certificate'];
 
     /** Placeholders HR can use in a template => what they are replaced with. */
     public const PLACEHOLDERS = [
@@ -43,6 +43,9 @@ class HrLetterService
         'company_name' => 'Company name',
         'company_address' => 'Company address',
         'today' => "Today's date",
+        'course_name' => 'Training course (latest)',
+        'course_start_date' => 'Training start date',
+        'course_end_date' => 'Training end date',
         'signature' => 'Signature block (put it where it should go; otherwise it comes at the end)',
     ];
 
@@ -81,6 +84,7 @@ class HrLetterService
         $company = $this->company();
         $monthly = $this->monthlySalary($employee);
         $date = fn ($d) => $d ? \Illuminate\Support\Carbon::parse($d)->format('j F Y') : null;
+        $training = \App\Models\TrainingEnrollment::with('course')->where('employee_id', $employee->id)->orderByDesc('starts_on')->orderByDesc('id')->first();
 
         return [
             'employee_name' => $employee->name,
@@ -101,6 +105,10 @@ class HrLetterService
             'company_name' => $company['name'],
             'company_address' => implode(', ', $company['address_lines']) ?: null,
             'today' => today()->format('j F Y'),
+            // Training certificate: the employee's latest training course.
+            'course_name' => $training?->course?->title ?? ($training?->course_name ?: null),
+            'course_start_date' => $date($training?->starts_on),
+            'course_end_date' => $date($training?->ends_on),
         ];
     }
 
@@ -235,15 +243,95 @@ class HrLetterService
     {
         $saved = app(PolicyConfigurationService::class)->forEmployee(null, 'letters.settings', today()->toDateString(), []);
 
-        return ['signatory_name' => (string) (($saved['signatory_name'] ?? '') ?: $this->company()['signatory']), 'signatory_designation' => (string) ($saved['signatory_designation'] ?? 'Authorised Signatory')];
+        return ['signatory_name' => (string) (($saved['signatory_name'] ?? '') ?: $this->company()['signatory']), 'signatory_designation' => (string) ($saved['signatory_designation'] ?? 'Authorised Signatory'),
+            'signature_path' => (string) ($saved['signature_path'] ?? ''), 'seal_path' => (string) ($saved['seal_path'] ?? ''),
+            'certificate_tagline' => (string) ($saved['certificate_tagline'] ?? 'Move to the Next World')];
     }
 
     public function saveSettings(array $settings, User $actor): void
     {
         abort_unless(self::canManage($actor), 403);
+        $current = $this->settings();
         app(PeopleOperationsService::class)->setPolicy('letters.settings', 'documents', 'HR letter signatory', [
-            'signatory_name' => trim((string) ($settings['signatory_name'] ?? '')), 'signatory_designation' => trim((string) ($settings['signatory_designation'] ?? '')),
+            'signatory_name' => trim((string) ($settings['signatory_name'] ?? $current['signatory_name'])), 'signatory_designation' => trim((string) ($settings['signatory_designation'] ?? $current['signatory_designation'])),
+            // The signature and seal images stay unless they are changed.
+            'signature_path' => (string) ($settings['signature_path'] ?? $current['signature_path']), 'seal_path' => (string) ($settings['seal_path'] ?? $current['seal_path']),
+            'certificate_tagline' => (string) ($settings['certificate_tagline'] ?? $current['certificate_tagline']),
         ], null, $actor->id, today()->toDateString());
+    }
+
+    /**
+     * The signature or the company seal (stamp) printed on every letter and certificate: a PNG or JPG. Null removes it.
+     * $kind: signature | seal.
+     */
+    public function saveSignImage(string $kind, ?\Illuminate\Http\UploadedFile $file, User $actor): void
+    {
+        abort_unless(self::canManage($actor) && in_array($kind, ['signature', 'seal'], true), 403);
+        $old = $this->settings()[$kind.'_path'];
+        $path = '';
+        if ($file) {
+            $ext = strtolower((string) $file->getClientOriginalExtension()) === 'png' ? 'png' : 'jpg';
+            $path = (string) $file->storeAs('letters', $kind.'-'.Str::lower(Str::random(12)).'.'.$ext, 'local');
+            // Check it can really be printed (8-bit, not interlaced), so a letter never fails later.
+            if (! $path || ! LetterPdf::loadImage(Storage::disk('local')->path($path))) {
+                if ($path) Storage::disk('local')->delete($path);
+                throw ValidationException::withMessages([$kind.'Upload' => 'This image cannot be printed on letters. Save it again as a normal PNG or JPG and upload it.']);
+            }
+        }
+        $this->saveSettings([$kind.'_path' => $path], $actor);
+        if ($old && $old !== $path) Storage::disk('local')->delete($old);
+        $this->audit->record($file ? "letters.{$kind}_uploaded" : "letters.{$kind}_removed", null, ['path' => $path]);
+    }
+
+    /** Full path of the signature / seal image, or null when none is set (or the file is gone). */
+    public function signImagePath(string $kind): ?string
+    {
+        $path = $this->settings()[$kind.'_path'] ?? '';
+
+        return $path && Storage::disk('local')->exists($path) ? Storage::disk('local')->path($path) : null;
+    }
+
+    /**
+     * A Word file (.docx) as a template body: its paragraphs with bold / italic / underline and headings. Pictures,
+     * table borders and page layout are not taken over; HR checks it in the editor and adds {placeholders}.
+     */
+    public static function bodyFromDocx(string $path): string
+    {
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true || ($xml = $zip->getFromName('word/document.xml')) === false) {
+            throw ValidationException::withMessages(['wordFile' => 'This is not a Word (.docx) file, or it could not be read. Save it in Word as .docx and try again.']);
+        }
+        $zip->close();
+        $dom = new \DOMDocument();
+        if (! @$dom->loadXML($xml, LIBXML_NONET)) throw ValidationException::withMessages(['wordFile' => 'The Word file could not be read.']);
+        $xp = new \DOMXPath($dom);
+        $xp->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
+        $html = '';
+        foreach ($xp->query('//w:body//w:p') as $p) {
+            $style = (string) $xp->evaluate('string(w:pPr/w:pStyle/@w:val)', $p);
+            $runs = '';
+            foreach ($xp->query('.//w:r', $p) as $r) {
+                $text = '';
+                foreach ($r->childNodes as $node) {
+                    if ($node->localName === 't') $text .= $node->textContent;
+                    elseif ($node->localName === 'tab') $text .= ' ';
+                    elseif ($node->localName === 'br') $text .= "\n";
+                }
+                if ($text === '') continue;
+                $text = nl2br(e($text), false);
+                $on = fn (string $tag) => $xp->query("w:rPr/w:{$tag}[not(@w:val='0') and not(@w:val='false') and not(@w:val='none')]", $r)->length > 0;
+                if ($on('u')) $text = "<u>{$text}</u>";
+                if ($on('i')) $text = "<em>{$text}</em>";
+                if ($on('b')) $text = "<strong>{$text}</strong>";
+                $runs .= $text;
+            }
+            $tag = preg_match('/^(Heading1|Title)$/i', $style) ? 'h2' : (preg_match('/^Heading[2-9]$/i', $style) ? 'h3' : 'p');
+            $html .= "<{$tag}>{$runs}</{$tag}>";
+        }
+        $html = self::sanitize($html);
+        if (trim(html_entity_decode(strip_tags($html))) === '') throw ValidationException::withMessages(['wordFile' => 'The Word file has no text.']);
+
+        return $html;
     }
 
     public static function logoPath(): string
@@ -257,7 +345,7 @@ class HrLetterService
         $company = $this->company();
         $settings = $this->settings();
 
-        return (new LetterPdf($company, ['company' => $company['name'], 'name' => $settings['signatory_name'], 'designation' => $settings['signatory_designation']], self::logoPath()))
+        return (new LetterPdf($company, ['company' => $company['name'], 'name' => $settings['signatory_name'], 'designation' => $settings['signatory_designation']], self::logoPath(), $this->signImagePath('signature'), $this->signImagePath('seal')))
             ->render(self::sanitize($html), $title);
     }
 
@@ -314,6 +402,59 @@ class HrLetterService
         preg_match_all('/\{([a-z_]+)\}/', $body, $m);
 
         return array_values(array_unique($m[1]));
+    }
+
+    // ---- training certificate ----------------------------------------------------------------
+
+    /** What the certificate says, filled from the employee and their latest training (HR can change any of it). */
+    public function certificateDefaults(AttendanceEmployee $employee): array
+    {
+        $training = \App\Models\TrainingEnrollment::with('course')->where('employee_id', $employee->id)->orderByDesc('starts_on')->orderByDesc('id')->first();
+        $saved = app(PolicyConfigurationService::class)->forEmployee(null, 'letters.settings', today()->toDateString(), []);
+
+        return [
+            'salutation' => '', 'name' => (string) $employee->name, 'relation' => 'Son of', 'parent' => '',
+            'course' => (string) ($training?->course?->title ?? $training?->course_name ?? ''),
+            'from' => $training?->starts_on?->format('F Y') ?? '', 'to' => $training?->ends_on?->format('F Y') ?? '',
+            'date' => today()->format('d F Y'), 'tagline' => (string) ($saved['certificate_tagline'] ?? 'Move to the Next World'),
+        ];
+    }
+
+    /** The certificate as a PDF (contents), with the signature and seal when they are uploaded. */
+    public function certificatePdf(array $fields): string
+    {
+        $c = $this->companyRecord();
+        $line2 = implode(', ', array_filter([trim((string) $c['city']), trim((string) $c['state']), trim((string) $c['pin'])]));
+
+        return (new \App\Support\CertificatePdf(self::logoPath(), $this->signImagePath('signature'), $this->signImagePath('seal')))->render([
+            ...array_map(fn ($v) => trim((string) $v), array_intersect_key($fields, array_flip(['salutation', 'name', 'relation', 'parent', 'course', 'from', 'to', 'date', 'tagline']))),
+            'company' => (string) $c['name'], 'address_lines' => array_values(array_filter([trim((string) $c['address']), $line2])),
+            'phone' => trim((string) $c['phone']), 'email' => trim((string) $c['email']), 'website' => trim((string) $c['website']),
+        ]);
+    }
+
+    /** Saves the certificate in the employee's documents ("Training certificate"); they are told. */
+    public function issueCertificate(AttendanceEmployee $employee, array $fields, User $actor): EmployeeDocument
+    {
+        abort_unless(self::canManage($actor), 403);
+        ImpersonationService::block();
+        $name = trim(preg_replace('/[\\\\\/:*?"<>|]+/', '-', 'Training certificate - '.trim((string) ($fields['course'] ?? '')).' - '.$employee->employee_code.' - '.today()->format('d M Y'))).'.pdf';
+        $path = 'employee-documents/'.$employee->id.'/certificate-'.Str::lower(Str::random(16)).'.pdf';
+        if (! Storage::disk('local')->put($path, $this->certificatePdf($fields))) {
+            throw ValidationException::withMessages(['cert.name' => 'The PDF could not be saved on the server. Please try again.']);
+        }
+        try {
+            $document = EmployeeDocument::create(['employee_id' => $employee->id, 'uploaded_by' => $actor->id, 'category' => 'training_certificate', 'original_name' => $name, 'storage_path' => $path]);
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($path);
+            throw $error;
+        }
+        // The line under the company name is kept for the next certificate.
+        $this->saveSettings(['certificate_tagline' => trim((string) ($fields['tagline'] ?? ''))], $actor);
+        $this->audit->record('employee.certificate_issued', $document, ['employee_id' => $employee->id, 'employee' => $employee->name, 'course' => $fields['course'] ?? null, 'from' => $fields['from'] ?? null, 'to' => $fields['to'] ?? null, 'date' => $fields['date'] ?? null, 'name' => $name]);
+        Notifier::send($employee->user, 'EmployeeDocument', $document->id, 'HR issued your training certificate ('.trim((string) ($fields['course'] ?? '')).'). You can view and download it in Documents.', route('lifecycle.documents', [], false), $actor->id);
+
+        return $document;
     }
 
     // ---- issuing -----------------------------------------------------------------------------

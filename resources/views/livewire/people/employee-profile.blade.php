@@ -185,7 +185,7 @@
 
     {{-- DOCS & ASSETS --}}
     <div x-show="tab === 'docs'" x-cloak>
-        <section class="card"><div class="card-head"><h2>Assets & documents</h2>@if($canIssueLetters)<button type="button" class="btn btn-primary btn-sm" wire:click="openLetter"><x-icon name="file" class="icon-sm" />Generate letter</button>@endif</div><div class="list">
+        <section class="card"><div class="card-head"><h2>Assets & documents</h2>@if($canIssueLetters)<button type="button" class="btn btn-primary btn-sm" wire:click="openLetter"><x-icon name="file" class="icon-sm" />Generate letter</button> <button type="button" class="btn btn-sm" wire:click="openCertificate"><x-icon name="file" class="icon-sm" />Training certificate</button>@endif</div><div class="list">
             @foreach($assets as $asset)<div class="list-row"><div><strong>{{ $asset->name }}</strong><small>{{ $asset->asset_tag }} · since {{ $asset->assigned_on?->format('d M Y') }}</small></div><x-badge :status="$asset->status" /></div>@endforeach
             @foreach($documents as $doc)<div class="list-row"><div><strong><a href="{{ route('hr.documents.view', $doc) }}" target="_blank" rel="noopener">{{ $doc->original_name }}</a></strong><small>{{ \App\Livewire\Lifecycle\Documents::CATEGORIES[$doc->category] ?? ucfirst($doc->category) }} · added {{ $doc->created_at?->format('d M Y') }} @if($doc->expires_on)· expires {{ $doc->expires_on->format('d M Y') }}@endif</small></div><div class="row-actions"><a class="btn btn-sm" href="{{ route('hr.documents.view', $doc) }}" target="_blank" rel="noopener">View</a><a class="btn btn-sm" href="{{ route('hr.documents.download', $doc) }}">Download</a></div></div>@endforeach
             @if($assets->isEmpty() && $documents->isEmpty())<x-empty title="No assets or documents" icon="monitor" />@endif
@@ -336,6 +336,31 @@
                     <button type="button" class="btn" wire:click="closeLetter">Cancel</button>
                     @if($letterTemplateId)<button type="button" class="btn" wire:click="letterPdf"><x-icon name="download" class="icon-sm" />Download PDF to check</button>
                     <button class="btn btn-primary" wire:loading.attr="disabled" wire:confirm="Issue this letter? It is saved as a PDF in {{ $employee->name }}'s documents and they are told.">Issue &amp; save to documents</button>@endif
+                </div>
+            </form>
+        </x-modal>
+    @endif
+    @if($certOpen)
+        <x-modal title="Training certificate · {{ $employee->name }}" close="closeCertificate" size="lg">
+            <form wire:submit="issueCertificate">
+                <div class="modal-body stack">
+                    <p class="small muted" style="margin:0">Printed like the company certificate, with the signature, seal and date. Change anything before issuing. Signature and seal images are set under Employee Lifecycle &gt; Letter templates.</p>
+                    <div class="form-grid">
+                        <x-field label="Mr. / Ms." name="cert.salutation"><select wire:model="cert.salutation"><option value="">(none)</option><option>Mr.</option><option>Ms.</option><option>Mrs.</option></select></x-field>
+                        <x-field label="Name" name="cert.name"><input wire:model="cert.name" maxlength="120"></x-field>
+                        <x-field label="Relation" name="cert.relation"><select wire:model="cert.relation"><option>Son of</option><option>Daughter of</option><option>Wife of</option></select></x-field>
+                        <x-field label="Father's / mother's name" name="cert.parent" hint="e.g. Mr. Sadiq Sheikh (leave blank to leave it out)"><input wire:model="cert.parent" maxlength="120"></x-field>
+                        <x-field label="Course" name="cert.course"><input wire:model="cert.course" maxlength="120" placeholder="e.g. Web Designing"></x-field>
+                        <x-field label="Line under the company name" name="cert.tagline"><input wire:model="cert.tagline" maxlength="80"></x-field>
+                        <x-field label="From" name="cert.from"><input wire:model="cert.from" maxlength="40" placeholder="e.g. June 2026"></x-field>
+                        <x-field label="To" name="cert.to"><input wire:model="cert.to" maxlength="40" placeholder="e.g. October 2026"></x-field>
+                        <x-field label="Date on the certificate" name="cert.date"><input wire:model="cert.date" maxlength="40"></x-field>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button type="button" class="btn" wire:click="closeCertificate">Cancel</button>
+                    <button type="button" class="btn" wire:click="certificatePdf"><x-icon name="download" class="icon-sm" />Download PDF to check</button>
+                    <button class="btn btn-primary" wire:loading.attr="disabled" wire:confirm="Issue this certificate? It is saved as a PDF in {{ $employee->name }}'s documents and they are told.">Issue &amp; save to documents</button>
                 </div>
             </form>
         </x-modal>

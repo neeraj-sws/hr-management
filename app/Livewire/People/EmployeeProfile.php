@@ -162,6 +162,50 @@ class EmployeeProfile extends Component
         $this->toast($template->name.' issued: saved in Docs & assets, and the employee was told.');
     }
 
+    /** "Training certificate" (HR / admin): what it says, filled in and changeable, then saved to the documents. */
+    public bool $certOpen = false;
+    public array $cert = [];
+
+    public function openCertificate(): void
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $this->resetErrorBag();
+        $this->cert = app(\App\Services\HrLetterService::class)->certificateDefaults($this->employee);
+        $this->certOpen = true;
+    }
+
+    private function validateCertificate(): void
+    {
+        abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
+        $this->validate([
+            'cert.salutation' => ['nullable', 'in:Mr.,Ms.,Mrs.'], 'cert.name' => ['required', 'string', 'max:120'], 'cert.relation' => ['required', 'in:Son of,Daughter of,Wife of'],
+            'cert.parent' => ['nullable', 'string', 'max:120'], 'cert.course' => ['required', 'string', 'max:120'], 'cert.from' => ['required', 'string', 'max:40'], 'cert.to' => ['required', 'string', 'max:40'],
+            'cert.date' => ['required', 'string', 'max:40'], 'cert.tagline' => ['nullable', 'string', 'max:80'],
+        ], [], ['cert.name' => 'name', 'cert.course' => 'course', 'cert.from' => 'from', 'cert.to' => 'to', 'cert.date' => 'date', 'cert.parent' => "father's / mother's name"]);
+    }
+
+    /** The certificate as it is now, to check (not saved). */
+    public function certificatePdf()
+    {
+        $this->validateCertificate();
+        $pdf = app(\App\Services\HrLetterService::class)->certificatePdf($this->cert);
+
+        return response()->streamDownload(fn () => print($pdf), 'Draft - Training certificate - '.preg_replace('/[^A-Za-z0-9 ._-]+/', '-', $this->employee->name).'.pdf', ['Content-Type' => 'application/pdf']);
+    }
+
+    public function closeCertificate(): void
+    {
+        $this->certOpen = false;
+    }
+
+    public function issueCertificate(): void
+    {
+        $this->validateCertificate();
+        app(\App\Services\HrLetterService::class)->issueCertificate($this->employee, $this->cert, $this->user());
+        $this->certOpen = false;
+        $this->toast('Training certificate issued: saved in Docs & assets, and the employee was told.');
+    }
+
     public function confirmEmployment(\App\Services\EmployeeService $employees): void
     {
         abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
