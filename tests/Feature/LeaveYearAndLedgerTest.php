@@ -150,14 +150,14 @@ class LeaveYearAndLedgerTest extends TestCase
         $this->assertSame(['category' => 'public', 'paid' => true], WorkCalendar::holidayTypeOf($calendar, '2026-11-12'));
 
         Livewire::actingAs($this->admin)->test(Settings::class)
-            ->set('newHoliday', '2026-11-13')->set('newHolidayName', 'Founders Day')->set('newHolidayCategory', 'company')->set('newHolidayPaid', false)->call('addHoliday')
+            ->set('newHoliday', '2026-11-13')->set('newHolidayName', 'Founders Day')->set('newHolidayCategory', 'company')->call('addHoliday')
             ->set('newHoliday', '2026-10-02')->set('newHolidayName', 'Gandhi Jayanti')->set('newHolidayCategory', 'national')->call('addHoliday')
             ->call('saveCalendar')->assertHasNoErrors();
         $saved = app(\App\Services\PolicyConfigurationService::class)->forEmployee(null, 'calendar.working_days', today()->toDateString(), []);
-        $this->assertSame(['category' => 'company', 'paid' => false], $saved['holiday_types']['2026-11-13']);
+        $this->assertSame(['category' => 'company', 'paid' => true], $saved['holiday_types']['2026-11-13'], 'Every holiday is paid (no Paid tick any more)');
         $this->assertSame(['category' => 'national', 'paid' => true], $saved['holiday_types']['2026-10-02']);
 
-        Livewire::actingAs($this->admin)->test(Holidays::class)->assertSee('Founders Day')->assertSee('Company holiday')->assertSee('Unpaid')->assertSee('National holiday');
+        Livewire::actingAs($this->admin)->test(Holidays::class)->assertSee('Founders Day')->assertSee('Company holiday')->assertDontSee('Unpaid')->assertSee('National holiday');
     }
 
     /** Monday–Friday, November 2026 has 21 weekdays; 11 Nov is a holiday. Salary 21,000 → 1,000 a day. */
@@ -172,13 +172,14 @@ class LeaveYearAndLedgerTest extends TestCase
         return (float) PayrollItem::where('payroll_run_id', $run->id)->where('employee_id', $this->employee->id)->firstOrFail()->calculation_breakdown['base_salary'];
     }
 
-    public function test_paid_holiday_is_paid_and_unpaid_holiday_is_deducted(): void
+    public function test_a_holiday_never_cuts_the_salary(): void
     {
         $this->assertSame(21000.0, $this->payrollFor(['category' => 'national', 'paid' => true], 21));
-        $this->assertSame(20000.0, $this->payrollFor(['category' => 'company', 'paid' => false], 21));
-        // When the month already has the full working days, a paid holiday adds nothing and an unpaid one costs a day.
+        // An old saved "paid: false" is ignored: every holiday is paid.
+        $this->assertSame(21000.0, $this->payrollFor(['category' => 'company', 'paid' => false], 21));
+        // When the month already has the full working days, the holiday adds nothing.
         $this->assertSame(20000.0, $this->payrollFor(['category' => 'national', 'paid' => true], 20));
-        $this->assertSame(19000.0, $this->payrollFor(['category' => 'company', 'paid' => false], 20));
+        $this->assertSame(20000.0, $this->payrollFor(['category' => 'company', 'paid' => false], 20));
     }
 
     public function test_increment_creates_a_new_salary_revision_and_keeps_history(): void

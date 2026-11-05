@@ -26,7 +26,7 @@
         <section class="card mb">
             <div class="card-head"><div><h2>{{ $person->name }} · {{ $data['month'] }}</h2><p>{{ $person->employee_code }}{{ $person->department ? ' · '.$person->department->name : '' }}{{ $person->manager ? ' · manager '.$person->manager->name : '' }}</p></div></div>
             <div class="table-wrap"><table class="table" data-no-sort>
-                <thead><tr><th>Date</th><th>Status</th><th>In – Out</th><th class="num">At work</th><th class="num">Day's pay</th><th class="num">Extra / OT</th><th>Fines</th><th class="num">Net</th></tr></thead>
+                <thead><tr><th>Date</th><th>Status</th><th>In – Out</th><th class="num">At work</th><th class="num">Day's pay</th><th class="num">Extra / OT</th><th class="num">Short time</th><th>Fines</th><th class="num">Net</th></tr></thead>
                 <tbody>
                 @foreach($data['rows'] as $r)
                     <tr wire:key="dw-{{ $r['date'] }}" @if(! $r['workday'] && ! $r['extra'])style="background:var(--canvas)"@endif>
@@ -36,11 +36,13 @@
                         <td class="num">{{ $r['at_work'] !== null ? \App\Support\Duration::hm($r['at_work']) : '—' }}</td>
                         <td class="num">@if($r['rate'] !== null){{ $rs($r['pay']) }}@if($r['share'] > 0 && $r['share'] < 1)<small>{{ round($r['share'] * 100) }}% of {{ $rs($r['rate']) }}</small>@endif @else<span class="muted">—</span>@endif</td>
                         <td class="num">@if($r['extra'] || $r['overtime'])<span style="color:var(--green)">+{{ $rs($r['extra'] + $r['overtime']) }}</span><small>{{ $r['extra'] ? 'extra working' : (! empty($r['night']) ? 'night work' : 'overtime') }}</small>@else<span class="muted">—</span>@endif</td>
+                        <td class="num">@if($r['short'] > 0)<span style="color:var(--red)">−{{ $rs($r['short']) }}</span><small>{{ intdiv($r['short_seconds'], 60) }} min short</small>@else<span class="muted">—</span>@endif</td>
                         <td>
                             @foreach($r['fines'] as $fine)
                                 <div class="small" style="margin-bottom:4px">
                                     @if($fine['status'] === 'waived')<s class="muted">{{ $rs($fine['amount']) }}</s> <x-badge tone="gray">Removed</x-badge>
                                     @elseif($fine['paid_back'])<s class="muted">{{ $rs($fine['amount']) }}</s> <x-badge tone="blue">Paid back next salary</x-badge>
+                                    @elseif(! $r['fines_deducted'] && $fine['status'] === 'approved' && str_contains($r['status'], ' · not on '))<s class="muted">{{ $rs($fine['amount']) }}</s> <x-badge tone="gray">Not cut: day not paid</x-badge>
                                     @elseif($fine['status'] === 'pending')<span style="color:var(--amber)">{{ $rs($fine['amount']) }}</span> <x-badge tone="amber">Pending</x-badge>
                                     @else<b style="color:var(--red)">−{{ $rs($fine['amount']) }}</b>@endif
                                     <small>{{ \Illuminate\Support\Str::limit($fine['reason'], 60) }}@if($fine['status'] === 'waived' && $fine['note']) · {{ \Illuminate\Support\Str::limit($fine['note'], 80) }}@endif</small>
@@ -53,7 +55,7 @@
                     </tr>
                 @endforeach
                 </tbody>
-                <tfoot><tr><th colspan="4">Days total</th><th class="num">{{ $rs($data['totals']['pay']) }}</th><th class="num">+{{ $rs($data['totals']['extra'] + $data['totals']['overtime']) }}</th><th>−{{ $rs($data['totals']['fines']) }}</th><th class="num">{{ $rs($data['totals']['net']) }}</th></tr></tfoot>
+                <tfoot><tr><th colspan="4">Days total</th><th class="num">{{ $rs($data['totals']['pay']) }}</th><th class="num">+{{ $rs($data['totals']['extra'] + $data['totals']['overtime']) }}</th><th class="num">−{{ $rs($data['totals']['short']) }}</th><th>−{{ $rs($data['totals']['fines']) }}</th><th class="num">{{ $rs($data['totals']['net']) }}</th></tr></tfoot>
             </table></div>
         </section>
 

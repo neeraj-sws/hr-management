@@ -125,7 +125,7 @@ class ReportService
             'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
             'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance'],
             'salary' => ['employee_code', 'employee_name', 'month', 'salary_type', 'monthly_salary', 'salary_since', 'working_days', 'per_day_rate', 'payroll_payable', 'paid', 'remaining', 'payroll_status'],
-            'performance' => ['employee_code', 'employee_name', 'completed_tasks', 'attendance_days', 'approved_leave_days', 'completed_late', 'overdue_tasks', 'logged_hours', 'not_counted_hours', 'active_hours', 'utilisation_pct', 'average_rating'],
+            'performance' => ['employee_code', 'employee_name', 'completed_tasks', 'attendance_days', 'approved_leave_days', 'approved_leave_note', 'completed_late', 'overdue_tasks', 'logged_hours', 'not_counted_hours', 'active_hours', 'utilisation_pct', 'average_rating'],
             'productivity' => ['employee_code', 'employee_name', 'completed_tasks', 'completed_late', 'on_time_rate', 'open_tasks', 'overdue_tasks', 'estimated_hours', 'logged_hours', 'active_hours', 'utilization'],
             'compliance' => ['id', 'employee_code', 'employee_name', 'effective_on', 'amount', 'reason', 'rule', 'status', 'in_payroll'],
             'audit' => ['id', 'created_at', 'actor', 'action', 'record_type', 'record_id', 'ip_address', 'metadata'],
@@ -369,6 +369,34 @@ class ReportService
         })->filter(fn ($row) => $row['members'] > 0)->values();
     }
 
+    /**
+     * Approved leave of an employee inside [from, to]: a leave wholly inside counts its own days (½ for a half day);
+     * a leave running past the dates counts only its working days inside them. The note names each leave that runs
+     * past the dates, e.g. "3 of a 74-day leave (15 Oct – 27 Dec 2026)".
+     *
+     * @return array{approved_leave_days: float, approved_leave_note: ?string}
+     */
+    private function leaveInRange(AttendanceEmployee $employee, string $from, string $to): array
+    {
+        $days = 0.0;
+        $notes = [];
+        $policies = app(\App\Services\PolicyConfigurationService::class);
+        foreach (LeaveRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->orderBy('starts_on')->get() as $leave) {
+            $start = $leave->starts_on->toDateString();
+            $end = $leave->ends_on->toDateString();
+            if ($start >= $from && $end <= $to) { $days += (float) $leave->days; continue; }
+            $inside = 0.0;
+            for ($d = \Illuminate\Support\Carbon::parse(max($start, $from)); $d->lte(\Illuminate\Support\Carbon::parse(min($end, $to))); $d->addDay()) {
+                $calendar = $policies->forEmployee($employee, 'calendar.working_days', $d->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+                if (\App\Support\WorkCalendar::isWorkday($d->toDateString(), $calendar)) $inside += $leave->duration === 'full' ? 1 : 0.5;
+            }
+            $days += $inside;
+            $notes[] = rtrim(rtrim(number_format($inside, 2), '0'), '.').' of a '.rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.').'-day leave ('.$leave->starts_on->format('d M').' – '.$leave->ends_on->format('d M Y').')';
+        }
+
+        return ['approved_leave_days' => round($days, 2), 'approved_leave_note' => $notes ? implode('; ', $notes) : null];
+    }
+
     private function performanceRows(Collection $ids, string $from, string $to): Collection
     {
         $metrics = $this->work->productivity(AttendanceEmployee::whereIn('id', $ids)->orderBy('name')->get(), $from, $to);
@@ -380,7 +408,8 @@ class ReportService
             'employee_name' => $m->employee->name,
             'completed_tasks' => $m->completed_tasks,
             'attendance_days' => $m->attendance_days,
-            'approved_leave_days' => (float) LeaveRequest::where('employee_id', $m->employee->id)->where('status', 'approved')->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->sum('days'),
+            // Only the leave days inside the chosen dates (a 74-day leave counts 3 days in 01-04 Nov), with the whole leave noted.
+            ...$this->leaveInRange($m->employee, $from, $to),
             'completed_late' => $m->completed_late,
             'overdue_tasks' => $m->overdue_tasks,
             // Task timer time (Productivity's "Logged H"), what was not counted (timers left running), and attendance time.

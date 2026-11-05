@@ -23,10 +23,10 @@
     @endforeach
     {{-- HR allowed this person to write days in previous months too: pick the day, then the reason and the status. --}}
     @if($own && $pastFrom)
-        <form class="ds-nudge" wire:submit="openPastDay"><x-icon name="calendar" class="icon-sm" /><span>You can add a missed daily status for an earlier day (from <b>{{ \Illuminate\Support\Carbon::parse($pastFrom)->format('d M Y') }}</b> to yesterday).</span>
-            <label class="field" style="margin:0"><span class="sr-only">Day</span><input type="date" wire:model="pastDate" min="{{ $pastFrom }}" max="{{ today()->subDay()->toDateString() }}"></label>
-            <button class="btn btn-sm btn-primary" wire:loading.attr="disabled">Add status for this day</button>
-            @error('pastDate')<span class="error" style="flex-basis:100%">{{ $message }}</span>@enderror
+        <form class="ds-nudge ds-past" wire:submit="openPastDay"><x-icon name="calendar" class="icon-sm" /><p class="ds-past-text">You can add a missed daily status for an earlier day (from <b>{{ \Illuminate\Support\Carbon::parse($pastFrom)->format('d M Y') }}</b> to yesterday).</p>
+            <div class="ds-past-pick"><input type="date" aria-label="Day" wire:model="pastDate" min="{{ $pastFrom }}" max="{{ today()->subDay()->toDateString() }}">
+                <button class="btn btn-sm btn-primary" wire:loading.attr="disabled">Add status for this day</button></div>
+            @error('pastDate')<p class="error ds-past-err">{{ $message }}</p>@enderror
         </form>
     @endif
     @if($own && ! $savedToday && ! $canSeeTeam)

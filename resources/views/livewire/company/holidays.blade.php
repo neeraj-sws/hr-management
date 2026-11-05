@@ -40,7 +40,6 @@
                             <div class="hol-info"><strong>{{ $h['name'] }}</strong><small>{{ $h['date']->format('l, d M Y') }}@if($h['category'] === 'optional') · working day — apply for leave to take it @endif</small></div>
                             <div class="hol-tags">
                                 <span @class(['hol-tag', 'hol-tag-opt' => $h['category'] === 'optional'])>{{ $h['category_label'] }}</span>
-                                <span class="hol-tag hol-tag-pay">{{ $h['paid'] ? 'Paid' : 'Unpaid' }}</span>
                                 @if(! empty($h['closes_at']))<span class="hol-tag hol-tag-half" title="The office is open until then: coming in counts as a full day">Half day · closes {{ \Illuminate\Support\Carbon::parse($h['closes_at'])->format('g:i A') }}</span>@endif
                                 @if($h['date']->isToday())<span class="hol-tag hol-tag-today">Today</span>@elseif($h['date']->lt(today()))<span class="hol-past">past</span>@endif
                             </div>

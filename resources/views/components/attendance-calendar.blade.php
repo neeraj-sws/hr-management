@@ -1,4 +1,4 @@
-@props(['days', 'month'])
+@props(['days', 'month', 'employee' => null])
 {{-- One month of attendance as a calendar: every day coloured by its status, with in–out and worked time. --}}
 @php
     $att = app(\App\Services\AttendanceService::class);
@@ -6,6 +6,8 @@
     $start = \Illuminate\Support\Carbon::parse($month)->startOfMonth();
     $gridStart = $start->copy()->startOfWeek(\Carbon\CarbonInterface::MONDAY);
     $gridEnd = $start->copy()->endOfMonth()->endOfWeek(\Carbon\CarbonInterface::SUNDAY);
+    // Pay by day, by the payroll rules: short time cut, fines, days not paid (project-day pay). Nothing for trainees.
+    $pay = \App\Support\CalendarPay::month($employee, $start);
     $labels = ['present' => 'Present', 'late' => 'Late', 'half_day' => 'Half-day', 'on_leave' => 'On leave', 'weekend' => 'Weekly off', 'holiday' => 'Holiday',
         'absent' => 'Absent', 'extra_work' => 'Extra work', 'leave_conflict' => 'Worked on leave', 'upcoming' => '', 'not_joined' => 'Before joining', 'left' => 'Left'];
 @endphp
@@ -25,9 +27,12 @@
                         <span class="att-cal-worked" title="Worked: in–out less break and idle">@hms($att->workedSeconds($s))</span>
                         @if($s->check_out && ($latePay = app(\App\Services\HrWorkflowService::class)->lateCheckInPay($s->employee, $s)))@if($latePay['seconds'] >= $latePay['standard'])<span class="att-cal-paid" title="Came after the late check-in time: paid by the hours worked, at most one full working day ({{ \App\Support\Duration::hm($latePay['standard']) }}) on a working day. Time above that is shown but not paid.">paid {{ \App\Support\Duration::hm($latePay['standard']) }} (max){{ $latePay['seconds'] - $latePay['standard'] >= 60 ? ' · +'.\App\Support\Duration::hm($latePay['seconds'] - $latePay['standard']).' extra, not paid' : '' }}</span>@else<span class="att-cal-paid" title="Came after the late check-in time: paid only for the hours worked">paid for {{ \App\Support\Duration::hm($latePay['seconds']) }} of {{ \App\Support\Duration::hm($latePay['standard']) }}</span>@endif@endif
                         @if($s->check_out)<span class="att-cal-atwork" title="At work = check-in to check-out less breaks (idle and meetings are not taken off). Under the half-day limit it is a half day.">at work @hms($att->officeSeconds($s))</span>@endif
+                        @if($cut = $pay['short'][$day->toDateString()] ?? null)<span class="att-cal-short" title="At work less than the working day: these minutes are cut from the salary at the per-minute rate">{{ intdiv($cut['seconds'], 60) }} min short · −₹{{ number_format($cut['amount'], 2) }}</span>@endif
                     @elseif($info['label'])
                         <span class="att-cal-time">{{ \Illuminate\Support\Str::limit($info['label'], 28) }}</span>
                     @endif
+                    @if(isset($pay['not_paid'][$day->toDateString()]))<span class="att-cal-short" title="Paid only for project days: no task of the project this day">not paid (no project work)</span>@endif
+                    @foreach($pay['fines'][$day->toDateString()] ?? [] as $fine)<span class="att-cal-fine" title="{{ $fine['reason'] }}">Fine −₹{{ number_format($fine['amount'], 2) }}{{ isset($pay['not_paid'][$day->toDateString()]) ? ' (not cut: day not paid)' : ($fine['pending'] ? ' (pending)' : '') }}</span>@endforeach
                 @endif
             </div>
         @endfor

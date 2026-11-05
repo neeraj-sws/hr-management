@@ -18,6 +18,9 @@ class CourseFeeController extends ApiController
             'starts_on' => $e->starts_on?->toDateString(), 'ends_on' => $e->ends_on?->toDateString(),
             'fee' => (float) $e->total_fee, 'discount' => (float) $e->discount, 'payable' => $e->payable(), 'paid' => $e->paid(), 'due' => round(max(0, $e->payable() - $e->paid()), 2),
             'installments' => (int) $e->installments,
+            // Each installment with its due date, what is paid towards it and its status; and the next one to pay.
+            'schedule' => array_map(fn ($r) => [...$r, 'status_label' => TrainingEnrollment::INSTALLMENT_STATUSES[$r['status']][0]], $e->installmentRows()),
+            'next_due' => $e->nextDue(),
             'payments' => $e->payments->map(fn ($p) => ['date' => $p->paid_on ? \Illuminate\Support\Carbon::parse($p->paid_on)->toDateString() : null, 'amount' => (float) $p->amount, 'receipt' => $p->receipt_no, 'method' => $p->method, 'installment' => $p->installment_no])->values(),
         ])->values()]);
     }

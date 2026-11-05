@@ -196,7 +196,7 @@ class Penalties extends Component
             'selectedTotal' => $this->selected ? (float) EmployeePenalty::whereIn('id', array_map('intval', $this->selected))->sum('amount') : 0.0,
             'decidable' => $inbox->pending($this->user(), EmployeePenalty::class)->pluck('approvable_id')->all(),
             'reviewable' => $inbox->pending($this->user(), PenaltyAppeal::class)->pluck('approvable_id')->all(),
-            'employees' => $this->canManage() ? AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
+            'employees' => $this->canManage() ? AttendanceEmployee::where('is_active', true)->onPayroll()->orderBy('name')->get(['id', 'name']) : collect(),
         ], 'Penalties');
     }
 }

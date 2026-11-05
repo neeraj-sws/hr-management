@@ -85,6 +85,7 @@ class PeopleOperationsService
     public function requestAdjustment(AttendanceEmployee $employee, float $amount, string $kind, string $effectiveOn, string $reason, int $userId, bool $recurring = false, ?string $recurringUntil = null): SalaryAdjustment
     {
         if (! isset(SalaryAdjustment::KINDS[$kind]) || $amount <= 0) throw ValidationException::withMessages(['amount'=>'Enter a positive amount and valid adjustment type.']);
+        if ($employee->isTrainee()) throw ValidationException::withMessages(['adjustmentEmployeeId'=>"{$employee->name} is a trainee: trainees get no salary, so there is nothing to adjust."]);
         if ($kind === 'increment' && $recurring) throw ValidationException::withMessages(['recurring'=>'An increment changes the monthly salary itself; it cannot also be recurring.']);
         if ($kind === 'increment' && ! $employee->salaryProfiles()->exists()) throw ValidationException::withMessages(['kind'=>'Set a salary for this employee before adding an increment.']);
         if (! $recurring) $recurringUntil = null;
@@ -127,6 +128,7 @@ class PeopleOperationsService
 
     public function requestAdvance(AttendanceEmployee $employee, float $amount, float $installment, string $reason, int $userId): SalaryAdvance
     {
+        if ($employee->isTrainee()) throw ValidationException::withMessages(['amount'=>"{$employee->name} is a trainee: trainees get no salary, so no salary advance."]);
         if ($amount <= 0 || $installment <= 0 || $installment > $amount) throw ValidationException::withMessages(['amount'=>'Advance and installment amounts must be positive; installment cannot exceed advance.']);
         $advance = SalaryAdvance::create(['employee_id'=>$employee->id,'amount'=>$amount,'installment_amount'=>$installment,'requested_on'=>today(),'reason'=>$reason,'requested_by'=>$userId,'status'=>'pending']);
         $this->approval(SalaryAdvance::class, $advance->id, null, "{$employee->name} requested a salary advance of ".number_format($amount, 2)." (recover ".number_format($installment, 2)." per month): {$reason}");
@@ -256,7 +258,7 @@ class PeopleOperationsService
     public function lateLeaveFine(LeaveRequest $leave): ?EmployeePenalty
     {
         $employee = $leave->employee;
-        if (! $employee) return null;
+        if (! $employee || $employee->isTrainee()) return null; // trainees get no salary, so nothing is ever cut from it
         $asked = ($leave->created_at ?? now())->copy()->startOfDay();
         $config = $this->policy($employee, 'leave.late_application', [], $asked->toDateString());
         $amount = max(0, (float) ($config['amount'] ?? 0));
@@ -568,6 +570,7 @@ class PeopleOperationsService
     public function requestPenalty(AttendanceEmployee $employee, float $amount, string $reason, int $actor, ?int $ruleId=null): EmployeePenalty
     {
         if ($amount <= 0) throw ValidationException::withMessages(['amount'=>'Penalty must be greater than zero.']);
+        if ($employee->isTrainee()) throw ValidationException::withMessages(['employeeId'=>"{$employee->name} is a trainee: trainees get no salary, so no fine can be given."]);
         $penalty = EmployeePenalty::create(['employee_id'=>$employee->id,'policy_rule_id'=>$ruleId,'effective_on'=>today(),'amount'=>$amount,'reason'=>$reason,'requested_by'=>$actor,'status'=>'pending']);
         $this->approval(EmployeePenalty::class,$penalty->id, null, "Penalty of ".number_format($amount, 2)." for {$employee->name} needs approval: {$reason}", $actor);
         $this->audit->record('penalty.requested',$penalty);
@@ -600,7 +603,7 @@ class PeopleOperationsService
         $created=0;
         foreach(\App\Models\AttendanceSession::with('employee')->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->whereNotNull('check_in')->when($onlyEmployeeId,fn($q,$id)=>$q->where('employee_id',$id))->get() as $session){
             $employee=$session->employee;
-            if(!$employee)continue;
+            if(!$employee||$employee->isTrainee())continue; // trainees: no salary, so no fines
             // Never cut twice: a day already paid only for the hours at work (half day, check-in after the cut-off,
             // half-day / short leave) has its lateness cut by that; no per-minute late fine on top.
             if($this->paidByHours($employee,$session)&&!$this->lateFineOnTop($employee,$session))continue;
@@ -634,13 +637,13 @@ class PeopleOperationsService
         }
         $taskRule=PolicyRule::where('rule_key','task.late_penalty')->where('is_active',true)->first();
         foreach(\App\Models\Task::with('assignee')->whereNotNull('due_on')->whereDate('due_on','>=',$start)->whereDate('due_on','<=',$end)->where('status','!=','completed')->when($onlyEmployeeId,fn($q,$id)=>$q->where('assignee_id',$id))->get() as $task){
-            $employee=$task->assignee;if(!$employee)continue;$config=$this->policy($employee,'task.late_penalty',$taskRule?->configuration??[],$end);$perDay=max(0,(float)($config['amount_per_day']??0));if($perDay<=0)continue;
+            $employee=$task->assignee;if(!$employee||$employee->isTrainee())continue;$config=$this->policy($employee,'task.late_penalty',$taskRule?->configuration??[],$end);$perDay=max(0,(float)($config['amount_per_day']??0));if($perDay<=0)continue;
             if(Carbon::parse($task->due_on)->gte(Carbon::parse($end)))continue;$days=$this->configuredWorkdays(Carbon::parse($task->due_on)->addDay(),Carbon::parse($end),$employee,$end);if($days===0)continue;$amount=$this->capped($perDay*$days,$config);
             $penalty=EmployeePenalty::firstOrCreate(['source_key'=>"late_task:{$task->id}".($taskRule?":{$taskRule->id}":'')],['employee_id'=>$employee->id,'policy_rule_id'=>$taskRule?->id,'effective_on'=>$task->due_on,'amount'=>$amount,'reason'=>"Task #{$task->id} was overdue by {$days} working days",'requested_by'=>$actor,'status'=>'pending']);
             if($penalty->wasRecentlyCreated){$this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.late_task_assessed',$penalty,['task_id'=>$task->id,'late_workdays'=>$days]);$created++;}
         }
         $absenceRule=PolicyRule::where('rule_key','attendance.unauthorized_absence')->where('is_active',true)->first();
-        foreach(AttendanceEmployee::where('is_active',true)->when($onlyEmployeeId,fn($q,$id)=>$q->whereKey($id))->get() as $employee){
+        foreach(AttendanceEmployee::where('is_active',true)->onPayroll()->when($onlyEmployeeId,fn($q,$id)=>$q->whereKey($id))->get() as $employee){
                 $config=$this->policy($employee,'attendance.unauthorized_absence',$absenceRule?->configuration??[],$end);$amount=max(0,(float)($config['amount_per_day']??0));if($amount<=0)continue;
                 // Never cut twice: an absent day is already not paid. The fine (for no leave request) comes on top only
                 // when the admin chose "Also fine on top of the unpaid day" (Compliance > Unauthorized absence).
@@ -673,7 +676,7 @@ class PeopleOperationsService
         $created = 0;
         $attendance = app(AttendanceService::class);
         $raise = function (AttendanceEmployee $employee, string $key, string $source, string $date, float $amount, string $reason, array $meta) use ($actor, &$created) {
-            if ($amount <= 0) return;
+            if ($amount <= 0 || $employee->isTrainee()) return; // trainees: no salary, so no fines
             $rule = PolicyRule::where('rule_key', $key)->where('is_active', true)->first();
             $penalty = EmployeePenalty::firstOrCreate(['source_key' => $source.($rule ? ":{$rule->id}" : '')], ['employee_id' => $employee->id, 'policy_rule_id' => $rule?->id, 'effective_on' => $date, 'amount' => round($amount, 2), 'reason' => $reason, 'requested_by' => $actor, 'status' => 'pending']);
             if ($penalty->wasRecentlyCreated) {

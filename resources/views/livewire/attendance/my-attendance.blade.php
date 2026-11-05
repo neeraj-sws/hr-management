@@ -111,7 +111,7 @@
             @endif
         </div>
         @if($view === 'calendar')
-            <x-attendance-calendar :days="$days" :month="$monthStart" />
+            <x-attendance-calendar :days="$days" :month="$monthStart" :employee="$calendarEmployee" />
         @else
         <div x-data="{ hideOff: false }">
         <div class="ma-listbar"><span class="small muted">Click a day for in–out, break, idle and screen time</span><button type="button" class="docs-chip" :class="hideOff && 'is-active'" x-on:click="hideOff = ! hideOff" :aria-pressed="hideOff ? 'true' : 'false'">Hide off days</button></div>

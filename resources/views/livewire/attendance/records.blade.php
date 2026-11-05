@@ -109,7 +109,7 @@
         <x-errors />
         @if($dayEmployee && $view === 'calendar')
             <p class="small muted" style="padding:0 18px">{{ $dayEmployee->name }} · {{ $calendarMonth->format('F Y') }} (the month of “From”)</p>
-            <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" />
+            <x-attendance-calendar :days="$calendarDays" :month="$calendarMonth" :employee="$dayEmployee" />
         @else
         <div class="table-wrap" wire:loading.class="ar-loading" wire:target="from,to,employee,department,status,resetFilters,gotoPage,nextPage,previousPage,perPage"><table class="table ar-table">
             <thead><tr><th>Date</th><th>Employee</th>

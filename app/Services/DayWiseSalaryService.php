@@ -34,6 +34,13 @@ class DayWiseSalaryService
         $joined = $employee->joined_at?->toDateString();
         $left = $employee->exit_date?->toDateString();
 
+        // Short time per day (payroll keeps each short day): shown on its day when the days add up to the month's cut
+        // (no monthly grace); otherwise it stays one month item.
+        $shortDays = (array) ($f['short']['days'] ?? []);
+        $shortByDay = $shortDays && (int) ($f['short']['grace_seconds'] ?? 0) === 0 && (float) $f['shortAmount'] > 0;
+        // "Pay only for project days": days at work without a task of the project are shown as present, but not paid.
+        $notOnProject = array_flip(array_merge((array) ($f['projectDays']['not_paid'] ?? []), (array) ($f['projectDays']['extra_not_paid'] ?? [])));
+        $projectNames = implode(', ', (array) ($f['projectDays']['projects'] ?? []));
         $rows = [];
         for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
             $date = $day->toDateString();
@@ -45,12 +52,14 @@ class DayWiseSalaryService
 
             if (($joined && $date < $joined) || ($left && $date > $left)) {
                 [$status, $tone] = [$joined && $date < $joined ? 'Before joining' : 'After leaving', 'gray'];
+            } elseif (isset($notOnProject[$date])) {
+                // At work that day (times shown), but no task of the project: not paid, and its fines are not cut.
+                [$status, $tone, $note] = [($workday ? 'Present' : 'Worked (off day)').' · not on '.$projectNames, 'gray', 'no task of '.$projectNames.' this day: not paid'];
             } elseif (isset($f['extraWork']['dates'][$date])) {
                 $d = $f['extraWork']['dates'][$date];
                 [$status, $tone, $note] = ['Extra working', 'green', ($d['type'] === 'leave' ? 'on a leave day' : 'on an off day').((int) $d['seconds'] - (int) ($d['paid_seconds'] ?? $d['seconds']) >= 60 ? ' · paid '.\App\Support\Duration::hm((int) $d['paid_seconds']).' max' : '')];
             } elseif (! $workday) {
-                if (isset($f['paidHolidaySet'][$date])) [$status, $tone] = ['Holiday (paid)', 'violet'];
-                elseif (isset($f['unpaidHolidaySet'][$date])) [$status, $tone] = ['Holiday (unpaid)', 'gray'];
+                if (isset($f['paidHolidaySet'][$date]) || isset($f['unpaidHolidaySet'][$date])) [$status, $tone] = [(string) ($f['calendar']['holiday_names'][$date] ?? '') ?: 'Holiday', 'violet'];
                 else [$status, $tone] = ['Weekly off', 'gray'];
             } elseif (isset($f['presentSet'][$date])) {
                 if (isset($f['hoursPaidSet'][$date])) {
@@ -89,15 +98,18 @@ class DayWiseSalaryService
                 $ot = $minutes ? round($f['hourly'] * $minutes / 60 * ($workday ? $f['multiplier'] : $f['holidayMultiplier']), 2) : 0.0;
             }
             $dayFines = collect($fines->get($date, []))->map(fn (EmployeePenalty $p) => ['id' => $p->id, 'amount' => (float) $p->amount, 'reason' => (string) $p->reason, 'status' => $p->status, 'paid_back' => $p->isPaidBack(), 'note' => $p->decision_note, 'can_remove' => $p->canBeRemoved()])->values()->all();
-            $deducted = (float) collect($dayFines)->where('status', 'approved')->where('paid_back', false)->sum('amount');
+            // A day not paid (not on project work) has its fines left uncut, as payroll does.
+            $deducted = isset($notOnProject[$date]) ? 0.0 : (float) collect($dayFines)->where('status', 'approved')->where('paid_back', false)->sum('amount');
 
             $rows[] = ['date' => $date, 'day' => $day->format('D'), 'status' => $status, 'tone' => $tone, 'note' => $note, 'workday' => $workday,
                 'in' => $session?->check_in, 'out' => $session?->check_out, 'at_work' => $session && $session->check_out ? (int) $this->attendance->officeSeconds($session) : null,
                 'rate' => $workday ? round($rate, 2) : null, 'share' => $share, 'pay' => $pay, 'extra' => $extra, 'overtime' => round($ot + $night, 2), 'night' => $night, 'fines' => $dayFines, 'fines_deducted' => $deducted,
-                'net' => round($pay + $extra + $ot + $night - $deducted, 2)];
+                // Short time cut on this day (minutes under the working day × per-minute rate), when payroll lists it by day.
+                'short' => $shortByDay ? round((float) ($shortDays[$date]['amount'] ?? 0), 2) : 0.0, 'short_seconds' => $shortByDay ? (int) ($shortDays[$date]['short'] ?? 0) : 0,
+                'net' => round($pay + $extra + $ot + $night - $deducted - ($shortByDay ? (float) ($shortDays[$date]['amount'] ?? 0) : 0), 2)];
         }
 
-        $totals = ['pay' => round(array_sum(array_column($rows, 'pay')), 2), 'extra' => round(array_sum(array_column($rows, 'extra')), 2), 'overtime' => round(array_sum(array_column($rows, 'overtime')), 2), 'fines' => round(array_sum(array_column($rows, 'fines_deducted')), 2), 'net' => round(array_sum(array_column($rows, 'net')), 2)];
+        $totals = ['pay' => round(array_sum(array_column($rows, 'pay')), 2), 'extra' => round(array_sum(array_column($rows, 'extra')), 2), 'overtime' => round(array_sum(array_column($rows, 'overtime')), 2), 'fines' => round(array_sum(array_column($rows, 'fines_deducted')), 2), 'short' => round(array_sum(array_column($rows, 'short')), 2), 'net' => round(array_sum(array_column($rows, 'net')), 2)];
 
         // Month items (not tied to one day), so the total is exactly what payroll pays.
         $items = [];
@@ -106,7 +118,7 @@ class DayWiseSalaryService
         // Fines the month deducts that are not on a listed day (e.g. a fine dated in this month but already counted).
         $fineGap = round($totals['fines'] - (float) $f['penalties'], 2);
         if (abs($fineGap) >= 0.01) $items[] = ['label' => 'Fines already settled elsewhere', 'detail' => 'counted in another payroll', 'amount' => $fineGap];
-        if ((float) $f['shortAmount'] > 0) $items[] = ['label' => 'Short hours', 'detail' => \App\Support\Duration::hm((int) $f['short']['short_seconds']).' below the working day this month', 'amount' => -(float) $f['shortAmount']];
+        if ((float) $f['shortAmount'] > 0 && ! $shortByDay) $items[] = ['label' => 'Short hours', 'detail' => \App\Support\Duration::hm((int) $f['short']['short_seconds']).' below the working day this month', 'amount' => -(float) $f['shortAmount']];
         foreach ($f['adjustmentLines'] as $line) $items[] = ['label' => $line['label'], 'detail' => $line['reason'], 'amount' => (float) $line['amount']];
         if ((float) $f['statutory']['earnings'] > 0) $items[] = ['label' => 'Statutory earnings', 'detail' => null, 'amount' => (float) $f['statutory']['earnings']];
         if ((float) $f['statutory']['deductions'] > 0) $items[] = ['label' => 'Statutory deductions', 'detail' => null, 'amount' => -(float) $f['statutory']['deductions']];

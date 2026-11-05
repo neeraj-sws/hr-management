@@ -122,7 +122,8 @@ class HrWorkflowService
             // Daily wage: the monthly figure is an estimate (rate × the record's working days) used only in lists.
             if ($payBasis === 'daily') $data['monthly_salary'] = round($dailyRate * 22, 2);
             $employee = AttendanceEmployee::create($data);
-            if (isset($data['monthly_salary'])) {
+            // Trainees pay a fee and get no salary: no salary record (and no "your salary" notice).
+            if (isset($data['monthly_salary']) && ($data['employment_type'] ?? null) !== EmployeeService::TRAINEE) {
                 // The salary record carries the hours entered for the employee, so Payroll shows the same working day.
                 SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'pay_basis' => $payBasis, 'daily_rate' => $dailyRate, 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
             }

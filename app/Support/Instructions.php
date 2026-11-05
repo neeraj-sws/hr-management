@@ -87,7 +87,7 @@ class Instructions
                 ['No leave applied', 'Absent with no leave = not paid. HR can record the day as leave only if you informed them.'],
             ]],
             ['key' => 'salary', 'title' => 'Salary and payslips', 'icon' => 'wallet', 'items' => [
-                ['How it is worked out', "Monthly salary ÷ the month's working days = one day's salary. You are paid for: days present + approved paid leave + paid holidays. ".($halfByHours ? 'Half days and late check-ins are paid by the hours at work.' : 'Half days are paid ½, late check-ins by hours.')],
+                ['How it is worked out', "Monthly salary ÷ the month's working days = one day's salary. You are paid for: days present + approved paid leave. Holidays are not working days, so they never cut your salary. ".($halfByHours ? 'Half days and late check-ins are paid by the hours at work.' : 'Half days are paid ½, late check-ins by hours.')],
                 ['Why less than full', "Mobile app > More > My salary: open a month to see \"Why the salary is less than full\" — every day not paid, with its date and amount."],
                 ['This month so far', 'My salary also shows this month so far. It is final only after the month ends and payroll is approved.'],
                 ['Payslip', 'After salary is paid, your payslip is in the mobile app > More > Payslips (or My salary > open the month > Download payslip).'],

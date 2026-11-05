@@ -43,6 +43,7 @@ class PayslipRequestService
 
     public function request(AttendanceEmployee $employee, string $month, ?string $note, User $user): PayslipRequest
     {
+        if ($employee->isTrainee()) throw ValidationException::withMessages(['month' => 'Trainees get no salary, so there is no payslip.']);
         if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) throw ValidationException::withMessages(['month' => 'Choose a month.']);
         if ($month > now()->format('Y-m')) throw ValidationException::withMessages(['month' => 'Choose this month or an earlier one.']);
         $label = Carbon::parse($month.'-01')->format('F Y');

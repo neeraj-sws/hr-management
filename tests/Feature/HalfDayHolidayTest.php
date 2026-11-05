@@ -87,11 +87,12 @@ class HalfDayHolidayTest extends TestCase
         $this->assertStringContainsString('½ day for 1 half-day holiday not at work (20 Oct)', $month['earnings'][0][2]);
     }
 
-    public function test_an_unpaid_half_day_holiday_pays_nothing_when_not_at_work(): void
+    public function test_a_half_day_holiday_saved_as_unpaid_is_still_paid(): void
     {
+        // There is no unpaid holiday any more: an old saved "paid: false" is ignored, the holiday half is paid.
         $this->calendar(false);
         $this->day('2026-10-12', '10:00', '18:30');
-        $this->assertEqualsWithDelta(1000, $this->base(), 0.01);
+        $this->assertEqualsWithDelta(1500, $this->base(), 0.01);
     }
 
     public function test_settings_add_a_half_day_holiday_and_employees_see_it(): void
