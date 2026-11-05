@@ -39,8 +39,8 @@ export default function OffDaysScreen() {
     setBusy(true);
     setMessage(null);
     try {
-      await post<{ data: OffDay }>('/off-days', { off_date: offDate, note: note.trim() || null });
-      setMessage({ tone: 'success', text: 'Sent to HR. The day is your off once HR approves it.' });
+      const created = await post<{ data: OffDay }>('/off-days', { off_date: offDate, note: note.trim() || null });
+      setMessage({ tone: 'success', text: created.data.status === 'approved' ? 'Approved: the day is your off.' : 'Sent to HR. The day is your off once HR approves it.' });
       setNote('');
       await load();
     } catch (e) {

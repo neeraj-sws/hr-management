@@ -64,7 +64,7 @@ class OffDays extends Component
             throw \Illuminate\Validation\ValidationException::withMessages(collect($e->errors())->mapWithKeys(fn ($m, $k) => [['off_date' => 'offDate'][$k] ?? $k => $m])->all());
         }
         $this->reset('showForm', 'note');
-        $this->toast('Sent to HR. The day is your off once HR approves it.');
+        $this->toast($offs->autoApproves($this->requireEmployee()) ? 'Approved: the day is your off.' : 'Sent to HR. The day is your off once HR approves it.');
     }
 
     public function cancel(int $id, OffDayService $offs): void

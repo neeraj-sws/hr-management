@@ -129,6 +129,28 @@ class OffDayRequestTest extends TestCase
         $this->assertTrue($this->workday($this->khushboo, '2026-11-14'));
     }
 
+    public function test_auto_approve_setting_approves_at_once(): void
+    {
+        Livewire::actingAs($this->admin)->withQueryParams(['tab' => 'calendar'])->test(\App\Livewire\System\Settings::class)
+            ->set('patternEmployeeId', $this->khushboo->id)->assertSet('employeeOffsAutoApprove', false)
+            ->set('employeeOffsAutoApprove', true)->call('saveEmployeePattern')->assertHasNoErrors();
+        $this->assertTrue(EmployeePolicyOverride::where('employee_id', $this->khushboo->id)->firstOrFail()->configuration['offs_auto_approve']);
+
+        $request = app(OffDayService::class)->request($this->khushboo, '2026-11-14');
+        $this->assertSame('approved', $request->status);
+        $this->assertNull($request->decided_by);
+        $this->assertSame('Approved automatically', $request->decision_note);
+        $this->assertFalse($this->workday($this->khushboo, '2026-11-14'), 'auto-approved: her off');
+        $this->assertTrue($this->workday($this->khushboo, '2026-12-12'), 'still only the days she asks for');
+        $this->assertFalse(app(ApprovalInbox::class)->pending($this->admin)->contains(fn ($a) => $a->approvable_type === OffDayRequest::class), 'nothing left for HR to decide');
+
+        // Switching auto-approve off: requests wait for HR again.
+        Livewire::actingAs($this->admin)->withQueryParams(['tab' => 'calendar'])->test(\App\Livewire\System\Settings::class)
+            ->set('patternEmployeeId', $this->khushboo->id)->assertSet('employeeOffsAutoApprove', true)
+            ->set('employeeOffsAutoApprove', false)->call('saveEmployeePattern')->assertHasNoErrors();
+        $this->assertSame('pending', app(OffDayService::class)->request($this->khushboo, '2026-12-12')->status);
+    }
+
     public function test_pages_menu_settings_and_app(): void
     {
         $khushboo = $this->khushboo->user;

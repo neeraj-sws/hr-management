@@ -13,7 +13,7 @@ use Illuminate\Validation\ValidationException;
 /**
  * Off day requests: for an employee whose week-of-month offs (e.g. 2nd Saturday) count only when asked for
  * (Settings > Working calendar, "Offs only when asked for"). They ask "I am taking my off on this day"; HR / admin
- * approve or reject it. Approved: the day is an off (paid like any weekly off). Not asked for or not approved: a
+ * approve or reject it, or it is approved at once when "approve automatically" is ticked for them. Approved: the day is an off (paid like any weekly off). Not asked for or not approved: a
  * normal working day, so not coming in is absent.
  */
 class OffDayService
@@ -40,7 +40,18 @@ class OffDayService
 
     public function needsRequests(AttendanceEmployee $employee): bool
     {
-        return ! empty($this->policies->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []])['offs_need_request']);
+        return ! empty($this->calendar($employee)['offs_need_request']);
+    }
+
+    /** Their requests are approved at once (Settings > Working calendar, "Approve automatically"). */
+    public function autoApproves(AttendanceEmployee $employee): bool
+    {
+        return ! empty($this->calendar($employee)['offs_auto_approve']);
+    }
+
+    private function calendar(AttendanceEmployee $employee): array
+    {
+        return $this->policies->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
     }
 
     public function request(AttendanceEmployee $employee, string $date, ?string $note = null): OffDayRequest
@@ -56,19 +67,23 @@ class OffDayService
             throw ValidationException::withMessages(['off_date' => 'You already asked for this off day.']);
         }
 
-        return DB::transaction(function () use ($employee, $day, $note) {
+        $auto = $this->autoApproves($employee);
+        $request = DB::transaction(function () use ($employee, $day, $note, $auto) {
             $request = OffDayRequest::create(['employee_id' => $employee->id, 'off_date' => $day->toDateString(), 'note' => $note ? mb_substr($note, 0, 1000) : null, 'status' => 'pending']);
             ApprovalRequest::create(['approvable_type' => OffDayRequest::class, 'approvable_id' => $request->id, 'approver_id' => null, 'status' => 'pending']);
             $this->audit->record('off_day.requested', $request, ['date' => $day->toDateString()]);
             Notifier::send(Notifier::withPermission('hr.manage', 'approvals.manage'), 'OffDay', $request->id,
-                "{$employee->name} is taking the off on ".$day->format('D d M Y').' and asks you to approve it'.($note ? ": {$note}" : '.'),
-                route('approvals.center', [], false), $employee->user_id);
+                "{$employee->name} is taking the off on ".$day->format('D d M Y').($auto ? ' (approved automatically)' : ' and asks you to approve it').($note ? ": {$note}" : '.'),
+                route($auto ? 'leave.off-days' : 'approvals.center', $auto ? ['tab' => 'team'] : [], false), $employee->user_id);
 
             return $request;
         });
+
+        return $auto ? $this->decide($request, null, true, 'Approved automatically') : $request;
     }
 
-    public function decide(OffDayRequest $request, int $approver, bool $approve, ?string $note = null): OffDayRequest
+    /** $approver null: approved automatically (setting). */
+    public function decide(OffDayRequest $request, ?int $approver, bool $approve, ?string $note = null): OffDayRequest
     {
         $note = trim((string) $note) ?: null;
         if (! $approve && ! $note) throw ValidationException::withMessages(['note' => 'Say why the off day is not approved.']);
