@@ -33,6 +33,7 @@ class ApprovalInbox
         ExpenseClaim::class => ['Expense claim', ['expenses.manage', 'approvals.manage']],
         \App\Models\NightWorkRequest::class => ['Night work', ['hr.manage', 'approvals.manage']],
         \App\Models\LateArrivalRequest::class => ['Late arrival', ['hr.manage', 'approvals.manage']],
+        \App\Models\OffDayRequest::class => ['Off day', ['hr.manage', 'approvals.manage']],
         \App\Models\MonitoringRequest::class => ['Screen capture', ['monitoring.capture', 'monitoring.manage']],
     ];
 
@@ -154,6 +155,7 @@ class ApprovalInbox
             $subject instanceof ExpenseClaim => $this->expenses->decide($subject, $user->id, $approve, $note),
             $subject instanceof \App\Models\NightWorkRequest => app(NightWorkService::class)->decide($subject, $user->id, $approve, $note),
             $subject instanceof \App\Models\LateArrivalRequest => app(LateArrivalService::class)->decide($subject, $user->id, $approve, $note),
+            $subject instanceof \App\Models\OffDayRequest => app(OffDayService::class)->decide($subject, $user->id, $approve, $note),
             $subject instanceof PayrollRun => $approve ? $this->workflow->approvePayroll($subject, $user->id) : $this->workflow->rejectPayroll($subject, $user->id, $note),
             $subject instanceof EmployeeFinalSettlement => $approve ? $this->settlements->approve($subject, $user->id) : $this->settlements->reject($subject, $user->id, $note),
             $subject instanceof \App\Models\MonitoringRequest => app(TeamMonitoringService::class)->decideRequest($subject, $user, $approve, $note),
@@ -183,6 +185,7 @@ class ApprovalInbox
             $subject instanceof AttendanceCorrection => "{$who} · {$subject->work_date->format('d M Y')} · ".collect(['in '.$subject->requested_check_in?->format('h:i A'), 'out '.$subject->requested_check_out?->format('h:i A')])->filter(fn ($part) => strlen($part) > 4)->join(', '),
             $subject instanceof ExpenseClaim => "{$who} · {$subject->category} · ".number_format((float) $subject->amount, 2).' · '.$subject->spent_on->format('d M Y'),
             $subject instanceof \App\Models\LateArrivalRequest => "{$who} · {$subject->work_date->format('d M Y')} · expected check-in {$subject->expectedLabel()} · ".\Illuminate\Support\Str::limit($subject->reason, 120),
+            $subject instanceof \App\Models\OffDayRequest => "{$who} · taking the off on {$subject->off_date->format('D d M Y')} (counts only when approved; otherwise a working day)".($subject->note ? ' · '.\Illuminate\Support\Str::limit($subject->note, 120) : ''),
             $subject instanceof \App\Models\NightWorkRequest => "{$who} · {$subject->work_date->format('d M Y')} · {$subject->timeRange()} (".\App\Support\Duration::words($subject->minutes).')'.($subject->tasks()->isNotEmpty() ? ' · tasks: '.$subject->tasks()->pluck('title')->join(', ') : '').' · '.\Illuminate\Support\Str::limit($subject->work_done, 120),
             $subject instanceof PayrollRun => "Period {$subject->period_starts_on->format('d M')}–{$subject->period_ends_on->format('d M Y')} · {$subject->items()->count()} employees",
             $subject instanceof EmployeeFinalSettlement => "{$who} · net ".number_format((float) $subject->net_amount, 2),

@@ -81,6 +81,8 @@ class Navigation
         // Overtime switched off in Settings > Payroll: its page and report leave the menu.
         if (($routeName === 'leave.overtime' || ($routeName === 'reports.show' && ($params['type'] ?? '') === 'overtime')) && ! app(\App\Services\PeopleOperationsService::class)->overtimeEnabled()) return false;
 
+        // Off day requests: for HR, and for the people whose week-of-month offs count only when asked for.
+        if ($routeName === 'leave.off-days' && ! $user->canAny(['hr.manage', 'approvals.manage']) && ! ($user->employeeProfile && app(\App\Services\OffDayService::class)->needsRequests($user->employeeProfile))) return false;
         if ($routeName === 'performance.goals' && ! config('features.goals')) return false;
         // Screenshots: nobody sees their own, so the page is for HR and managers with a team.
         if ($routeName === 'monitoring.screenshots' && ! $user->can('monitoring.view') && ! $user->employeeProfile?->directReports()->exists()) return false;

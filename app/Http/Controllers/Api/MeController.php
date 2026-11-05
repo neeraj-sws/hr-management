@@ -26,6 +26,8 @@ class MeController extends ApiController
             'badges' => \App\Support\PersonBadges::for($user, $employee),
             // A trainee pays a course fee instead of getting a salary: the app shows "My course & fees", not salary.
             'is_trainee' => (bool) $employee?->isTrainee(),
+            // Their week-of-month offs (e.g. 2nd Saturday) count only when asked for: the app shows "Off day request".
+            'offs_need_request' => $employee ? app(\App\Services\OffDayService::class)->needsRequests($employee) : false,
             // Profile photo set on the website (or in the app): the apps load it from /api/me/photo with their token.
             // ?v changes when the photo changes, so a new photo shows at once instead of a cached one.
             // People reporting to them (the "Team" button in the app's header).

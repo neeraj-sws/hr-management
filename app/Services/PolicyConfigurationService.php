@@ -46,7 +46,16 @@ class PolicyConfigurationService
 
     public function forEmployee(?AttendanceEmployee $employee, string $key, string $asOf, array $fallback = []): array
     {
-        return self::memo('policy|'.($employee?->id ?? 0).'|'.$key.'|'.$asOf.'|'.md5(serialize($fallback)), fn () => $this->resolve($employee, $key, $asOf, $fallback));
+        return self::memo('policy|'.($employee?->id ?? 0).'|'.$key.'|'.$asOf.'|'.md5(serialize($fallback)), function () use ($employee, $key, $asOf, $fallback) {
+            $config = $this->resolve($employee, $key, $asOf, $fallback);
+            // Offs that count only when asked for: the days HR approved are off (WorkCalendar::awaitsOffRequest).
+            if ($key === 'calendar.working_days' && $employee && ! empty($config['offs_need_request'])) {
+                $config['confirmed_offs'] = self::memo('rows|confirmed-offs|'.$employee->id, fn () => \App\Models\OffDayRequest::where('employee_id', $employee->id)->where('status', 'approved')
+                    ->pluck('off_date')->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->toDateString())->unique()->values()->all());
+            }
+
+            return $config;
+        });
     }
 
     private function resolve(?AttendanceEmployee $employee, string $key, string $asOf, array $fallback): array

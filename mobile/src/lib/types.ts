@@ -46,6 +46,7 @@ export type Me = {
   today: AttendanceSession | null;
   unread_notifications: number;
   is_trainee?: boolean;
+  offs_need_request?: boolean;
   missed_status_days?: string[];
   schedule: { shift: string | null; starts_at: string | null; grace_minutes: number } | null;
   policies: { location_required: boolean; selfie_required?: boolean; away_prompt_minutes: number; attendance_sources?: string[] };
@@ -114,6 +115,7 @@ export type Fine = {
   my_reason: { reason: string; sent_at: string | null; status: string; decided_by: string | null; decided_at: string | null; note: string | null; paid_back_next_payroll: boolean } | null;
 };
 export type LateArrival = { id: number; work_date: string; expected_at: string; reason: string; status: string; decision_note: string | null };
+export type OffDay = { id: number; off_date: string; note: string | null; status: string; decision_note: string | null };
 export type NightWork = { id: number; work_date: string; starts_at: string; ends_at: string; minutes: number; tasks: { id: number; title: string }[]; work_done: string; status: string; decision_note: string | null };
 export type TimesheetProject = { id: number; name: string; client: string | null };
 export type TimesheetLine = { id: number; project_id: number; project: string | null; work_date: string; start_time: string | null; end_time: string | null; minutes: number; description: string; status: string | null; remarks: string | null; source: 'manual' | 'timer' | 'import'; editable: boolean };
