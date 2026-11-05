@@ -4,6 +4,7 @@ namespace App\Livewire\Payroll;
 
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\ApprovalRequest;
+use App\Models\Company;
 use App\Models\PayrollItem;
 use App\Models\PayrollRun;
 use App\Services\ApprovalInbox;
@@ -23,6 +24,10 @@ class Runs extends Component
 
     #[Locked] public bool $approvalsOnly = false;
     #[Url] public ?int $run = null;
+    /** Runs of one company only ('' = all companies). */
+    #[Url] public string $company = '';
+    /** The company whose payroll "Calculate payroll" makes. */
+    public string $calcCompany = '';
 
     public string $periodStart = '';
     public string $periodEnd = '';
@@ -37,22 +42,30 @@ class Runs extends Component
         $this->approvalsOnly = request()->routeIs('payroll.approvals');
         $this->periodStart = now()->subMonthNoOverflow()->startOfMonth()->toDateString();
         $this->periodEnd = now()->subMonthNoOverflow()->endOfMonth()->toDateString();
+        $this->calcCompany = $this->company !== '' ? $this->company : (string) (Company::main()?->id ?? '');
+    }
+
+    public function updatedCompany(): void
+    {
+        $this->resetPage();
+        if ($this->company !== '') $this->calcCompany = $this->company;
     }
 
     public function calculate(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $this->validate(['periodStart' => ['required', 'date'], 'periodEnd' => ['required', 'date', 'after_or_equal:periodStart']], [], ['periodStart' => 'period start', 'periodEnd' => 'period end']);
-        $run = $workflow->calculatePayroll($this->periodStart, $this->periodEnd, auth()->id());
+        $company = $this->calcCompany !== '' ? Company::find((int) $this->calcCompany) : null;
+        $run = $workflow->calculatePayroll($this->periodStart, $this->periodEnd, auth()->id(), $company?->id);
         $this->run = $run->id;
-        $this->toast("Payroll calculated for {$run->items->count()} employees and sent for approval.");
+        $this->toast(($company && Company::count() > 1 ? $company->name.': p' : 'P')."ayroll calculated for {$run->items->count()} employees and sent for approval.");
     }
 
     public function recalculate(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $run = PayrollRun::findOrFail($this->run);
-        $workflow->calculatePayroll($run->period_starts_on->toDateString(), $run->period_ends_on->toDateString(), auth()->id());
+        $workflow->calculatePayroll($run->period_starts_on->toDateString(), $run->period_ends_on->toDateString(), auth()->id(), $run->company_id);
         $this->showCompare = false;
         $this->toast('Draft payroll recalculated from the latest data.');
     }
@@ -174,14 +187,18 @@ class Runs extends Component
 
     public function render(ApprovalInbox $inbox)
     {
-        $runs = PayrollRun::withCount('items')->withSum('items', 'net_amount')
+        $companies = Company::orderByDesc('is_main')->orderBy('name')->get();
+        $runs = PayrollRun::with('company')->withCount('items')->withSum('items', 'net_amount')
             ->when($this->approvalsOnly, fn ($q) => $q->where('status', 'draft'))
-            ->latest('period_starts_on')->paginate(12);
-        $selected = $this->run ? PayrollRun::with(['items.employee', 'items.payments', 'items.payslip'])->find($this->run) : null;
+            ->when($this->company !== '' && ($filter = $companies->firstWhere('id', (int) $this->company)), fn ($q) => $q->forCompany($filter->is_main ? null : $filter->id))
+            ->latest('period_starts_on')->orderBy('company_id')->paginate(12);
+        $selected = $this->run ? PayrollRun::with(['company', 'items.employee', 'items.payments', 'items.payslip'])->find($this->run) : null;
         $approval = $selected ? ApprovalRequest::with('approver')->where('approvable_type', PayrollRun::class)->where('approvable_id', $selected->id)->latest('id')->first() : null;
 
         return $this->page('livewire.payroll.runs', [
             'runs' => $runs,
+            // Company choices only when there is more than one company.
+            'companies' => $companies->count() > 1 ? $companies : collect(),
             'selected' => $selected,
             'approval' => $approval,
             'canDecide' => $approval && $approval->status === 'pending' && $inbox->canDecide($this->user(), $approval->load('approvable')),

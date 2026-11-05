@@ -13,6 +13,24 @@
     </table></div></section>
     {{ $departments->links() }}
 
+    {{-- Companies: each employee belongs to one; payroll is calculated, approved and locked per company. --}}
+    <section class="card mt">
+        <div class="card-head"><div><h2>Companies</h2><p>Payroll is calculated, approved and locked separately for each company. Choose the company on each employee (Employees › Edit › Company); an employee with none is in the main company.</p></div></div>
+        <div class="table-wrap"><table class="table">
+            <thead><tr><th>Company</th><th class="num">Active employees</th><th></th></tr></thead>
+            <tbody>
+            @foreach($companies as $c)
+                <tr wire:key="co-{{ $c->id }}"><td><strong>{{ $c->name }}</strong>@if($c->is_main) <x-badge tone="blue">main</x-badge>@endif</td><td class="num">{{ $c->active_count }}</td><td><div class="row-actions"><button class="btn btn-sm" wire:click="editCompany({{ $c->id }})">Rename</button></div></td></tr>
+            @endforeach
+            </tbody>
+        </table></div>
+        <form class="toolbar" wire:submit="saveCompany" style="border-top:1px solid var(--line-2)">
+            <x-field :label="$companyEditingId ? 'New name' : 'Add a company'" name="companyName"><input wire:model="companyName" maxlength="120" placeholder="e.g. ITWeb"></x-field>
+            <button class="btn btn-primary" wire:loading.attr="disabled">{{ $companyEditingId ? 'Save name' : 'Add company' }}</button>
+            @if($companyEditingId)<button type="button" class="btn" wire:click="cancelCompany">Cancel</button>@endif
+        </form>
+    </section>
+
     @if($showForm)
         <x-modal :title="$editingId ? 'Edit department' : 'Add department'">
             <form wire:submit="save"><div class="modal-body"><div class="form-grid">

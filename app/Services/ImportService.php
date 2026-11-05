@@ -82,7 +82,7 @@ class ImportService
         [$rows, $error] = $this->read($file, self::SALARY_COLUMNS, self::SALARY_REQUIRED);
         if ($error) return $this->summary(errors: [$error]);
 
-        $lockedThrough = $this->lockedThrough();
+        $lockedThrough = [];
         $created = $updated = $kept = 0;
         $errors = $notes = [];
         $touched = $seen = [];
@@ -95,7 +95,8 @@ class ImportService
             if (! is_numeric($monthly) || (float) $monthly < 0) { $errors[] = "Row {$line}: monthly_salary \"{$row['monthly_salary']}\" is not a valid amount (numbers only, e.g. 25000)."; continue; }
             $date = $this->parseDate($row['effective_from'] ?? '');
             if (! $date) { $errors[] = "Row {$line}: effective_from \"{$row['effective_from']}\" is not a valid date (use YYYY-MM-DD or DD-MM-YYYY)."; continue; }
-            if ($lockedThrough && $date->toDateString() <= $lockedThrough) { $errors[] = "Row {$line}: payroll is locked through {$lockedThrough}; a salary from {$date->format('d M Y')} cannot be added."; continue; }
+            $lockedUntil = $lockedThrough[$employee->id] ??= $this->lockedThrough($employee);
+            if ($lockedUntil && $date->toDateString() <= $lockedUntil) { $errors[] = "Row {$line}: payroll is locked through {$lockedUntil}; a salary from {$date->format('d M Y')} cannot be added."; continue; }
 
             $days = trim((string) ($row['working_days_per_month'] ?? ''));
             if ($days !== '' && (! ctype_digit($days) || (int) $days < 1 || (int) $days > 31)) { $errors[] = "Row {$line}: working_days_per_month \"{$days}\" must be a whole number from 1 to 31."; continue; }
@@ -151,7 +152,7 @@ class ImportService
         }
 
         // Only days inside a locked payroll run are frozen; older history with no payroll run can be imported.
-        $lockedRuns = PayrollRun::where('status', 'locked')->get(['period_starts_on', 'period_ends_on']);
+        $lockedRuns = PayrollRun::where('status', 'locked')->get(['company_id', 'period_starts_on', 'period_ends_on']);
         $created = $updated = $kept = 0;
         $errors = $notes = [];
         $seen = [];
@@ -164,7 +165,8 @@ class ImportService
             $date = $this->parseDate($row['work_date'] ?? '');
             if (! $date) { $errors[] = "Row {$line}: work_date \"{$row['work_date']}\" is not a valid date (use YYYY-MM-DD or DD-MM-YYYY)."; continue; }
             if ($date->gt(today())) { $errors[] = "Row {$line}: work_date {$date->format('d M Y')} is in the future."; continue; }
-            $lockedRun = $lockedRuns->first(fn ($run) => $date->between($run->period_starts_on, $run->period_ends_on));
+            // Only the employee's own company's locked payroll freezes the day.
+            $lockedRun = $lockedRuns->first(fn ($run) => (int) $run->company_id === (int) $employee->payrollCompanyId() && $date->between($run->period_starts_on, $run->period_ends_on));
             if ($lockedRun && $intoLockedPayroll) {
                 $lockedDays[$lockedRun->period_starts_on->format('d M').' – '.$lockedRun->period_ends_on->format('d M Y')] = true;
             } elseif ($lockedRun) { $lockedBlocked[$lockedRun->period_starts_on->format('d M').' – '.$lockedRun->period_ends_on->format('d M Y')][] = $line; continue; }
@@ -546,9 +548,10 @@ class ImportService
         return $rows;
     }
 
-    private function lockedThrough(): ?string
+    /** The last day of this employee's locked payroll (their own company's locked runs). */
+    private function lockedThrough(AttendanceEmployee $employee): ?string
     {
-        $value = PayrollRun::where('status', 'locked')->max('period_ends_on');
+        $value = PayrollRun::where('status', 'locked')->closingFor($employee->id)->max('period_ends_on');
 
         return $value ? substr((string) $value, 0, 10) : null;
     }

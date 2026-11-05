@@ -70,7 +70,7 @@ class PayrollCarryOver
     private function nextOpenDay(int $employeeId, PayrollRun $run): string
     {
         $lastClosed = PayrollRun::whereIn('status', ['approved', 'locked'])
-            ->where(fn ($q) => $q->whereHas('items', fn ($i) => $i->where('employee_id', $employeeId))->orWhere('status', 'locked'))
+            ->closingFor($employeeId)
             ->max('period_ends_on');
         $end = Carbon::parse($lastClosed ?? $run->period_ends_on)->max($run->period_ends_on);
 

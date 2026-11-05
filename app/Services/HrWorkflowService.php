@@ -418,17 +418,19 @@ class HrWorkflowService
         return $decided;
     }
 
-    public function calculatePayroll(string $start, string $end, int $userId): PayrollRun
+    /** One company's payroll for the period ($companyId null = the main company): only that company's employees. */
+    public function calculatePayroll(string $start, string $end, int $userId, ?int $companyId = null): PayrollRun
     {
         if ($end < $start) throw ValidationException::withMessages(['period' => 'The end date must be on or after the start date.']);
-        return DB::transaction(function () use ($start, $end, $userId) {
-            $run=PayrollRun::whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->lockForUpdate()->first();
-            if(!$run && ($clash = PayrollRun::whereDate('period_starts_on','<=',$end)->whereDate('period_ends_on','>=',$start)->orderBy('period_starts_on')->first())){
+        $companyId = \App\Models\Company::payrollKey($companyId);
+        return DB::transaction(function () use ($start, $end, $userId, $companyId) {
+            $run=PayrollRun::forCompany($companyId)->whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->lockForUpdate()->first();
+            if(!$run && ($clash = PayrollRun::forCompany($companyId)->whereDate('period_starts_on','<=',$end)->whereDate('period_ends_on','>=',$start)->orderBy('period_starts_on')->first())){
                 throw ValidationException::withMessages(['period' => 'These dates overlap the payroll for '.$clash->period_starts_on->format('d M').' – '.$clash->period_ends_on->format('d M Y').' ('.$clash->status.'). Recalculate that one'.($clash->status === 'draft' ? ', or delete it first' : '').', so nobody is paid twice for the same days.']);
             }
             if(!$run){
-                try{$run=PayrollRun::create(['period_starts_on'=>$start,'period_ends_on'=>$end,'created_by'=>$userId,'status'=>'draft']);}
-                catch(QueryException $exception){$run=PayrollRun::whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->first();if(!$run)throw $exception;}
+                try{$run=PayrollRun::create(['company_id'=>$companyId,'period_starts_on'=>$start,'period_ends_on'=>$end,'created_by'=>$userId,'status'=>'draft']);}
+                catch(QueryException $exception){$run=PayrollRun::forCompany($companyId)->whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->first();if(!$run)throw $exception;}
             }
             $hasPendingApproval=ApprovalRequest::where('approvable_type',PayrollRun::class)->where('approvable_id',$run->id)->where('status','pending')->exists();
             if(!$hasPendingApproval){ApprovalRequest::create(['approvable_type'=>PayrollRun::class,'approvable_id'=>$run->id,'step'=>1,'status'=>'pending']);foreach(\App\Models\User::permission('payroll.approve')->get() as $approver)$approver->notify(new \App\Notifications\ApprovalRequested('PayrollRun',$run->id,'A payroll run needs approval.'));}
@@ -441,7 +443,7 @@ class HrWorkflowService
                 }
             }
             $run->items()->delete();
-            $employees = AttendanceEmployee::where('is_active', true)->onPayroll()->get(); // trainees pay a fee, they are not paid
+            $employees = AttendanceEmployee::where('is_active', true)->onPayroll()->inPayrollCompany($companyId)->get(); // trainees pay a fee, they are not paid; other companies have their own payroll
             // A month that was already paid from the old salary sheet (Payroll > Legacy Salary) takes the sheet's
             // figures: that is what was really calculated and paid. Advances, adjustments and penalties are not
             // attached to it — the sheet already settled that month.
@@ -973,10 +975,12 @@ class HrWorkflowService
             // Requests still waiting for a decision would be stuck forever once the period is locked.
             $from = $run->period_starts_on->toDateString();
             $to = $run->period_ends_on->toDateString();
+            // Only this company's employees: another company's pending requests do not hold up this payroll.
+            $staff = AttendanceEmployee::inPayrollCompany($run->company_id)->select('id');
             $pending = array_filter([
-                'leave' => LeaveRequest::where('status', 'pending')->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->count(),
-                'overtime' => OvertimeRequest::where('status', 'pending')->whereBetween('work_date', [$from, $to])->count(),
-                'attendance correction' => \App\Models\AttendanceCorrection::where('status', 'pending')->whereBetween('work_date', [$from, $to])->count(),
+                'leave' => LeaveRequest::where('status', 'pending')->whereIn('employee_id', $staff)->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->count(),
+                'overtime' => OvertimeRequest::where('status', 'pending')->whereIn('employee_id', $staff)->whereBetween('work_date', [$from, $to])->count(),
+                'attendance correction' => \App\Models\AttendanceCorrection::where('status', 'pending')->whereIn('employee_id', $staff)->whereBetween('work_date', [$from, $to])->count(),
             ]);
             if ($pending) {
                 $list = collect($pending)->map(fn ($n, $what) => "{$n} {$what} ".str('request')->plural($n))->join(', ');

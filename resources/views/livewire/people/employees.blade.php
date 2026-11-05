@@ -126,6 +126,7 @@
                         <x-field label="Phone" name="phone"><input wire:model="phone"></x-field>
                         <x-field label="Address" name="address" hint="home address, used in letters" :full="true"><textarea wire:model="address" rows="2" maxlength="500" placeholder="House no., street, area, city, PIN"></textarea></x-field>
                         <x-field label="Department" name="departmentId"><select wire:model="departmentId"><option value="">—</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-field>
+                        @if($companies->count() > 1)<x-field label="Company" name="companyId" hint="payroll is made per company"><select wire:model="companyId">@foreach($companies as $c)<option value="{{ $c->is_main ? '' : $c->id }}">{{ $c->name }}</option>@endforeach</select></x-field>@endif
                         <x-field label="Manager" name="managerId"><select wire:model="managerId"><option value="">No manager</option>@foreach($managers as $m)@if($m->id !== $editingId)<option value="{{ $m->id }}">{{ $m->name }} ({{ $m->employee_code }})</option>@endif @endforeach</select></x-field>
                         <x-field label="Joining date" name="joinedAt"><input type="date" wire:model="joinedAt"></x-field>
                         <x-field label="Employment type" name="employmentType"><select wire:model.live="employmentType">@foreach(\App\Services\EmployeeService::EMPLOYMENT_TYPES as $key => $label)<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></x-field>
