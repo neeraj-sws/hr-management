@@ -4,6 +4,7 @@ namespace App\Livewire\People;
 
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\AttendanceEmployee;
+use App\Models\Company;
 use App\Models\Department;
 use App\Services\AuditLogger;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,32 @@ class Departments extends Component
     public string $code = '';
     public ?int $headId = null;
     public bool $isActive = true;
+    /** Companies (e.g. SWS, ITWeb): payroll is made per company. */
+    public ?int $companyEditingId = null;
+    public string $companyName = '';
+
+    public function editCompany(int $id): void
+    {
+        $this->fill(['companyEditingId' => $id, 'companyName' => Company::findOrFail($id)->name]);
+        $this->resetValidation();
+    }
+
+    public function saveCompany(AuditLogger $audit): void
+    {
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        $this->companyName = trim($this->companyName);
+        $this->validate(['companyName' => ['required', 'string', 'max:120', Rule::unique('companies', 'name')->ignore($this->companyEditingId)]], [], ['companyName' => 'company name']);
+        $company = Company::updateOrCreate(['id' => $this->companyEditingId], ['name' => $this->companyName]);
+        $audit->record($this->companyEditingId ? 'company.updated' : 'company.created', $company);
+        $this->toast($this->companyEditingId ? 'Company renamed.' : "Company {$company->name} added. Choose it on each of its employees (Employees > Edit > Company).");
+        $this->fill(['companyEditingId' => null, 'companyName' => '']);
+    }
+
+    public function cancelCompany(): void
+    {
+        $this->fill(['companyEditingId' => null, 'companyName' => '']);
+        $this->resetValidation();
+    }
 
     public function create(): void
     {
@@ -78,6 +105,7 @@ class Departments extends Component
             'departments' => Department::with('head')->withCount(['employees' => fn ($q) => $q->where('is_active', true), 'employees as all_employees_count', 'teams'])->orderBy('name')->paginate(15),
             'totals' => ['active' => Department::where('is_active', true)->count(), 'employees' => AttendanceEmployee::where('is_active', true)->whereNotNull('department_id')->count(), 'unassigned' => AttendanceEmployee::where('is_active', true)->whereNull('department_id')->count()],
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'companies' => Company::orderByDesc('is_main')->orderBy('name')->get()->each(fn (Company $c) => $c->setAttribute('active_count', AttendanceEmployee::where('is_active', true)->inPayrollCompany($c->is_main ? null : $c->id)->count())),
         ], 'Departments');
     }
 }

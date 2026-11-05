@@ -22,7 +22,7 @@ class PayrollLockGuard
     public function assertOpen(?int $employeeId, string $from, string $what, ?string $to = null): void
     {
         $run = $this->runs($from, $to ?? $from)->whereIn('status', ['approved', 'locked'])
-            ->when($employeeId, fn ($q) => $q->where(fn ($q) => $q->whereHas('items', fn ($q) => $q->where('employee_id', $employeeId))->orWhere('status', 'locked')))
+            ->when($employeeId, fn ($q) => $q->closingFor($employeeId))
             ->first();
         if ($run) {
             throw ValidationException::withMessages(['payroll' => "Payroll for {$run->period_starts_on->format('d M')}–{$run->period_ends_on->format('d M Y')} is {$run->status}; this {$what} change is not allowed. If the payroll was ".($run->status === 'locked' ? 'locked' : 'approved').' by mistake, an administrator can reopen it under Payroll (when no salary payment is recorded yet).'])->status(409);

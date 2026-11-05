@@ -114,7 +114,7 @@ class Salary extends Component
             $this->components = [];
         }
         $this->validate(['payBasis' => ['required', 'in:monthly,daily'], 'monthly' => ['required', 'numeric', 'min:0', 'max:100000000'], 'workingDays' => ['required', 'integer', 'min:1', 'max:31'], 'dailyHours' => ['required', 'numeric', 'gt:0', 'max:24'], 'effectiveFrom' => ['required', 'date']], [], ['monthly' => 'monthly salary', 'workingDays' => 'working days', 'dailyHours' => 'daily hours', 'effectiveFrom' => 'effective date']);
-        $lockedThrough = PayrollRun::where('status', 'locked')->max('period_ends_on');
+        $lockedThrough = PayrollRun::where('status', 'locked')->closingFor((int) $this->profileEmployeeId)->max('period_ends_on');
         if ($lockedThrough && $this->effectiveFrom <= substr((string) $lockedThrough, 0, 10)) {
             throw ValidationException::withMessages(['effectiveFrom' => 'Payroll is locked through '.substr((string) $lockedThrough, 0, 10).'. Choose a later effective date.']);
         }
@@ -173,7 +173,7 @@ class Salary extends Component
         abort_unless($this->user()->canAny(['salary.adjust', 'payroll.manage']), 403);
         $adjustment = SalaryAdjustment::where('is_recurring', true)->where('status', 'approved')->findOrFail($id);
         $lastMonth = today()->subMonth()->endOfMonth();
-        $lockedThrough = PayrollRun::where('status', 'locked')->max('period_ends_on');
+        $lockedThrough = PayrollRun::where('status', 'locked')->closingFor($adjustment->employee_id)->max('period_ends_on');
         if ($lockedThrough && substr((string) $lockedThrough, 0, 10) > $lastMonth->toDateString()) $lastMonth = \Illuminate\Support\Carbon::parse(substr((string) $lockedThrough, 0, 10))->endOfMonth();
         // Stopped before its first month: the last month falls before the start, so it never applies.
         app(\App\Services\PayrollLockGuard::class)->changed($adjustment->employee_id, $lastMonth->copy()->addDay()->toDateString(), 'salary adjustment', '2999-12-31');

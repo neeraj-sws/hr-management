@@ -28,6 +28,7 @@ class AttendanceEmployee extends Authenticatable
         'is_active',
         'user_id',
         'department_id',
+        'company_id',
         'manager_id',
         'joined_at',
         'date_of_birth',
@@ -71,6 +72,10 @@ class AttendanceEmployee extends Authenticatable
 
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function department(): BelongsTo { return $this->belongsTo(Department::class); }
+    /** Empty = the main company. */
+    public function company(): BelongsTo { return $this->belongsTo(Company::class); }
+    /** The company this employee's payroll belongs to (null = the main company). */
+    public function payrollCompanyId(): ?int { return Company::payrollKey($this->company_id); }
     public function manager(): BelongsTo { return $this->belongsTo(self::class, 'manager_id'); }
     public function directReports(): HasMany { return $this->hasMany(self::class, 'manager_id'); }
     public function tasks(): HasMany { return $this->hasMany(Task::class, 'assignee_id'); }
@@ -90,6 +95,15 @@ class AttendanceEmployee extends Authenticatable
     }
 
     /** People who are paid a salary: everyone except trainees (they pay a course fee instead). */
+    /** Employees paid in this company's payroll (null = the main company, which also has everyone with no company). */
+    public function scopeInPayrollCompany($query, ?int $companyId)
+    {
+        if ($companyId) return $query->where('company_id', $companyId);
+        $main = Company::where('is_main', true)->pluck('id');
+
+        return $query->where(fn ($q) => $q->whereNull('company_id')->orWhereIn('company_id', $main));
+    }
+
     public function scopeOnPayroll($query)
     {
         return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhere('employment_type', '!=', \App\Services\EmployeeService::TRAINEE));

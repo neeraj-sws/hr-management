@@ -84,6 +84,8 @@ class Employees extends Component
     /** Home address: HR / admin can fill it; the employee can also change their own (website profile, app settings). */
     public string $address = '';
     public ?int $departmentId = null;
+    /** Empty = the main company. */
+    public ?int $companyId = null;
     public ?int $managerId = null;
     public string $joinedAt = '';
     public string $dateOfBirth = '';
@@ -137,7 +139,7 @@ class Employees extends Component
         $this->fill([
             'employeeCode' => $employee->employee_code, 'name' => $employee->name, 'email' => (string) $employee->email,
             'designation' => (string) $employee->designation, 'phone' => (string) $employee->phone, 'address' => (string) $employee->address,
-            'departmentId' => $employee->department_id, 'managerId' => $employee->manager_id,
+            'departmentId' => $employee->department_id, 'companyId' => $employee->payrollCompanyId(), 'managerId' => $employee->manager_id,
             'joinedAt' => (string) $employee->joined_at?->toDateString(), 'dateOfBirth' => (string) $employee->date_of_birth?->toDateString(), 'employmentType' => $employee->employment_type ?: 'full_time', 'probationEndsOn' => (string) $employee->probation_ends_on?->toDateString(), 'noticePeriodDays' => (string) ($employee->notice_period_days ?? ''), 'workStart' => substr((string) $employee->work_start, 0, 5),
             'workEnd' => substr((string) $employee->work_end, 0, 5), 'dailyHours' => (string) (float) $employee->daily_work_hours,
             'teamIds' => $employee->teams->pluck('id')->map(fn ($id) => (string) $id)->all(), 'isManager' => (bool) $employee->user?->hasRole('Manager'), 'flexibleHours' => app(\App\Services\AttendanceService::class)->flexibleHours($employee),
@@ -158,6 +160,7 @@ class Employees extends Component
             'phone' => ['nullable', 'string', 'max:40'],
             'address' => ['nullable', 'string', 'max:500'],
             'departmentId' => ['nullable', 'exists:departments,id'],
+            'companyId' => ['nullable', 'exists:companies,id'],
             'managerId' => ['nullable', 'exists:attendance_employees,id', Rule::notIn([$employee?->id ?? 0])],
             'joinedAt' => ['nullable', 'date'],
             'dateOfBirth' => ['nullable', 'date', 'before:today', 'after:1900-01-01'],
@@ -188,7 +191,7 @@ class Employees extends Component
         $data = [
             'employee_code' => $this->employeeCode, 'name' => $this->name, 'email' => $this->email,
             'designation' => $this->designation ?: null, 'phone' => $this->phone ?: null, 'address' => trim($this->address) !== '' ? trim($this->address) : null,
-            'department_id' => $this->departmentId ?: null, 'manager_id' => $this->managerId ?: null,
+            'department_id' => $this->departmentId ?: null, 'company_id' => \App\Models\Company::payrollKey($this->companyId), 'manager_id' => $this->managerId ?: null,
             'joined_at' => $this->joinedAt ?: null, 'date_of_birth' => $this->dateOfBirth ?: null, 'employment_type' => $this->employmentType, 'probation_ends_on' => $this->probationEndsOn ?: null, 'notice_period_days' => $this->noticePeriodDays === '' ? null : (int) $this->noticePeriodDays, 'work_start' => $this->workStart ?: null, 'work_end' => $this->workEnd ?: null,
             'daily_work_hours' => $this->dailyHours, 'team_ids' => array_map('intval', $this->teamIds), 'is_manager' => $this->isManager,
             ...($left ? ['exit_date' => $this->exitDate, 'exit_type' => $this->exitType, 'exit_reason' => $this->exitReason ?: null] : []),
@@ -274,7 +277,7 @@ class Employees extends Component
 
     private function resetForm(): void
     {
-        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'address', 'departmentId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager', 'flexibleHours');
+        $this->reset('editingId', 'employeeCode', 'name', 'email', 'password', 'designation', 'phone', 'address', 'departmentId', 'companyId', 'managerId', 'joinedAt', 'dateOfBirth', 'employmentType', 'probationEndsOn', 'noticePeriodDays', 'workStart', 'workEnd', 'dailyHours', 'monthlySalary', 'payBasis', 'dailyRate', 'exitDate', 'exitType', 'exitReason', 'teamIds', 'isManager', 'flexibleHours');
         $this->resetValidation();
     }
 
@@ -307,6 +310,7 @@ class Employees extends Component
         return $this->page('livewire.people.employees', [
             'employees' => $employees,
             'departments' => Department::orderBy('name')->get(),
+            'companies' => \App\Models\Company::orderByDesc('is_main')->orderBy('name')->get(),
             'managers' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'teams' => Team::where('is_active', true)->orderBy('name')->get(),
             'counts' => ['active' => AttendanceEmployee::where($kind)->where('is_active', true)->count(), 'inactive' => AttendanceEmployee::where($kind)->where('is_active', false)->count(),
