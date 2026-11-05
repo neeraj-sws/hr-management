@@ -76,8 +76,15 @@ class Customers extends Component
         $this->guard();
         $term = trim($this->search);
         $customers = BillingCustomer::withCount('invoices')
+            ->with(['invoices.items.tax', 'invoices.payments', 'invoices.creditNotes'])
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('contact', 'like', "%{$term}%")))
             ->orderBy('name')->paginate(20);
+        // Outstanding balance = sum of every invoice's due (total − paid − credit notes).
+        $customers->getCollection()->transform(function ($c) {
+            $c->balance_due = round($c->invoices->sum(fn ($i) => $i->due()), 2);
+
+            return $c;
+        });
 
         return $this->page('livewire.billing.customers', ['customers' => $customers], 'Customers');
     }
