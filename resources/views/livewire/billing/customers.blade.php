@@ -5,13 +5,15 @@
     <section class="card">
         <div class="toolbar"><label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name, email or contact"></label></div>
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Name</th><th>Email</th><th>Contact</th><th class="num">Invoices</th><th></th></tr></thead>
+            <thead><tr><th>Code</th><th>Name</th><th>Email</th><th>Contact</th><th class="num">Invoices</th><th class="num">Balance due</th><th></th></tr></thead>
             <tbody>
             @forelse($customers as $c)
-                <tr wire:key="c-{{ $c->id }}"><td><strong>{{ $c->name }}</strong>@if($c->billing_city)<small>{{ $c->billing_city }}{{ $c->billing_state ? ', '.$c->billing_state : '' }}</small>@endif</td>
+                <tr wire:key="c-{{ $c->id }}"><td class="nowrap"><span style="color:var(--muted)">#CUST{{ str_pad($c->id, 5, '0', STR_PAD_LEFT) }}</span></td>
+                    <td><strong>{{ $c->name }}</strong>@if($c->billing_city)<small>{{ $c->billing_city }}{{ $c->billing_state ? ', '.$c->billing_state : '' }}</small>@endif</td>
                     <td>{{ $c->email ?: '—' }}</td><td>{{ $c->contact ?: '—' }}</td><td class="num">{{ $c->invoices_count }}</td>
+                    <td class="num">@if($c->balance_due > 0)<strong style="color:var(--red,#dc2626)">₹{{ number_format($c->balance_due, 2) }}</strong>@else<span style="color:var(--muted)">₹0.00</span>@endif</td>
                     <td><button class="btn btn-sm" wire:click="edit({{ $c->id }})">Edit</button></td></tr>
-            @empty<tr><td colspan="5"><x-empty title="No customers" icon="users" /></td></tr>@endforelse
+            @empty<tr><td colspan="7"><x-empty title="No customers" icon="users" /></td></tr>@endforelse
             </tbody></table></div>
         {{ $customers->links() }}
     </section>
