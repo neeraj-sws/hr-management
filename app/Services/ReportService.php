@@ -123,8 +123,8 @@ class ReportService
             'projects' => ['id', 'project', 'client', 'manager', 'status', 'starts_on', 'ends_on', 'members', 'tasks', 'completed_tasks', 'open_tasks', 'overdue_tasks', 'progress_pct', 'estimated_hours', 'logged_hours'],
             'tasks' => ['id', 'title', 'project', 'employee_code', 'employee_name', 'priority', 'status', 'due_on', 'estimated_hours', 'logged_hours', 'completed_at', 'timeliness'],
             'overtime' => ['id', 'employee_code', 'employee_name', 'work_date', 'requested_minutes', 'approved_minutes', 'status', 'reason'],
-            'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance'],
-            'salary' => ['employee_code', 'employee_name', 'month', 'salary_type', 'monthly_salary', 'salary_since', 'working_days', 'per_day_rate', 'payroll_payable', 'paid', 'remaining', 'payroll_status'],
+            'payroll' => ['run_id', 'period_start', 'period_end', 'run_status', 'employee_code', 'employee_name', 'working_days', 'present_days', 'paid_leave_days', 'unpaid_leave_days', 'overtime_amount', 'gross', 'statutory_earnings', 'statutory_deductions', 'penalties', 'advance_recovery', 'adjustments', 'fixed_deductions', 'reimbursements', 'payable', 'paid', 'balance', 'extra_pay'],
+            'salary' => ['employee_code', 'employee_name', 'month', 'salary_type', 'monthly_salary', 'salary_since', 'working_days', 'per_day_rate', 'payroll_payable', 'paid', 'remaining', 'extra_pay', 'payroll_status'],
             'performance' => ['employee_code', 'employee_name', 'completed_tasks', 'attendance_days', 'approved_leave_days', 'approved_leave_note', 'completed_late', 'overdue_tasks', 'logged_hours', 'not_counted_hours', 'active_hours', 'utilisation_pct', 'average_rating'],
             'productivity' => ['employee_code', 'employee_name', 'completed_tasks', 'completed_late', 'on_time_rate', 'open_tasks', 'overdue_tasks', 'estimated_hours', 'logged_hours', 'active_hours', 'utilization'],
             'compliance' => ['id', 'employee_code', 'employee_name', 'effective_on', 'amount', 'reason', 'rule', 'status', 'in_payroll'],
@@ -132,7 +132,7 @@ class ReportService
             'employees' => ['employee_code', 'name', 'email', 'designation', 'department', 'manager', 'joined_at', 'left_on', 'status'],
             'expenses' => ['id', 'employee_code', 'employee_name', 'spent_on', 'category', 'amount', 'description', 'status', 'receipt', 'paid_in_payroll'],
             'training' => ['employee_code', 'employee_name', 'course', 'mandatory', 'assigned_on', 'due_on', 'status', 'completed_at'],
-            'payments' => ['paid_on', 'kind', 'employee_code', 'employee_name', 'for_period', 'amount', 'payment_status', 'remaining', 'method', 'reference', 'recorded_by'],
+            'payments' => ['paid_on', 'kind', 'employee_code', 'employee_name', 'for_period', 'amount', 'extra_pay', 'payment_status', 'remaining', 'method', 'reference', 'recorded_by'],
             'teams' => ['team', 'department', 'manager', 'members', 'attendance_days', 'late_days', 'leave_days', 'active_hours', 'tasks_completed', 'tasks_completed_late', 'tasks_overdue'],
             'screenshots' => ['employee_code', 'employee_name', 'date', 'captures', 'first_at', 'last_at', 'size_mb'],
             'app_usage' => ['employee_code', 'employee_name', 'date', 'application', 'hours'],
@@ -170,7 +170,7 @@ class ReportService
                 ->map(function (PayrollItem $r) {
                     $paid = (float) $r->payments->sum('amount') + (float) ($r->calculation_breakdown['old_sheet']['paid'] ?? 0); // a month from the old salary sheet: what it paid counts
 
-                    return ['run_id' => $r->payroll_run_id, 'period_start' => $r->run?->period_starts_on?->toDateString(), 'period_end' => $r->run?->period_ends_on?->toDateString(), 'run_status' => $r->run?->status, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'working_days' => (int) $r->working_days, 'present_days' => (float) $r->present_days, 'paid_leave_days' => (float) $r->paid_leave_days, 'unpaid_leave_days' => (float) $r->unpaid_leave_days, 'overtime_amount' => (float) $r->overtime_amount, 'gross' => (float) $r->gross_amount, 'statutory_earnings' => (float) $r->statutory_earnings, 'statutory_deductions' => (float) $r->statutory_deductions, 'penalties' => (float) $r->penalties_amount, 'advance_recovery' => (float) $r->recovery_amount, 'adjustments' => (float) $r->adjustments_amount, 'fixed_deductions' => (float) ($r->calculation_breakdown['fixed_deductions_total'] ?? 0), 'reimbursements' => (float) $r->reimbursements_amount, 'payable' => (float) $r->net_amount, 'paid' => round($paid, 2), 'balance' => round((float) $r->net_amount - $paid, 2)];
+                    return ['run_id' => $r->payroll_run_id, 'period_start' => $r->run?->period_starts_on?->toDateString(), 'period_end' => $r->run?->period_ends_on?->toDateString(), 'run_status' => $r->run?->status, 'employee_code' => $r->employee?->employee_code, 'employee_name' => $r->employee?->name, 'working_days' => (int) $r->working_days, 'present_days' => (float) $r->present_days, 'paid_leave_days' => (float) $r->paid_leave_days, 'unpaid_leave_days' => (float) $r->unpaid_leave_days, 'overtime_amount' => (float) $r->overtime_amount, 'gross' => (float) $r->gross_amount, 'statutory_earnings' => (float) $r->statutory_earnings, 'statutory_deductions' => (float) $r->statutory_deductions, 'penalties' => (float) $r->penalties_amount, 'advance_recovery' => (float) $r->recovery_amount, 'adjustments' => (float) $r->adjustments_amount, 'fixed_deductions' => (float) ($r->calculation_breakdown['fixed_deductions_total'] ?? 0), 'reimbursements' => (float) $r->reimbursements_amount, 'payable' => (float) $r->net_amount, 'paid' => round($paid, 2), 'balance' => round(max(0, (float) $r->net_amount - $paid), 2), 'extra_pay' => round(max(0, $paid - (float) $r->net_amount), 2)];
                 }),
             'salary' => $this->salaryByMonth($ids, $from, $to, $limit),
             'performance' => $this->performanceRows($ids, $from, $to),
@@ -289,10 +289,10 @@ class ReportService
     /** Salary payments and final-settlement payments made in the period. */
     private function paymentRows(Collection $ids, string $from, string $to): Collection
     {
-        $salary = \App\Models\SalaryPayment::with(['payrollItem.employee', 'payrollItem.run'])
+        $salary = \App\Models\SalaryPayment::with(['payrollItem.employee', 'payrollItem.run', 'payrollItem.payments'])
             ->whereHas('payrollItem', fn ($q) => $q->whereIn('employee_id', $ids))
             ->whereDate('paid_on', '>=', $from)->whereDate('paid_on', '<=', $to)->get()
-            ->map(fn ($p) => ['paid_on' => $p->paid_on?->toDateString(), 'kind' => 'salary', 'employee_code' => $p->payrollItem?->employee?->employee_code, 'employee_name' => $p->payrollItem?->employee?->name, 'for_period' => $p->payrollItem?->run?->period_starts_on?->format('M Y'), 'amount' => (float) $p->amount, 'method' => $p->method, 'reference' => $p->reference, 'recorded_by' => $p->recorded_by]);
+            ->map(fn ($p) => ['paid_on' => $p->paid_on?->toDateString(), 'kind' => 'salary', 'employee_code' => $p->payrollItem?->employee?->employee_code, 'employee_name' => $p->payrollItem?->employee?->name, 'for_period' => $p->payrollItem?->run?->period_starts_on?->format('M Y'), 'amount' => (float) $p->amount, 'extra_pay' => $p->extraPart(), 'method' => $p->method, 'reference' => $p->reference, 'recorded_by' => $p->recorded_by]);
         $settlement = \App\Models\EmployeeFinalSettlementPayment::with('settlement.lifecycleCase.employee')
             ->whereHas('settlement.lifecycleCase', fn ($q) => $q->whereIn('employee_id', $ids))
             ->whereDate('paid_on', '>=', $from)->whereDate('paid_on', '<=', $to)->get()
@@ -513,6 +513,7 @@ class ReportService
                     'payroll_payable' => $item ? (float) $item->net_amount : null, 'paid' => $item ? round((float) $item->payments->sum('amount'), 2) : null,
                     // Still to pay for the month: payable less what was already paid.
                     'remaining' => $item ? round(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2) : null,
+                    'extra_pay' => $item ? $item->extraPay() : null,
                     // A draft is a snapshot: say when it was calculated, so an old draft (0 for people with no counted days yet) is clear.
                     'payroll_status' => $item ? ($item->run->status === 'draft' ? 'draft · calculated '.$item->updated_at?->format('d M H:i') : $item->run->status) : 'not run']);
                 if ($limit && $rows->count() >= $limit) return $rows;

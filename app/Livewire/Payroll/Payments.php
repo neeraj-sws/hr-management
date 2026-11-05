@@ -55,7 +55,7 @@ class Payments extends Component
     public function render()
     {
         $term = trim($this->search);
-        $payments = SalaryPayment::with(['payrollItem.employee', 'payrollItem.run'])
+        $payments = SalaryPayment::with(['payrollItem.employee', 'payrollItem.run', 'payrollItem.payments'])
             ->when(strtotime($this->from), fn ($q) => $q->whereDate('paid_on', '>=', $this->from))
             ->when(strtotime($this->to), fn ($q) => $q->whereDate('paid_on', '<=', $this->to))
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('reference', 'like', "%{$term}%")->orWhereHas('payrollItem.employee', fn ($e) => $e->where('name', 'like', "%{$term}%"))))

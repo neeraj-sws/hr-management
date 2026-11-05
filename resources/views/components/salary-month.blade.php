@@ -40,6 +40,7 @@
                 <tr class="sm-total"><td><strong>{{ $estimate ? 'Net so far' : 'Net salary' }}</strong></td><td class="num"><strong>{{ $fmt($m['net']) }}</strong></td></tr>
                 @if(! $estimate)
                     <tr><td>Paid{{ ! empty($m['paid_on']) ? ' on '.\Illuminate\Support\Carbon::parse($m['paid_on'])->format('d M Y') : '' }}</td><td class="num">{{ $fmt($m['paid']) }}</td></tr>
+                    @if(($m['extra_pay'] ?? 0) > 0)<tr><td>Extra pay<small>paid above the net salary · not an advance, never cut from later salaries</small></td><td class="num">+ {{ $fmt($m['extra_pay']) }}</td></tr>@endif
                     <tr><td>Still due</td><td class="num {{ $due ? 'sm-due' : '' }}">{{ $fmt($m['remaining']) }}</td></tr>
                 @endif
             </tbody>

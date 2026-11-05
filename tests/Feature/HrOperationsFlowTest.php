@@ -152,7 +152,11 @@ class HrOperationsFlowTest extends TestCase
         Livewire::test(Runs::class)->set('run', $run->id)->call('recalculate')->assertHasErrors('payroll');
         Livewire::test(Runs::class)->set('run', $run->id)->call('openPayment', $item->id)->set('paymentAmount', '500')->set('paymentReference', 'BANK-001')->call('pay')->assertHasNoErrors();
         Livewire::test(Runs::class)->set('run', $run->id)->call('openPayment', $item->id)->set('paymentAmount', '863.64')->set('paymentReference', 'BANK-002')->call('pay')->assertHasNoErrors();
-        Livewire::test(Runs::class)->set('run', $run->id)->call('openPayment', $item->id)->set('paymentAmount', '1')->call('pay')->assertHasErrors('amount');
+        Livewire::test(Runs::class)->set('run', $run->id)->call('openPayment', $item->id)->set('paymentAmount', '0')->call('pay')->assertHasErrors('paymentAmount');
+        // Paying above the net is allowed: the part above it is extra pay (never recovered).
+        Livewire::test(Runs::class)->set('run', $run->id)->call('openPayment', $item->id)->set('paymentAmount', '1')->set('paymentReference', 'BANK-EXTRA')->call('pay')->assertHasNoErrors();
+        $this->assertEquals(1.0, $item->fresh()->load('payments')->extraPay());
+        SalaryPayment::where('reference', 'BANK-EXTRA')->delete();
         $this->assertSame(2, SalaryPayment::where('payroll_item_id', $item->id)->count());
         $this->assertSame('BANK-001', SalaryPayment::where('payroll_item_id', $item->id)->orderBy('id')->first()->reference);
         $this->assertSame(1, Payslip::where('payroll_item_id', $item->id)->count());

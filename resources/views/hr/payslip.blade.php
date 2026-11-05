@@ -98,6 +98,7 @@
             @forelse($item->payments as $payment)<tr><td>{{ $payment->paid_on->format('d M Y') }}</td><td>{{ \App\Models\SalaryPayment::METHODS[$payment->method] ?? '' }} {{ $payment->reference ?: '' }}</td><td class="amt">{{ number_format((float) $payment->amount, 2) }}</td></tr>@empty<tr><td colspan="3">No payments recorded.</td></tr>@endforelse
         </tbody><tfoot>
             <tr><th colspan="2">Total paid</th><th class="amt">{{ number_format($paid, 2) }}</th></tr>
+            @if($paid - (float) $item->net_amount > 0.005)<tr><th colspan="2">Extra pay (paid above net pay, not recovered)</th><th class="amt">{{ number_format($paid - (float) $item->net_amount, 2) }}</th></tr>@endif
             @if((float) $item->net_amount - $paid > 0.005)<tr><th colspan="2">Balance due</th><th class="amt" style="color:var(--red)">{{ number_format((float) $item->net_amount - $paid, 2) }}</th></tr>@endif
         </tfoot></table>
         <div class="slip-foot"><span>This is a system-generated payslip from locked payroll records and does not need a signature.</span><span>{{ config('app.name') }}</span></div>

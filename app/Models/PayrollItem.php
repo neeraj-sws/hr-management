@@ -15,4 +15,6 @@ class PayrollItem extends Model
     public function employee(): BelongsTo { return $this->belongsTo(AttendanceEmployee::class); }
     public function payments(): HasMany { return $this->hasMany(SalaryPayment::class); }
     public function payslip() { return $this->hasOne(Payslip::class); }
+    /** Paid above the net salary (e.g. a minimum amount paid to everyone): shown as extra pay, never recovered from later salaries. */
+    public function extraPay(): float { return round(max(0, (float) $this->payments->sum('amount') - (float) $this->net_amount), 2); }
 }

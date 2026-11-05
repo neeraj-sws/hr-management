@@ -168,7 +168,7 @@ class SalarySummaryService
             'shortfall' => $shortfall,
             'earnings' => $earnings, 'deductions' => $deductions,
             'gross' => $money($gross), 'deductions_total' => $money(array_sum(array_column($deductions, 1))), 'net' => $money($net),
-            'paid' => $money($paid), 'remaining' => $money(max(0, $net - $paid)), 'payslip_id' => null];
+            'paid' => $money($paid), 'remaining' => $money(max(0, $net - $paid)), 'extra_pay' => $money(max(0, $paid - $net)), 'payslip_id' => null];
     }
 
     /** Fines for the month still waiting for approval: shown for information, not cut until approved. */
