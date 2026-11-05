@@ -233,6 +233,20 @@ class PeopleOperationsService
      */
     public function reassessDay(AttendanceEmployee $employee, string $date, int $actor, string $why): void
     {
+        $this->removeFinesNoLongerApplying($employee, $date, $actor, $why);
+        // Fines that now apply (e.g. a rejected leave leaves the day absent). Existing fines are never duplicated.
+        if (Carbon::parse($date)->lt(today())) rescue(fn () => $this->assessCompliance($date, $date, $actor, $employee->id), null, false);
+    }
+
+    /**
+     * The day's late / early / absence fines that no longer apply are waived (e.g. attendance imported for a day
+     * fined as absent). Returns the fines removed and the ones that stay because their payroll is approved / locked.
+     *
+     * @return array{removed: list<EmployeePenalty>, locked: list<EmployeePenalty>}
+     */
+    public function removeFinesNoLongerApplying(AttendanceEmployee $employee, string $date, int $actor, string $why): array
+    {
+        $done = ['removed' => [], 'locked' => []];
         $session = \App\Models\AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $date)->whereNotNull('check_in')->latest('id')->first();
         $open = EmployeePenalty::where('employee_id', $employee->id)->whereDate('effective_on', $date)->whereIn('status', ['pending', 'approved'])
             ->where(fn ($q) => $q->where('source_key', 'like', "late:{$employee->id}:{$date}%")->orWhere('source_key', 'like', "early:{$employee->id}:{$date}%")->orWhere('source_key', 'like', "absence:{$employee->id}:{$date}%"))->get();
@@ -245,10 +259,17 @@ class PeopleOperationsService
                 default => true,
             };
             if ($stillApplies) continue;
-            rescue(fn () => $this->waivePenalty($penalty, $actor, 'No longer applies: '.$why), null, false);
+            try {
+                $this->waivePenalty($penalty, $actor, 'No longer applies: '.$why);
+                $done['removed'][] = $penalty;
+            } catch (ValidationException $e) {
+                if (array_key_exists('payroll', $e->errors()) && ! $penalty->isPaidBack()) $done['locked'][] = $penalty;
+            } catch (\Throwable) {
+                // As before: a fine that cannot be waived is left as it is.
+            }
         }
-        // Fines that now apply (e.g. a rejected leave leaves the day absent). Existing fines are never duplicated.
-        if (Carbon::parse($date)->lt(today())) rescue(fn () => $this->assessCompliance($date, $date, $actor, $employee->id), null, false);
+
+        return $done;
     }
 
     /**

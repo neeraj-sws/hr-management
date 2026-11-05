@@ -240,6 +240,21 @@ class ImportService
             \App\Models\AttendanceDayMark::where('employee_id', $employee->id)->whereDate('work_date', $date->toDateString())->delete(); // worked after all
         }
 
+        // Fines made before these days were in HRMS (e.g. "absent with no leave request" on a day now imported as
+        // present or leave) are taken back. Nothing new is fined here: an import is history, not a new check.
+        $finesRemoved = [];
+        $finesLocked = [];
+        $people = app(PeopleOperationsService::class);
+        foreach ($touched ?? [] as $employeeId => $dates) {
+            $person = AttendanceEmployee::find($employeeId);
+            if (! $person) continue;
+            foreach (array_unique($dates) as $day) {
+                $result = $people->removeFinesNoLongerApplying($person, $day, $actorId, 'attendance for '.Carbon::parse($day)->format('d M Y').' was imported');
+                foreach ($result['removed'] as $fine) $finesRemoved[] = "{$person->employee_code} ".$fine->effective_on->format('d M Y').' (Rs '.number_format((float) $fine->amount, 2).')';
+                foreach ($result['locked'] as $fine) $finesLocked[] = "{$person->employee_code} ".$fine->effective_on->format('d M Y').' (Rs '.number_format((float) $fine->amount, 2).')';
+            }
+        }
+
         $this->audit->record('attendance.imported', null, ['file' => $file->getClientOriginalName(), 'created' => $created, 'updated' => $updated, 'kept' => $kept, 'skipped' => count($errors) + array_sum(array_map('count', $this->missingCodes)), 'unknown_codes' => array_keys($this->missingCodes), 'for_employee_id' => $forEmployee?->id, 'update_existing' => $updateExisting]);
 
         $missingRows = array_sum(array_map('count', $this->missingCodes));
@@ -254,6 +269,8 @@ class ImportService
         $errors = [...$this->missingCodeErrors(), ...$errors];
 
         if ($guessNote) array_unshift($notes, $guessNote);
+        if ($finesLocked) array_unshift($notes, count($finesLocked).' fine(s) no longer apply but their payroll is approved / locked, so they stay: '.implode(', ', $finesLocked).'. Take them back on Payroll > Day-wise salary ("Remove fine"): they are paid back in the next salary.');
+        if ($finesRemoved) array_unshift($notes, count($finesRemoved).' fine(s) made before this attendance was imported no longer apply and were removed: '.implode(', ', $finesRemoved).'.');
         if (array_sum($dayCounts)) array_unshift($notes, "Days in the file: {$dayCounts['present']} present (attendance saved), {$dayCounts['leave']} leave (saved as approved leave), {$dayCounts['absent']} absent and {$dayCounts['off']} weekly off / holiday (no record needed — they show from the calendar).");
         if (! empty($lockedDays)) array_unshift($notes, 'Saved as history inside locked payroll period(s) '.implode(', ', array_keys($lockedDays)).'; those locked payrolls were not recalculated.');
 
