@@ -25,6 +25,38 @@ class CompanyAccess
         return $user instanceof User && $user->company_id ? (int) $user->company_id : null;
     }
 
+    /** The company the Super Admin picked to work on in Settings (null = the rules for all companies). */
+    private const RULES_COMPANY = 'company-access.rules-company';
+
+    /** Kept in the container, so it lasts one request (and one test) only. */
+    private static function pickedCompany(): ?int
+    {
+        return app()->bound(self::RULES_COMPANY) ? app(self::RULES_COMPANY) : null;
+    }
+
+    /** Whose rules are read and saved with no employee in hand: the limited login's company, or the picked one. */
+    public static function rulesCompanyId(): ?int
+    {
+        return self::limitedCompanyId() ?? self::pickedCompany();
+    }
+
+    public static function chooseRulesCompany(?int $companyId): void
+    {
+        app()->instance(self::RULES_COMPANY, $companyId);
+    }
+
+    /** Runs $work with the rules of this company (e.g. an ITWeb employee's letter, made by the Super Admin). */
+    public static function withRulesCompany(?int $companyId, callable $work): mixed
+    {
+        $before = self::pickedCompany();
+        app()->instance(self::RULES_COMPANY, $companyId);
+        try {
+            return $work();
+        } finally {
+            app()->instance(self::RULES_COMPANY, $before);
+        }
+    }
+
     public static function isLimited(?User $user): bool
     {
         return $user !== null && $user->company_id !== null;

@@ -90,10 +90,22 @@ class EmployeeProfile extends Component
         $this->redirect(route('people.employees.show', $this->employee));
     }
 
+    /** Letters and certificates made here carry the employee's own company's letterhead, signature and seal. */
+    private function useEmployeeCompany(): void
+    {
+        \App\Support\CompanyAccess::chooseRulesCompany($this->employee->company_id ?? \App\Models\Company::main()?->id);
+    }
+
+    public function hydrate(): void
+    {
+        $this->useEmployeeCompany();
+    }
+
     public function mount(AttendanceEmployee $employee): void
     {
         abort_unless($this->user()->can('view', $employee), 403);
         $this->employee = $employee;
+        $this->useEmployeeCompany();
         $this->leaveMonth = now()->format('Y-m');
         $tab = (string) request()->query('tab', '');
         if (in_array($tab, ['overview', 'attendance', 'leave', 'work', 'payroll', 'docs', 'compliance', 'settings', 'history'], true)) $this->initialTab = $tab;
@@ -185,7 +197,7 @@ class EmployeeProfile extends Component
         $this->validateCertificate();
         $token = \Illuminate\Support\Str::random(24);
         $previews = array_slice((array) session('certificate_preview', []), -4, 4, true); // keep only the last few
-        session(['certificate_preview' => [...$previews, $token => $this->cert]]);
+        session(['certificate_preview' => [...$previews, $token => [...$this->cert, '_company' => \App\Support\CompanyAccess::rulesCompanyId()]]]);
         $this->certPreview = route('letters.certificate-preview', $token);
     }
 

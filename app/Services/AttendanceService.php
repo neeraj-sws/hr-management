@@ -700,7 +700,7 @@ class AttendanceService
                 ->orderByRaw('effective_from IS NULL')->orderByDesc('effective_from')->orderByDesc('id')->first()?->configuration ?? [];
         if (isset($override['standard_daily_hours']) && (float) $override['standard_daily_hours'] > 0) return (float) $override['standard_daily_hours'];
         if ((float) $employee->daily_work_hours > 0) return (float) $employee->daily_work_hours;
-        $company = $this->policies->forEmployee(null, 'work.hours', $date, []);
+        $company = $this->policies->forCompany($employee->company_id ?? \App\Models\Company::main()?->id, 'work.hours', $date, []);
 
         return (float) ($company['standard_daily_hours'] ?? 0) > 0 ? (float) $company['standard_daily_hours'] : 8.0;
     }

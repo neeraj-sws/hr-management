@@ -8,9 +8,11 @@ use App\Models\PolicyRule;
 use App\Models\TeamPolicyOverride;
 
 /**
- * Effective policy for an employee on a date: the company rule, then the
- * employee's team override (lowest team id if they are in several), then the
- * employee's own override — each layer only replaces the keys it sets.
+ * Effective policy for an employee on a date: the rule for all companies, then the rule of the employee's
+ * company (e.g. ITWeb's own payroll rules, set by its owner), then the employee's team override (lowest team id
+ * if they are in several), then the employee's own override — each layer only replaces the keys it sets.
+ * With no employee: the rule for all companies, then the rule of the company being worked on
+ * (CompanyAccess::rulesCompanyId(): the company owner's own, or the one the Super Admin picked in Settings).
  */
 class PolicyConfigurationService
 {
@@ -44,9 +46,34 @@ class PolicyConfigurationService
         return array_key_exists($key, self::$memo) ? self::$memo[$key] : (self::$memo[$key] = $value());
     }
 
+    /**
+     * Rules a company can set for itself (Settings, Compliance, letterhead). Everything else (e-mail, Telegram,
+     * Google Sheets, security, website access, leave year …) is one rule for all companies, set by the Super Admin.
+     */
+    public const COMPANY_KEYS = [
+        'calendar.working_days', 'work.hours', 'attendance.rules', 'attendance.idle', 'attendance.auto_checkout', 'attendance.sources',
+        'attendance.selfie', 'attendance.location', 'attendance.late_penalty', 'attendance.early_checkout', 'attendance.unauthorized_absence',
+        'overtime.multiplier', 'payroll.calculation', 'payroll.statutory', 'payroll.salary_structure', 'leave.advance_limit',
+        'leave.final_settlement', 'leave.late_application', 'task.late_penalty', 'monitoring.screenshots', 'monitoring.app_usage',
+        'monitoring.window_titles', 'billing.company', 'letters.settings',
+    ];
+
+    public static function isCompanyKey(string $key): bool
+    {
+        return in_array($key, self::COMPANY_KEYS, true);
+    }
+
+    /** The rule as one company has it (null = the rule for all companies). */
+    public function forCompany(?int $companyId, string $key, string $asOf, array $fallback = []): array
+    {
+        return \App\Support\CompanyAccess::withRulesCompany($companyId, fn () => $this->forEmployee(null, $key, $asOf, $fallback));
+    }
+
     public function forEmployee(?AttendanceEmployee $employee, string $key, string $asOf, array $fallback = []): array
     {
-        return self::memo('policy|'.($employee?->id ?? 0).'|'.$key.'|'.$asOf.'|'.md5(serialize($fallback)), function () use ($employee, $key, $asOf, $fallback) {
+        $context = $employee ? '' : '|c'.(\App\Support\CompanyAccess::rulesCompanyId() ?? 0);
+
+        return self::memo('policy|'.($employee?->id ?? 0).$context.'|'.$key.'|'.$asOf.'|'.md5(serialize($fallback)), function () use ($employee, $key, $asOf, $fallback) {
             $config = $this->resolve($employee, $key, $asOf, $fallback);
             // Offs that count only when asked for: the days HR approved are off (WorkCalendar::awaitsOffRequest).
             if ($key === 'calendar.working_days' && $employee && ! empty($config['offs_need_request'])) {
@@ -64,6 +91,7 @@ class PolicyConfigurationService
 
         $global = PolicyRule::query()
             ->where('rule_key', $key)
+            ->whereNull('company_id')
             ->where('is_active', true)
             ->where(fn ($query) => $query->whereNull('effective_from')->orWhereDate('effective_from', '<=', $asOf))
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>=', $asOf))
@@ -71,6 +99,7 @@ class PolicyConfigurationService
             ->orderByDesc('effective_from')
             ->orderByDesc('id')
             ->first()?->configuration ?? $fallback;
+        $global = array_replace($global, $this->companyRule($employee, $key, $asOf));
 
         if (! $employee) return $global;
 
@@ -99,6 +128,30 @@ class PolicyConfigurationService
         return array_replace($global, $team, $override);
     }
 
+    /** The newest active rule of the employee's company (or, with no employee, of the company being worked on). */
+    private function companyRule(?AttendanceEmployee $employee, string $key, string $asOf): array
+    {
+        if (! self::isCompanyKey($key)) return [];
+        $query = PolicyRule::query()->where('rule_key', $key)->where('is_active', true);
+        if ($employee) {
+            // No company on the employee = the main company.
+            $employee->company_id ? $query->where('company_id', $employee->company_id)
+                : $query->whereIn('company_id', \App\Models\Company::withoutGlobalScopes()->where('is_main', true)->select('id'));
+        } else {
+            $companyId = \App\Support\CompanyAccess::rulesCompanyId();
+            if (! $companyId) return [];
+            $query->where('company_id', $companyId);
+        }
+
+        return $query
+            ->where(fn ($query) => $query->whereNull('effective_from')->orWhereDate('effective_from', '<=', $asOf))
+            ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>=', $asOf))
+            ->orderByRaw('effective_from IS NULL')
+            ->orderByDesc('effective_from')
+            ->orderByDesc('id')
+            ->first()?->configuration ?? [];
+    }
+
     /**
      * Same answer as the queries in resolve(), but each table is read once per page (all dates) and the
      * row for the date is picked here, in the same order: dated rows before undated, newest date, then newest id.
@@ -111,7 +164,12 @@ class PolicyConfigurationService
         $newest = fn ($rows) => $rows->filter($covers)->sort(fn ($a, $b) => [$a->effective_from === null, $b->effective_from?->toDateString(), $b->id]
             <=> [$b->effective_from === null, $a->effective_from?->toDateString(), $a->id])->first();
 
-        $global = $newest(self::memo('rows|global|'.$key, fn () => PolicyRule::where('rule_key', $key)->where('is_active', true)->get()))?->configuration ?? $fallback;
+        $global = $newest(self::memo('rows|global|'.$key, fn () => PolicyRule::where('rule_key', $key)->whereNull('company_id')->where('is_active', true)->get()))?->configuration ?? $fallback;
+        if (self::isCompanyKey($key)) {
+            $companyId = $employee ? ($employee->company_id ?: self::memo('rows|main-company', fn () => \App\Models\Company::withoutGlobalScopes()->where('is_main', true)->value('id')))
+                : \App\Support\CompanyAccess::rulesCompanyId();
+            if ($companyId) $global = array_replace($global, $newest(self::memo('rows|company|'.$companyId.'|'.$key, fn () => PolicyRule::where('rule_key', $key)->where('company_id', $companyId)->where('is_active', true)->get()))?->configuration ?? []);
+        }
         if (! $employee) return $global;
 
         $override = $newest(self::memo('rows|employee|'.$employee->id.'|'.$key, fn () => EmployeePolicyOverride::where('employee_id', $employee->id)->where('rule_key', $key)->get()))?->configuration ?? [];

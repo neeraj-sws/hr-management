@@ -117,6 +117,14 @@ class AttendanceEmployee extends Authenticatable
         return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhereNotIn('employment_type', [\App\Services\EmployeeService::TRAINEE, \App\Services\EmployeeService::OWNER]));
     }
 
+    /** The company whose rules are being changed (Settings, picked by the Super Admin); everyone when none is picked. */
+    public function scopeOfRulesCompany($query)
+    {
+        $companyId = \App\Support\CompanyAccess::rulesCompanyId();
+
+        return $companyId ? $query->inPayrollCompany(Company::payrollKey($companyId)) : $query;
+    }
+
     /** Everyone but trainees (People > Employees lists them, the owner included; trainees have their own page). */
     public function scopeNotTrainee($query)
     {

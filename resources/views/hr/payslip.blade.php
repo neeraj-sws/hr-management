@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    {{-- An ITWeb (not main company) employee's payslip carries ITWeb's name. --}}
+    @php($companyName = $payslip->employee?->company_id ? ($payslip->employee->company?->name ?: config('app.name')) : config('app.name'))
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Payslip {{ $payslip->reference }} · {{ config('app.name') }}</title>
+    <title>Payslip {{ $payslip->reference }} · {{ $companyName }}</title>
     <link rel="stylesheet" href="{{ asset('css/sws.css') }}">
     <style>
         body{background:#eef1f6;color:var(--ink-2)}
@@ -57,7 +59,7 @@
 @php($rows = max($earnings->count(), $deductions->count(), 1))
 <div class="slip">
     <div class="slip-top">
-        <div><h1>{{ config('app.name') }}</h1><p>Salary slip for {{ $item->run->period_starts_on->format('F Y') }}</p></div>
+        <div><h1>{{ $companyName }}</h1><p>Salary slip for {{ $item->run->period_starts_on->format('F Y') }}</p></div>
         <div class="right"><p>Payslip no.</p><strong>{{ $payslip->reference }}</strong><p>Issued {{ $payslip->issued_at->format('d M Y') }}</p></div>
     </div>
     <div class="slip-body">
@@ -100,7 +102,7 @@
             <tr><th colspan="2">Total paid</th><th class="amt">{{ number_format($paid, 2) }}</th></tr>
             @if((float) $item->net_amount - $paid > 0.005)<tr><th colspan="2">Balance due</th><th class="amt" style="color:var(--red)">{{ number_format((float) $item->net_amount - $paid, 2) }}</th></tr>@endif
         </tfoot></table>
-        <div class="slip-foot"><span>This is a system-generated payslip from locked payroll records and does not need a signature.</span><span>{{ config('app.name') }}</span></div>
+        <div class="slip-foot"><span>This is a system-generated payslip from locked payroll records and does not need a signature.</span><span>{{ $companyName }}</span></div>
     </div>
 </div>
 </body>

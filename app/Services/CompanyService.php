@@ -165,7 +165,7 @@ class CompanyService
         $norm = fn (array $c) => [\App\Support\WorkCalendar::normalise(['off_weeks' => $c['off_weeks'] ?? []])['off_weeks'], array_map(fn ($s) => [$s['from'], $s['to']], \App\Support\WorkCalendar::normalise(['shifts' => $c['shifts'] ?? []])['shifts']), array_map('intval', $c['days'] ?? [1, 2, 3, 4, 5])];
         if ($norm($before) === $norm($after)) return 0;
 
-        $employees = $only ? collect([$only->loadMissing('user')]) : AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id')->get();
+        $employees = $only ? collect([$only->loadMissing('user')]) : AttendanceEmployee::with('user')->where('is_active', true)->ofRulesCompany()->whereNotNull('user_id')->get();
         $sent = 0;
         foreach ($employees as $employee) {
             $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);

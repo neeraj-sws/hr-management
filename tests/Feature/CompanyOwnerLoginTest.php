@@ -269,4 +269,45 @@ class CompanyOwnerLoginTest extends TestCase
         $this->assertSame(2, \App\Models\Announcement::visibleTo($this->preeti)->count());
         $this->assertSame(1, \App\Models\Announcement::withoutGlobalScopes()->visibleTo($this->sws)->count(), 'SWS sees only the one for all companies');
     }
+
+    private function grace(AttendanceEmployee $employee): int
+    {
+        return (int) (app(\App\Services\PolicyConfigurationService::class)->forEmployee($employee->fresh(), 'attendance.rules', today()->toDateString(), [])['grace_minutes'] ?? 0);
+    }
+
+    public function test_the_owner_sets_his_own_company_rules_and_sws_keeps_its_own(): void
+    {
+        $swsBefore = $this->grace($this->sws);
+        $this->actingAs($this->owner);
+        Livewire::test(\App\Livewire\System\Settings::class)->set('tab', 'hours')->set('graceMinutes', '37')->call('saveHours')->assertHasNoErrors()
+            ->assertDontSee('Google Sheets')->assertDontSee('Leave year (session)');
+        $this->assertSame(37, $this->grace($this->preeti), 'ITWeb follows its own rule');
+        $this->assertSame($swsBefore, $this->grace($this->sws), 'SWS is not changed');
+        $this->assertSame($this->itweb->id, \App\Models\PolicyRule::where('rule_key', 'attendance.rules')->latest('id')->value('company_id'));
+
+        // Settings the same for all companies are the Super Admin's only.
+        Livewire::test(\App\Livewire\System\Settings::class)->call('saveEmail')->assertForbidden();
+        Livewire::test(\App\Livewire\System\Settings::class)->call('saveLeaveYear')->assertForbidden();
+    }
+
+    public function test_the_super_admin_works_on_all_companies_or_one(): void
+    {
+        $this->actingAs($this->admin);
+        // One company: ITWeb only.
+        Livewire::test(\App\Livewire\System\Settings::class)->set('rulesCompany', (string) $this->itweb->id)->set('graceMinutes', '20')->call('saveHours')->assertHasNoErrors();
+        // All companies: SWS follows, ITWeb keeps its own.
+        app()->forgetInstance('company-access.rules-company');
+        Livewire::test(\App\Livewire\System\Settings::class)->set('graceMinutes', '5')->call('saveHours')->assertHasNoErrors();
+        $this->assertSame(20, $this->grace($this->preeti));
+        $this->assertSame(5, $this->grace($this->sws));
+        Livewire::test(\App\Livewire\System\Settings::class)->set('rulesCompany', (string) $this->itweb->id)->assertSet('graceMinutes', '20');
+    }
+
+    public function test_itweb_payslips_carry_the_itweb_name(): void
+    {
+        $run = PayrollRun::create(['company_id' => $this->itweb->id, 'period_starts_on' => '2026-10-01', 'period_ends_on' => '2026-10-31', 'status' => 'locked']);
+        $item = \App\Models\PayrollItem::create(['payroll_run_id' => $run->id, 'employee_id' => $this->preeti->id, 'gross_amount' => 20000, 'net_amount' => 20000, 'calculation_data' => ['working_days' => 25]]);
+        $slip = \App\Models\Payslip::create(['payroll_item_id' => $item->id, 'employee_id' => $this->preeti->id, 'issued_at' => now(), 'reference' => 'PS-T1']);
+        $this->actingAs($this->owner)->get(route('hr.payslips.show', $slip))->assertOk()->assertSee('ITWeb');
+    }
 }
