@@ -157,6 +157,8 @@ class OffDayRequestTest extends TestCase
         $this->assertTrue(Navigation::canAccess($khushboo, 'leave.off-days'));
         $this->assertFalse(Navigation::canAccess($this->colleague->user, 'leave.off-days'));
         $this->assertTrue(Navigation::canAccess($this->admin, 'leave.off-days'));
+        $this->actingAs($this->colleague->user)->get(route('leave.off-days'))->assertForbidden();
+        $this->actingAs($khushboo)->get(route('leave.off-days'))->assertOk();
 
         Livewire::actingAs($khushboo)->test(\App\Livewire\Leave\OffDays::class)
             ->assertSee('Sat 14 Nov')->call('openForm')->assertSet('offDate', '2026-11-14')

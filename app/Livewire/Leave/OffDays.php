@@ -30,6 +30,8 @@ class OffDays extends Component
 
     public function mount(): void
     {
+        // Only HR / admin and the people whose offs need asking for (the same as the menu).
+        abort_unless($this->canSeeTeam() || $this->asks(), 403);
         if (! in_array($this->tab, ['mine', 'team'], true) || ($this->tab === 'team' && ! $this->canSeeTeam())) $this->tab = 'mine';
         if ($this->tab === 'mine' && ! $this->asks() && $this->canSeeTeam()) $this->tab = 'team';
     }
