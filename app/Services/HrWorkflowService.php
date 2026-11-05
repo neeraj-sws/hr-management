@@ -423,6 +423,9 @@ class HrWorkflowService
     {
         if ($end < $start) throw ValidationException::withMessages(['period' => 'The end date must be on or after the start date.']);
         $companyId = \App\Models\Company::payrollKey($companyId);
+        // A login limited to one company makes only that company's payroll.
+        $limited = \App\Support\CompanyAccess::limitedCompanyId();
+        if ($limited && $companyId !== \App\Models\Company::payrollKey($limited)) throw ValidationException::withMessages(['period' => 'You can make the payroll of your own company only.']);
         return DB::transaction(function () use ($start, $end, $userId, $companyId) {
             $run=PayrollRun::forCompany($companyId)->whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->lockForUpdate()->first();
             if(!$run && ($clash = PayrollRun::forCompany($companyId)->whereDate('period_starts_on','<=',$end)->whereDate('period_ends_on','>=',$start)->orderBy('period_starts_on')->first())){

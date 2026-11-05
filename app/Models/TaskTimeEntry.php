@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TaskTimeEntry extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['task_id', 'employee_id', 'started_at', 'ended_at', 'duration_seconds', 'status'];
     protected $casts = ['started_at' => 'datetime', 'ended_at' => 'datetime'];
     public function task(): BelongsTo { return $this->belongsTo(Task::class); }

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** HR's decision for a day with both approved leave and attendance: "worked" (refund the leave day) or "leave". */
 class LeaveConflictResolution extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'leave_request_id', 'work_date', 'resolution', 'resolved_by', 'note'];
     protected $casts = ['work_date' => 'date'];
 

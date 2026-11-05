@@ -20,15 +20,17 @@
             <thead><tr><th>Company</th><th class="num">Active employees</th><th></th></tr></thead>
             <tbody>
             @foreach($companies as $c)
-                <tr wire:key="co-{{ $c->id }}"><td><strong>{{ $c->name }}</strong>@if($c->is_main) <x-badge tone="blue">main</x-badge>@endif</td><td class="num">{{ $c->active_count }}</td><td><div class="row-actions"><button class="btn btn-sm" wire:click="editCompany({{ $c->id }})">Rename</button></div></td></tr>
+                <tr wire:key="co-{{ $c->id }}"><td><strong>{{ $c->name }}</strong>@if($c->is_main) <x-badge tone="blue">main</x-badge>@endif</td><td class="num">{{ $c->active_count }}</td><td>@if($editCompanies)<div class="row-actions"><button class="btn btn-sm" wire:click="editCompany({{ $c->id }})">Rename</button></div>@endif</td></tr>
             @endforeach
             </tbody>
         </table></div>
+        @if($editCompanies)
         <form class="toolbar" wire:submit="saveCompany" style="border-top:1px solid var(--line-2)">
             <x-field :label="$companyEditingId ? 'New name' : 'Add a company'" name="companyName"><input wire:model="companyName" maxlength="120" placeholder="e.g. ITWeb"></x-field>
             <button class="btn btn-primary" wire:loading.attr="disabled">{{ $companyEditingId ? 'Save name' : 'Add company' }}</button>
             @if($companyEditingId)<button type="button" class="btn" wire:click="cancelCompany">Cancel</button>@endif
         </form>
+        @endif
     </section>
 
     @if($showForm)

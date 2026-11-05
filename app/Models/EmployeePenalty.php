@@ -3,6 +3,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 class EmployeePenalty extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id','policy_rule_id','effective_on','amount','status','reason','requested_by','decided_by','decided_at','decision_note','payroll_item_id','source_key'];
     protected $casts = ['effective_on'=>'date','amount'=>'decimal:2','decided_at'=>'datetime'];
     public function employee(){return $this->belongsTo(AttendanceEmployee::class);}

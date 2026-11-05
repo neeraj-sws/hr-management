@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class LeaveRequest extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'leave_type_id', 'other_type', 'starts_on', 'ends_on', 'duration', 'days', 'reason', 'status', 'decided_by', 'decided_at', 'decision_note'];
 
     /** Fractional day weight for each leave duration (full day = one working day). */

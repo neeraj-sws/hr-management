@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EmployeeTeamHistory extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $table = 'employee_team_history';
     protected $fillable = ['employee_id', 'team_id', 'starts_on', 'ends_on', 'changed_by'];
     protected $casts = ['starts_on' => 'date', 'ends_on' => 'date'];

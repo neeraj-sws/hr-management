@@ -26,13 +26,15 @@ class Departments extends Component
 
     public function editCompany(int $id): void
     {
+        // Adding and renaming companies is for logins of all companies (the Super Admin), not a company owner.
+        abort_if(\App\Support\CompanyAccess::isLimited($this->user()), 403);
         $this->fill(['companyEditingId' => $id, 'companyName' => Company::findOrFail($id)->name]);
         $this->resetValidation();
     }
 
     public function saveCompany(AuditLogger $audit): void
     {
-        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']), 403);
+        abort_unless($this->user()->canAny(['employees.manage', 'hr.manage']) && ! \App\Support\CompanyAccess::isLimited($this->user()), 403);
         $this->companyName = trim($this->companyName);
         $this->validate(['companyName' => ['required', 'string', 'max:120', Rule::unique('companies', 'name')->ignore($this->companyEditingId)]], [], ['companyName' => 'company name']);
         $company = Company::updateOrCreate(['id' => $this->companyEditingId], ['name' => $this->companyName]);
@@ -106,6 +108,8 @@ class Departments extends Component
             'totals' => ['active' => Department::where('is_active', true)->count(), 'employees' => AttendanceEmployee::where('is_active', true)->whereNotNull('department_id')->count(), 'unassigned' => AttendanceEmployee::where('is_active', true)->whereNull('department_id')->count()],
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'companies' => Company::orderByDesc('is_main')->orderBy('name')->get()->each(fn (Company $c) => $c->setAttribute('active_count', AttendanceEmployee::where('is_active', true)->inPayrollCompany($c->is_main ? null : $c->id)->count())),
+            // Only logins of all companies add or rename companies.
+            'editCompanies' => ! \App\Support\CompanyAccess::isLimited($this->user()),
         ], 'Departments');
     }
 }

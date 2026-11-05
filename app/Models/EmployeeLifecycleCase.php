@@ -3,6 +3,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 class EmployeeLifecycleCase extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id','kind','status','effective_on','notes','opened_by','closed_by','closed_at','cancelled_by','cancelled_at','cancel_reason'];
     protected $casts = ['effective_on'=>'date','closed_at'=>'datetime','cancelled_at'=>'datetime'];
     public function canceller(){return $this->belongsTo(User::class,'cancelled_by');}

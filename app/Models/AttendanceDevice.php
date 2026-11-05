@@ -8,6 +8,7 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class AttendanceDevice extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = [
         'employee_id',
         'device_id',

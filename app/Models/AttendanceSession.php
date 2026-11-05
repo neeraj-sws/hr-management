@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AttendanceSession extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = [
         'employee_id',
         'device_id',

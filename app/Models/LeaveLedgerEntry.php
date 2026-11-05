@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  */
 class LeaveLedgerEntry extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     public const UPDATED_AT = null;
 
     public const TYPES = [

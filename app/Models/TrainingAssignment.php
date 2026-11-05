@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TrainingAssignment extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['training_course_id', 'employee_id', 'assigned_by', 'due_on', 'status', 'started_at', 'completed_at', 'completion_note'];
     protected $casts = ['due_on' => 'date', 'started_at' => 'datetime', 'completed_at' => 'datetime'];
 

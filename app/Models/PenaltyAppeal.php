@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 /** An employee's reason for a late-arrival fine. Accepted: the fine is removed (or refunded in the next payroll). */
 class PenaltyAppeal extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_penalty_id', 'employee_id', 'reason', 'status', 'decided_by', 'decided_at', 'decision_note', 'refund_adjustment_id'];
 
     protected $casts = ['decided_at' => 'datetime'];

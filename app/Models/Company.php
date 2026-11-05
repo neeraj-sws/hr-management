@@ -15,6 +15,14 @@ class Company extends Model
 
     protected $casts = ['is_main' => 'boolean'];
 
+    /** A login limited to one company does not see the other companies at all, not even their names. */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('company', function (\Illuminate\Database\Eloquent\Builder $query) {
+            if ($companyId = \App\Support\CompanyAccess::limitedCompanyId()) $query->whereKey($companyId);
+        });
+    }
+
     public function employees(): HasMany
     {
         return $this->hasMany(AttendanceEmployee::class);
@@ -22,7 +30,7 @@ class Company extends Model
 
     public static function main(): ?self
     {
-        return static::where('is_main', true)->orderBy('id')->first();
+        return static::withoutGlobalScopes()->where('is_main', true)->orderBy('id')->first();
     }
 
     /** The company id as payroll stores it: the main company is null (so runs made before companies stay its own). */
@@ -30,6 +38,6 @@ class Company extends Model
     {
         if (! $companyId) return null;
 
-        return static::whereKey($companyId)->value('is_main') ? null : $companyId;
+        return static::withoutGlobalScopes()->whereKey($companyId)->value('is_main') ? null : $companyId;
     }
 }

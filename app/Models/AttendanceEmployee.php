@@ -60,6 +60,14 @@ class AttendanceEmployee extends Authenticatable
         'exit_date' => 'date',
     ];
 
+    /** A login limited to one company sees only that company's employees (see CompanyAccess). */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('company', function (\Illuminate\Database\Eloquent\Builder $query) {
+            if ($companyId = \App\Support\CompanyAccess::limitedCompanyId()) \App\Support\CompanyAccess::whereCompany($query, $companyId, $query->getModel()->qualifyColumn('company_id'));
+        });
+    }
+
     public function devices(): HasMany
     {
         return $this->hasMany(AttendanceDevice::class, 'employee_id');

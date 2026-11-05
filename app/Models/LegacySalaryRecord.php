@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** One employee-month from the old Excel salary sheet, kept exactly as written (never recalculated). */
 class LegacySalaryRecord extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $guarded = ['id'];
 
     protected $casts = ['raw' => 'array', 'payment_date' => 'date'];

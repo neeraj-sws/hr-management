@@ -27,6 +27,7 @@ class User extends Authenticatable
         'password',
         'is_active',
         'client_id',
+        'company_id',
     ];
 
     /**
@@ -90,6 +91,9 @@ class User extends Authenticatable
     public function client(): \Illuminate\Database\Eloquent\Relations\BelongsTo { return $this->belongsTo(Client::class); }
 
     public function isClient(): bool { return $this->client_id !== null; }
+
+    /** Set for a login limited to one company (e.g. the ITWeb owner); empty = all companies. */
+    public function company(): \Illuminate\Database\Eloquent\Relations\BelongsTo { return $this->belongsTo(Company::class); }
 
     public function employeeProfile(): HasOne
     {

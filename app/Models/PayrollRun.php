@@ -11,6 +11,14 @@ class PayrollRun extends Model
 {
     protected $fillable = ['company_id', 'period_starts_on', 'period_ends_on', 'status', 'created_by', 'locked_by', 'locked_at', 'needs_recalculation'];
     protected $casts = ['period_starts_on' => 'date', 'period_ends_on' => 'date', 'locked_at' => 'datetime', 'needs_recalculation' => 'boolean'];
+    /** A login limited to one company sees only that company's payroll. */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('company', function (\Illuminate\Database\Eloquent\Builder $query) {
+            if ($companyId = \App\Support\CompanyAccess::limitedCompanyId()) $query->where(fn ($q) => $q->forCompany(Company::payrollKey($companyId)));
+        });
+    }
+
     public function items(): HasMany { return $this->hasMany(PayrollItem::class); }
     public function company(): BelongsTo { return $this->belongsTo(Company::class); }
 

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EmployeeManagerHistory extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $table = 'employee_manager_history';
     protected $fillable = ['employee_id', 'manager_id', 'starts_on', 'ends_on', 'changed_by'];
     protected $casts = ['starts_on' => 'date', 'ends_on' => 'date'];

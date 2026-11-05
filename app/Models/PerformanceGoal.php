@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** A KRA (ongoing key result area) or OKR (objective with a measurable key result) for a period. */
 class PerformanceGoal extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     public const KINDS = ['kra' => 'KRA', 'okr' => 'OKR'];
 
     protected $fillable = ['employee_id', 'kind', 'title', 'description', 'target', 'weight', 'progress', 'status', 'starts_on', 'ends_on', 'created_by', 'approved_by'];

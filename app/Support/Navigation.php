@@ -78,6 +78,8 @@ class Navigation
             ->flatMap(fn ($middleware) => explode(',', Str::after($middleware, 'access:')))
             ->all();
         if (! Access::allows($user, $rules)) return false;
+        // Pages not split by company yet: hidden from a login limited to one company.
+        if (in_array('all-companies', $route->gatherMiddleware(), true) && \App\Support\CompanyAccess::isLimited($user)) return false;
         // Overtime switched off in Settings > Payroll: its page and report leave the menu.
         if (($routeName === 'leave.overtime' || ($routeName === 'reports.show' && ($params['type'] ?? '') === 'overtime')) && ! app(\App\Services\PeopleOperationsService::class)->overtimeEnabled()) return false;
 

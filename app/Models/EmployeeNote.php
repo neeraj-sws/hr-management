@@ -3,6 +3,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 class EmployeeNote extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['author_id','employee_id','team_id','visibility','title','body'];
     public function author(){return $this->belongsTo(User::class,'author_id');}
     public function employee(){return $this->belongsTo(AttendanceEmployee::class,'employee_id');}

@@ -20,7 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(SecurityHeaders::class);
         // Settings > Security > Website access: who may use the website (the apps use the API, not this).
         $middleware->web(append: [EnsureWebAccess::class, \App\Http\Middleware\ViewAsReadOnly::class, \App\Http\Middleware\ClientPortalOnly::class]);
-        $middleware->alias(['account.active' => EnsureActiveAccount::class, 'access' => EnsureAccess::class]);
+        $middleware->alias(['account.active' => EnsureActiveAccount::class, 'access' => EnsureAccess::class, 'all-companies' => \App\Http\Middleware\EnsureAllCompanies::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

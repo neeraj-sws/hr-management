@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class LateArrivalRequest extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'work_date', 'expected_at', 'reason', 'status', 'decided_by', 'decided_at', 'decision_note'];
 
     protected $casts = ['work_date' => 'date', 'decided_at' => 'datetime'];

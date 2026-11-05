@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** "I am taking my off on this day": an employee whose week-of-month offs count only when asked for; HR approves it. */
 class OffDayRequest extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'off_date', 'note', 'status', 'decided_by', 'decided_at', 'decision_note'];
 
     protected $casts = ['off_date' => 'date', 'decided_at' => 'datetime'];

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PerformanceReview extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     /** self_review -> manager_review -> submitted (shared with the employee) -> acknowledged. */
     public const STATUSES = ['self_review' => 'Waiting for self-review', 'manager_review' => 'Waiting for manager', 'submitted' => 'Shared', 'acknowledged' => 'Acknowledged'];
 

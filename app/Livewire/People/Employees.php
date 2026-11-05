@@ -188,10 +188,11 @@ class Employees extends Component
         }
         $this->validate($rules, [], ['employeeCode' => 'employee code', 'managerId' => 'manager', 'departmentId' => 'department', 'monthlySalary' => 'monthly salary', 'dailyHours' => 'daily hours', 'dailyRate' => 'per-day salary', 'exitDate' => 'last working day', 'exitType' => 'exit type']);
 
+        // A login limited to one company keeps everyone in it (only a login of all companies moves people).
         $data = [
             'employee_code' => $this->employeeCode, 'name' => $this->name, 'email' => $this->email,
             'designation' => $this->designation ?: null, 'phone' => $this->phone ?: null, 'address' => trim($this->address) !== '' ? trim($this->address) : null,
-            'department_id' => $this->departmentId ?: null, 'company_id' => \App\Models\Company::payrollKey($this->companyId), 'manager_id' => $this->managerId ?: null,
+            'department_id' => $this->departmentId ?: null, 'company_id' => \App\Models\Company::payrollKey(\App\Support\CompanyAccess::limitedCompanyId() ?? $this->companyId), 'manager_id' => $this->managerId ?: null,
             'joined_at' => $this->joinedAt ?: null, 'date_of_birth' => $this->dateOfBirth ?: null, 'employment_type' => $this->employmentType, 'probation_ends_on' => $this->probationEndsOn ?: null, 'notice_period_days' => $this->noticePeriodDays === '' ? null : (int) $this->noticePeriodDays, 'work_start' => $this->workStart ?: null, 'work_end' => $this->workEnd ?: null,
             'daily_work_hours' => $this->dailyHours, 'team_ids' => array_map('intval', $this->teamIds), 'is_manager' => $this->isManager,
             ...($left ? ['exit_date' => $this->exitDate, 'exit_type' => $this->exitType, 'exit_reason' => $this->exitReason ?: null] : []),

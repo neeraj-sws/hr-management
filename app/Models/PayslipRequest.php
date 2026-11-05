@@ -9,6 +9,7 @@ use Illuminate\Support\Carbon;
 /** An employee's request for a month's payslip; sent as a system payslip, from the old salary sheet or as a file. */
 class PayslipRequest extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'month', 'note', 'status', 'payslip_id', 'legacy_record_id', 'file_path', 'requested_by', 'decided_by', 'decided_at', 'decision_note'];
 
     protected $casts = ['decided_at' => 'datetime'];
