@@ -42,14 +42,17 @@
                             @else
                                 <div class="small" style="color:var(--red)"><b>Reason not accepted</b> by {{ $p->appeal->decider?->name ?? 'HR' }} on {{ $p->appeal->decided_at?->format('d M Y') }}: {{ $p->appeal->decision_note }} · the fine stays</div>
                             @endif
-                        @elseif($p->decision_note && $p->decided_at)
+                        @elseif($p->decision_note && $p->decided_at && ! $p->isRestored())
                             <div class="small mt"><b>{{ ['waived' => 'Why removed', 'rejected' => 'Why rejected'][$p->status] ?? ($p->isPaidBack() ? 'Taken back' : 'Note') }}</b> ({{ $p->decider?->name ?? 'HR' }}, {{ $p->decided_at->format('d M Y') }}): {{ $p->decision_note }}</div>
+                        @endif
+                        @if($p->isRestored() && $p->decided_at)
+                            <div class="small mt"><b>Restored</b> ({{ $p->decider?->name ?? 'HR' }}, {{ $p->decided_at->format('d M Y') }}): {{ \Illuminate\Support\Str::after($p->decision_note, \App\Models\EmployeePenalty::RESTORED.': ') }} · the fine is deducted again</div>
                         @endif
                     </td>
                     <td><x-badge :tone="$p->policyRule ? 'violet' : 'blue'">{{ $p->policyRule ? 'policy' : 'manual' }}</x-badge></td>
                     <td class="num">{{ number_format((float) $p->amount, 2) }}</td><td><x-badge :status="$p->status" /></td>
                     <td class="small">{{ $p->payrollItem?->run ? $p->payrollItem->run->period_starts_on->format('M Y') : '—' }}</td>
-                    <td><div class="row-actions">@if(in_array($p->id, $decidable))<button class="btn btn-sm btn-success" wire:click="decide({{ $p->id }}, true)" wire:confirm="Apply this penalty? It will be deducted in payroll.">Approve</button><button class="btn btn-sm" wire:click="openAction({{ $p->id }}, 'reduce')">Reduce</button><button class="btn btn-sm" wire:click="openAction({{ $p->id }}, 'reject')">Reject</button>@endif@if(auth()->user()->can('penalties.manage') && in_array($p->status, ['pending', 'approved'], true))<button class="btn btn-sm btn-danger" wire:click="openAction({{ $p->id }}, 'waive')">Waive</button>@endif@if($p->appeal && in_array($p->appeal->id, $reviewable))<button class="btn btn-sm btn-success" wire:click="openReview({{ $p->appeal->id }}, true)" title="The fine is removed">Accept reason</button><button class="btn btn-sm" wire:click="openReview({{ $p->appeal->id }}, false)" title="The fine stays">Don't accept</button>@endif@if($p->employee_id === $ownId && $p->canAppeal())<button class="btn btn-sm btn-primary" wire:click="openAppeal({{ $p->id }})">Give reason</button>@endif</div></td></tr>
+                    <td><div class="row-actions">@if(in_array($p->id, $decidable))<button class="btn btn-sm btn-success" wire:click="decide({{ $p->id }}, true)" wire:confirm="Apply this penalty? It will be deducted in payroll.">Approve</button><button class="btn btn-sm" wire:click="openAction({{ $p->id }}, 'reduce')">Reduce</button><button class="btn btn-sm" wire:click="openAction({{ $p->id }}, 'reject')">Reject</button>@endif@if(auth()->user()->can('penalties.manage') && in_array($p->status, ['pending', 'approved'], true))<button class="btn btn-sm btn-danger" wire:click="openAction({{ $p->id }}, 'waive')">Waive</button>@endif@if($canManage && $p->canBeRestored())<button class="btn btn-sm" wire:click="openRestore({{ $p->id }})" title="Removed by mistake: deduct it again on its own date">Restore fine</button>@endif@if($p->appeal && in_array($p->appeal->id, $reviewable))<button class="btn btn-sm btn-success" wire:click="openReview({{ $p->appeal->id }}, true)" title="The fine is removed">Accept reason</button><button class="btn btn-sm" wire:click="openReview({{ $p->appeal->id }}, false)" title="The fine stays">Don't accept</button>@endif@if($p->employee_id === $ownId && $p->canAppeal())<button class="btn btn-sm btn-primary" wire:click="openAppeal({{ $p->id }})">Give reason</button>@endif</div></td></tr>
             @empty
                 <tr><td colspan="9"><x-empty title="No penalties" icon="shield" /></td></tr>
             @endforelse
@@ -83,6 +86,15 @@
                 <x-field label="Why are they taken back?" name="bulkNote" full><textarea rows="3" wire:model="bulkNote" placeholder="e.g. Warning given on 29 Oct; October late fines taken back"></textarea></x-field>
             </div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-danger" wire:loading.attr="disabled">Take back</button></div></form>
+        </x-modal>
+    @endif
+    @if($restoringId)
+        <x-modal title="Restore this fine">
+            <form wire:submit="saveRestore"><div class="modal-body"><x-errors />
+                <p class="small">The fine is deducted again on its own date, with its amount and reason. If it was paid back in the next salary, that refund is cancelled (if not paid yet). A month whose payroll is approved or locked cannot change. The employee is told.</p>
+                <x-field label="Why is it put back?" name="restoreNote" full><input wire:model="restoreNote" placeholder="e.g. Taken back by mistake from Day-wise salary"></x-field>
+            </div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Restore fine</button></div></form>
         </x-modal>
     @endif
     @if($appealingId)
