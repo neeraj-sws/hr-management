@@ -245,7 +245,7 @@ class HrLetterService
 
         return ['signatory_name' => (string) (($saved['signatory_name'] ?? '') ?: $this->company()['signatory']), 'signatory_designation' => (string) ($saved['signatory_designation'] ?? 'Authorised Signatory'),
             'signature_path' => (string) ($saved['signature_path'] ?? ''), 'seal_path' => (string) ($saved['seal_path'] ?? ''),
-            'certificate_tagline' => (string) ($saved['certificate_tagline'] ?? 'Move to the Next World')];
+            'certificate_tagline' => (string) ($saved['certificate_tagline'] ?? 'Move to the Next World'), 'certificate_company' => (array) ($saved['certificate_company'] ?? [])];
     }
 
     public function saveSettings(array $settings, User $actor): void
@@ -257,6 +257,7 @@ class HrLetterService
             // The signature and seal images stay unless they are changed.
             'signature_path' => (string) ($settings['signature_path'] ?? $current['signature_path']), 'seal_path' => (string) ($settings['seal_path'] ?? $current['seal_path']),
             'certificate_tagline' => (string) ($settings['certificate_tagline'] ?? $current['certificate_tagline']),
+            'certificate_company' => (array) ($settings['certificate_company'] ?? $current['certificate_company']),
         ], null, $actor->id, today()->toDateString());
     }
 
@@ -406,6 +407,16 @@ class HrLetterService
 
     // ---- training certificate ----------------------------------------------------------------
 
+    /** The company details printed on the certificate until HR changes them (from the company's own certificate). */
+    public const CERTIFICATE_COMPANY = [
+        'company' => 'Soham Web Solution',
+        'address1' => '12, Civil Lines, Chamunda Complex, Near BJP Office,',
+        'address2' => 'Dewas, Madhya Pradesh, 455001',
+        'phone' => '7879231700, 7748018188',
+        'email' => 'contact@sohamsolution.com, soham.solution@yahoo.com',
+        'website' => 'www.sohamsolution.com',
+    ];
+
     /** What the certificate says, filled from the employee and their latest training (HR can change any of it). */
     public function certificateDefaults(AttendanceEmployee $employee): array
     {
@@ -417,19 +428,20 @@ class HrLetterService
             'course' => (string) ($training?->course?->title ?? $training?->course_name ?? ''),
             'from' => $training?->starts_on?->format('F Y') ?? '', 'to' => $training?->ends_on?->format('F Y') ?? '',
             'date' => today()->format('d F Y'), 'tagline' => (string) ($saved['certificate_tagline'] ?? 'Move to the Next World'),
+            // Its own company details (the letterhead is shared with Billing and may name another brand).
+            ...array_map('strval', array_merge(self::CERTIFICATE_COMPANY, array_intersect_key((array) ($saved['certificate_company'] ?? []), self::CERTIFICATE_COMPANY))),
         ];
     }
 
     /** The certificate as a PDF (contents), with the signature and seal when they are uploaded. */
     public function certificatePdf(array $fields): string
     {
-        $c = $this->companyRecord();
-        $line2 = implode(', ', array_filter([trim((string) $c['city']), trim((string) $c['state']), trim((string) $c['pin'])]));
+        $f = fn (string $key) => trim((string) ($fields[$key] ?? self::CERTIFICATE_COMPANY[$key] ?? ''));
 
         return (new \App\Support\CertificatePdf(self::logoPath(), $this->signImagePath('signature'), $this->signImagePath('seal')))->render([
             ...array_map(fn ($v) => trim((string) $v), array_intersect_key($fields, array_flip(['salutation', 'name', 'relation', 'parent', 'course', 'from', 'to', 'date', 'tagline']))),
-            'company' => (string) $c['name'], 'address_lines' => array_values(array_filter([trim((string) $c['address']), $line2])),
-            'phone' => trim((string) $c['phone']), 'email' => trim((string) $c['email']), 'website' => trim((string) $c['website']),
+            'company' => $f('company'), 'address_lines' => array_values(array_filter([$f('address1'), $f('address2')])),
+            'phone' => $f('phone'), 'email' => $f('email'), 'website' => $f('website'),
         ]);
     }
 
@@ -449,8 +461,9 @@ class HrLetterService
             Storage::disk('local')->delete($path);
             throw $error;
         }
-        // The line under the company name is kept for the next certificate.
-        $this->saveSettings(['certificate_tagline' => trim((string) ($fields['tagline'] ?? ''))], $actor);
+        // The line under the company name and the company details are kept for the next certificate.
+        $this->saveSettings(['certificate_tagline' => trim((string) ($fields['tagline'] ?? '')),
+            'certificate_company' => array_map(fn ($k) => trim((string) ($fields[$k] ?? '')), array_combine(array_keys(self::CERTIFICATE_COMPANY), array_keys(self::CERTIFICATE_COMPANY)))], $actor);
         $this->audit->record('employee.certificate_issued', $document, ['employee_id' => $employee->id, 'employee' => $employee->name, 'course' => $fields['course'] ?? null, 'from' => $fields['from'] ?? null, 'to' => $fields['to'] ?? null, 'date' => $fields['date'] ?? null, 'name' => $name]);
         Notifier::send($employee->user, 'EmployeeDocument', $document->id, 'HR issued your training certificate ('.trim((string) ($fields['course'] ?? '')).'). You can view and download it in Documents.', route('lifecycle.documents', [], false), $actor->id);
 

@@ -113,11 +113,43 @@ class TrainingCertificateTest extends TestCase
         $this->assertStringContainsString('/Im2', $pdf, 'signature');
         $this->assertStringContainsString('/Im3', $pdf, 'seal');
         $text = gzuncompress(preg_match('/<< \/Length \d+ \/Filter \/FlateDecode >>\nstream\n(.*)\nendstream/s', $pdf, $m) ? $m[1] : '');
-        foreach (['Certificate of Training', '\(Web Designing Training\)', 'Affan Sheikh', 'Mr. Sadiq Sheikh', 'June 2026', 'October 2026', 'Date: 05 November 2026', 'We wish him all the best for his better future.'] as $words) {
+        foreach (['Certificate of Training', '\(Web Designing Training\)', 'Affan Sheikh', 'Mr. Sadiq Sheikh', 'June 2026', 'October 2026', 'Date: 05 November 2026', 'We wish him all the best for his better future.',
+            'SOHAM WEB SOLUTION', 'Soham Web Solution', '12, Civil Lines, Chamunda Complex, Near BJP Office,', 'Dewas, Madhya Pradesh, 455001', '7879231700, 7748018188', 'contact@sohamsolution.com', 'www.sohamsolution.com'] as $words) {
             $this->assertStringContainsString($words, $text);
         }
         $this->assertSame(1, AuditLog::where('action', 'employee.certificate_issued')->count());
         $this->assertStringContainsString('training certificate', $this->employee->user->notifications()->first()->data['message']);
+    }
+
+    public function test_company_details_changed_on_a_certificate_are_kept_for_the_next(): void
+    {
+        Livewire::actingAs($this->admin)->test(EmployeeProfile::class, ['employee' => $this->employee])
+            ->call('openCertificate')->assertSet('cert.company', 'Soham Web Solution')
+            ->set('cert.course', 'PHP')->set('cert.from', 'June 2026')->set('cert.to', 'July 2026')
+            ->set('cert.phone', '9999999999')->call('issueCertificate')->assertHasNoErrors();
+
+        Livewire::actingAs($this->admin)->test(EmployeeProfile::class, ['employee' => $this->employee])
+            ->call('openCertificate')->assertSet('cert.phone', '9999999999')->assertSet('cert.website', 'www.sohamsolution.com');
+    }
+
+    public function test_the_certificate_is_previewed_inside_the_form(): void
+    {
+        $page = Livewire::actingAs($this->admin)->test(EmployeeProfile::class, ['employee' => $this->employee])
+            ->call('openCertificate')
+            ->assertSet('certPreview', null)->assertSee('Fill in the name, course') // no training yet: course / dates missing
+            ->set('cert.course', 'Web Designing')->set('cert.from', 'June 2026')->set('cert.to', 'October 2026');
+        $url = $page->get('certPreview');
+        $this->assertNotNull($url);
+        $page->assertSeeHtml('<iframe');
+
+        $response = $this->actingAs($this->admin)->get($url);
+        $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-1.4', $response->getContent());
+        $this->assertSame(0, EmployeeDocument::count(), 'A preview saves nothing');
+
+        // Only HR / admin, and only this session's copy.
+        $this->actingAs($this->employee->user)->get($url)->assertForbidden();
+        $this->actingAs($this->admin)->get(route('letters.certificate-preview', str_repeat('a', 24)))->assertNotFound();
     }
 
     public function test_word_file_becomes_the_template_text(): void

@@ -44,6 +44,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/dashboard', Livewire\Hr\Dashboard::class)->name('dashboard');
     Route::get('/search', Livewire\Search::class)->name('search');
     Route::get('/search/suggest', \App\Http\Controllers\SearchController::class)->middleware('throttle:120,1')->name('search.suggest');
+    Route::get('/letters/certificate-preview/{token}', \App\Http\Controllers\CertificatePreviewController::class)->where('token', '[A-Za-z0-9]{24}')->middleware('throttle:120,1')->name('letters.certificate-preview');
     Route::get('/profile', Livewire\Account\Profile::class)->name('account.profile');
 
     // Client portal (client logins only — see ClientPortalOnly)

@@ -165,6 +165,9 @@ class EmployeeProfile extends Component
     /** "Training certificate" (HR / admin): what it says, filled in and changeable, then saved to the documents. */
     public bool $certOpen = false;
     public array $cert = [];
+    /** The preview shown in the form (an address of this session's copy of the certificate). */
+    public ?string $certPreview = null;
+    private ?string $certToken = null;
 
     public function openCertificate(): void
     {
@@ -172,6 +175,29 @@ class EmployeeProfile extends Component
         $this->resetErrorBag();
         $this->cert = app(\App\Services\HrLetterService::class)->certificateDefaults($this->employee);
         $this->certOpen = true;
+        $this->updatedCert();
+        $this->resetErrorBag(); // nothing is wrong yet: the form just opened
+    }
+
+    /** Shows the certificate as it is now, inside the form (nothing is saved). */
+    public function previewCertificate(): void
+    {
+        $this->validateCertificate();
+        $token = \Illuminate\Support\Str::random(24);
+        $previews = array_slice((array) session('certificate_preview', []), -4, 4, true); // keep only the last few
+        session(['certificate_preview' => [...$previews, $token => $this->cert]]);
+        $this->certPreview = route('letters.certificate-preview', $token);
+    }
+
+    /** A field changed: the preview follows (while the details are complete). */
+    public function updatedCert(): void
+    {
+        if (! $this->certOpen) return;
+        try {
+            $this->previewCertificate();
+        } catch (\Illuminate\Validation\ValidationException) {
+            $this->certPreview = null;
+        }
     }
 
     private function validateCertificate(): void
@@ -181,7 +207,9 @@ class EmployeeProfile extends Component
             'cert.salutation' => ['nullable', 'in:Mr.,Ms.,Mrs.'], 'cert.name' => ['required', 'string', 'max:120'], 'cert.relation' => ['required', 'in:Son of,Daughter of,Wife of'],
             'cert.parent' => ['nullable', 'string', 'max:120'], 'cert.course' => ['required', 'string', 'max:120'], 'cert.from' => ['required', 'string', 'max:40'], 'cert.to' => ['required', 'string', 'max:40'],
             'cert.date' => ['required', 'string', 'max:40'], 'cert.tagline' => ['nullable', 'string', 'max:80'],
-        ], [], ['cert.name' => 'name', 'cert.course' => 'course', 'cert.from' => 'from', 'cert.to' => 'to', 'cert.date' => 'date', 'cert.parent' => "father's / mother's name"]);
+            'cert.company' => ['required', 'string', 'max:120'], 'cert.address1' => ['nullable', 'string', 'max:160'], 'cert.address2' => ['nullable', 'string', 'max:160'],
+            'cert.phone' => ['nullable', 'string', 'max:120'], 'cert.email' => ['nullable', 'string', 'max:160'], 'cert.website' => ['nullable', 'string', 'max:120'],
+        ], [], ['cert.company' => 'company name', 'cert.name' => 'name', 'cert.course' => 'course', 'cert.from' => 'from', 'cert.to' => 'to', 'cert.date' => 'date', 'cert.parent' => "father's / mother's name"]);
     }
 
     /** The certificate as it is now, to check (not saved). */
