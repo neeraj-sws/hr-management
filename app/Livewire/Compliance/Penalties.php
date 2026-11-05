@@ -40,6 +40,9 @@ class Penalties extends Component
     public array $selected = [];
     public bool $bulkOpen = false;
     public string $bulkNote = '';
+    /** HR / admin putting back a fine removed, rejected or paid back by mistake. */
+    public ?int $restoringId = null;
+    public string $restoreNote = '';
 
     public function updated($property): void
     {
@@ -174,8 +177,27 @@ class Penalties extends Component
         $this->toast($this->reviewAccept ? 'Reason accepted: the fine is removed.' : 'Reason not accepted: the fine stays.');
     }
 
+    public function openRestore(int $id): void
+    {
+        abort_unless($this->canManage(), 403);
+        $penalty = EmployeePenalty::with('appeal.refundAdjustment')->findOrFail($id);
+        abort_unless($penalty->canBeRestored(), 403);
+        $this->fill(['restoringId' => $id, 'restoreNote' => '']);
+        $this->resetValidation();
+    }
+
+    public function saveRestore(PeopleOperationsService $people): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->validate(['restoreNote' => ['required', 'string', 'min:5', 'max:500']], ['restoreNote.required' => 'Write why the fine is put back.', 'restoreNote.min' => 'Write why the fine is put back (at least 5 characters).'], ['restoreNote' => 'reason']);
+        $penalty = $people->restorePenalty(EmployeePenalty::findOrFail($this->restoringId), auth()->id(), $this->restoreNote);
+        $this->restoringId = null;
+        $this->toast('Fine of '.$penalty->effective_on->format('d M Y').' restored: it is deducted again. The employee is told.');
+    }
+
     public function closeModal(): void
     {
+        $this->restoringId = null;
         $this->showForm = false;
         $this->actingId = null;
         $this->appealingId = null;
@@ -186,7 +208,7 @@ class Penalties extends Component
     public function render(ApprovalInbox $inbox)
     {
         $own = $this->ownEmployee();
-        $query = $this->filtered()->with(['employee', 'policyRule', 'payrollItem.run', 'appeal.decider', 'decider']);
+        $query = $this->filtered()->with(['employee', 'policyRule', 'payrollItem.run', 'appeal.decider', 'appeal.refundAdjustment', 'decider']);
 
         return $this->page('livewire.compliance.penalties', [
             'penalties' => (clone $query)->latest('id')->paginate(20),

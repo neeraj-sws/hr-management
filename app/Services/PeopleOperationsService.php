@@ -457,6 +457,61 @@ class PeopleOperationsService
         });
     }
 
+    /**
+     * Puts back a fine that was removed (waived), rejected or paid back by mistake: it is deducted again on its own
+     * date, with its own amount and reason. A removed / rejected fine follows the same payroll rules as approving one
+     * (a draft payroll must be recalculated; an approved or locked month cannot change). A paid-back fine is still in
+     * its locked payroll: its refund is cancelled instead, unless that refund is already paid.
+     */
+    public function restorePenalty(EmployeePenalty $penalty, int $actor, string $note): EmployeePenalty
+    {
+        $note = trim($note);
+        if (mb_strlen($note) < 5) throw ValidationException::withMessages(['restoreNote' => 'Write why the fine is put back (at least 5 characters).']);
+
+        return DB::transaction(function () use ($penalty, $actor, $note) {
+            $penalty = EmployeePenalty::with(['employee.user', 'appeal.refundAdjustment'])->whereKey($penalty->id)->lockForUpdate()->firstOrFail();
+            if (! $penalty->canBeRestored()) throw ValidationException::withMessages(['penalty' => 'Only a removed, rejected or paid-back fine can be restored.'])->status(409);
+            $day = $penalty->effective_on->format('d M Y');
+            $from = $penalty->isPaidBack() || $penalty->hasAppealRefund() ? 'paid_back' : $penalty->status;
+            $previousNote = $penalty->decision_note;
+            $refund = null;
+            if ($from === 'paid_back') {
+                // The fine is still in its locked payroll: only the refund in the next salary is cancelled.
+                $refund = $penalty->hasAppealRefund() ? $penalty->appeal->refundAdjustment : $this->paidBackRefund($penalty);
+                if (! $refund) throw ValidationException::withMessages(['penalty' => "The refund of the fine of {$day} was not found, so it cannot be restored here. Add a manual penalty instead."]);
+                $refund = SalaryAdjustment::whereKey($refund->id)->lockForUpdate()->firstOrFail();
+                $run = $refund->payroll_item_id ? \App\Models\PayrollItem::with('run')->find($refund->payroll_item_id)?->run : null;
+                if ($run && in_array($run->status, ['approved', 'locked'], true)) {
+                    throw ValidationException::withMessages(['payroll' => "The fine of {$day} cannot be restored: it was already paid back in the payroll of {$run->period_starts_on->format('d M')}–{$run->period_ends_on->format('d M Y')} ({$run->status}). Add a manual penalty if it must be recovered."])->status(409);
+                }
+                $refund->update(['status' => 'rejected', 'payroll_item_id' => null, 'decided_by' => $actor, 'decided_at' => now()]);
+                app(PayrollLockGuard::class)->flagDrafts($refund->effective_on->toDateString());
+                $changes = [];
+            } else {
+                try {
+                    app(PayrollLockGuard::class)->changed($penalty->employee_id, $penalty->effective_on->toDateString(), 'penalty');
+                } catch (ValidationException $e) {
+                    throw ValidationException::withMessages(['payroll' => "The fine of {$day} cannot be restored: ".collect($e->errors())->flatten()->first()])->status(409);
+                }
+                $changes = ['status' => 'approved', 'payroll_item_id' => null];
+            }
+            $penalty->update([...$changes, 'decided_by' => $actor, 'decided_at' => now(), 'decision_note' => mb_substr(EmployeePenalty::RESTORED.': '.$note, 0, 1000)]);
+            $this->audit->record('penalty.restored', $penalty, ['restored_by' => $actor, 'from' => $from, 'previous_note' => $previousNote, 'note' => $note, 'amount' => (float) $penalty->amount, 'effective_on' => $penalty->effective_on->toDateString(), 'refund_cancelled_id' => $refund?->id]);
+            $amount = number_format((float) $penalty->amount, 2);
+            Notifier::send($penalty->employee?->user, 'EmployeePenalty', $penalty->id, "The fine of Rs {$amount} for {$day} ({$penalty->reason}) was put back".($from === 'paid_back' ? ' and is no longer paid back in the next salary' : ' and is deducted from your salary').". Reason: {$note}", route('compliance.penalties', [], false), $actor);
+
+            return $penalty->fresh();
+        });
+    }
+
+    /** The arrear made when a fine of a locked payroll was taken back (removeFines): same employee, amount and date. */
+    private function paidBackRefund(EmployeePenalty $penalty): ?SalaryAdjustment
+    {
+        return SalaryAdjustment::where('employee_id', $penalty->employee_id)->where('kind', 'arrear')->where('status', 'approved')
+            ->where('amount', $penalty->amount)->where('reason', 'like', 'Fine of '.$penalty->effective_on->format('d M Y').' paid back%')
+            ->latest('id')->first();
+    }
+
     public function disburseAdvance(SalaryAdvance $advance, float $amount, int $userId): SalaryAdvance
     {
         return DB::transaction(function () use ($advance, $amount, $userId) {

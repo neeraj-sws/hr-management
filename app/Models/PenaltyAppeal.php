@@ -27,6 +27,12 @@ class PenaltyAppeal extends Model
         return $this->belongsTo(AttendanceEmployee::class);
     }
 
+    /** The arrear that pays the fine back when its payroll was already locked. */
+    public function refundAdjustment()
+    {
+        return $this->belongsTo(SalaryAdjustment::class, 'refund_adjustment_id');
+    }
+
     public function decider()
     {
         return $this->belongsTo(User::class, 'decided_by');

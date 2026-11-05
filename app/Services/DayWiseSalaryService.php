@@ -97,7 +97,7 @@ class DayWiseSalaryService
                 $minutes = (int) collect($overtime->get($date, []))->sum('approved_minutes');
                 $ot = $minutes ? round($f['hourly'] * $minutes / 60 * ($workday ? $f['multiplier'] : $f['holidayMultiplier']), 2) : 0.0;
             }
-            $dayFines = collect($fines->get($date, []))->map(fn (EmployeePenalty $p) => ['id' => $p->id, 'amount' => (float) $p->amount, 'reason' => (string) $p->reason, 'status' => $p->status, 'paid_back' => $p->isPaidBack(), 'note' => $p->decision_note, 'can_remove' => $p->canBeRemoved()])->values()->all();
+            $dayFines = collect($fines->get($date, []))->map(fn (EmployeePenalty $p) => ['id' => $p->id, 'amount' => (float) $p->amount, 'reason' => (string) $p->reason, 'status' => $p->status, 'paid_back' => $p->isPaidBack(), 'restored' => $p->isRestored(), 'note' => $p->decision_note, 'can_remove' => $p->canBeRemoved()])->values()->all();
             // A day not paid (not on project work) has its fines left uncut, as payroll does.
             $deducted = isset($notOnProject[$date]) ? 0.0 : (float) collect($dayFines)->where('status', 'approved')->where('paid_back', false)->sum('amount');
 
