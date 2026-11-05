@@ -53,6 +53,7 @@ return [
         ['label' => 'Overtime', 'route' => 'leave.overtime', 'icon' => 'timer'],
         ['label' => 'Late arrival', 'route' => 'leave.late-arrival', 'icon' => 'clock'],
         ['label' => 'Night work', 'route' => 'leave.night-work', 'icon' => 'clock'],
+        ['label' => 'Off day requests', 'route' => 'leave.off-days', 'icon' => 'calendar'],
     ]],
     ['heading' => 'Expenses', 'items' => [
         ['label' => 'Expense Claims', 'route' => 'expenses.index', 'icon' => 'receipt'],

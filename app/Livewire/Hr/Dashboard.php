@@ -162,6 +162,8 @@ class Dashboard extends Component
             // Leave nobody has decided yet (the whole company for HR / admin, the team for a manager), oldest first.
             'undecidedLeave' => ($orgWide || $user->canAny(['leave.manage', 'leave.approve'])) ? LeaveRequest::with(['employee', 'leaveType'])->where('status', 'pending')
                 ->whereIn('employee_id', $orgWide ? AttendanceEmployee::pluck('id') : $employeeIds->reject(fn ($id) => $id === $profile?->id))->oldest()->get() : collect(),
+            // Off day requests HR has not decided yet: until approved the day is a working day (absent if not in).
+            'undecidedOffDays' => $user->canAny(['hr.manage', 'approvals.manage']) ? \App\Models\OffDayRequest::with('employee')->where('status', 'pending')->orderBy('off_date')->get() : collect(),
             'inbox' => $inbox,
             'mySession' => $mySession,
             'myWorked' => $mySession ? $attendance->workedSeconds($mySession) : 0,

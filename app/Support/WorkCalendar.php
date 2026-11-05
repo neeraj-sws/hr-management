@@ -23,6 +23,9 @@ use Illuminate\Support\Carbon;
  *             -1 = the last one). A team/employee layer can add the 2nd Saturday: {"6": [2, 3]}.
  *   shifts    [{"from": "2026-10-17", "to": "2026-10-19", "note": "..."}] – a weekly off
  *             moved for one week: "from" becomes a working day, "to" becomes the off day.
+ *   offs_need_request true – the week-of-month offs (off_weeks) are off only when the employee asked
+ *             for that day and HR approved it (Leave & Time > Off day requests); otherwise a working day.
+ *   confirmed_offs ['Y-m-d', ...] – those approved days; added when the policy is read, never saved.
  */
 class WorkCalendar
 {
@@ -97,7 +100,38 @@ class WorkCalendar
         if (! in_array($weekday, array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]), true)) return false;
         if (in_array($ymd, self::offHolidays($calendar), true)) return false;
 
-        return ! self::isNthWeekdayOff($day, (array) ($calendar['off_weeks'] ?? []));
+        return ! self::isNthWeekdayOff($day, (array) ($calendar['off_weeks'] ?? [])) || self::awaitsOffRequest($ymd, $calendar);
+    }
+
+    /**
+     * A week-of-month off (e.g. 2nd Saturday) of someone whose such offs count only when asked for, and
+     * no approved off day request for it: the day stays a working day.
+     */
+    public static function awaitsOffRequest(string $date, array $calendar): bool
+    {
+        if (empty($calendar['offs_need_request'])) return false;
+        $day = Carbon::parse($date);
+        if (in_array($day->toDateString(), (array) ($calendar['confirmed_offs'] ?? []), true)) return false;
+
+        return in_array((int) $day->isoWeekday(), array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]), true)
+            && self::isNthWeekdayOff($day, (array) ($calendar['off_weeks'] ?? []));
+    }
+
+    /**
+     * Days between two dates that are off only when asked for (whether asked for yet or not), e.g. every
+     * 2nd Saturday; empty for everyone else.
+     *
+     * @return list<string>
+     */
+    public static function requestableOffs(array $calendar, Carbon $from, Carbon $to): array
+    {
+        if (empty($calendar['offs_need_request'])) return [];
+        $out = [];
+        for ($day = $from->copy()->startOfDay(); $day->lte($to); $day->addDay()) {
+            if (self::awaitsOffRequest($day->toDateString(), [...$calendar, 'confirmed_offs' => []]) && ! in_array($day->toDateString(), self::offHolidays($calendar), true)) $out[] = $day->toDateString();
+        }
+
+        return $out;
     }
 
     /** Which occurrence of its weekday in the month a date is (1..5), and whether it is the last. */
@@ -123,7 +157,8 @@ class WorkCalendar
         $parts = [implode(', ', array_map(fn ($d) => substr(self::WEEKDAYS[$d] ?? '', 0, 3), $days))];
         foreach ((array) ($calendar['off_weeks'] ?? []) as $weekday => $weeks) {
             if (! $weeks || ! in_array((int) $weekday, $days, true)) continue;
-            $parts[] = 'off on the '.implode(' & ', array_map(fn ($w) => self::OCCURRENCES[(int) $w] ?? $w, (array) $weeks)).' '.(self::WEEKDAYS[(int) $weekday] ?? '');
+            $parts[] = 'off on the '.implode(' & ', array_map(fn ($w) => self::OCCURRENCES[(int) $w] ?? $w, (array) $weeks)).' '.(self::WEEKDAYS[(int) $weekday] ?? '')
+                .(! empty($calendar['offs_need_request']) ? ' (only when asked for and approved)' : '');
         }
 
         return implode('; ', $parts);
@@ -161,6 +196,7 @@ class WorkCalendar
         if (! in_array((int) $day->isoWeekday(), array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]), true)) return null;
         if (in_array($ymd, self::offHolidays($calendar), true)) return null;
         if (! self::isNthWeekdayOff($day, (array) ($calendar['off_weeks'] ?? []))) return null;
+        if (self::awaitsOffRequest($ymd, $calendar)) return null;
         [$nth, $isLast] = self::occurrence($day);
         $weeks = array_map('intval', (array) ($calendar['off_weeks'][(string) $day->isoWeekday()] ?? []));
         $label = in_array($nth, $weeks, true) ? self::OCCURRENCES[$nth] : 'Last';
@@ -187,6 +223,9 @@ class WorkCalendar
         $out = [];
         for ($day = $from->copy()->startOfDay(), $end = $from->copy()->addDays($days); $day->lte($end); $day->addDay()) {
             if ($reason = self::specialOffReason($day->toDateString(), $calendar)) $out[] = ['date' => $day->copy(), 'reason' => $reason];
+            elseif (self::awaitsOffRequest($day->toDateString(), $calendar) && ! in_array($day->toDateString(), self::offHolidays($calendar), true)) {
+                $out[] = ['date' => $day->copy(), 'reason' => self::specialOffReason($day->toDateString(), [...$calendar, 'offs_need_request' => false]).' only if you ask for it (Off day request) and HR approves; otherwise a working day'];
+            }
         }
 
         return $out;

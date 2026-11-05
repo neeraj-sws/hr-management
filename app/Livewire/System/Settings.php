@@ -62,6 +62,10 @@ class Settings extends Component
     public ?int $patternEmployeeId = null;
     public array $employeeOffWeeks = [];
     public array $employeeDays = [];
+    /** Their week-of-month offs count only when they ask for the day and HR approves (Off day requests). */
+    public bool $employeeOffsNeedRequest = false;
+    /** ...and their requests are approved at once, without HR. */
+    public bool $employeeOffsAutoApprove = false;
 
     // Google Sheets
     public bool $sheetsEnabled = false;
@@ -400,10 +404,12 @@ class Settings extends Component
     {
         $this->authorizeSettings();
         $employee = \App\Models\AttendanceEmployee::find($this->patternEmployeeId);
-        if (! $employee) { $this->employeeOffWeeks = []; $this->employeeDays = []; return; }
+        if (! $employee) { $this->employeeOffWeeks = []; $this->employeeDays = []; $this->employeeOffsNeedRequest = false; $this->employeeOffsAutoApprove = false; return; }
         $effective = app(PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         $this->employeeDays = array_map('strval', $effective['days'] ?? [1, 2, 3, 4, 5]);
         $this->employeeOffWeeks = \App\Support\WorkCalendar::offWeeksForForm((array) ($effective['off_weeks'] ?? []));
+        $this->employeeOffsNeedRequest = ! empty($effective['offs_need_request']);
+        $this->employeeOffsAutoApprove = ! empty($effective['offs_auto_approve']);
     }
 
     public function updatedPatternEmployeeId(): void
@@ -417,7 +423,7 @@ class Settings extends Component
         $this->authorizeSettings();
         $this->validate(['patternEmployeeId' => ['required', 'exists:attendance_employees,id'], 'employeeDays' => ['required', 'array', 'min:1'], 'employeeDays.*' => ['integer', 'between:1,7']], ['employeeDays.required' => 'Select at least one working day.'], ['patternEmployeeId' => 'employee']);
         $normalised = \App\Support\WorkCalendar::normalise(['off_weeks' => $this->employeeOffWeeks]);
-        $this->updateEmployeeCalendar((int) $this->patternEmployeeId, fn (array $config) => [...$config, 'days' => array_values(array_unique(array_map('intval', $this->employeeDays))), 'off_weeks' => $normalised['off_weeks']]);
+        $this->updateEmployeeCalendar((int) $this->patternEmployeeId, fn (array $config) => [...\Illuminate\Support\Arr::except($config, ['offs_need_request', 'offs_auto_approve']), 'days' => array_values(array_unique(array_map('intval', $this->employeeDays))), 'off_weeks' => $normalised['off_weeks'], ...($this->employeeOffsNeedRequest ? ['offs_need_request' => true] : []), ...($this->employeeOffsNeedRequest && $this->employeeOffsAutoApprove ? ['offs_auto_approve' => true] : [])]);
         $this->toast('Weekly offs saved for this employee.');
     }
 

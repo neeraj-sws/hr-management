@@ -49,6 +49,24 @@
         </section>
     @endif
 
+    @if($undecidedOffDays->isNotEmpty())
+        @php($dueOnes = $undecidedOffDays->filter(fn ($o) => $o->off_date->lte(today()))->count())
+        <section class="card mb" style="border-left:4px solid {{ $dueOnes ? 'var(--red)' : 'var(--amber)' }}">
+            <div class="card-head"><div><h2>Off day requests not decided yet ({{ $undecidedOffDays->count() }})</h2><p>Until you approve, the day is a working day for them (not coming in = absent).@if($dueOnes) <strong style="color:var(--red)">{{ $dueOnes }} for today or a day already passed.</strong>@endif</p></div><a class="btn btn-sm btn-primary" href="{{ route('leave.off-days', ['tab' => 'team']) }}">Approve / reject</a></div>
+            <div class="table-wrap"><table class="table" data-no-sort>
+                <thead><tr><th>Employee</th><th>Off day</th><th>Note</th><th>Asked</th></tr></thead>
+                <tbody>
+                @foreach($undecidedOffDays->take(10) as $off)
+                    <tr wire:key="uo-{{ $off->id }}"><td><strong>{{ $off->employee?->name }}</strong><small>{{ $off->employee?->employee_code }}</small></td>
+                        <td class="nowrap">{{ $off->off_date->format('D d M') }}@if($off->off_date->lte(today())) <x-badge tone="red">{{ $off->off_date->isToday() ? 'Today' : 'Passed' }}</x-badge>@endif</td>
+                        <td class="small">{{ \Illuminate\Support\Str::limit((string) $off->note, 60) ?: '—' }}</td>
+                        <td class="nowrap small">{{ $off->created_at->format('d M, h:i A') }}</td></tr>
+                @endforeach
+                </tbody>
+            </table></div>
+        </section>
+    @endif
+
     @if($profile)
         <div class="grid grid-3 mb">
             <section class="card card-body">

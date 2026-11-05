@@ -83,6 +83,7 @@ export default function More() {
       { label: 'Correction', icon: '🕘', href: '/corrections' },
       { label: 'Late arrival', icon: '⏰', href: '/late-arrival' },
       { label: 'Night work', icon: '🌙', href: '/night-work' },
+      ...(me?.offs_need_request ? [{ label: 'Off day request', icon: '🏖️', href: '/off-days' }] : []),
       { label: 'Training', icon: '🎓', href: '/training' },
       { label: 'Performance', icon: '📈', href: '/performance' },
       ...(approvals > 0 ? [{ label: 'Approvals', icon: '✅', href: '/approvals', badge: approvals, tone: 'amber' as const }] : []),

@@ -81,6 +81,8 @@ class Navigation
         // Overtime switched off in Settings > Payroll: its page and report leave the menu.
         if (($routeName === 'leave.overtime' || ($routeName === 'reports.show' && ($params['type'] ?? '') === 'overtime')) && ! app(\App\Services\PeopleOperationsService::class)->overtimeEnabled()) return false;
 
+        // Off day requests: for HR, and for the people whose week-of-month offs count only when asked for.
+        if ($routeName === 'leave.off-days' && ! $user->canAny(['hr.manage', 'approvals.manage']) && ! ($user->employeeProfile && app(\App\Services\OffDayService::class)->needsRequests($user->employeeProfile))) return false;
         if ($routeName === 'performance.goals' && ! config('features.goals')) return false;
         // My course & fees: for trainees, and anyone with a course fee on record.
         if ($routeName === 'training.my-fees') return (bool) ($user->employeeProfile && ($user->employeeProfile->isTrainee() || \App\Models\TrainingEnrollment::where('employee_id', $user->employeeProfile->id)->exists()));

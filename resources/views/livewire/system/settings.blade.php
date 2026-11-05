@@ -115,6 +115,8 @@
                         @endforeach
                         </tbody>
                     </table></div>
+                    <label class="check"><input type="checkbox" wire:model="employeeOffsNeedRequest"> These week-of-month offs (e.g. 2nd Saturday) count only when the employee asks for the day (Leave &amp; Time &gt; Off day requests) and HR approves; otherwise the day is a working day</label>
+                    <label class="check" style="margin-left:24px"><input type="checkbox" wire:model="employeeOffsAutoApprove"> Approve their off day requests automatically (no HR decision needed; the day still counts as off only when they ask for it)</label>
                     <div><button class="btn btn-primary" wire:loading.attr="disabled">Save for this employee</button></div>
                 @endif
             </form>

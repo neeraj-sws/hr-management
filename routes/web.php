@@ -107,6 +107,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/leave/balances', Livewire\Leave\Balances::class)->middleware('access:profile,leave.manage')->name('leave.balances');
     Route::get('/leave/late-arrival', Livewire\Leave\LateArrival::class)->middleware('access:profile,hr.manage,approvals.manage,manager')->name('leave.late-arrival');
     Route::get('/leave/night-work', Livewire\Leave\NightWork::class)->middleware('access:profile,hr.manage,approvals.manage,manager')->name('leave.night-work');
+    Route::get('/leave/off-days', Livewire\Leave\OffDays::class)->middleware('access:profile,hr.manage,approvals.manage')->name('leave.off-days');
     Route::get('/leave/overtime', Livewire\Leave\Overtime::class)->middleware('access:profile,overtime.manage')->name('leave.overtime');
 
     // Expenses

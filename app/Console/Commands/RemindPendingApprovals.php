@@ -23,7 +23,7 @@ class RemindPendingApprovals extends Command
 
     public const TYPES = [
         \App\Models\NightWorkRequest::class, \App\Models\LateArrivalRequest::class, \App\Models\AttendanceCorrection::class,
-        \App\Models\ExpenseClaim::class, \App\Models\PenaltyAppeal::class, \App\Models\OvertimeRequest::class,
+        \App\Models\ExpenseClaim::class, \App\Models\PenaltyAppeal::class, \App\Models\OvertimeRequest::class, \App\Models\OffDayRequest::class,
     ];
 
     public function handle(ApprovalInbox $inbox, TelegramNotificationService $telegram): int

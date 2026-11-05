@@ -73,6 +73,9 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::get('/night-work', [\App\Http\Controllers\Api\NightWorkController::class, 'index'])->name('api.night-work.index');
     Route::post('/night-work', [\App\Http\Controllers\Api\NightWorkController::class, 'store'])->name('api.night-work.store');
     Route::post('/night-work/{nightWork}/cancel', [\App\Http\Controllers\Api\NightWorkController::class, 'cancel'])->name('api.night-work.cancel');
+    Route::get('/off-days', [\App\Http\Controllers\Api\OffDayController::class, 'index'])->name('api.off-days.index');
+    Route::post('/off-days', [\App\Http\Controllers\Api\OffDayController::class, 'store'])->name('api.off-days.store');
+    Route::post('/off-days/{offDay}/cancel', [\App\Http\Controllers\Api\OffDayController::class, 'cancel'])->name('api.off-days.cancel');
     Route::get('/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'index'])->name('api.timesheet.index');
     Route::post('/timesheet', [\App\Http\Controllers\Api\TimesheetController::class, 'store'])->name('api.timesheet.store');
     Route::post('/timesheet/{entry}', [\App\Http\Controllers\Api\TimesheetController::class, 'update'])->name('api.timesheet.update');

@@ -70,6 +70,7 @@ class ApprovalRequested extends Notification implements ShouldQueue
         'ExpenseClaim' => 'expenses.index',
         'NightWork' => 'leave.night-work',
         'LateArrival' => 'leave.late-arrival',
+        'OffDay' => 'leave.off-days',
         'Announcement' => 'company.announcements',
         'Celebration' => 'dashboard',
         'Interview' => 'recruitment.interviews',
