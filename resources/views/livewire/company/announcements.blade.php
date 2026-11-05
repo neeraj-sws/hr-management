@@ -27,9 +27,20 @@
             <form wire:submit="save"><div class="modal-body"><div class="form-grid">
                 <x-field label="Title" name="title" full><input wire:model="title" maxlength="200"></x-field>
                 <x-field label="Message" name="body" full><textarea wire:model="body" rows="7"></textarea></x-field>
-                <x-field label="Send to" name="audience"><select wire:model.live="audience"><option value="all">Everyone</option><option value="department">One department</option><option value="team">One team</option></select></x-field>
+                <x-field label="Send to" name="audience"><select wire:model.live="audience"><option value="all">Everyone</option><option value="department">One department</option><option value="team">One team</option><option value="employees">Chosen employees</option></select></x-field>
                 @if($audience === 'department')<x-field label="Department" name="departmentId"><select wire:model="departmentId"><option value="">Choose…</option>@foreach($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach</select></x-field>@endif
                 @if($audience === 'team')<x-field label="Team" name="teamId"><select wire:model="teamId"><option value="">Choose…</option>@foreach($teams as $t)<option value="{{ $t->id }}">{{ $t->name }}</option>@endforeach</select></x-field>@endif
+                @if($audience === 'employees')
+                    {{-- Chosen employees: only the people ticked here get and see it (one person or several). --}}
+                    <x-field label="Employees" name="employeeIds" full hint="{{ count($employeeIds) }} chosen · only they get and see it">
+                        <div x-data="{ q: '' }">
+                            <input type="search" x-model="q" placeholder="Search by name or code…" style="margin-bottom:6px">
+                            <div class="checks" style="max-height:220px;overflow:auto">
+                                @foreach($employees as $e)<label class="check" wire:key="ann-emp-{{ $e->id }}" x-show="! q || {{ \Illuminate\Support\Js::from(mb_strtolower($e->name.' '.$e->employee_code)) }}.includes(q.toLowerCase())"><input type="checkbox" value="{{ $e->id }}" wire:model.live="employeeIds"> {{ $e->name }} <span class="small muted">{{ $e->employee_code }}</span></label>@endforeach
+                            </div>
+                        </div>
+                    </x-field>
+                @else
                 {{-- Leave out departments / teams (e.g. everyone except IT Web Info). --}}
                 <x-field label="Leave out (optional)" name="excludeDepartments" full hint="nobody in these departments or teams gets or sees it">
                     <div class="checks">
@@ -37,6 +48,7 @@
                         @foreach($teams as $t)<label class="check"><input type="checkbox" value="{{ $t->id }}" wire:model="excludeTeams"> Team: {{ $t->name }}</label>@endforeach
                     </div>
                 </x-field>
+                @endif
                 <x-field label="Show until" name="expiresOn" hint="blank = always"><input type="date" wire:model="expiresOn" min="{{ today()->toDateString() }}"></x-field>
                 <label class="check"><input type="checkbox" wire:model="isPinned"> Pin to the top</label>
                 @unless($editingId)<label class="check full"><input type="checkbox" wire:model="sendEmail"> Also send by e-mail to everyone in the audience <span class="small muted">(otherwise in the app only — no e-mail is sent)</span></label>@endunless

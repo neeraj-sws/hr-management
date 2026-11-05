@@ -21,6 +21,8 @@ class Announcements extends Component
     public string $audience = 'all';
     public string $departmentId = '';
     public string $teamId = '';
+    /** Audience "employees": the people chosen by name (one or several). */
+    public array $employeeIds = [];
     /** Departments / teams left out (e.g. everyone except IT Web Info). */
     public array $excludeDepartments = [];
     public array $excludeTeams = [];
@@ -41,6 +43,7 @@ class Announcements extends Component
         $this->fill([
             'editingId' => $a?->id, 'title' => $a?->title ?? '', 'body' => $a?->body ?? '', 'audience' => $a?->audience ?? 'all',
             'departmentId' => (string) ($a?->department_id ?? ''), 'teamId' => (string) ($a?->team_id ?? ''),
+            'employeeIds' => array_map('strval', (array) ($a?->employee_ids ?? [])),
             'excludeDepartments' => array_map('strval', (array) ($a?->excluded_department_ids ?? [])), 'excludeTeams' => array_map('strval', (array) ($a?->excluded_team_ids ?? [])),
             'isPinned' => (bool) $a?->is_pinned, 'expiresOn' => (string) $a?->expires_on?->toDateString(), 'sendEmail' => false, 'sendTelegram' => false,
         ]);
@@ -54,16 +57,17 @@ class Announcements extends Component
         $this->validate([
             'title' => ['required', 'string', 'max:200'],
             'body' => ['required', 'string', 'max:10000'],
-            'audience' => ['required', 'in:all,department,team'],
+            'audience' => ['required', 'in:all,department,team,employees'],
             'departmentId' => ['required_if:audience,department', 'nullable', 'exists:departments,id'],
             'teamId' => ['required_if:audience,team', 'nullable', 'exists:teams,id'],
+            'employeeIds' => ['array', 'required_if:audience,employees'], 'employeeIds.*' => ['integer', 'exists:attendance_employees,id'],
             'expiresOn' => ['nullable', 'date', 'after_or_equal:today'],
             'excludeDepartments' => ['array'], 'excludeDepartments.*' => ['integer', 'exists:departments,id'],
             'excludeTeams' => ['array'], 'excludeTeams.*' => ['integer', 'exists:teams,id'],
-        ], ['departmentId.required_if' => 'Choose the department.', 'teamId.required_if' => 'Choose the team.'], ['expiresOn' => 'show until']);
+        ], ['departmentId.required_if' => 'Choose the department.', 'teamId.required_if' => 'Choose the team.', 'employeeIds.required_if' => 'Choose at least one employee.'], ['expiresOn' => 'show until']);
         $company->saveAnnouncement([
             'title' => $this->title, 'body' => $this->body, 'audience' => $this->audience,
-            'department_id' => $this->departmentId ?: null, 'team_id' => $this->teamId ?: null,
+            'department_id' => $this->departmentId ?: null, 'team_id' => $this->teamId ?: null, 'employee_ids' => $this->employeeIds,
             'excluded_department_ids' => array_values(array_map('intval', $this->excludeDepartments)) ?: null,
             'excluded_team_ids' => array_values(array_map('intval', $this->excludeTeams)) ?: null,
             'is_pinned' => $this->isPinned, 'expires_on' => $this->expiresOn ?: null,
@@ -94,6 +98,7 @@ class Announcements extends Component
             'canManage' => $this->canManage(),
             'departments' => Department::orderBy('name')->get(['id', 'name']),
             'teams' => Team::orderBy('name')->get(['id', 'name']),
+            'employees' => $this->showForm && $this->canManage() ? \App\Models\AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']) : collect(),
         ], 'Announcements');
     }
 }

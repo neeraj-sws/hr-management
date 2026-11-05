@@ -8,25 +8,29 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Announcement extends Model
 {
-    protected $fillable = ['title', 'body', 'audience', 'department_id', 'team_id', 'excluded_department_ids', 'excluded_team_ids', 'is_pinned', 'published_at', 'expires_on', 'created_by'];
-    protected $casts = ['is_pinned' => 'boolean', 'published_at' => 'datetime', 'expires_on' => 'date', 'excluded_department_ids' => 'array', 'excluded_team_ids' => 'array'];
+    protected $fillable = ['title', 'body', 'audience', 'department_id', 'team_id', 'employee_ids', 'excluded_department_ids', 'excluded_team_ids', 'is_pinned', 'published_at', 'expires_on', 'created_by'];
+    protected $casts = ['is_pinned' => 'boolean', 'published_at' => 'datetime', 'expires_on' => 'date', 'employee_ids' => 'array', 'excluded_department_ids' => 'array', 'excluded_team_ids' => 'array'];
 
     public function department(): BelongsTo { return $this->belongsTo(Department::class); }
     public function team(): BelongsTo { return $this->belongsTo(Team::class); }
     public function author(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
 
-    /** Published, not expired, addressed to everyone or to the employee's department/team, and not leaving them out. */
+    /** Published, not expired, addressed to everyone, to the employee's department/team or to them by name, and not leaving them out. */
     public function scopeVisibleTo(Builder $query, ?AttendanceEmployee $employee): Builder
     {
         $teamIds = $employee ? $employee->teams()->pluck('teams.id')->all() : [];
         $left = Announcement::query()->whereNotNull('excluded_department_ids')->orWhereNotNull('excluded_team_ids')->get(['id', 'excluded_department_ids', 'excluded_team_ids'])
             ->filter(fn (Announcement $a) => $a->leavesOut($employee?->department_id, $teamIds))->pluck('id')->all();
+        // Sent to chosen employees: the ones that name this employee.
+        $named = $employee ? Announcement::query()->where('audience', 'employees')->get(['id', 'employee_ids'])
+            ->filter(fn (Announcement $a) => in_array($employee->id, array_map('intval', (array) $a->employee_ids), true))->pluck('id')->all() : [];
 
         return $query->when($left, fn ($q) => $q->whereNotIn('id', $left))->where('published_at', '<=', now())
             ->where(fn ($q) => $q->whereNull('expires_on')->orWhereDate('expires_on', '>=', today()))
             ->where(fn ($q) => $q->where('audience', 'all')
                 ->orWhere(fn ($q) => $q->where('audience', 'department')->where('department_id', $employee?->department_id ?? 0))
-                ->orWhere(fn ($q) => $q->where('audience', 'team')->whereIn('team_id', $teamIds ?: [0])));
+                ->orWhere(fn ($q) => $q->where('audience', 'team')->whereIn('team_id', $teamIds ?: [0]))
+                ->orWhere(fn ($q) => $q->where('audience', 'employees')->whereIn('id', $named ?: [0])));
     }
 
     /** True when the person's department or one of their teams is left out of this announcement. */
@@ -41,6 +45,7 @@ class Announcement extends Model
         $label = match ($this->audience) {
             'department' => 'Department: '.($this->department?->name ?? '—'),
             'team' => 'Team: '.($this->team?->name ?? '—'),
+            'employees' => 'Employees: '.(AttendanceEmployee::whereIn('id', (array) $this->employee_ids)->orderBy('name')->pluck('name')->join(', ') ?: '—'),
             default => 'Everyone',
         };
         $out = collect(Department::whereIn('id', (array) $this->excluded_department_ids)->pluck('name'))->merge(Team::whereIn('id', (array) $this->excluded_team_ids)->pluck('name'));
