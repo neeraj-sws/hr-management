@@ -55,7 +55,7 @@ class AttendanceAlertService
 
         $checkedIn = AttendanceSession::whereDate('work_date', $date)->pluck('employee_id');
         $onLeave = LeaveRequest::where('status', 'approved')->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->pluck('employee_id');
-        $absent = AttendanceEmployee::with(['user', 'manager.user'])->where('is_active', true)->whereNotNull('user_id')
+        $absent = AttendanceEmployee::with(['user', 'manager.user'])->where('is_active', true)->worksHere()->whereNotNull('user_id')
             ->whereNotIn('id', $checkedIn->merge($onLeave)->all() ?: [0])
             ->where(fn ($q) => $q->whereNull('joined_at')->orWhereDate('joined_at', '<=', $date))
             ->get()
@@ -67,9 +67,12 @@ class AttendanceAlertService
             rescue(fn () => app(TelegramEvents::class)->absent($employee, $date), null, true);
             Notifier::send($employee->manager?->user, 'AttendanceAbsent', $employee->id, "{$employee->name} has not checked in today (".$now->format('d M').') and is not on approved leave.', route('attendance.dashboard', ['show' => 'absent'], false), $employee->user_id);
         }
-        if ($absent->isNotEmpty()) {
-            $names = $absent->pluck('name')->take(8)->join(', ').($absent->count() > 8 ? ' and '.($absent->count() - 8).' more' : '');
-            Notifier::send(Notifier::withPermission('attendance.correct'), 'AttendanceAbsent', 0, $absent->count().' employee(s) have not checked in today ('.$now->format('d M')."): {$names}.", route('attendance.dashboard', ['show' => 'absent'], false));
+        // HR: one list; a login limited to one company hears only of its own people.
+        foreach (Notifier::withPermission('attendance.correct') as $hr) {
+            $theirs = $absent->filter(fn (AttendanceEmployee $e) => \App\Support\CompanyAccess::userSeesCompany($hr, $e->company_id ?? \App\Models\Company::main()?->id));
+            if ($theirs->isEmpty()) continue;
+            $names = $theirs->pluck('name')->take(8)->join(', ').($theirs->count() > 8 ? ' and '.($theirs->count() - 8).' more' : '');
+            Notifier::send($hr, 'AttendanceAbsent', 0, $theirs->count().' employee(s) have not checked in today ('.$now->format('d M')."): {$names}.", route('attendance.dashboard', ['show' => 'absent'], false));
         }
 
         return $absent->count();

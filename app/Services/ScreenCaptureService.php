@@ -97,7 +97,7 @@ class ScreenCaptureService
     public function notifyAll(): int
     {
         $sent = 0;
-        AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id')->orderBy('id')->chunkById(200, function ($employees) use (&$sent) {
+        AttendanceEmployee::with('user')->where('is_active', true)->worksHere()->whereNotNull('user_id')->orderBy('id')->chunkById(200, function ($employees) use (&$sent) {
             foreach ($employees as $employee) if ($this->notifyIfNeeded($employee)) $sent++;
         });
 

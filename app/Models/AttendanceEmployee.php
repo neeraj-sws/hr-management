@@ -114,7 +114,24 @@ class AttendanceEmployee extends Authenticatable
 
     public function scopeOnPayroll($query)
     {
+        return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhereNotIn('employment_type', [\App\Services\EmployeeService::TRAINEE, \App\Services\EmployeeService::OWNER]));
+    }
+
+    /** Everyone but trainees (People > Employees lists them, the owner included; trainees have their own page). */
+    public function scopeNotTrainee($query)
+    {
         return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhere('employment_type', '!=', \App\Services\EmployeeService::TRAINEE));
+    }
+
+    /** Everyone who works here: all but a company owner (no attendance alerts, reminders or leave accrual for him). */
+    public function scopeWorksHere($query)
+    {
+        return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhere('employment_type', '!=', \App\Services\EmployeeService::OWNER));
+    }
+
+    public function isOwner(): bool
+    {
+        return $this->employment_type === \App\Services\EmployeeService::OWNER;
     }
 
     public function isTrainee(): bool

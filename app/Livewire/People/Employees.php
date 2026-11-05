@@ -184,7 +184,7 @@ class Employees extends Component
             $rules['payBasis'] = ['required', Rule::in(['monthly', 'daily'])];
             if ($this->payBasis === 'daily') $rules['dailyRate'] = ['required', 'numeric', 'gt:0', 'max:1000000'];
             // Ex-employees and trainees (they pay a course fee) have no salary to enter.
-            else $rules['monthlySalary'] = [$left || $this->employmentType === EmployeeService::TRAINEE ? 'nullable' : 'required', 'numeric', 'min:0'];
+            else $rules['monthlySalary'] = [$left || in_array($this->employmentType, [EmployeeService::TRAINEE, EmployeeService::OWNER], true) ? 'nullable' : 'required', 'numeric', 'min:0'];
         }
         $this->validate($rules, [], ['employeeCode' => 'employee code', 'managerId' => 'manager', 'departmentId' => 'department', 'monthlySalary' => 'monthly salary', 'dailyHours' => 'daily hours', 'dailyRate' => 'per-day salary', 'exitDate' => 'last working day', 'exitType' => 'exit type']);
 
@@ -286,7 +286,7 @@ class Employees extends Component
     {
         $term = trim($this->search);
         // A chosen department lists everyone in it (employees and trainees); otherwise each page keeps its own kind.
-        $kind = fn ($q) => $this->department ? $q : ($this->traineesOnly ? $q->where('employment_type', EmployeeService::TRAINEE) : $q->onPayroll());
+        $kind = fn ($q) => $this->department ? $q : ($this->traineesOnly ? $q->where('employment_type', EmployeeService::TRAINEE) : $q->notTrainee());
         $employees = AttendanceEmployee::with(['department', 'manager', 'user.roles', 'teams'])
             ->where($kind)
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('designation', 'like', "%{$term}%")))
@@ -315,7 +315,7 @@ class Employees extends Component
             'managers' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'teams' => Team::where('is_active', true)->orderBy('name')->get(),
             'counts' => ['active' => AttendanceEmployee::where($kind)->where('is_active', true)->count(), 'inactive' => AttendanceEmployee::where($kind)->where('is_active', false)->count(),
-                'other' => $this->traineesOnly ? AttendanceEmployee::onPayroll()->where('is_active', true)->count() : AttendanceEmployee::where('employment_type', EmployeeService::TRAINEE)->where('is_active', true)->count()],
+                'other' => $this->traineesOnly ? AttendanceEmployee::notTrainee()->where('is_active', true)->count() : AttendanceEmployee::where('employment_type', EmployeeService::TRAINEE)->where('is_active', true)->count()],
             'traineesOnly' => $this->traineesOnly,
             'pwEmployee' => $this->pwEmployeeId ? AttendanceEmployee::find($this->pwEmployeeId) : null,
             'reportsToManager' => $this->reportsTo ? AttendanceEmployee::find($this->reportsTo) : null,

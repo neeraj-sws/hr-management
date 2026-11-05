@@ -192,4 +192,81 @@ class CompanyOwnerLoginTest extends TestCase
         $this->assertTrue(Navigation::canAccess($this->owner, 'payroll.runs'));
         $this->assertTrue(Navigation::canAccess($this->admin, 'billing.invoices'));
     }
+
+    private function kinds(User $user, string $kind)
+    {
+        return $user->notifications()->get()->filter(fn ($n) => ($n->data['kind'] ?? null) === $kind)->values();
+    }
+
+    public function test_the_owner_is_told_only_about_his_company(): void
+    {
+        $swsLeave = $this->leave($this->sws);
+        $itwebLeave = $this->leave($this->preeti);
+        \App\Services\Notifier::send(\App\Services\Notifier::withPermission('leave.manage'), 'LeaveRequest', $swsLeave->id, 'Swati Sharma asked for leave.');
+        \App\Services\Notifier::send(\App\Services\Notifier::withPermission('leave.manage'), 'LeaveRequest', $itwebLeave->id, 'Preeti Prajapati asked for leave.');
+
+        $this->assertSame(['Preeti Prajapati asked for leave.'], $this->kinds($this->owner, 'LeaveRequest')->pluck('data.message')->all());
+        $this->assertCount(2, $this->kinds($this->admin, 'LeaveRequest'), 'the Super Admin still hears of both');
+
+        // The daily "not checked in" list: his people only (and never himself, the owner).
+        $this->praveen->update(['employment_type' => 'owner']);
+        app(\App\Services\AttendanceAlertService::class)->absences(Carbon::parse('2026-11-10 12:00:00'));
+        $absent = $this->kinds($this->owner, 'AttendanceAbsent')->firstWhere('data.record_id', 0);
+        $this->assertNotNull($absent);
+        $this->assertStringContainsString('Preeti Prajapati', $absent->data['message']);
+        $this->assertStringNotContainsString('Swati Sharma', $absent->data['message']);
+        $this->assertStringNotContainsString('Praveen Vaishnav', $absent->data['message']);
+        $this->assertStringContainsString('Swati Sharma', $this->kinds($this->admin, 'AttendanceAbsent')->firstWhere('data.record_id', 0)->data['message']);
+    }
+
+    public function test_the_owner_is_not_on_payroll_or_attendance_alerts(): void
+    {
+        $this->praveen->update(['employment_type' => 'owner']);
+        $this->actingAs($this->owner);
+        Livewire::test(Runs::class)->set('periodStart', '2026-10-01')->set('periodEnd', '2026-10-31')->call('calculate')->assertHasNoErrors();
+        $this->assertSame([$this->preeti->id], PayrollRun::sole()->items()->pluck('employee_id')->all(), 'the owner is not paid a salary');
+        $this->assertFalse(AttendanceEmployee::worksHere()->whereKey($this->praveen->id)->exists());
+        // Still listed under People > Employees, marked Owner.
+        $this->get(route('people.employees'))->assertOk()->assertSee('Praveen Vaishnav')->assertSee('Owner');
+    }
+
+    public function test_audit_logs_and_salary_payments_of_the_other_company_are_hidden(): void
+    {
+        $audit = app(\App\Services\AuditLogger::class);
+        $this->actingAs($this->admin);
+        $audit->record('leave.approved', $this->leave($this->sws));
+        $audit->record('leave.approved', $this->leave($this->preeti));
+        $this->actingAs($this->sws->user);
+        $audit->record('profile.updated', $this->sws);
+
+        $swsRun = PayrollRun::create(['company_id' => null, 'period_starts_on' => '2026-09-01', 'period_ends_on' => '2026-09-30', 'status' => 'locked']);
+        $item = \App\Models\PayrollItem::create(['payroll_run_id' => $swsRun->id, 'employee_id' => $this->sws->id, 'gross_amount' => 20000, 'net_amount' => 20000, 'calculation_data' => ['working_days' => 25]]);
+        \App\Models\SalaryPayment::create(['payroll_item_id' => $item->id, 'amount' => 20000, 'paid_on' => '2026-10-01', 'method' => 'bank_transfer']);
+
+        $this->actingAs($this->owner);
+        $this->assertSame(1, \App\Models\AuditLog::where('action', 'leave.approved')->count(), 'only the ITWeb leave');
+        $this->assertSame(0, \App\Models\AuditLog::where('action', 'profile.updated')->count());
+        $this->assertSame(0, \App\Models\SalaryPayment::count());
+        $this->get(route('security.audit'))->assertOk()->assertDontSee('Swati Sharma');
+    }
+
+    public function test_announcements_of_one_company_stay_in_it(): void
+    {
+        $this->actingAs($this->owner);
+        Livewire::test(\App\Livewire\Company\Announcements::class)->call('edit')
+            ->set('title', 'ITWeb team lunch')->set('body', 'Friday 2 pm')->set('audience', 'all')->call('save')->assertHasNoErrors();
+        $mine = \App\Models\Announcement::where('title', 'ITWeb team lunch')->sole();
+        $this->assertSame($this->itweb->id, $mine->company_id);
+        $this->assertCount(1, $this->kinds($this->preeti->user, 'Announcement'));
+        $this->assertCount(0, $this->kinds($this->sws->user, 'Announcement'), 'SWS people do not get it');
+
+        // The admin's announcement for all companies: everyone sees it, the owner cannot change it.
+        $this->actingAs($this->admin);
+        $all = app(\App\Services\CompanyService::class)->saveAnnouncement(['title' => 'Diwali holiday', 'body' => 'Office closed', 'audience' => 'all', 'is_pinned' => false], $this->admin);
+        $this->assertNull($all->company_id);
+        $this->actingAs($this->owner);
+        Livewire::test(\App\Livewire\Company\Announcements::class)->assertSee('Diwali holiday')->call('edit', $all->id)->assertForbidden();
+        $this->assertSame(2, \App\Models\Announcement::visibleTo($this->preeti)->count());
+        $this->assertSame(1, \App\Models\Announcement::withoutGlobalScopes()->visibleTo($this->sws)->count(), 'SWS sees only the one for all companies');
+    }
 }

@@ -31,7 +31,7 @@ class LeaveAccrualService
         $yearStart = LeaveYear::start($leaveYear, $startMonth);
         $updated = 0;
         DB::transaction(function () use ($year, $month, $actor, $leaveYear, $index, $yearStart, &$updated) {
-            foreach (AttendanceEmployee::where('is_active', true)->get() as $employee) {
+            foreach (AttendanceEmployee::where('is_active', true)->worksHere()->get() as $employee) {
                 foreach (LeaveType::where('is_active', true)->get() as $type) {
                     $balance = LeaveBalance::open($employee->id, $type, $leaveYear);
                     $balance = LeaveBalance::whereKey($balance->id)->lockForUpdate()->firstOrFail();

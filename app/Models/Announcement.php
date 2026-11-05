@@ -8,9 +8,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Announcement extends Model
 {
-    protected $fillable = ['title', 'body', 'audience', 'department_id', 'team_id', 'employee_ids', 'excluded_department_ids', 'excluded_team_ids', 'is_pinned', 'published_at', 'expires_on', 'created_by'];
+    protected $fillable = ['company_id', 'title', 'body', 'audience', 'department_id', 'team_id', 'employee_ids', 'excluded_department_ids', 'excluded_team_ids', 'is_pinned', 'published_at', 'expires_on', 'created_by'];
     protected $casts = ['is_pinned' => 'boolean', 'published_at' => 'datetime', 'expires_on' => 'date', 'employee_ids' => 'array', 'excluded_department_ids' => 'array', 'excluded_team_ids' => 'array'];
 
+    /**
+     * Empty = all companies. A login limited to one company sees the announcements for all companies and its own
+     * company's, never another company's.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('company', function (Builder $query) {
+            if ($companyId = \App\Support\CompanyAccess::limitedCompanyId()) $query->where(fn ($q) => $q->whereNull($q->qualifyColumn('company_id'))->orWhere($q->qualifyColumn('company_id'), $companyId));
+        });
+    }
+
+    public function company(): BelongsTo { return $this->belongsTo(Company::class); }
     public function department(): BelongsTo { return $this->belongsTo(Department::class); }
     public function team(): BelongsTo { return $this->belongsTo(Team::class); }
     public function author(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
@@ -25,7 +37,11 @@ class Announcement extends Model
         $named = $employee ? Announcement::query()->where('audience', 'employees')->get(['id', 'employee_ids'])
             ->filter(fn (Announcement $a) => in_array($employee->id, array_map('intval', (array) $a->employee_ids), true))->pluck('id')->all() : [];
 
+        // One company's announcements reach that company's employees only.
+        $company = $employee ? ($employee->company_id ?? Company::main()?->id) : null;
+
         return $query->when($left, fn ($q) => $q->whereNotIn('id', $left))->where('published_at', '<=', now())
+            ->where(fn ($q) => $q->whereNull('company_id')->when($company, fn ($q) => $q->orWhere('company_id', $company)))
             ->where(fn ($q) => $q->whereNull('expires_on')->orWhereDate('expires_on', '>=', today()))
             ->where(fn ($q) => $q->where('audience', 'all')
                 ->orWhere(fn ($q) => $q->where('audience', 'department')->where('department_id', $employee?->department_id ?? 0))

@@ -12,6 +12,37 @@ class AuditLog extends Model
     protected $casts = ['metadata' => 'array', 'created_at' => 'datetime'];
     public function actor() { return $this->belongsTo(User::class, 'actor_id'); }
 
+    /** Records whose audit entries a login limited to one company sees when the entry is about one of them. */
+    private const COMPANY_SUBJECTS = [
+        AttendanceEmployee::class, LeaveRequest::class, OvertimeRequest::class, AttendanceCorrection::class, AttendanceSession::class,
+        ExpenseClaim::class, SalaryAdjustment::class, SalaryAdvance::class, SalaryProfile::class, EmployeePenalty::class, PayrollItem::class,
+        Payslip::class, EmployeeDocument::class, EmployeeLifecycleCase::class, LateArrivalRequest::class, NightWorkRequest::class,
+        OffDayRequest::class, EmployeeNote::class, EmployeeAsset::class, TrainingEnrollment::class, PayrollRun::class, Screenshot::class,
+        DailyWorkStatus::class, TimesheetEntry::class, LeaveConflictResolution::class, Task::class,
+    ];
+
+    /**
+     * A login limited to one company sees the entries made by its own people, and the entries about its own
+     * employees and their records (e.g. the Super Admin approving an ITWeb leave) — nothing of another company.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('company', function (Builder $query) {
+            $companyId = \App\Support\CompanyAccess::limitedCompanyId();
+            if (! $companyId) return;
+            // His company's logins: limited to it, or (no company set) with an employee profile in it.
+            $people = User::query()->select('id')->where(fn ($q) => $q->where('company_id', $companyId)
+                ->orWhere(fn ($q) => $q->whereNull('company_id')->whereIn('id', AttendanceEmployee::query()->select('user_id')->whereNotNull('user_id'))));
+            $query->where(function ($q) use ($people) {
+                $q->whereIn('actor_id', $people)
+                    ->orWhere(fn ($q) => $q->where('subject_type', User::class)->whereIn('subject_id', (clone $people)));
+                foreach (self::COMPANY_SUBJECTS as $class) {
+                    $q->orWhere(fn ($q) => $q->where('subject_type', $class)->whereIn('subject_id', $class::query()->select((new $class)->getQualifiedKeyName())));
+                }
+            });
+        });
+    }
+
     /**
      * Audit categories, by action prefix. Checked in order, so the more
      * specific "employee.asset_" lands in Assets before the general

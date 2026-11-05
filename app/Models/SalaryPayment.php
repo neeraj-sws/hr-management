@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SalaryPayment extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its PayrollItem is of that company. */
+    public function companyOwner(): array { return ['payroll_item_id', PayrollItem::class]; }
+
     public const METHODS = ['bank_transfer' => 'Bank transfer', 'upi' => 'UPI', 'cheque' => 'Cheque', 'cash' => 'Cash', 'other' => 'Other'];
 
     protected $fillable = ['payroll_item_id', 'amount', 'paid_on', 'method', 'reference', 'recorded_by'];

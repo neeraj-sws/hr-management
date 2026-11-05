@@ -31,7 +31,7 @@ class AttendanceReminderService
         $checkedIn = AttendanceSession::whereDate('work_date', $date)->whereNotNull('check_in')->pluck('employee_id')->all();
         $onLeave = LeaveRequest::where('status', 'approved')->where('duration', 'full')->whereDate('starts_on', '<=', $date)->whereDate('ends_on', '>=', $date)->pluck('employee_id')->all();
         $sent = 0;
-        foreach (AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id')->whereNotIn('id', [...$checkedIn, ...$onLeave])->get() as $employee) {
+        foreach (AttendanceEmployee::with('user')->where('is_active', true)->worksHere()->whereNotNull('user_id')->whereNotIn('id', [...$checkedIn, ...$onLeave])->get() as $employee) {
             if (! $this->attendance->isScheduledDay($employee, $date)) continue;
             $start = $this->attendance->rules($employee, $date)['work_start'] ?? null;
             if (! $start) continue;

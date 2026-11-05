@@ -131,6 +131,9 @@ class ApprovalRequested extends Notification implements ShouldQueue
     /** In-app unless the person muted an optional group; e-mail only where they asked for it. */
     public function via(object $notifiable): array
     {
+        // A login limited to one company is never told about another company's people (e.g. an SWS leave request).
+        if ($notifiable instanceof \App\Models\User && $notifiable->company_id
+            && ! \App\Support\CompanyAccess::userSeesCompany($notifiable, \App\Support\CompanyAccess::companyOfNotification($this->kind, $this->recordId))) return [];
         $group = self::groupFor($this->kind);
         $saved = (array) ($notifiable->notification_preferences ?? []);
         $channels = [];
