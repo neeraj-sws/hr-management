@@ -82,7 +82,7 @@ export default function OffDaysScreen() {
               );
             })}
           </View>
-        ) : <Muted style={{ marginBottom: 10 }}>No day to ask for right now.</Muted>}
+        ) : <Muted style={{ marginBottom: 10 }}>No day left to ask for: your coming off days are already approved or waiting for HR. Cancel a waiting request to change it.</Muted>}
         {errors.off_date ? <Notice tone="error" text={errors.off_date} /> : null}
         <Field label="Note (optional)" value={note} onChangeText={setNote} placeholder="e.g. Taking my 2nd Saturday off" error={errors.note} multiline />
         <Button title="Send to HR" tone="primary" onPress={submit} loading={busy} disabled={!dates.length} />

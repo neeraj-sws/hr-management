@@ -50,13 +50,18 @@
 
     @if($showForm)
         <x-modal title="Ask for an off day">
+            @php($open = array_values(array_filter($dates, fn ($d) => ! isset($asked[$d]))))
             <form wire:submit="save"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Off day" name="offDate" full>
-                    <select wire:model="offDate"><option value="">Choose the day</option>@foreach($dates as $d)@unless(isset($asked[$d]))<option value="{{ $d }}">{{ \Illuminate\Support\Carbon::parse($d)->format('l, d M Y') }}</option>@endunless @endforeach</select>
+                    @if($open)
+                        <select wire:model="offDate"><option value="">Choose the day</option>@foreach($open as $d)<option value="{{ $d }}">{{ \Illuminate\Support\Carbon::parse($d)->format('l, d M Y') }}</option>@endforeach</select>
+                    @else
+                        <p class="small muted">No day left to ask for: @forelse($dates as $d){{ \Illuminate\Support\Carbon::parse($d)->format('D d M') }} {{ ($asked[$d] ?? '') === 'approved' ? 'is already approved' : 'is waiting for HR' }}{{ $loop->last ? '.' : ', ' }}@empty you have no off days that need asking for in the next {{ \App\Services\OffDayService::DAYS_AHEAD }} days.@endforelse Cancel a waiting request to change it.</p>
+                    @endif
                 </x-field>
                 <x-field label="Note (optional)" name="note" full><textarea rows="3" wire:model="note" placeholder="e.g. Taking my 2nd Saturday off"></textarea></x-field>
             </div></div>
-            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Send to HR</button></div></form>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled" @disabled(! $open)>Send to HR</button></div></form>
         </x-modal>
     @endif
 

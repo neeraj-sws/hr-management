@@ -20,7 +20,7 @@ class OffDayService
 {
     /** How far back and ahead an off day can be asked for (days). */
     public const DAYS_BACK = 7;
-    public const DAYS_AHEAD = 60;
+    public const DAYS_AHEAD = 120;
 
     public function __construct(private readonly AuditLogger $audit, private readonly PolicyConfigurationService $policies) {}
 

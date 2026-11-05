@@ -49,7 +49,10 @@ class OffDays extends Component
 
     public function openForm(OffDayService $offs): void
     {
-        $this->offDate = collect($offs->requestableDates($this->requireEmployee()))->first(fn ($d) => $d >= today()->toDateString()) ?? '';
+        $employee = $this->requireEmployee();
+        $asked = OffDayRequest::where('employee_id', $employee->id)->whereIn('status', ['pending', 'approved'])->get()->map(fn (OffDayRequest $r) => $r->off_date->toDateString())->all();
+        $open = array_values(array_diff($offs->requestableDates($employee), $asked));
+        $this->offDate = collect($open)->first(fn ($d) => $d >= today()->toDateString()) ?? ($open[0] ?? '');
         $this->note = '';
         $this->resetValidation();
         $this->showForm = true;

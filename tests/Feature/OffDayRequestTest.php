@@ -74,7 +74,7 @@ class OffDayRequestTest extends TestCase
         $this->assertFalse($this->workday($this->colleague, '2026-11-21'));
 
         $offs = app(OffDayService::class);
-        $this->assertSame(['2026-11-14', '2026-12-12'], $offs->requestableDates($this->khushboo));
+        $this->assertSame(['2026-11-14', '2026-12-12', '2027-01-09', '2027-02-13'], $offs->requestableDates($this->khushboo));
         $this->assertSame([], $offs->requestableDates($this->colleague));
 
         $request = $offs->request($this->khushboo, '2026-11-14', 'Taking my 2nd Saturday off');
@@ -170,6 +170,11 @@ class OffDayRequestTest extends TestCase
         Livewire::actingAs($this->admin)->test(\App\Livewire\Leave\OffDays::class)
             ->assertSee('Khushboo Verma')->call('openDecide', $request->id, true)->call('decide')->assertHasNoErrors();
         $this->assertSame('approved', $request->fresh()->status);
+        // The form starts on the next day not asked for yet; with every day asked it says why the list is empty.
+        Livewire::actingAs($khushboo)->test(\App\Livewire\Leave\OffDays::class)->call('openForm')->assertSet('offDate', '2026-12-12');
+        foreach (['2026-12-12', '2027-01-09', '2027-02-13'] as $d) app(OffDayService::class)->request($this->khushboo, $d);
+        Livewire::actingAs($khushboo)->test(\App\Livewire\Leave\OffDays::class)->call('openForm')->assertSee('No day left to ask for')->assertSee('Sat 14 Nov is already approved');
+        OffDayRequest::where('status', 'pending')->get()->each(fn ($r) => app(OffDayService::class)->cancel($r, $this->khushboo));
         $this->actingAs($this->admin)->get(route('dashboard'))->assertOk()->assertDontSee('Off day requests not decided yet');
 
         // Settings: the tick is shown for her and saved; unticking makes her 2nd Saturday a plain off again.
@@ -183,7 +188,7 @@ class OffDayRequestTest extends TestCase
         $this->assertTrue($this->workday($this->khushboo, '2026-12-12'));
 
         // App: the list, the days she can ask for, and asking.
-        $this->actingAs($khushboo, 'sanctum')->getJson('/api/off-days')->assertOk()->assertJsonPath('dates', ['2026-12-12'])->assertJsonPath('data.0.status', 'approved');
+        $this->actingAs($khushboo, 'sanctum')->getJson('/api/off-days')->assertOk()->assertJsonPath('dates', ['2026-12-12', '2027-01-09', '2027-02-13'])->assertJsonFragment(['off_date' => '2026-11-14', 'status' => 'approved']);
         $this->actingAs($khushboo, 'sanctum')->postJson('/api/off-days', ['off_date' => '2026-12-12'])->assertCreated()->assertJsonPath('data.status', 'pending');
         $this->actingAs($khushboo, 'sanctum')->getJson('/api/me')->assertOk()->assertJsonPath('data.offs_need_request', true);
     }
