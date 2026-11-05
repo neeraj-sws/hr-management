@@ -47,6 +47,9 @@ class LetterPdf
     private string $ops = '';
     private float $y = 0;
     private ?array $logo = null;
+    /** Signature and company seal (stamp) images printed in the signature block, when HR uploaded them. */
+    private ?array $signature = null;
+    private ?array $seal = null;
     private array $blocks = [];
     private array $runs = [];
 
@@ -54,9 +57,11 @@ class LetterPdf
      * @param  array{name?: string, address_lines?: list<string>, contact?: string, footer?: string}  $company
      * @param  array{company?: string, name?: string, designation?: string}  $signatory
      */
-    public function __construct(private readonly array $company, private readonly array $signatory, ?string $logoPath = null)
+    public function __construct(private readonly array $company, private readonly array $signatory, ?string $logoPath = null, ?string $signaturePath = null, ?string $sealPath = null)
     {
         $this->logo = $logoPath ? self::loadImage($logoPath) : null;
+        $this->signature = $signaturePath ? self::loadImage($signaturePath) : null;
+        $this->seal = $sealPath ? self::loadImage($sealPath) : null;
     }
 
     /** The PDF file contents for the letter body (sanitised HTML). */
@@ -287,13 +292,18 @@ class LetterPdf
 
     private function signatureBlock(): void
     {
-        if ($this->y - 96 < self::BOTTOM) {
+        $seal = $this->seal ? 80.0 : 0.0;
+        if ($this->y - max(96, 40 + $seal) < self::BOTTOM) {
             $this->pages[] = $this->ops;
             $this->newPage();
         }
         $this->y -= self::LEADING;
         $this->text(self::LEFT, $this->y, $this->cp1252('For '.($this->signatory['company'] ?? '')), 'B', self::SIZE, self::INK);
+        $top = $this->y;
         $this->y -= 46;
+        // The signature sits just above the line; the seal beside it (both keep their own shape).
+        if ($this->signature) $this->image('Im2', $this->signature, self::LEFT, $this->y + 2, 160, 38);
+        if ($this->seal) $this->image('Im3', $this->seal, self::LEFT + 185, $top - 8 - $seal, $seal, $seal);
         $this->line(self::LEFT, $this->y, self::LEFT + 170, $this->y, 0.6, self::MUTED);
         $this->y -= 13;
         $this->text(self::LEFT, $this->y, $this->cp1252(($this->signatory['name'] ?? '') ?: 'Authorised Signatory'), 'B', self::SIZE, self::INK);
@@ -301,7 +311,14 @@ class LetterPdf
             $this->y -= 13;
             $this->text(self::LEFT, $this->y, $this->cp1252($designation), 'R', 9.5, self::MUTED);
         }
-        $this->y -= self::LEADING;
+        $this->y = min($this->y, $top - 8 - $seal) - self::LEADING;
+    }
+
+    /** Draws an image inside a box (max width / height), keeping its shape; bottom-left at ($x, $y). */
+    private function image(string $name, array $img, float $x, float $y, float $maxW, float $maxH): void
+    {
+        $scale = min($maxW / max(1, $img['w']), $maxH / max(1, $img['h']));
+        $this->ops .= sprintf("q %.2F 0 0 %.2F %.2F %.2F cm /%s Do Q\n", $img['w'] * $scale, $img['h'] * $scale, $x, $y, $name);
     }
 
     private function newPage(): void
@@ -368,13 +385,14 @@ class LetterPdf
         foreach (['F1' => 'Helvetica', 'F2' => 'Helvetica-Bold', 'F3' => 'Helvetica-Oblique', 'F4' => 'Helvetica-BoldOblique'] as $i => $name) {
             $objects[] = "<< /Type /Font /Subtype /Type1 /BaseFont /{$name} /Encoding /WinAnsiEncoding >>";
         }
-        $image = null;
-        if ($this->logo) {
+        $images = [];
+        foreach (['Im1' => $this->logo, 'Im2' => $this->signature, 'Im3' => $this->seal] as $name => $img) {
+            if (! $img) continue;
             $objects[] = sprintf("<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /%s /BitsPerComponent 8 /Filter /%s /Length %d >>\nstream\n%s\nendstream",
-                $this->logo['w'], $this->logo['h'], $this->logo['cs'], $this->logo['filter'], strlen($this->logo['data']), $this->logo['data']);
-            $image = array_key_last($objects);
+                $img['w'], $img['h'], $img['cs'], $img['filter'], strlen($img['data']), $img['data']);
+            $images[] = "/{$name} ".array_key_last($objects).' 0 R';
         }
-        $resources = '<< /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >>'.($image ? " /XObject << /Im1 {$image} 0 R >>" : '').' >>';
+        $resources = '<< /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >>'.($images ? ' /XObject << '.implode(' ', $images).' >>' : '').' >>';
         $count = count($this->pages);
         $kids = [];
         foreach ($this->pages as $n => $ops) {

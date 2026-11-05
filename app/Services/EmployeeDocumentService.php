@@ -35,6 +35,7 @@ class EmployeeDocumentService
         'offer' => 'Offer letter',
         'experience_issued' => 'Experience letter (issued by us)',
         'hr_letter' => 'HR letter',
+        'training_certificate' => 'Training certificate',
         'policy' => 'Signed policy',
         'other' => 'Other',
     ];

@@ -15,7 +15,13 @@ use Livewire\Component;
  */
 class LetterTemplates extends Component
 {
-    use InteractsWithHr;
+    use InteractsWithHr, \Livewire\WithFileUploads;
+
+    /** Signature and company seal images printed on every letter / certificate. */
+    public $signatureUpload = null;
+    public $sealUpload = null;
+    /** A Word (.docx) file whose text becomes the template being edited. */
+    public $wordFile = null;
 
     public bool $showForm = false;
     public ?int $editingId = null;
@@ -91,6 +97,38 @@ class LetterTemplates extends Component
         $this->toast('Signature details saved. New letters use them.');
     }
 
+    /** $kind: signature | seal. Saves the chosen image; new letters and certificates print it. */
+    public function uploadSignImage(string $kind, HrLetterService $letters): void
+    {
+        abort_unless(in_array($kind, ['signature', 'seal'], true), 404);
+        $field = $kind.'Upload';
+        $this->validate([$field => ['required', 'file', 'mimes:png,jpg,jpeg', 'max:2048']], [$field.'.mimes' => 'Upload a PNG or JPG image.'], [$field => $kind === 'seal' ? 'seal' : 'signature']);
+        $letters->saveSignImage($kind, $this->{$field}, $this->user());
+        $this->{$field} = null;
+        $this->toast(($kind === 'seal' ? 'Seal' : 'Signature').' saved. New letters and certificates print it (letters already issued stay as they are).');
+    }
+
+    public function removeSignImage(string $kind, HrLetterService $letters): void
+    {
+        abort_unless(in_array($kind, ['signature', 'seal'], true), 404);
+        $letters->saveSignImage($kind, null, $this->user());
+        $this->toast(($kind === 'seal' ? 'Seal' : 'Signature').' removed from new letters.');
+    }
+
+    /** Takes the text of a Word file into the template editor (HR then adds {placeholders} and saves). */
+    public function importWord(): void
+    {
+        abort_unless(HrLetterService::canManage($this->user()), 403);
+        $this->validate(['wordFile' => ['required', 'file', 'mimes:docx', 'max:5120']], ['wordFile.mimes' => 'Choose a Word file saved as .docx.'], ['wordFile' => 'Word file']);
+        $html = HrLetterService::bodyFromDocx($this->wordFile->getRealPath());
+        if (! str_contains($html, '{signature}')) $html .= '<p>{signature}</p>';
+        $this->templateBody = $html;
+        if ($this->templateName === '') $this->templateName = trim(pathinfo((string) $this->wordFile->getClientOriginalName(), PATHINFO_FILENAME));
+        $this->wordFile = null;
+        $this->dispatch('letter-editor-set', model: 'templateBody', html: $html);
+        $this->toast('Word file taken in. Put {placeholders} (e.g. {employee_name}, {course_name}) where the employee\'s details go, then save.');
+    }
+
     public function saveCompany(HrLetterService $letters): void
     {
         $this->resetErrorBag();
@@ -123,6 +161,7 @@ class LetterTemplates extends Component
             'companyFields' => HrLetterService::COMPANY_FIELDS,
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'preview' => $preview,
+            'signImages' => ['signature' => (bool) $letters->signImagePath('signature'), 'seal' => (bool) $letters->signImagePath('seal')],
         ], 'Letter templates');
     }
 }
