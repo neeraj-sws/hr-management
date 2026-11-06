@@ -124,12 +124,12 @@ class InvoiceForm extends Component
                 $changes = ['customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'place_of_supply' => $this->placeOfSupply ?: null, 'project_id' => $this->projectId ?: null,
                     'due_date' => $this->dueDate ?: null, 'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null];
                 // Moving the issue date into another financial year gives the invoice that year's next number.
-                if ($billing->financialYear($this->issueDate) !== $invoice->financial_year) $changes += $billing->nextInvoiceNumber($this->issueDate);
+                if ($billing->financialYear($this->issueDate) !== $invoice->financial_year) $changes += $billing->nextInvoiceNumber($this->issueDate, $invoice->company_id);
                 $invoice->update($changes);
                 $invoice->items()->delete();
             } else {
                 $n = $billing->nextInvoiceNumber($this->issueDate);
-                $invoice = BillingInvoice::create(['number' => $n['number'], 'financial_year' => $n['financial_year'],
+                $invoice = BillingInvoice::create(['number' => $n['number'], 'financial_year' => $n['financial_year'], 'company_id' => $n['company_id'],
                     'customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'due_date' => $this->dueDate ?: null,
                     'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null,
                     'status' => $send ? 'Sent' : 'Draft', 'send_date' => $send ? now()->toDateString() : null, 'created_by' => auth()->id(),

@@ -185,10 +185,10 @@ class CompanyOwnerLoginTest extends TestCase
     public function test_admin_only_pages_are_closed_to_the_owner(): void
     {
         $this->actingAs($this->owner);
-        $this->get(route('billing.invoices'))->assertForbidden();
         $this->get(route('system.telegram'))->assertForbidden();
         $this->get(route('system.roles'))->assertOk();
-        $this->assertFalse(Navigation::canAccess($this->owner, 'billing.invoices'));
+        // Billing is per company now: open to him, with his company's documents only.
+        $this->assertTrue(Navigation::canAccess($this->owner, 'billing.invoices'));
         $this->assertTrue(Navigation::canAccess($this->owner, 'payroll.runs'));
         $this->assertTrue(Navigation::canAccess($this->admin, 'billing.invoices'));
     }
@@ -367,6 +367,28 @@ class CompanyOwnerLoginTest extends TestCase
         }
         $this->assertGreaterThan(60, $visited, 'the owner opens most of the menu');
         $this->assertSame([], $failed, 'pages that failed or showed an SWS employee');
+    }
+
+    public function test_billing_is_per_company_with_its_own_numbers(): void
+    {
+        $billing = app(\App\Services\BillingService::class);
+        $this->actingAs($this->admin);
+        $swsCustomer = \App\Models\BillingCustomer::create(['name' => 'Sharma Traders']);
+        $sws = \App\Models\BillingInvoice::create($billing->nextInvoiceNumber('2026-11-10') + ['customer_id' => $swsCustomer->id, 'issue_date' => '2026-11-10', 'status' => 'Draft']);
+        $this->assertSame('SWS/2026-27/00001', $sws->number());
+
+        $this->actingAs($this->owner);
+        $this->assertNull(\App\Models\BillingCustomer::find($swsCustomer->id));
+        $this->assertNull(\App\Models\BillingInvoice::find($sws->id));
+        $mine = \App\Models\BillingCustomer::create(['name' => 'Gupta Infotech']);
+        $this->assertSame($this->itweb->id, $mine->company_id);
+        $invoice = \App\Models\BillingInvoice::create($billing->nextInvoiceNumber('2026-11-10') + ['customer_id' => $mine->id, 'issue_date' => '2026-11-10', 'status' => 'Draft']);
+        $this->assertSame($this->itweb->id, $invoice->company_id);
+        $this->assertSame('ITWEB/2026-27/00001', $invoice->number(), 'ITWeb numbers start from 1 with its own prefix');
+        $this->get(route('billing.invoices'))->assertOk()->assertSee('Gupta Infotech')->assertDontSee('Sharma Traders');
+
+        $this->actingAs($this->admin);
+        $this->assertSame(2, \App\Models\BillingInvoice::count(), 'the Super Admin sees both');
     }
 
     public function test_itweb_payslips_carry_the_itweb_name(): void

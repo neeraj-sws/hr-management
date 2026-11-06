@@ -129,8 +129,8 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/payroll/advances', Livewire\Payroll\Advances::class)->middleware('access:profile,salary.advance,salary.adjust')->name('payroll.advances');
     Route::get('/payroll/payments', Livewire\Payroll\Payments::class)->middleware('access:payroll.manage,payroll.approve')->name('payroll.payments');
 
-    // Billing / Invoicing (not yet per company: logins of all companies only)
-    Route::middleware(['access:hr.manage,payroll.manage', 'all-companies'])->group(function () {
+    // Billing / Invoicing (per company: a company owner sees and makes his company's)
+    Route::middleware('access:hr.manage,payroll.manage')->group(function () {
         Route::get('/billing/customers', Livewire\Billing\Customers::class)->name('billing.customers');
         Route::get('/billing/products', Livewire\Billing\Products::class)->name('billing.products');
         Route::get('/billing/taxes', Livewire\Billing\Taxes::class)->name('billing.taxes');

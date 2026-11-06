@@ -27,20 +27,34 @@ class BillingService
     }
 
     /** Next invoice sequence for the financial year of $date (1-based, resets each year). */
-    public function nextInvoiceNumber(Carbon|string $date): array
+    public function nextInvoiceNumber(Carbon|string $date, ?int $companyId = null): array
     {
         $fy = $this->financialYear($date);
-        $next = (int) BillingInvoice::where('financial_year', $fy)->lockForUpdate()->max('number') + 1;
+        $company = $this->documentCompany($companyId);
+        $next = (int) BillingInvoice::withoutGlobalScopes()->where('company_id', $company)->where('financial_year', $fy)->lockForUpdate()->max('number') + 1;
 
-        return ['financial_year' => $fy, 'number' => $next];
+        return ['financial_year' => $fy, 'number' => $next, 'company_id' => $company];
     }
 
-    public function nextEstimateNumber(Carbon|string $date): array
+    public function nextEstimateNumber(Carbon|string $date, ?int $companyId = null): array
     {
         $fy = $this->financialYear($date);
-        $next = (int) BillingEstimate::where('financial_year', $fy)->lockForUpdate()->max('number') + 1;
+        $company = $this->documentCompany($companyId);
+        $next = (int) BillingEstimate::withoutGlobalScopes()->where('company_id', $company)->where('financial_year', $fy)->lockForUpdate()->max('number') + 1;
 
-        return ['financial_year' => $fy, 'number' => $next];
+        return ['financial_year' => $fy, 'number' => $next, 'company_id' => $company];
+    }
+
+    /** Whose numbers: the given company, else the signed-in company owner's, else the main company. */
+    private function documentCompany(?int $companyId): ?int
+    {
+        return \App\Support\CompanyAccess::limitedCompanyId() ?? $companyId ?? \App\Models\Company::main()?->id;
+    }
+
+    /** The company details printed on a document of this company (its own when it has them). */
+    public function companyFor(?int $companyId): array
+    {
+        return \App\Support\CompanyAccess::withRulesCompany($companyId, fn () => $this->company());
     }
 
     /** Company details for invoices, with blanks for anything not set yet. */
