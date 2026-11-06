@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ExpenseClaim extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     public const CATEGORIES = ['Travel', 'Food', 'Accommodation', 'Fuel', 'Internet & phone', 'Office supplies', 'Client meeting', 'Other'];
 
     protected $fillable = ['employee_id', 'category', 'spent_on', 'amount', 'description', 'receipt_path', 'receipt_name', 'status', 'decided_by', 'decided_at', 'decision_note', 'payroll_item_id'];

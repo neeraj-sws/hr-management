@@ -7,7 +7,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Project extends Model
 {
-    protected $fillable = ['name', 'client_name', 'client_id', 'hourly_rate', 'client_sees_developer', 'description', 'manager_id', 'starts_on', 'ends_on', 'status'];
+    use Concerns\HasCompany;
+
+    /** No company = the main company (everything made before companies is SWS's). */
+    public function companyNullIsShared(): bool { return false; }
+
+    protected $fillable = ['company_id', 'name', 'client_name', 'client_id', 'hourly_rate', 'client_sees_developer', 'description', 'manager_id', 'starts_on', 'ends_on', 'status'];
     protected $casts = ['starts_on' => 'date', 'ends_on' => 'date', 'hourly_rate' => 'decimal:2', 'client_sees_developer' => 'boolean'];
     public function tasks(): HasMany { return $this->hasMany(Task::class); }
     public function manager() { return $this->belongsTo(AttendanceEmployee::class, 'manager_id'); }

@@ -60,6 +60,14 @@ class AttendanceEmployee extends Authenticatable
         'exit_date' => 'date',
     ];
 
+    /** A login limited to one company sees only that company's employees (see CompanyAccess). */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('company', function (\Illuminate\Database\Eloquent\Builder $query) {
+            if ($companyId = \App\Support\CompanyAccess::limitedCompanyId()) \App\Support\CompanyAccess::whereCompany($query, $companyId, $query->getModel()->qualifyColumn('company_id'));
+        });
+    }
+
     public function devices(): HasMany
     {
         return $this->hasMany(AttendanceDevice::class, 'employee_id');
@@ -106,7 +114,32 @@ class AttendanceEmployee extends Authenticatable
 
     public function scopeOnPayroll($query)
     {
+        return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhereNotIn('employment_type', [\App\Services\EmployeeService::TRAINEE, \App\Services\EmployeeService::OWNER]));
+    }
+
+    /** The company whose rules are being changed (Settings, picked by the Super Admin); everyone when none is picked. */
+    public function scopeOfRulesCompany($query)
+    {
+        $companyId = \App\Support\CompanyAccess::rulesCompanyId();
+
+        return $companyId ? $query->inPayrollCompany(Company::payrollKey($companyId)) : $query;
+    }
+
+    /** Everyone but trainees (People > Employees lists them, the owner included; trainees have their own page). */
+    public function scopeNotTrainee($query)
+    {
         return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhere('employment_type', '!=', \App\Services\EmployeeService::TRAINEE));
+    }
+
+    /** Everyone who works here: all but a company owner (no attendance alerts, reminders or leave accrual for him). */
+    public function scopeWorksHere($query)
+    {
+        return $query->where(fn ($q) => $q->whereNull('employment_type')->orWhere('employment_type', '!=', \App\Services\EmployeeService::OWNER));
+    }
+
+    public function isOwner(): bool
+    {
+        return $this->employment_type === \App\Services\EmployeeService::OWNER;
     }
 
     public function isTrainee(): bool

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 /** A trainee enrolled in a course: the fee they owe, in how many installments, and what they have paid. */
 class TrainingEnrollment extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     public const STATUSES = ['active' => 'Studying', 'completed' => 'Completed', 'dropped' => 'Left the course'];
 
     protected $fillable = ['employee_id', 'fee_course_id', 'training_course_id', 'course_name', 'total_fee', 'discount', 'installments', 'schedule', 'starts_on', 'ends_on', 'status', 'notes', 'created_by'];

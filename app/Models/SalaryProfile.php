@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SalaryProfile extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     public const PAY_BASES = ['monthly' => 'Monthly salary', 'daily' => 'Per day (daily wage)'];
 
     protected $fillable = ['employee_id', 'monthly_salary', 'pay_basis', 'daily_rate', 'effective_from', 'configured_by', 'working_days_per_month', 'standard_daily_hours', 'components'];

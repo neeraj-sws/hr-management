@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** "Please turn on screen capture for this person" — a manager's request, decided by HR in Approvals. */
 class MonitoringRequest extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'requested_by', 'reason', 'until', 'status', 'decided_by', 'decided_at', 'decision_note'];
     protected $casts = ['until' => 'date', 'decided_at' => 'datetime'];
 

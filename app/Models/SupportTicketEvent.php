@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** Activity history of a ticket: created, status, priority, assigned (from → to, by whom), category, reopened, message hidden. */
 class SupportTicketEvent extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its SupportTicket is of that company. */
+    public function companyOwner(): array { return ['ticket_id', SupportTicket::class]; }
+
     public const UPDATED_AT = null;
 
     protected $fillable = ['ticket_id', 'user_id', 'type', 'from_value', 'to_value', 'note', 'created_at'];

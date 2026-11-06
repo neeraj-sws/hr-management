@@ -37,6 +37,7 @@ class FixPermissions extends Command
             Role::firstOrCreate(['name' => $role, 'guard_name' => 'web'])
                 ->syncPermissions($permissions->whereIn('name', $names));
         }
+        Role::firstOrCreate(['name' => 'Company Owner', 'guard_name' => 'web'])->syncPermissions($permissions->where('name', '!=', 'roles.manage'));
 
         $registrar->forgetCachedPermissions();
 

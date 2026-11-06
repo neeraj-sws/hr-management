@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** One line of a project's timesheet: who worked on what, when and for how long (actual and billable minutes). */
 class TimesheetEntry extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['project_id', 'task_id', 'employee_id', 'developer_name', 'work_date', 'start_time', 'end_time', 'minutes', 'billable_minutes',
         'description', 'status', 'remarks', 'source', 'task_time_entry_id', 'import_key', 'visible_to_client', 'created_by'];
 

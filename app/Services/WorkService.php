@@ -325,7 +325,7 @@ class WorkService
         if ($by) return $this->requestDailyStatus($date, $employeeIds, $by);
 
         $submitted = \App\Models\DailyWorkStatus::whereDate('work_date', $date)->pluck('employee_id');
-        $people = AttendanceEmployee::with('user')->where('is_active', true)->whereNotIn('id', $submitted)
+        $people = AttendanceEmployee::with('user')->where('is_active', true)->worksHere()->whereNotIn('id', $submitted)
             ->when($employeeIds !== null, fn ($q) => $q->whereIn('id', $employeeIds ?: [0]))
             ->whereHas('sessions', fn ($q) => $q->whereDate('work_date', $date))->get();
         $sent = 0;
@@ -345,7 +345,7 @@ class WorkService
     private function requestDailyStatus(string $date, ?array $employeeIds, \App\Models\User $by): int
     {
         $submitted = \App\Models\DailyWorkStatus::whereDate('work_date', $date)->pluck('employee_id');
-        $people = AttendanceEmployee::with('user')->where('is_active', true)->whereNotIn('id', $submitted)
+        $people = AttendanceEmployee::with('user')->where('is_active', true)->worksHere()->whereNotIn('id', $submitted)
             ->when($employeeIds !== null, fn ($q) => $q->whereIn('id', $employeeIds ?: [0]))
             ->whereHas('sessions', fn ($q) => $q->whereDate('work_date', $date))->get();
         $sent = 0;

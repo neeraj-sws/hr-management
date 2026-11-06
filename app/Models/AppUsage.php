@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AppUsage extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $table = 'app_usage_daily';
     protected $fillable = ['employee_id', 'work_date', 'app_name', 'seconds'];
     protected $casts = ['work_date' => 'date', 'seconds' => 'integer'];

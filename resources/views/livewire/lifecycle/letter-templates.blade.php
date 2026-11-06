@@ -12,10 +12,10 @@
                     <div><strong>{{ $t->name }}</strong><small>Saved as: {{ $categories[$t->category] ?? $t->category }} · changed {{ $t->updated_at?->format('d M Y') }}{{ $t->editor ? ' by '.$t->editor->name : '' }}</small></div>
                     <div class="row-actions">
                         <x-badge :tone="$t->is_active ? 'green' : 'gray'">{{ $t->is_active ? 'On' : 'Off' }}</x-badge>
-                        <button class="btn btn-sm" wire:click="edit({{ $t->id }})">Edit</button>
+                        @if($t->changeable())<button class="btn btn-sm" wire:click="edit({{ $t->id }})">Edit</button>@endif
                         <button class="btn btn-sm" wire:click="duplicate({{ $t->id }})">Copy</button>
-                        <button class="btn btn-sm" wire:click="toggle({{ $t->id }})">{{ $t->is_active ? 'Turn off' : 'Turn on' }}</button>
-                        <button class="btn btn-sm btn-danger" wire:click="delete({{ $t->id }})" wire:confirm="Delete the template “{{ $t->name }}”? Letters already issued stay in the documents.">Delete</button>
+                        @if($t->changeable())<button class="btn btn-sm" wire:click="toggle({{ $t->id }})">{{ $t->is_active ? 'Turn off' : 'Turn on' }}</button>
+                        <button class="btn btn-sm btn-danger" wire:click="delete({{ $t->id }})" wire:confirm="Delete the template “{{ $t->name }}”? Letters already issued stay in the documents.">Delete</button>@endif
                     </div>
                 </div>
             @empty

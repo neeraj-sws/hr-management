@@ -82,7 +82,7 @@ class Dashboard extends Component
     public function render(AttendanceService $attendance, PolicyConfigurationService $policies)
     {
         $user = $this->user();
-        $employees = AttendanceEmployee::with('department')->where('is_active', true)
+        $employees = AttendanceEmployee::with('department')->where('is_active', true)->worksHere()
             ->when(! $user->canAny(['hr.manage', 'employees.manage']), fn ($q) => $q->whereIn('id', $this->teamEmployeeIds()->all() ?: [0]))
             ->when($this->department, fn ($q, $id) => $q->where('department_id', $id))
             ->when(trim($this->search) !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', '%'.trim($this->search).'%')->orWhere('employee_code', 'like', '%'.trim($this->search).'%')))

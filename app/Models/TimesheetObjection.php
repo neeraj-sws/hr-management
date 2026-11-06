@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** A client's objection to a timesheet entry and the manager's answer. */
 class TimesheetObjection extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its TimesheetEntry is of that company. */
+    public function companyOwner(): array { return ['timesheet_entry_id', TimesheetEntry::class]; }
+
     protected $fillable = ['timesheet_entry_id', 'raised_by', 'reason', 'proposed_minutes', 'status', 'response', 'responded_by', 'responded_at'];
 
     protected $casts = ['responded_at' => 'datetime', 'proposed_minutes' => 'integer'];

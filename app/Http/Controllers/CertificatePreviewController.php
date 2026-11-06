@@ -17,7 +17,10 @@ class CertificatePreviewController extends Controller
         $fields = $request->session()->get('certificate_preview.'.$token);
         abort_unless(is_array($fields), 404);
 
-        return response($letters->certificatePdf($fields), 200, [
+        // The employee's company's signature and seal (see EmployeeProfile).
+        $pdf = \App\Support\CompanyAccess::withRulesCompany(isset($fields['_company']) ? (int) $fields['_company'] : null, fn () => $letters->certificatePdf($fields));
+
+        return response($pdf, 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="certificate-preview.pdf"',
             'Cache-Control' => 'no-store, private',

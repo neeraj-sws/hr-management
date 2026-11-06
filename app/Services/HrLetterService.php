@@ -72,7 +72,8 @@ class HrLetterService
     /** The first active template saved as this document type (onboarding / exit shortcuts). */
     public function templateFor(string $category): ?LetterTemplate
     {
-        return LetterTemplate::where('is_active', true)->where('category', $category)->orderBy('id')->first();
+        // The company being worked on first (its own template), then a shared one.
+        return LetterTemplate::where('is_active', true)->where('category', $category)->forCompany(\App\Support\CompanyAccess::rulesCompanyId())->orderByRaw('company_id IS NULL')->orderBy('id')->first();
     }
 
     // ---- placeholders ----------------------------------------------------------------------

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ActivityTitle extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $table = 'activity_titles_daily';
     protected $fillable = ['employee_id', 'work_date', 'app_name', 'title', 'seconds'];
     protected $casts = ['work_date' => 'date', 'seconds' => 'integer'];

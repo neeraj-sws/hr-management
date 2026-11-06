@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** A project's month on the timesheet: minutes carried in ("old remaining"), the client's approval and its invoice. */
 class TimesheetMonth extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its Project is of that company. */
+    public function companyOwner(): array { return ['project_id', Project::class]; }
+
     protected $fillable = ['project_id', 'month', 'opening_remaining_minutes', 'approved_at', 'approved_by', 'invoice_id'];
 
     protected $casts = ['approved_at' => 'datetime', 'opening_remaining_minutes' => 'integer'];

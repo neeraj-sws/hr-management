@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** Work done at night, asked for with the tasks worked on and what was done; paid by the hour once approved. */
 class NightWorkRequest extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'work_date', 'starts_at', 'ends_at', 'minutes', 'task_ids', 'work_done', 'status', 'decided_by', 'decided_at', 'decision_note'];
 
     protected $casts = ['work_date' => 'date', 'task_ids' => 'array', 'decided_at' => 'datetime', 'minutes' => 'integer'];

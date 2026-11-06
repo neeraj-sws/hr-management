@@ -129,7 +129,7 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/payroll/advances', Livewire\Payroll\Advances::class)->middleware('access:profile,salary.advance,salary.adjust')->name('payroll.advances');
     Route::get('/payroll/payments', Livewire\Payroll\Payments::class)->middleware('access:payroll.manage,payroll.approve')->name('payroll.payments');
 
-    // Billing / Invoicing
+    // Billing / Invoicing (per company: a company owner sees and makes his company's)
     Route::middleware('access:hr.manage,payroll.manage')->group(function () {
         Route::get('/billing/customers', Livewire\Billing\Customers::class)->name('billing.customers');
         Route::get('/billing/products', Livewire\Billing\Products::class)->name('billing.products');
@@ -229,7 +229,8 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/notifications/live', [NotificationController::class, 'live'])->name('system.notifications.live');
     Route::get('/notifications/{id}/open', [NotificationController::class, 'open'])->name('system.notifications.open');
     Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->name('system.notifications.read-all');
-    Route::get('/system/roles', Livewire\System\Roles::class)->middleware('access:roles.manage')->name('system.roles');
+    // A company owner (logins.manage) gives roles to his own company's people here.
+    Route::get('/system/roles', Livewire\System\Roles::class)->middleware('access:roles.manage,logins.manage')->name('system.roles');
     Route::get('/system/telegram', Livewire\System\Telegram::class)->middleware('access:roles.manage')->name('system.telegram');
     Route::get('/system/settings', Livewire\System\Settings::class)->middleware('access:policies.manage')->name('system.settings');
 });

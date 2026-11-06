@@ -184,14 +184,15 @@ class Employees extends Component
             $rules['payBasis'] = ['required', Rule::in(['monthly', 'daily'])];
             if ($this->payBasis === 'daily') $rules['dailyRate'] = ['required', 'numeric', 'gt:0', 'max:1000000'];
             // Ex-employees and trainees (they pay a course fee) have no salary to enter.
-            else $rules['monthlySalary'] = [$left || $this->employmentType === EmployeeService::TRAINEE ? 'nullable' : 'required', 'numeric', 'min:0'];
+            else $rules['monthlySalary'] = [$left || in_array($this->employmentType, [EmployeeService::TRAINEE, EmployeeService::OWNER], true) ? 'nullable' : 'required', 'numeric', 'min:0'];
         }
         $this->validate($rules, [], ['employeeCode' => 'employee code', 'managerId' => 'manager', 'departmentId' => 'department', 'monthlySalary' => 'monthly salary', 'dailyHours' => 'daily hours', 'dailyRate' => 'per-day salary', 'exitDate' => 'last working day', 'exitType' => 'exit type']);
 
+        // A login limited to one company keeps everyone in it (only a login of all companies moves people).
         $data = [
             'employee_code' => $this->employeeCode, 'name' => $this->name, 'email' => $this->email,
             'designation' => $this->designation ?: null, 'phone' => $this->phone ?: null, 'address' => trim($this->address) !== '' ? trim($this->address) : null,
-            'department_id' => $this->departmentId ?: null, 'company_id' => \App\Models\Company::payrollKey($this->companyId), 'manager_id' => $this->managerId ?: null,
+            'department_id' => $this->departmentId ?: null, 'company_id' => \App\Models\Company::payrollKey(\App\Support\CompanyAccess::limitedCompanyId() ?? $this->companyId), 'manager_id' => $this->managerId ?: null,
             'joined_at' => $this->joinedAt ?: null, 'date_of_birth' => $this->dateOfBirth ?: null, 'employment_type' => $this->employmentType, 'probation_ends_on' => $this->probationEndsOn ?: null, 'notice_period_days' => $this->noticePeriodDays === '' ? null : (int) $this->noticePeriodDays, 'work_start' => $this->workStart ?: null, 'work_end' => $this->workEnd ?: null,
             'daily_work_hours' => $this->dailyHours, 'team_ids' => array_map('intval', $this->teamIds), 'is_manager' => $this->isManager,
             ...($left ? ['exit_date' => $this->exitDate, 'exit_type' => $this->exitType, 'exit_reason' => $this->exitReason ?: null] : []),
@@ -285,7 +286,7 @@ class Employees extends Component
     {
         $term = trim($this->search);
         // A chosen department lists everyone in it (employees and trainees); otherwise each page keeps its own kind.
-        $kind = fn ($q) => $this->department ? $q : ($this->traineesOnly ? $q->where('employment_type', EmployeeService::TRAINEE) : $q->onPayroll());
+        $kind = fn ($q) => $this->department ? $q : ($this->traineesOnly ? $q->where('employment_type', EmployeeService::TRAINEE) : $q->notTrainee());
         $employees = AttendanceEmployee::with(['department', 'manager', 'user.roles', 'teams'])
             ->where($kind)
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")->orWhere('email', 'like', "%{$term}%")->orWhere('designation', 'like', "%{$term}%")))
@@ -314,7 +315,7 @@ class Employees extends Component
             'managers' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']),
             'teams' => Team::where('is_active', true)->orderBy('name')->get(),
             'counts' => ['active' => AttendanceEmployee::where($kind)->where('is_active', true)->count(), 'inactive' => AttendanceEmployee::where($kind)->where('is_active', false)->count(),
-                'other' => $this->traineesOnly ? AttendanceEmployee::onPayroll()->where('is_active', true)->count() : AttendanceEmployee::where('employment_type', EmployeeService::TRAINEE)->where('is_active', true)->count()],
+                'other' => $this->traineesOnly ? AttendanceEmployee::notTrainee()->where('is_active', true)->count() : AttendanceEmployee::where('employment_type', EmployeeService::TRAINEE)->where('is_active', true)->count()],
             'traineesOnly' => $this->traineesOnly,
             'pwEmployee' => $this->pwEmployeeId ? AttendanceEmployee::find($this->pwEmployeeId) : null,
             'reportsToManager' => $this->reportsTo ? AttendanceEmployee::find($this->reportsTo) : null,

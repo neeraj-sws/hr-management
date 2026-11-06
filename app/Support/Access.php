@@ -25,10 +25,11 @@ class Access
     /**
      * The system administrator: the Master Admin role (or whoever may manage
      * roles). Only an administrator can set another person's password.
+     * A Company Owner is the administrator of his own company (he sees only its people and payroll).
      */
     public static function isAdmin(?User $user): bool
     {
-        return $user !== null && ($user->hasRole('Master Admin') || $user->can('roles.manage'));
+        return $user !== null && ($user->hasRole('Master Admin') || $user->can('roles.manage') || ($user->company_id !== null && $user->hasRole('Company Owner')));
     }
 
     public static function allows(?User $user, array $rules): bool

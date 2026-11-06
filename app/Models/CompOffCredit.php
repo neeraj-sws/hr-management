@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CompOffCredit extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'earned_on', 'days', 'status', 'expires_on', 'used_leave_id', 'note', 'created_by'];
 
     protected $casts = ['earned_on' => 'date', 'expires_on' => 'date', 'days' => 'decimal:2'];

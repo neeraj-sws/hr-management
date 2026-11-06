@@ -4,6 +4,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BillingEstimateItem extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    public function companyOwner(): array { return ['estimate_id', BillingEstimate::class]; }
+
     protected $guarded = ['id'];
     protected $casts = ['quantity' => 'decimal:2', 'price' => 'decimal:2', 'discount' => 'decimal:2'];
     public function tax(): BelongsTo { return $this->belongsTo(BillingTax::class, 'tax_id'); }

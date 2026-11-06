@@ -9,6 +9,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** One message in a support chat. Internal notes (is_internal) are for staff only; nobody edits or deletes messages. */
 class SupportMessage extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its SupportTicket is of that company. */
+    public function companyOwner(): array { return ['ticket_id', SupportTicket::class]; }
+
     protected $fillable = ['ticket_id', 'user_id', 'sender_type', 'body', 'is_internal', 'hidden_at', 'hidden_by', 'hidden_reason'];
 
     protected $casts = ['is_internal' => 'boolean', 'hidden_at' => 'datetime'];

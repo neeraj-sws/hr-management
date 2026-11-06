@@ -8,12 +8,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['project_id', 'assignee_id', 'created_by', 'title', 'description', 'priority', 'status', 'estimated_hours', 'due_on', 'started_at', 'completed_at', 'server_version', 'work_date', 'parent_id', 'overdue_notified_at', 'progress'];
     protected $casts = ['estimated_hours' => 'decimal:2', 'due_on' => 'date', 'started_at' => 'datetime', 'completed_at' => 'datetime', 'work_date' => 'date'];
     public function project(): BelongsTo { return $this->belongsTo(Project::class); }
     public function assignee(): BelongsTo { return $this->belongsTo(AttendanceEmployee::class, 'assignee_id'); }
     public function timeEntries(): HasMany { return $this->hasMany(TaskTimeEntry::class); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
+
+    /** A login limited to one company sees the tasks of its own people. */
+    public function companyOwner(): array
+    {
+        return ['assignee_id', AttendanceEmployee::class];
+    }
 
     protected static function booted(): void
     {

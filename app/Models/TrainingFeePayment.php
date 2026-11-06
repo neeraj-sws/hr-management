@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 /** One fee payment by a trainee, with its receipt number, how it was paid and who received it. */
 class TrainingFeePayment extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     public const METHODS = ['cash' => 'Cash', 'upi' => 'UPI', 'bank_transfer' => 'Bank transfer', 'card' => 'Card', 'cheque' => 'Cheque', 'other' => 'Other'];
 
     protected $fillable = ['enrollment_id', 'employee_id', 'receipt_no', 'amount', 'paid_on', 'method', 'reference', 'installment_no', 'note', 'received_by'];

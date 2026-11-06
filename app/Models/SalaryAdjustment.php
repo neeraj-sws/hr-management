@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
  */
 class SalaryAdjustment extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     public const KINDS = [
         'increment' => 'Increment',
         'bonus' => 'Bonus',

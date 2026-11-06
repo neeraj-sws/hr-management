@@ -43,6 +43,8 @@ class Runs extends Component
         $this->periodStart = now()->subMonthNoOverflow()->startOfMonth()->toDateString();
         $this->periodEnd = now()->subMonthNoOverflow()->endOfMonth()->toDateString();
         $this->calcCompany = $this->company !== '' ? $this->company : (string) (Company::main()?->id ?? '');
+        // A login limited to one company makes only that company's payroll.
+        if ($limited = \App\Support\CompanyAccess::limitedCompanyId()) $this->calcCompany = (string) $limited;
     }
 
     public function updatedCompany(): void

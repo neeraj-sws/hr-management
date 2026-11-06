@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Payslip extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['payroll_item_id', 'employee_id', 'issued_at', 'reference'];
     protected $casts = ['issued_at' => 'datetime'];
     public function item(): BelongsTo { return $this->belongsTo(PayrollItem::class, 'payroll_item_id'); }

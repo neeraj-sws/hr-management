@@ -16,12 +16,14 @@ use Laravel\Sanctum\PersonalAccessToken;
 class EmployeeService
 {
     public const PROFILE_FIELDS = ['employee_code', 'name', 'email', 'designation', 'phone', 'address', 'department_id', 'company_id', 'manager_id', 'joined_at', 'work_start', 'work_end', 'daily_work_hours', 'date_of_birth', 'employment_type', 'probation_ends_on', 'confirmed_on', 'notice_period_days'];
-    public const EMPLOYMENT_TYPES = ['full_time' => 'Full time', 'part_time' => 'Part time', 'contract' => 'Contract', 'intern' => 'Intern', 'daily_wage' => 'Daily wage', 'trainee' => 'Trainee (pays a course fee, no salary)', 'ex_employee' => 'Ex-employee (left the company)'];
+    public const EMPLOYMENT_TYPES = ['full_time' => 'Full time', 'part_time' => 'Part time', 'contract' => 'Contract', 'intern' => 'Intern', 'daily_wage' => 'Daily wage', 'trainee' => 'Trainee (pays a course fee, no salary)', 'owner' => 'Owner (not an employee: no salary, attendance or reminders)', 'ex_employee' => 'Ex-employee (left the company)'];
     public const EXIT_TYPES = ['resignation' => 'Resignation', 'termination' => 'Termination', 'end_of_contract' => 'End of contract', 'retirement' => 'Retirement'];
     /** Someone who has already left: kept for old attendance / salary records, with no working login. */
     public const EX_EMPLOYEE = 'ex_employee';
     /** Someone learning a course who pays a fee (Training > Course fees): attendance as usual, never on payroll or salary. */
     public const TRAINEE = 'trainee';
+    /** A company owner with a profile (e.g. Praveen for ITWeb): never on payroll, attendance alerts, reminders or leave accrual. */
+    public const OWNER = 'owner';
 
     public function __construct(private readonly HrWorkflowService $workflow, private readonly AuditLogger $audit) {}
 

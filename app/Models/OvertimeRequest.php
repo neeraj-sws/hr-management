@@ -3,6 +3,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 class OvertimeRequest extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id','work_date','requested_minutes','approved_minutes','reason','status','decision_note','decided_by','decided_at'];
     protected $casts = ['work_date'=>'date','decided_at'=>'datetime'];
     public function employee(){return $this->belongsTo(AttendanceEmployee::class);}

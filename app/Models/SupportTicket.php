@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** An employee's support request with its chat (messages), files, history and read markers. */
 class SupportTicket extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'created_by', 'category_id', 'subject', 'description', 'priority', 'status', 'assigned_to', 'assigned_at',
         'first_response_at', 'last_message_at', 'last_message_by', 'resolved_at', 'resolved_by', 'closed_at', 'closed_by', 'reopen_count'];
 

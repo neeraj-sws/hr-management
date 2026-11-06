@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Shift extends Model
 {
-    protected $fillable = ['name', 'start_time', 'end_time', 'grace_minutes', 'is_active'];
+    use Concerns\HasCompany;
+
+    protected $fillable = ['company_id', 'name', 'start_time', 'end_time', 'grace_minutes', 'is_active'];
     protected $casts = ['is_active' => 'boolean', 'grace_minutes' => 'integer'];
 
     public function assignments(): HasMany { return $this->hasMany(EmployeeShift::class); }

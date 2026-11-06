@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 /** One step in an asset's life: issued to someone, returned, lost, written off… Never deleted. */
 class EmployeeAssetEvent extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_asset_id', 'employee_id', 'action', 'happened_on', 'notes', 'recorded_by'];
     protected $casts = ['happened_on' => 'date'];
 

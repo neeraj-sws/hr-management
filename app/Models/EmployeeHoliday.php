@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EmployeeHoliday extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'date', 'name', 'source', 'holiday_rule_id'];
 
     protected $casts = ['date' => 'date'];

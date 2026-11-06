@@ -290,7 +290,7 @@ class PeopleOperationsService
         $reason = $daysBefore < 0
             ? 'Leave for '.$leave->starts_on->format('d M').' asked on '.$asked->format('d M').' (after the day)'
             : 'Leave for '.$leave->starts_on->format('d M').' asked '.$daysBefore.' day(s) before (needs '.$notice.')';
-        $rule = PolicyRule::where('rule_key', 'leave.late_application')->where('is_active', true)->first();
+        $rule = PolicyRule::where('rule_key', 'leave.late_application')->whereNull('company_id')->where('is_active', true)->first();
         $penalty = EmployeePenalty::firstOrCreate(['source_key' => "late_leave:{$leave->id}"], ['employee_id' => $employee->id, 'policy_rule_id' => $rule?->id, 'effective_on' => $asked->toDateString(), 'amount' => round($amount, 2), 'reason' => $reason, 'requested_by' => $employee->user_id ?? User::role('Master Admin')->value('id'), 'status' => 'pending']);
         if ($penalty->wasRecentlyCreated) {
             $this->approval(EmployeePenalty::class, $penalty->id);
@@ -593,9 +593,12 @@ class PeopleOperationsService
         if ($employeeId) {
             EmployeePolicyOverride::updateOrCreate(['employee_id'=>$employeeId,'rule_key'=>$key,'effective_from'=>$effectiveFrom], ['configuration'=>$config,'configured_by'=>$actor,'effective_until'=>$effectiveUntil]);
         } else {
-            PolicyRule::updateOrCreate(['rule_key'=>$key,'effective_from'=>$effectiveFrom], ['category'=>$category,'name'=>$name,'configuration'=>$config,'is_active'=>true,'effective_until'=>$effectiveUntil,'updated_by'=>$actor]);
+            // A company's own rule (its owner, or the Super Admin working on that company); otherwise the rule for all.
+            $companyId = PolicyConfigurationService::isCompanyKey($key) ? \App\Support\CompanyAccess::rulesCompanyId() : null;
+            abort_if(! $companyId && \App\Support\CompanyAccess::limitedCompanyId(), 403, 'This setting is the same for all companies: only the Super Admin changes it.');
+            PolicyRule::updateOrCreate(['rule_key'=>$key,'effective_from'=>$effectiveFrom,'company_id'=>$companyId], ['category'=>$category,'name'=>$name,'configuration'=>$config,'is_active'=>true,'effective_until'=>$effectiveUntil,'updated_by'=>$actor]);
         }
-        $this->audit->record('policy.updated', null, ['rule_key'=>$key,'employee_id'=>$employeeId,'effective_from'=>$effectiveFrom,'effective_until'=>$effectiveUntil]);
+        $this->audit->record('policy.updated', null, ['rule_key'=>$key,'employee_id'=>$employeeId,'company_id'=>$companyId ?? null,'effective_from'=>$effectiveFrom,'effective_until'=>$effectiveUntil]);
     }
 
     /**
@@ -675,7 +678,7 @@ class PeopleOperationsService
     public function assessCompliance(string $start,string $end,int $actor,?int $onlyEmployeeId=null):int
     {
         if($end<$start)throw ValidationException::withMessages(['period'=>'The end date must be on or after the start date.']);
-        $rule=PolicyRule::where('rule_key','attendance.late_penalty')->where('is_active',true)->first();
+        $rule=PolicyRule::where('rule_key','attendance.late_penalty')->whereNull('company_id')->where('is_active',true)->first();
         $created=0;
         foreach(\App\Models\AttendanceSession::with('employee')->whereDate('work_date','>=',$start)->whereDate('work_date','<=',$end)->whereNotNull('check_in')->when($onlyEmployeeId,fn($q,$id)=>$q->where('employee_id',$id))->get() as $session){
             $employee=$session->employee;
@@ -711,14 +714,14 @@ class PeopleOperationsService
                 else Notifier::send($employee->user,'EmployeePenalty',$penalty->id,'Late fine of '.number_format($amount,2).' for '.$session->work_date->format('d M').': '.$why.'. It waits for HR approval. If you had a valid reason, give it on the Penalties page (Give reason).',route('compliance.penalties',[],false));
             }
         }
-        $taskRule=PolicyRule::where('rule_key','task.late_penalty')->where('is_active',true)->first();
+        $taskRule=PolicyRule::where('rule_key','task.late_penalty')->whereNull('company_id')->where('is_active',true)->first();
         foreach(\App\Models\Task::with('assignee')->whereNotNull('due_on')->whereDate('due_on','>=',$start)->whereDate('due_on','<=',$end)->where('status','!=','completed')->when($onlyEmployeeId,fn($q,$id)=>$q->where('assignee_id',$id))->get() as $task){
             $employee=$task->assignee;if(!$employee||$employee->isTrainee())continue;$config=$this->policy($employee,'task.late_penalty',$taskRule?->configuration??[],$end);$perDay=max(0,(float)($config['amount_per_day']??0));if($perDay<=0)continue;
             if(Carbon::parse($task->due_on)->gte(Carbon::parse($end)))continue;$days=$this->configuredWorkdays(Carbon::parse($task->due_on)->addDay(),Carbon::parse($end),$employee,$end);if($days===0)continue;$amount=$this->capped($perDay*$days,$config);
             $penalty=EmployeePenalty::firstOrCreate(['source_key'=>"late_task:{$task->id}".($taskRule?":{$taskRule->id}":'')],['employee_id'=>$employee->id,'policy_rule_id'=>$taskRule?->id,'effective_on'=>$task->due_on,'amount'=>$amount,'reason'=>"Task #{$task->id} was overdue by {$days} working days",'requested_by'=>$actor,'status'=>'pending']);
             if($penalty->wasRecentlyCreated){$this->approval(EmployeePenalty::class,$penalty->id);$this->audit->record('compliance.late_task_assessed',$penalty,['task_id'=>$task->id,'late_workdays'=>$days]);$created++;}
         }
-        $absenceRule=PolicyRule::where('rule_key','attendance.unauthorized_absence')->where('is_active',true)->first();
+        $absenceRule=PolicyRule::where('rule_key','attendance.unauthorized_absence')->whereNull('company_id')->where('is_active',true)->first();
         foreach(AttendanceEmployee::where('is_active',true)->onPayroll()->when($onlyEmployeeId,fn($q,$id)=>$q->whereKey($id))->get() as $employee){
                 $config=$this->policy($employee,'attendance.unauthorized_absence',$absenceRule?->configuration??[],$end);$amount=max(0,(float)($config['amount_per_day']??0));if($amount<=0)continue;
                 // Never cut twice: an absent day is already not paid. The fine (for no leave request) comes on top only
@@ -753,7 +756,7 @@ class PeopleOperationsService
         $attendance = app(AttendanceService::class);
         $raise = function (AttendanceEmployee $employee, string $key, string $source, string $date, float $amount, string $reason, array $meta) use ($actor, &$created) {
             if ($amount <= 0 || $employee->isTrainee()) return; // trainees: no salary, so no fines
-            $rule = PolicyRule::where('rule_key', $key)->where('is_active', true)->first();
+            $rule = PolicyRule::where('rule_key', $key)->whereNull('company_id')->where('is_active', true)->first();
             $penalty = EmployeePenalty::firstOrCreate(['source_key' => $source.($rule ? ":{$rule->id}" : '')], ['employee_id' => $employee->id, 'policy_rule_id' => $rule?->id, 'effective_on' => $date, 'amount' => round($amount, 2), 'reason' => $reason, 'requested_by' => $actor, 'status' => 'pending']);
             if ($penalty->wasRecentlyCreated) {
                 $this->approval(EmployeePenalty::class, $penalty->id);

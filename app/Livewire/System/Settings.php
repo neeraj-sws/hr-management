@@ -21,6 +21,8 @@ class Settings extends Component
     use InteractsWithHr;
 
     #[Url] public string $tab = 'leave';
+    /** Super Admin: whose rules this page shows and saves ('' = all companies; a company id = that company's own). */
+    public string $rulesCompany = '';
 
     // Leave types
     public ?int $editingTypeId = null;
@@ -173,8 +175,36 @@ class Settings extends Component
     /** Security tab: search box of the "also these people" picker. */
     public string $webPeopleSearch = '';
 
+    /** Settings the same for all companies (e-mail, security, Google Sheets, leave year …): the Super Admin's only. */
+    private function allCompaniesOnly(): void
+    {
+        abort_if(\App\Support\CompanyAccess::isLimited($this->user()), 403, 'This setting is the same for all companies: only the Super Admin changes it.');
+    }
+
+    /** Reads and saves go to the picked company's own rules (a company owner always works on his own company). */
+    private function applyRulesCompany(): void
+    {
+        if (\App\Support\CompanyAccess::isLimited($this->user())) return;
+        $company = $this->rulesCompany !== '' ? \App\Models\Company::find((int) $this->rulesCompany) : null;
+        if (! $company) $this->rulesCompany = '';
+        \App\Support\CompanyAccess::chooseRulesCompany($company?->id);
+    }
+
+    public function hydrate(): void
+    {
+        $this->applyRulesCompany();
+    }
+
+    public function updatedRulesCompany(): void
+    {
+        $this->applyRulesCompany();
+        app()->call([$this, 'mount']);
+        $this->toast($this->rulesCompany === '' ? 'Showing the rules for all companies.' : 'Showing '.\App\Models\Company::find((int) $this->rulesCompany)?->name.'\'s own rules: what you save here is for that company only.');
+    }
+
     public function mount(PolicyConfigurationService $policies): void
     {
+        $this->applyRulesCompany();
         $today = today()->toDateString();
         $calendar = $policies->forEmployee(null, 'calendar.working_days', $today, ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         $hours = $policies->forEmployee(null, 'work.hours', $today, []);
@@ -321,6 +351,7 @@ class Settings extends Component
 
     public function saveLeaveYear(PeopleOperationsService $people): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate(['leaveYearStart' => ['required', 'integer', 'between:1,12']], [], ['leaveYearStart' => 'leave year start']);
         $people->setPolicy('leave.year', 'leave', 'Leave year', ['start_month' => (int) $this->leaveYearStart], null, auth()->id(), today()->toDateString());
@@ -329,6 +360,7 @@ class Settings extends Component
 
     public function savePersonalReasons(PeopleOperationsService $people): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $phrases = \App\Support\PersonalReason::clean(preg_split('/[,\n]+/', $this->personalPhrases) ?: []);
         if (($this->personalLeave || $this->personalLate) && ! $phrases) {
@@ -458,6 +490,7 @@ class Settings extends Component
 
     public function saveSheets(\App\Services\GoogleSheetsSync $sheets): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate([
             'sheetsUrl' => [$this->sheetsEnabled ? 'required' : 'nullable', 'url', 'starts_with:https://', 'max:500'],
@@ -476,6 +509,7 @@ class Settings extends Component
 
     public function syncSheetsNow(\App\Services\GoogleSheetsSync $sheets): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate(['sheetsFrom' => ['required', 'date'], 'sheetsTo' => ['required', 'date', 'after_or_equal:sheetsFrom']], [], ['sheetsFrom' => 'from', 'sheetsTo' => 'to']);
         if (\Illuminate\Support\Carbon::parse($this->sheetsFrom)->diffInDays(\Illuminate\Support\Carbon::parse($this->sheetsTo)) > 62) {
@@ -490,6 +524,7 @@ class Settings extends Component
     /** Website access: everyone, or only selected roles and people (the others use the desktop / mobile app). */
     public function saveWebAccess(PeopleOperationsService $people): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $roles = \Spatie\Permission\Models\Role::pluck('name')->all();
         $data = $this->validate([
@@ -507,6 +542,7 @@ class Settings extends Component
     /** Security tab: a role chip on / off (Master Admin can always use the website, so it is not a choice). */
     public function toggleWebRole(string $role): void
     {
+        $this->allCompaniesOnly();
         if ($role === 'Master Admin') return;
         $this->webAccessRoles = in_array($role, $this->webAccessRoles, true)
             ? array_values(array_diff($this->webAccessRoles, [$role]))
@@ -515,18 +551,21 @@ class Settings extends Component
 
     public function addWebUser(int $id): void
     {
+        $this->allCompaniesOnly();
         if (! in_array((string) $id, array_map('strval', $this->webAccessUserIds), true)) $this->webAccessUserIds[] = (string) $id;
         $this->webPeopleSearch = '';
     }
 
     public function removeWebUser(int $id): void
     {
+        $this->allCompaniesOnly();
         $this->webAccessUserIds = array_values(array_filter($this->webAccessUserIds, fn ($u) => (int) $u !== $id));
     }
 
     /** "Cancel": back to what is saved. */
     public function resetWebAccess(): void
     {
+        $this->allCompaniesOnly();
         $web = app(\App\Services\WebAccessService::class)->settings();
         $this->webAccessMode = $web['mode'];
         $this->webAccessRoles = $web['roles'];
@@ -537,6 +576,7 @@ class Settings extends Component
 
     public function resetSecurity(): void
     {
+        $this->allCompaniesOnly();
         $saved = app(\App\Services\TwoFactorService::class)->settings();
         $this->twoFactorMode = $saved['mode'];
         $this->twoFactorApps = $saved['apps'];
@@ -577,6 +617,7 @@ class Settings extends Component
 
     public function saveSecurity(PeopleOperationsService $people): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate(['twoFactorMode' => ['required', 'in:'.implode(',', array_keys(\App\Services\TwoFactorService::MODES))]], [], ['twoFactorMode' => '2-step sign-in']);
         if ($this->twoFactorMode !== 'off' && ! \App\Notifications\Channels\SafeMailChannel::enabled()) {
@@ -590,6 +631,7 @@ class Settings extends Component
 
     public function saveEmail(PeopleOperationsService $people): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->resetValidation('dailySummaryTo');
         $addresses = collect(preg_split('/[\s,;]+/', trim($this->dailySummaryTo)))->filter()->values();
@@ -606,6 +648,7 @@ class Settings extends Component
     /** Sends a test e-mail right now (not queued) and shows the exact error if delivery fails. */
     public function sendTestEmail(AuditLogger $audit): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate(['testEmail' => ['required', 'email']], [], ['testEmail' => 'test address']);
         try {
@@ -620,6 +663,7 @@ class Settings extends Component
 
     public function saveOffboarding(PeopleOperationsService $people): void
     {
+        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate(['offboardingWindowHours' => ['required', 'integer', 'min:0', 'max:720']], [], ['offboardingWindowHours' => 'correction window']);
         $people->setPolicy('lifecycle.offboarding', 'lifecycle', 'Offboarding correction window', ['correction_window_hours' => (int) $this->offboardingWindowHours], null, auth()->id(), today()->toDateString());
@@ -635,7 +679,7 @@ class Settings extends Component
         // active employee's own hours and current salary record, so Payroll and Attendance agree.
         if ($this->applyHoursToAll) {
             $updated = 0;
-            foreach (\App\Models\AttendanceEmployee::where('is_active', true)->get() as $employee) {
+            foreach (\App\Models\AttendanceEmployee::where('is_active', true)->ofRulesCompany()->get() as $employee) {
                 $employee->update(['daily_work_hours' => (float) $this->dailyHours]);
                 $employee->salaryProfiles()->orderByDesc('effective_from')->orderByDesc('id')->first()?->update(['standard_daily_hours' => (float) $this->dailyHours]);
                 $updated++;
@@ -653,7 +697,7 @@ class Settings extends Component
             $people->setPolicy('attendance.sources', 'attendance', 'Attendance methods', ['allowed' => array_keys(array_filter(['web' => $this->webAttendance, 'mobile' => $this->mobileAttendance, 'desktop' => true]))], null, auth()->id(), today()->toDateString());
         }
         $people->setPolicy('attendance.selfie', 'attendance', 'Selfie at check-in/out', ['required_web' => $this->selfieWeb, 'required_mobile' => $this->selfieMobile], null, auth()->id(), today()->toDateString());
-        $people->setPolicy('attendance.alerts', 'attendance', 'Late and absence alerts', ['enabled' => $this->alertsEnabled, 'absent_after' => $this->absentAfter, 'break_alerts' => $this->breakAlerts, 'long_break_minutes' => (int) $this->longBreakMinutes], null, auth()->id(), today()->toDateString());
+        if (! \App\Support\CompanyAccess::isLimited($this->user())) $people->setPolicy('attendance.alerts', 'attendance', 'Late and absence alerts', ['enabled' => $this->alertsEnabled, 'absent_after' => $this->absentAfter, 'break_alerts' => $this->breakAlerts, 'long_break_minutes' => (int) $this->longBreakMinutes], null, auth()->id(), today()->toDateString());
         $this->toast('Work hours and attendance rules saved.');
     }
 
@@ -749,7 +793,8 @@ class Settings extends Component
         $people->setPolicy('overtime.multiplier', 'overtime', 'Overtime', ['enabled' => $this->otEnabled, ...$ot], null, auth()->id(), today()->toDateString());
         $people->setPolicy('payroll.calculation', 'payroll', 'Payroll calculation', ['working_days_per_month' => (int) $this->workingDaysPerMonth, 'attendance_proration' => $this->attendanceProration, 'include_paid_leave' => $this->includePaidLeave, 'short_hours_deduction' => $this->shortHoursDeduction, 'short_hours_late_only' => $this->shortHoursLateOnly, 'half_day_pay' => $this->halfDayPay, 'half_day_pay_from' => \Illuminate\Support\Carbon::parse($this->halfDayPayFrom)->toDateString(), 'late_checkin_hours_pay' => $this->lateCheckinPay, 'half_leave_hours_only' => $this->halfLeaveHoursOnly, 'half_day_hours_only' => $this->halfDayHoursOnly, 'late_checkin_after' => $this->lateCheckinAfter, 'extra_work_auto' => $this->extraWorkAuto, 'divisor' => $this->salaryDivisor === 'calendar' ? 'calendar' : 'fixed', 'short_hours_grace' => (float) $this->shortHoursGrace, ...($this->hourlyRateHours !== '' ? ['hourly_rate_hours' => (float) $this->hourlyRateHours] : [])], null, auth()->id(), $from);
         // Rules saved for later dates are replaced by these (otherwise they would still win for those days).
-        $replaced = \App\Models\PolicyRule::where('rule_key', 'payroll.calculation')->where('is_active', true)->whereDate('effective_from', '>', $from)->pluck('id');
+        $company = \App\Support\CompanyAccess::rulesCompanyId();
+        $replaced = \App\Models\PolicyRule::where('rule_key', 'payroll.calculation')->where('company_id', $company)->where('is_active', true)->whereDate('effective_from', '>', $from)->pluck('id');
         if ($replaced->isNotEmpty()) {
             \App\Models\PolicyRule::whereIn('id', $replaced)->update(['is_active' => false]);
             app(\App\Services\AuditLogger::class)->record('policy.replaced', null, ['rule_key' => 'payroll.calculation', 'from' => $from, 'rule_ids' => $replaced->all()]);
@@ -865,6 +910,7 @@ class Settings extends Component
         $people->setPolicy('monitoring.window_titles', 'monitoring', 'Window titles', ['enabled' => $titles], null, auth()->id(), today()->toDateString());
         if ($this->usageOverride) {
             \App\Models\EmployeePolicyOverride::whereIn('rule_key', ['monitoring.app_usage', 'monitoring.window_titles'])
+                ->whereIn('employee_id', \App\Models\AttendanceEmployee::ofRulesCompany()->select('id'))
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', today()))
                 ->get()->each(fn ($o) => $o->effective_from && $o->effective_from->gte(today()) ? $o->delete() : $o->update(['effective_until' => today()->subDay()->toDateString()]));
         }
@@ -910,6 +956,9 @@ class Settings extends Component
             'allEmployees' => $this->tab === 'calendar' ? \App\Models\AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name', 'employee_code']) : collect(),
             'calendarOverrides' => $calendarOverrides,
             'security' => $this->tab === 'security' ? $this->securityData() : null,
+            // A company owner sees his own company's rules only; the Super Admin picks whose rules to work on.
+            'limited' => \App\Support\CompanyAccess::isLimited($this->user()),
+            'ruleCompanies' => \App\Support\CompanyAccess::isLimited($this->user()) ? collect() : \App\Models\Company::orderByDesc('is_main')->orderBy('name')->get(['id', 'name']),
             'sheetsStatus' => $this->tab === 'sheets' ? ['stored_secret' => (bool) app(\App\Services\GoogleSheetsSync::class)->settings()['secret'], 'last' => app(\App\Services\GoogleSheetsSync::class)->lastResult()] : null,
             'mail' => ['mailer' => config('mail.default'), 'host' => config('mail.mailers.'.config('mail.default').'.host'), 'port' => config('mail.mailers.'.config('mail.default').'.port'), 'from' => config('mail.from.address'), 'queue' => config('queue.default'), 'last_error' => \Illuminate\Support\Facades\Cache::get(\App\Notifications\Channels\SafeMailChannel::LAST_ERROR_KEY)],
         ], 'Settings');

@@ -5,7 +5,7 @@
         <thead><tr><th>Department</th><th>Code</th><th>Head</th><th class="num">Active employees</th><th class="num">Teams</th><th>Status</th><th></th></tr></thead>
         <tbody>
         @forelse($departments as $department)
-            <tr wire:key="dep-{{ $department->id }}"><td><strong>{{ $department->name }}</strong></td><td>{{ $department->code }}</td><td>{{ $department->head?->name ?? '—' }}</td><td class="num"><a href="{{ route('people.employees', ['department' => $department->id]) }}">{{ $department->employees_count }}</a>@if($department->all_employees_count > $department->employees_count)<small>+{{ $department->all_employees_count - $department->employees_count }} inactive</small>@endif</td><td class="num">{{ $department->teams_count }}</td><td><x-badge :status="$department->is_active ? 'active' : 'inactive'" /></td><td><div class="row-actions"><a class="btn btn-sm" href="{{ route('people.employees', ['department' => $department->id]) }}">Employees</a><button class="btn btn-sm" wire:click="edit({{ $department->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="remove({{ $department->id }})" wire:confirm="Remove the department {{ $department->name }}? Only possible when no employees or teams are in it.">Remove</button></div></td></tr>
+            <tr wire:key="dep-{{ $department->id }}"><td><strong>{{ $department->name }}</strong></td><td>{{ $department->code }}</td><td>{{ $department->head?->name ?? '—' }}</td><td class="num"><a href="{{ route('people.employees', ['department' => $department->id]) }}">{{ $department->employees_count }}</a>@if($department->all_employees_count > $department->employees_count)<small>+{{ $department->all_employees_count - $department->employees_count }} inactive</small>@endif</td><td class="num">{{ $department->teams_count }}</td><td><x-badge :status="$department->is_active ? 'active' : 'inactive'" /></td><td><div class="row-actions"><a class="btn btn-sm" href="{{ route('people.employees', ['department' => $department->id]) }}">Employees</a>@if($department->changeable())<button class="btn btn-sm" wire:click="edit({{ $department->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="remove({{ $department->id }})" wire:confirm="Remove the department {{ $department->name }}? Only possible when no employees or teams are in it.">Remove</button>@endif</div></td></tr>
         @empty
             <tr><td colspan="7"><x-empty title="No departments yet" icon="building">Create your first department to organise employees.</x-empty></td></tr>
         @endforelse
@@ -20,15 +20,17 @@
             <thead><tr><th>Company</th><th class="num">Active employees</th><th></th></tr></thead>
             <tbody>
             @foreach($companies as $c)
-                <tr wire:key="co-{{ $c->id }}"><td><strong>{{ $c->name }}</strong>@if($c->is_main) <x-badge tone="blue">main</x-badge>@endif</td><td class="num">{{ $c->active_count }}</td><td><div class="row-actions"><button class="btn btn-sm" wire:click="editCompany({{ $c->id }})">Rename</button></div></td></tr>
+                <tr wire:key="co-{{ $c->id }}"><td><strong>{{ $c->name }}</strong>@if($c->is_main) <x-badge tone="blue">main</x-badge>@endif</td><td class="num">{{ $c->active_count }}</td><td>@if($editCompanies)<div class="row-actions"><button class="btn btn-sm" wire:click="editCompany({{ $c->id }})">Rename</button></div>@endif</td></tr>
             @endforeach
             </tbody>
         </table></div>
+        @if($editCompanies)
         <form class="toolbar" wire:submit="saveCompany" style="border-top:1px solid var(--line-2)">
             <x-field :label="$companyEditingId ? 'New name' : 'Add a company'" name="companyName"><input wire:model="companyName" maxlength="120" placeholder="e.g. ITWeb"></x-field>
             <button class="btn btn-primary" wire:loading.attr="disabled">{{ $companyEditingId ? 'Save name' : 'Add company' }}</button>
             @if($companyEditingId)<button type="button" class="btn" wire:click="cancelCompany">Cancel</button>@endif
         </form>
+        @endif
     </section>
 
     @if($showForm)

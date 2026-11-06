@@ -70,6 +70,8 @@ class CompanyService
     public function audienceUsers(Announcement $announcement): Collection
     {
         $employees = AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id');
+        // One company's announcement: its employees only.
+        if ($announcement->company_id) $employees->inPayrollCompany(\App\Models\Company::payrollKey($announcement->company_id));
         if ($announcement->audience === 'department') $employees->where('department_id', $announcement->department_id);
         if ($announcement->audience === 'team') $employees->whereHas('teams', fn ($q) => $q->where('teams.id', $announcement->team_id));
         if ($announcement->audience === 'employees') $employees->whereIn('id', array_map('intval', (array) $announcement->employee_ids) ?: [0]);
@@ -77,7 +79,11 @@ class CompanyService
         if ($announcement->excluded_department_ids) $employees->where(fn ($q) => $q->whereNull('department_id')->orWhereNotIn('department_id', (array) $announcement->excluded_department_ids));
         if ($announcement->excluded_team_ids) $employees->whereDoesntHave('teams', fn ($q) => $q->whereIn('teams.id', (array) $announcement->excluded_team_ids));
         $users = $employees->get()->pluck('user')->filter(fn ($user) => $user?->is_active);
-        if ($announcement->audience === 'all') $users = $users->merge(User::where('is_active', true)->doesntHave('employeeProfile')->get());
+        if ($announcement->audience === 'all') $users = $users->merge(User::where('is_active', true)
+            // No profile at all (another company's profile, hidden from a company owner, still counts as one).
+            ->whereNotIn('id', AttendanceEmployee::withoutGlobalScopes()->whereNotNull('user_id')->select('user_id'))
+            // Logins with no profile (e.g. the Super Admin): of all companies, or of this one.
+            ->when($announcement->company_id, fn ($q) => $q->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $announcement->company_id)))->get());
 
         return $users->unique('id')->values();
     }
@@ -159,7 +165,7 @@ class CompanyService
         $norm = fn (array $c) => [\App\Support\WorkCalendar::normalise(['off_weeks' => $c['off_weeks'] ?? []])['off_weeks'], array_map(fn ($s) => [$s['from'], $s['to']], \App\Support\WorkCalendar::normalise(['shifts' => $c['shifts'] ?? []])['shifts']), array_map('intval', $c['days'] ?? [1, 2, 3, 4, 5])];
         if ($norm($before) === $norm($after)) return 0;
 
-        $employees = $only ? collect([$only->loadMissing('user')]) : AttendanceEmployee::with('user')->where('is_active', true)->whereNotNull('user_id')->get();
+        $employees = $only ? collect([$only->loadMissing('user')]) : AttendanceEmployee::with('user')->where('is_active', true)->ofRulesCompany()->whereNotNull('user_id')->get();
         $sent = 0;
         foreach ($employees as $employee) {
             $calendar = $this->policies->forEmployee($employee, 'calendar.working_days', today()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);

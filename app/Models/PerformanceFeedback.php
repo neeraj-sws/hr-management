@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** 360 feedback: one colleague's view (peer, junior, another manager) for a review. */
 class PerformanceFeedback extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its PerformanceReview is of that company. */
+    public function companyOwner(): array { return ['review_id', PerformanceReview::class]; }
+
     public const RELATIONSHIPS = ['peer' => 'Peer', 'report' => 'Reports to them', 'manager' => 'Another manager', 'other' => 'Other'];
 
     protected $table = 'performance_feedback';

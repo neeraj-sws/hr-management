@@ -4,6 +4,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BillingInvoiceItem extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    public function companyOwner(): array { return ['invoice_id', BillingInvoice::class]; }
+
     protected $guarded = ['id'];
     protected $casts = ['quantity' => 'decimal:2', 'price' => 'decimal:2', 'discount' => 'decimal:2'];
     public function invoice(): BelongsTo { return $this->belongsTo(BillingInvoice::class, 'invoice_id'); }

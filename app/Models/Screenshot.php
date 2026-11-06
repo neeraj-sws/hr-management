@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Screenshot extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
     protected $fillable = ['employee_id', 'attendance_session_id', 'captured_at', 'path', 'bytes'];
     protected $casts = ['captured_at' => 'datetime', 'bytes' => 'integer'];
 

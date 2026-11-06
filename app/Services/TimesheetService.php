@@ -210,7 +210,8 @@ class TimesheetService
 
         return DB::transaction(function () use ($project, $month, $actor, $customerId, $record, $summary) {
             $billing = app(BillingService::class);
-            $n = $billing->nextInvoiceNumber(today());
+            // The project's company bills it (no company = the main one).
+            $n = $billing->nextInvoiceNumber(today(), $project->company_id);
             $invoice = BillingInvoice::create($n + ['customer_id' => $customerId, 'issue_date' => today()->toDateString(),
                 'due_date' => today()->addDays((int) ($billing->company()['due_days'] ?: 7))->toDateString(), 'status' => 'Draft', 'project_id' => $project->id,
                 'place_of_supply' => \App\Models\BillingCustomer::find($customerId)?->billing_state, 'notes' => 'Timesheet '.Carbon::createFromFormat('Y-m', $month)->format('F Y').($record->approved_at ? ', approved by the client on '.$record->approved_at->format('d M Y') : ''), 'created_by' => $actor->id]);

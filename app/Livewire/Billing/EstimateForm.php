@@ -101,7 +101,7 @@ class EstimateForm extends Component
                 $estimate->items()->delete();
             } else {
                 $n = $billing->nextEstimateNumber($this->issueDate);
-                $estimate = BillingEstimate::create(['number' => $n['number'], 'financial_year' => $n['financial_year'],
+                $estimate = BillingEstimate::create(['number' => $n['number'], 'financial_year' => $n['financial_year'], 'company_id' => $n['company_id'],
                     'customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'expiry_date' => $this->expiryDate ?: null,
                     'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null,
                     'status' => $send ? 'Sent' : 'Draft', 'created_by' => auth()->id()]);
