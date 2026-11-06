@@ -44,7 +44,7 @@
             <thead><tr><th>Reference</th>@if($scope === 'all')<th>Employee</th>@endif<th>Period</th><th class="num">Gross</th><th class="num">Net</th><th class="num">Paid</th><th>Status</th><th></th></tr></thead>
             <tbody>
             @forelse($payslips as $slip)
-                @php($paid = (float) $slip->item->payments->sum('amount'))
+                @php($paid = $slip->item->totalPaid())
                 <tr><td><strong>{{ $slip->reference }}</strong><small>issued {{ $slip->issued_at->format('d M Y') }}</small></td>
                     @if($scope === 'all')<td>{{ $slip->employee?->name }}</td>@endif
                     <td class="nowrap">{{ $slip->item->run->period_starts_on->format('d M') }} – {{ $slip->item->run->period_ends_on->format('d M Y') }}</td>

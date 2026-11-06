@@ -165,7 +165,7 @@ class Runs extends Component
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $item = PayrollItem::with('payments')->findOrFail($itemId);
-        $this->fill(['payingItemId' => $item->id, 'paymentAmount' => number_format(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2, '.', ''), 'paymentReference' => '']);
+        $this->fill(['payingItemId' => $item->id, 'paymentAmount' => number_format(max(0, (float) $item->net_amount - $item->totalPaid()), 2, '.', ''), 'paymentReference' => '']);
         $this->resetValidation();
     }
 

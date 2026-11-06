@@ -1058,7 +1058,7 @@ class HrWorkflowService
             $item = PayrollItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
             $run = PayrollRun::whereKey($item->payroll_run_id)->lockForUpdate()->firstOrFail();
             if ($run->status !== 'locked') throw ValidationException::withMessages(['payment' => 'Payroll must be locked before payment.']);
-            $paid = (float) $item->payments()->sum('amount');
+            $paid = $item->totalPaid();
             if ((float) $data['amount'] <= 0) throw ValidationException::withMessages(['amount' => 'Enter an amount above zero.']);
             // Paying more than the net salary is allowed: the part above it is extra pay for the month (not an advance, never recovered).
             $extra = round(max(0, $paid + (float) $data['amount'] - max((float) $item->net_amount, $paid)), 2);
