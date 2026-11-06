@@ -83,6 +83,18 @@ class TrainingEnrollment extends Model
         return $this->belongsTo(TrainingCourse::class, 'training_course_id');
     }
 
+    /** The course's topics for this trainee, in order, each with its mentor and progress. */
+    public function topics()
+    {
+        return $this->hasMany(TrainingEnrollmentTopic::class, 'enrollment_id')->orderBy('sort')->orderBy('id');
+    }
+
+    /** The topic being taught now (or null when none has started or all are done). */
+    public function currentTopic(): ?TrainingEnrollmentTopic
+    {
+        return ($this->relationLoaded('topics') ? $this->topics : $this->topics()->get())->firstWhere('status', 'active');
+    }
+
     public function payments()
     {
         return $this->hasMany(TrainingFeePayment::class, 'enrollment_id')->orderBy('paid_on')->orderBy('id');

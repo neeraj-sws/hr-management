@@ -5,7 +5,7 @@
         @php($next = $e->nextDue())
         <section class="card mb" wire:key="fee-{{ $e->id }}">
             <div class="card-head"><div><h2>{{ $e->course_name }} <x-badge :tone="$e->status === 'active' ? 'blue' : ($e->status === 'completed' ? 'green' : 'gray')">{{ \App\Models\TrainingEnrollment::STATUSES[$e->status] ?? $e->status }}</x-badge></h2>
-                <p>{{ collect([$e->starts_on ? 'from '.$e->starts_on->format('d M Y') : null, $e->ends_on ? 'to '.$e->ends_on->format('d M Y') : null, $e->course?->duration_hours ? (float) $e->course->duration_hours.' h' : null])->filter()->join(' · ') ?: 'Course' }}</p></div></div>
+                <p>{{ collect([$e->starts_on ? 'from '.$e->starts_on->format('d M Y') : null, $e->ends_on ? 'to '.$e->ends_on->format('d M Y') : null, $e->course?->durationText() ?? ($e->course?->duration_hours ? (float) $e->course->duration_hours.' h' : null)])->filter()->join(' · ') ?: 'Course' }}</p></div></div>
             <div class="card-body stack">
                 <div class="stats">
                     <div class="stat"><div><span class="stat-label">Course fee</span><span class="stat-value">{{ $money($e->total_fee) }}</span>@if((float) $e->discount > 0)<small>discount {{ $money($e->discount) }}</small>@endif</div></div>
@@ -19,6 +19,19 @@
                         <strong>Next installment #{{ $next['no'] }}: {{ $money($next['left']) }}</strong> due on {{ \Illuminate\Support\Carbon::parse($next['due_on'])->format('d M Y') }}
                         <span class="small">· {{ $days < 0 ? 'overdue by '.abs($days).' '.(abs($days) === 1 ? 'day' : 'days') : ($days === 0 ? 'due today' : 'in '.$days.' '.($days === 1 ? 'day' : 'days')) }}</span>
                     </div>
+                @endif
+                @if($e->topics->isNotEmpty())
+                    <h3 class="small" style="margin:0">Topics and mentors</h3>
+                    <div class="table-wrap"><table class="table">
+                        <thead><tr><th>#</th><th>Topic</th><th>Mentor</th><th>Status</th><th>Dates</th></tr></thead>
+                        <tbody>
+                        @foreach($e->topics as $t)
+                            @php([$label, $tone] = \App\Models\TrainingEnrollmentTopic::STATUSES[$t->status] ?? [$t->status, 'gray'])
+                            <tr><td>{{ $loop->iteration }}</td><td><strong>{{ $t->title }}</strong></td><td>{{ $t->mentor?->name ?? 'to be decided' }}</td><td><x-badge :tone="$tone">{{ $label }}</x-badge></td>
+                                <td class="small">@if($t->completed_on){{ $t->started_on?->format('d M Y') }} – {{ $t->completed_on->format('d M Y') }}@elseif($t->started_on)since {{ $t->started_on->format('d M Y') }}@else — @endif</td></tr>
+                        @endforeach
+                        </tbody>
+                    </table></div>
                 @endif
                 <h3 class="small" style="margin:0">Installments</h3>
                 @include('partials.fee-installments', ['enrollment' => $e])

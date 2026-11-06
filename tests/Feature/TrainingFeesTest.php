@@ -66,7 +66,7 @@ class TrainingFeesTest extends TestCase
         $trainee = $this->person('TF-3', 'trainee');
 
         $page = Livewire::actingAs($this->admin)->test(Fees::class)
-            ->call('editCourse')->set('cName', 'Web Development')->set('cDuration', '6 months')->set('cFee', '30000')->call('saveCourse')->assertHasNoErrors()
+            ->call('editCourse')->set('title', 'Web Development')->set('durationValue', '6')->set('durationUnit', 'months')->set('fee', '30000')->call('saveCourse')->assertHasNoErrors()
             ->call('enroll')->assertSee('Person TF-3')
             ->set('employeeId', $trainee->id)->set('feeCourseId', \App\Models\TrainingCourse::where('title', 'Web Development')->value('id'))->assertSet('totalFee', '30000')
             // A special discount typed by HR stays (the automatic one-time discount is tested below).
