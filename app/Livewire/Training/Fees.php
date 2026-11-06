@@ -6,9 +6,11 @@ use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\AttendanceEmployee;
 use App\Models\TrainingEnrollment;
 use App\Models\TrainingCourse;
+use App\Models\TrainingEnrollmentTopic;
 use App\Models\TrainingFeePayment;
 use App\Services\EmployeeService;
 use App\Services\TrainingFeeService;
+use App\Services\TrainingMentorService;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -20,7 +22,7 @@ use Livewire\Component;
  */
 class Fees extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\EditsTrainingCourse, \Livewire\WithPagination;
 
     #[Url] public string $tab = 'trainees';
     #[Url] public string $search = '';
@@ -29,6 +31,7 @@ class Fees extends Component
     #[Url] public string $from = '';
     #[Url] public string $to = '';
     #[Url] public string $methodFilter = '';
+    #[Url] public string $mentorFilter = '';
 
     // Enrolment form
     public bool $showEnroll = false;
@@ -47,6 +50,10 @@ class Fees extends Component
     public array $planRows = [];
     /** True once HR changed an installment by hand; until then the plan follows the fee, discount and count. */
     public bool $planEdited = false;
+    /** How the trainee pays: 'once' (the lower fee) or 'installments' (the full fee). */
+    public string $payMode = 'installments';
+    /** @var list<array{id: int|null, course_topic_id: int|null, title: string, mentor_id: string, status: string}> The trainee's topics and mentors. */
+    public array $enrollTopics = [];
 
     public function updatedPlanRows(): void
     {
@@ -63,16 +70,6 @@ class Fees extends Component
 
     public ?int $viewingId = null;
 
-    // Course form
-    public bool $showCourse = false;
-    public ?int $courseId = null;
-    public string $cName = '';
-    public string $cDuration = '';
-    public string $cFee = '';
-    public string $cDescription = '';
-    public string $cDiscount = '';
-    public bool $cActive = true;
-
     public function mount(): void
     {
         $this->from = $this->from ?: today()->startOfMonth()->toDateString();
@@ -81,26 +78,49 @@ class Fees extends Component
 
     public function updating($name): void
     {
-        if (in_array($name, ['search', 'courseFilter', 'statusFilter', 'from', 'to', 'methodFilter', 'tab'], true)) $this->resetPage();
+        if (in_array($name, ['search', 'courseFilter', 'statusFilter', 'from', 'to', 'methodFilter', 'mentorFilter', 'tab'], true)) $this->resetPage();
     }
 
-    /** Picking a course fills its fee, and its discount when paid at once (one installment). */
+    /** Picking a course fills its fee, the usual installments, the end date and its topics with their mentors. */
     public function updatedFeeCourseId($id): void
     {
-        if (! $id) { $this->courseName = ''; return; } // "a course not in the list": type its name
+        if (! $id) { $this->courseName = ''; $this->enrollTopics = []; return; } // "a course not in the list": type its name
         if ($course = TrainingCourse::find($id)) {
             $this->courseName = $course->title;
             $this->totalFee = (string) (float) $course->fee;
+            if ($this->payMode === 'installments' && $course->default_installments) $this->installments = (string) max(2, $course->default_installments);
+            if ((int) $this->installments === 1) $this->payMode = 'once';
+            $this->endsOn = (string) ($course->endDateFrom($this->startsOn ?: today()->toDateString()) ?? $this->endsOn);
+            $this->enrollTopics = TrainingMentorService::topicsFromCourse($course);
             $this->applyDiscountRule();
             $this->equalPlan();
         }
     }
 
+    /** At once: one payment of the lower fee; in installments: the full fee in the course's usual number of installments. */
+    public function updatedPayMode(): void
+    {
+        $course = $this->feeCourseId ? TrainingCourse::find($this->feeCourseId) : null;
+        if ($this->payMode === 'once') $this->installments = '1';
+        elseif ((int) $this->installments <= 1) $this->installments = (string) max(2, (int) ($course?->default_installments ?: 3));
+        $this->applyDiscountRule();
+        $this->equalPlan();
+    }
+
     /** Paid at once: the course's discount; in installments: no discount. */
     public function updatedInstallments(): void
     {
+        $this->payMode = (int) $this->installments === 1 ? 'once' : 'installments';
         $this->applyDiscountRule();
         $this->equalPlan();
+    }
+
+    /** A new start date moves the end date (by the course's duration) and the installment dates. */
+    public function updatedStartsOn(): void
+    {
+        $course = $this->feeCourseId ? TrainingCourse::find($this->feeCourseId) : null;
+        if ($course && $this->startsOn && ($end = $course->endDateFrom($this->startsOn))) $this->endsOn = $end;
+        if (! $this->planEdited) $this->equalPlan();
     }
 
     /** Fills the installments as equal monthly amounts of the fee less the discount, from the start date. */
@@ -134,6 +154,9 @@ class Fees extends Component
         $this->endsOn = (string) $e?->ends_on?->toDateString();
         $this->enrollStatus = $e?->status ?? 'active';
         $this->notes = (string) $e?->notes;
+        $this->payMode = (int) $this->installments === 1 ? 'once' : 'installments';
+        $this->enrollTopics = $e ? $e->topics()->get()->map(fn ($t) => ['id' => $t->id, 'course_topic_id' => $t->course_topic_id, 'title' => $t->title, 'mentor_id' => (string) $t->mentor_id, 'status' => $t->status])->all() : [];
+        if ($e && ! $this->enrollTopics && $e->course) $this->enrollTopics = TrainingMentorService::topicsFromCourse($e->course);
         if ($e) {
             $this->planRows = array_map(fn ($r) => ['amount' => number_format((float) $r['amount'], 2, '.', ''), 'due_on' => (string) $r['due_on']], $e->plan());
             $this->planEdited = ! empty($e->schedule);
@@ -156,6 +179,8 @@ class Fees extends Component
             'endsOn' => ['nullable', 'date', 'after_or_equal:startsOn'],
             'enrollStatus' => ['required', Rule::in(array_keys(TrainingEnrollment::STATUSES))],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'enrollTopics' => ['array'], 'enrollTopics.*.mentor_id' => ['nullable', 'integer', 'exists:attendance_employees,id'],
+            'enrollTopics.*.status' => ['required', Rule::in(array_keys(TrainingEnrollmentTopic::STATUSES))],
         ], [], ['employeeId' => 'trainee', 'courseName' => 'course', 'totalFee' => 'fee', 'endsOn' => 'end date']);
         // The installments must be one row each and add up to the fee less the discount. Not changed by hand: they
         // simply follow the fee, discount, count and start date as saved.
@@ -171,12 +196,14 @@ class Fees extends Component
         $values = ['schedule' => $schedule, 'training_course_id' => $course?->id, 'course_name' => $course?->title ?? $data['courseName'], 'total_fee' => $data['totalFee'], 'discount' => $data['discount'] ?: 0,
             'installments' => (int) $data['installments'], 'starts_on' => $data['startsOn'] ?: null, 'ends_on' => $data['endsOn'] ?: null, 'notes' => $data['notes'] ?: null];
         if ($this->enrollmentId) {
-            $fees->updateEnrollment(TrainingEnrollment::findOrFail($this->enrollmentId), [...$values, 'status' => $data['enrollStatus']]);
+            $enrollment = $fees->updateEnrollment(TrainingEnrollment::findOrFail($this->enrollmentId), [...$values, 'status' => $data['enrollStatus']]);
             $this->toast('Enrolment updated.');
         } else {
-            $fees->enroll(AttendanceEmployee::findOrFail($data['employeeId']), $values, $this->user());
+            $enrollment = $fees->enroll(AttendanceEmployee::findOrFail($data['employeeId']), $values, $this->user());
             $this->toast('Trainee enrolled.');
         }
+        // Each topic with the mentor picked for this trainee; the mentor of the topic going on is told.
+        app(TrainingMentorService::class)->saveEnrollmentTopics($enrollment, $this->enrollTopics, $this->user());
         $this->showEnroll = false;
     }
 
@@ -212,36 +239,10 @@ class Fees extends Component
         $this->toast('Payment removed.');
     }
 
-    public function editCourse(?int $id = null): void
-    {
-        $this->resetValidation();
-        $c = $id ? TrainingCourse::findOrFail($id) : null;
-        $this->courseId = $c?->id;
-        $this->cName = (string) $c?->title;
-        $this->cDuration = (string) $c?->duration_label;
-        $this->cDiscount = $c && (float) $c->one_time_discount > 0 ? (string) (float) $c->one_time_discount : '';
-        $this->cFee = $c ? (string) (float) $c->fee : '';
-        $this->cDescription = (string) $c?->description;
-        $this->cActive = $c?->is_active ?? true;
-        $this->showCourse = true;
-    }
-
-    public function saveCourse(TrainingFeeService $fees): void
-    {
-        $data = $this->validate(['cName' => ['required', 'string', 'max:160'], 'cDuration' => ['nullable', 'string', 'max:60'], 'cFee' => ['required', 'numeric', 'min:0', 'max:10000000'], 'cDiscount' => ['nullable', 'numeric', 'min:0', 'lte:'.((float) $this->cFee ?: 0)], 'cDescription' => ['nullable', 'string', 'max:2000']],
-            ['cDiscount.lte' => 'The discount cannot be more than the fee.'], ['cName' => 'course name', 'cDuration' => 'duration', 'cFee' => 'fee', 'cDiscount' => 'discount']);
-        // The one course list (also shown under Training > Courses).
-        $course = TrainingCourse::updateOrCreate(['id' => $this->courseId], ['title' => $data['cName'], 'duration_label' => $data['cDuration'] ?: null, 'fee' => $data['cFee'], 'one_time_discount' => (float) ($data['cDiscount'] ?: 0),
-            'description' => $data['cDescription'] ?: null, 'is_active' => $this->cActive] + ($this->courseId ? [] : ['created_by' => auth()->id(), 'category' => 'Course']));
-        app(\App\Services\AuditLogger::class)->record($this->courseId ? 'training.course_updated' : 'training.course_created', $course, ['fee' => (float) $course->fee]);
-        $this->showCourse = false;
-        $this->toast('Course saved.');
-    }
-
     public function closeModal(): void
     {
         $this->showEnroll = false;
-        $this->showCourse = false;
+        $this->showCourseForm = false;
         $this->payingId = null;
         $this->viewingId = null;
     }
@@ -270,7 +271,8 @@ class Fees extends Component
 
     public function render()
     {
-        $enrollments = TrainingEnrollment::with(['employee.department', 'payments'])
+        $enrollments = TrainingEnrollment::with(['employee.department', 'payments', 'topics.mentor:id,name'])
+            ->when($this->mentorFilter !== '', fn ($q) => $q->whereHas('topics', fn ($t) => $t->where('mentor_id', $this->mentorFilter)->where('status', 'active')))
             ->when($this->courseFilter !== '', fn ($q) => $q->where('course_name', $this->courseFilter))
             ->when(in_array($this->statusFilter, array_keys(TrainingEnrollment::STATUSES), true), fn ($q) => $q->where('status', $this->statusFilter))
             ->when(trim($this->search) !== '', fn ($q) => $q->whereHas('employee', fn ($e) => $e->where('name', 'like', '%'.trim($this->search).'%')->orWhere('employee_code', 'like', '%'.trim($this->search).'%')))
@@ -289,7 +291,10 @@ class Fees extends Component
             ],
             'payments' => $this->tab === 'payments' ? $this->paymentsQuery()->orderByDesc('paid_on')->orderByDesc('id')->paginate(25) : null,
             'paymentsTotal' => $this->tab === 'payments' ? (float) $this->paymentsQuery()->sum('amount') : 0,
-            'courses' => TrainingCourse::withCount('enrollments')->orderByDesc('is_active')->orderBy('title')->get(),
+            'courses' => TrainingCourse::with('topics.mentors:id,name')->withCount('enrollments')->orderByDesc('is_active')->orderBy('title')->get(),
+            'mentorOptions' => ($this->showCourseForm || $this->showEnroll) ? $this->mentorOptions() : collect(),
+            // Mentors teaching a topic now, for the "Mentor" filter.
+            'mentors' => AttendanceEmployee::whereIn('id', TrainingEnrollmentTopic::where('status', 'active')->whereNotNull('mentor_id')->distinct()->pluck('mentor_id'))->orderBy('name')->get(['id', 'name']),
             // Trainees not in a course yet: shown with an "Enrol" button.
             'unenrolled' => $this->tab === 'trainees' ? AttendanceEmployee::where('is_active', true)->where('employment_type', EmployeeService::TRAINEE)
                 ->whereDoesntHave('trainingEnrollments', fn ($q) => $q->whereIn('status', ['active', 'completed']))->inCodeOrder()->get(['id', 'name', 'employee_code', 'joined_at']) : collect(),

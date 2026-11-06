@@ -1,0 +1,2 @@
+{{-- A course's topics in order with their mentors: "1. HTML & CSS · Risha", "2. JavaScript · Fahad / Khushboo". $course with topics.mentors. --}}
+<div class="tc-topic-line">@foreach($course->topics as $t)<span class="tc-topic-pill">{{ $loop->iteration }}. <b>{{ $t->title }}</b> · @if($t->mentors->isNotEmpty()){{ $t->mentors->pluck('name')->join(' / ') }}@else<span class="muted">no mentor</span>@endif</span>@endforeach</div>
