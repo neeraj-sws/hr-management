@@ -7,6 +7,8 @@ import { ApiError, get } from '../lib/api';
 type Enrollment = {
   id: number; course: string; status: string; status_label: string; starts_on: string | null; ends_on: string | null;
   fee: number; discount: number; payable: number; paid: number; due: number; installments: number;
+  schedule?: { no: number; amount: number; due_on: string; paid: number; left: number; status: string; status_label: string }[];
+  next_due?: { no: number; left: number; due_on: string; status: string } | null;
   payments: { date: string | null; amount: number; receipt: string | null; method: string | null; installment: number | null }[];
 };
 
@@ -40,7 +42,20 @@ export default function CourseFees() {
             <Figure label="Paid" value={money(e.paid)} color={colors.green} />
             <Figure label="Still due" value={money(e.due)} color={e.due > 0 ? colors.red : colors.green} />
           </View>
-          {e.installments > 1 ? <Muted style={{ marginBottom: 6 }}>In {e.installments} installments</Muted> : null}
+          {e.next_due ? (
+            <Notice tone={e.next_due.status === 'overdue' ? 'error' : 'info'} text={`Next installment #${e.next_due.no}: ${money(e.next_due.left)} ${e.next_due.status === 'overdue' ? 'was due' : 'due'} on ${formatDate(e.next_due.due_on)}`} />
+          ) : null}
+          {e.schedule && e.schedule.length ? (
+            <View style={{ marginBottom: 8 }}>
+              <Muted style={{ marginBottom: 4 }}>Installments</Muted>
+              {e.schedule.map((s) => (
+                <Row key={s.no} title={`#${s.no} · ${money(s.amount)} · due ${formatDate(s.due_on)}`}
+                  subtitle={s.left > 0 && s.paid > 0 ? `paid ${money(s.paid)} · left ${money(s.left)}` : undefined}
+                  right={<Badge label={s.status_label} tone={s.status === 'paid' ? 'green' : s.status === 'overdue' ? 'red' : s.status === 'upcoming' ? 'gray' : 'amber'} />} />
+              ))}
+            </View>
+          ) : e.installments > 1 ? <Muted style={{ marginBottom: 6 }}>In {e.installments} installments</Muted> : null}
+          <Muted style={{ marginBottom: 4 }}>Payments</Muted>
           {e.payments.length ? e.payments.map((p, i) => (
             <Row key={i} title={`${money(p.amount)}${p.installment ? ` · installment ${p.installment}` : ''}`} subtitle={`${p.date ? formatDate(p.date) : ''}${p.method ? ` · ${p.method}` : ''}${p.receipt ? ` · receipt ${p.receipt}` : ''}`} />
           )) : <Muted>No payment yet.</Muted>}

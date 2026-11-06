@@ -46,6 +46,7 @@ export type Me = {
   today: AttendanceSession | null;
   unread_notifications: number;
   is_trainee?: boolean;
+  offs_need_request?: boolean;
   missed_status_days?: string[];
   schedule: { shift: string | null; starts_at: string | null; grace_minutes: number } | null;
   policies: { location_required: boolean; selfie_required?: boolean; away_prompt_minutes: number; attendance_sources?: string[] };
@@ -77,13 +78,13 @@ export type LeaveBalance = { leave_type: { id: number; name: string; paid: boole
 export type LeaveRequest = { id: number; leave_type: string; leave_type_id?: number; other_type?: string | null; duration?: 'full' | 'half' | 'short'; starts_on: string; ends_on: string; days: number; reason: string; status: string; decision_note: string | null };
 /** A request for a month's payslip; url opens it (short-lived link) once sent. */
 export type PayslipRequest = { id: number; month: string; month_label: string; note: string | null; status: string; decision_note: string | null; decided_by: string | null; decided_at: string | null; url: string | null };
-export type Payslip = { id: number; reference: string; issued_at: string; period_start: string; period_end: string; gross: number; net: number; paid: number; balance: number; breakdown?: Record<string, unknown>; payments?: { paid_on: string; amount: number; reference: string | null }[] };
+export type Payslip = { id: number; reference: string; issued_at: string; period_start: string; period_end: string; gross: number; net: number; paid: number; balance: number; extra_pay?: number; breakdown?: Record<string, unknown>; payments?: { paid_on: string; amount: number; reference: string | null }[] };
 /** One month of the employee's salary (GET /my/salary): earnings and deductions as [label, amount, note]. */
 export type SalaryMonth = {
   month: string; label: string; source: 'estimate' | 'payroll' | 'old_sheet'; status: string; up_to?: string; paid_on?: string | null;
   days: { working: number; present: number; paid_leave: number; unpaid_leave: number };
   monthly_salary: number; earnings: [string, number, string | null][]; deductions: [string, number, string | null][];
-  gross: number; deductions_total: number; net: number; paid: number; remaining: number; payslip_id: number | null; payslip_url?: string | null; per_day_rate?: number; days_paid?: number;
+  gross: number; deductions_total: number; net: number; paid: number; remaining: number; extra_pay?: number; payslip_id: number | null; payslip_url?: string | null; per_day_rate?: number; days_paid?: number;
   shortfall?: Shortfall | null;
 };
 /** "Why the salary is less than full": full salary, late check-ins (hours and rupees), other cuts, salary for days worked. */
@@ -114,10 +115,11 @@ export type Fine = {
   my_reason: { reason: string; sent_at: string | null; status: string; decided_by: string | null; decided_at: string | null; note: string | null; paid_back_next_payroll: boolean } | null;
 };
 export type LateArrival = { id: number; work_date: string; expected_at: string; reason: string; status: string; decision_note: string | null };
+export type OffDay = { id: number; off_date: string; note: string | null; status: string; decision_note: string | null };
 export type NightWork = { id: number; work_date: string; starts_at: string; ends_at: string; minutes: number; tasks: { id: number; title: string }[]; work_done: string; status: string; decision_note: string | null };
 export type TimesheetProject = { id: number; name: string; client: string | null };
 export type TimesheetLine = { id: number; project_id: number; project: string | null; work_date: string; start_time: string | null; end_time: string | null; minutes: number; description: string; status: string | null; remarks: string | null; source: 'manual' | 'timer' | 'import'; editable: boolean };
-export type Correction = { id: number; work_date: string; check_in: string | null; check_out: string | null; reason: string; status: string; decision_note: string | null };
+export type Correction = { id: number; work_date: string; check_in: string | null; check_out: string | null; break_minutes?: number | null; reason: string; status: string; decision_note: string | null };
 export type ExpenseClaim = { id: number; category: string; spent_on: string; amount: number; description: string; has_receipt: boolean; status: string; decision_note: string | null };
 export type Announcement = { id: number; title: string; body: string; pinned: boolean; published_at: string; author: string | null };
 export type Celebration = { employee: string; type: 'birthday' | 'anniversary'; date: string; years: number | null; today: boolean };

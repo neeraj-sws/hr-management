@@ -98,7 +98,7 @@ function MonthCard({ month: m, open, onToggle }: { month: SalaryMonth; open: boo
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
           {estimate ? <Pill text="So far" bg="#E6F1FB" fg="#185FA5" />
-            : m.remaining > 0 ? <Pill text={`Due ${rupees(m.remaining)}`} bg="#FAEEDA" fg={brown} /> : <Pill text="Paid" bg="#E1F5EE" fg="#085041" />}
+            : m.remaining > 0 ? <Pill text={`Due ${rupees(m.remaining)}`} bg="#FAEEDA" fg={brown} /> : <Pill text={m.extra_pay ? `Paid · extra ${rupees(m.extra_pay)}` : 'Paid'} bg="#E1F5EE" fg="#085041" />}
           <MaterialCommunityIcons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.faint} />
         </View>
       </Pressable>
@@ -127,7 +127,7 @@ function MonthCard({ month: m, open, onToggle }: { month: SalaryMonth; open: boo
           {extras.map(([label, amount, note], i) => <Line key={`e${i}`} label={label} note={note} amount={`+ ${rupees(amount)}`} />)}
           {m.deductions.map(([label, amount, note], i) => <Line key={`d${i}`} label={label} note={note} amount={amount > 0 ? `− ${rupees(amount)}` : '—'} negative />)}
           <Line label={estimate ? 'Net so far' : 'Net salary'} amount={rupees(m.net)} strong />
-          {!estimate && m.paid > 0 ? <Text style={styles.paidOn}>{m.paid_on ? `Paid on ${formatDate(m.paid_on)}` : 'Paid'}{m.remaining > 0 ? ` · ${rupees(m.paid)} so far, ${rupees(m.remaining)} still due` : ''}</Text> : null}
+          {!estimate && m.paid > 0 ? <Text style={styles.paidOn}>{m.paid_on ? `Paid on ${formatDate(m.paid_on)}` : 'Paid'}{m.remaining > 0 ? ` · ${rupees(m.paid)} so far, ${rupees(m.remaining)} still due` : ''}{m.extra_pay ? ` · includes ${rupees(m.extra_pay)} extra pay (above the salary, never cut later)` : ''}</Text> : null}
           {estimate ? <Text style={styles.paidOn}>What payroll would pay if the month ended today.</Text> : null}
           {m.payslip_url ? (
             <Pressable onPress={() => Linking.openURL(m.payslip_url as string)} style={styles.download} accessibilityRole="button">

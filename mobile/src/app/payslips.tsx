@@ -72,7 +72,7 @@ export default function Payslips() {
       ) : null}
       <Card>
         {items.length ? items.map((p) => (
-          <Row key={p.id} title={`${p.reference} · ${formatDate(p.period_start)} – ${formatDate(p.period_end)}`} subtitle={`Net ${money(p.net)} · Paid ${money(p.paid)}`} right={<Badge label={p.balance > 0 ? 'partially paid' : 'paid'} tone={p.balance > 0 ? 'amber' : 'green'} />} />
+          <Row key={p.id} title={`${p.reference} · ${formatDate(p.period_start)} – ${formatDate(p.period_end)}`} subtitle={`Net ${money(p.net)} · Paid ${money(p.paid)}${p.extra_pay ? ` · Extra pay ${money(p.extra_pay)}` : ''}`} right={<Badge label={p.balance > 0 ? 'partially paid' : 'paid'} tone={p.balance > 0 ? 'amber' : 'green'} />} />
         )) : <Empty text={loaded ? 'No payslips yet' : 'Loading…'} />}
       </Card>
     </Screen>

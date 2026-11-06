@@ -15,6 +15,8 @@ export default function CorrectionsScreen() {
   const [workDate, setWorkDate] = useState(params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : todayYmd());
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
+  // Break: the correct total break of the day in minutes (e.g. the app missed "Resume work" because of the net).
+  const [breakMinutes, setBreakMinutes] = useState('');
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
@@ -38,20 +40,21 @@ export default function CorrectionsScreen() {
 
   const submit = async () => {
     const local: Record<string, string> = {};
-    if (!checkIn && !checkOut) local.check_in = 'Set the correct check-in time, check-out time, or both.';
+    if (!checkIn && !checkOut && breakMinutes.trim() === '') local.check_in = 'Set the correct check-in time, check-out time or break minutes.';
+    if (breakMinutes.trim() !== '' && !/^\d{1,3}$/.test(breakMinutes.trim())) local.break_minutes = 'Break in minutes, e.g. 45.';
     if (reason.trim().length < 5) local.reason = 'Explain briefly what happened.';
     setErrors(local);
     if (Object.keys(local).length) return;
     setBusy(true);
     setMessage(null);
     try {
-      const created = await post<{ data: Correction }>('/attendance/corrections', { work_date: workDate, check_in: checkIn || null, check_out: checkOut || null, reason });
+      const created = await post<{ data: Correction }>('/attendance/corrections', { work_date: workDate, check_in: checkIn || null, check_out: checkOut || null, break_minutes: breakMinutes.trim() === '' ? null : Number(breakMinutes.trim()), reason });
       setItems((current) => [created.data, ...current]);
       setMessage({ tone: 'success', text: 'Sent to your manager for approval.' });
-      setCheckIn(''); setCheckOut(''); setReason('');
+      setCheckIn(''); setCheckOut(''); setBreakMinutes(''); setReason('');
     } catch (e) {
       if (e instanceof ApiError) {
-        const mapped = Object.fromEntries(Object.entries(e.errors).map(([k, v]) => [({ workDate: 'work_date', checkIn: 'check_in', checkOut: 'check_out' } as Record<string, string>)[k] ?? k, v[0]]));
+        const mapped = Object.fromEntries(Object.entries(e.errors).map(([k, v]) => [({ workDate: 'work_date', checkIn: 'check_in', checkOut: 'check_out', breakMinutes: 'break_minutes' } as Record<string, string>)[k] ?? k, v[0]]));
         setErrors(mapped);
         setMessage({ tone: 'error', text: e.firstMessage });
       }
@@ -80,6 +83,7 @@ export default function CorrectionsScreen() {
         <DateField label="Day" value={workDate} onChange={setWorkDate} maximumDate={todayYmd()} error={errors.work_date} />
         <TimeField label="Correct check-in" value={checkIn} onChange={setCheckIn} error={errors.check_in} />
         <TimeField label="Correct check-out" value={checkOut} onChange={setCheckOut} error={errors.check_out} />
+        <Field label="Correct break (minutes, total for the day)" value={breakMinutes} onChangeText={setBreakMinutes} placeholder="e.g. 45 — leave empty to keep as is" keyboardType="number-pad" maxLength={3} error={errors.break_minutes} />
         <Field label="Reason" value={reason} onChangeText={setReason} placeholder="e.g. Forgot to check out at 6:30 PM" error={errors.reason} multiline />
         <Button title="Send for approval" tone="primary" onPress={submit} loading={busy} />
       </FormSheet>
@@ -88,7 +92,7 @@ export default function CorrectionsScreen() {
         <View style={{ marginBottom: 10 }}><MonthSwitcher month={month} onChange={setMonth} /></View>
         {items.length ? items.map((c) => (
           <Row key={c.id} title={formatDate(c.work_date)}
-            subtitle={`${c.check_in ? `in ${formatTime(c.check_in)}` : ''}${c.check_in && c.check_out ? ' · ' : ''}${c.check_out ? `out ${formatTime(c.check_out)}` : ''} — ${c.reason}${c.decision_note ? ` · ${c.decision_note}` : ''}`}
+            subtitle={`${c.check_in ? `in ${formatTime(c.check_in)}` : ''}${c.check_in && c.check_out ? ' · ' : ''}${c.check_out ? `out ${formatTime(c.check_out)}` : ''}${c.break_minutes != null ? `${c.check_in || c.check_out ? ' · ' : ''}break ${c.break_minutes} min` : ''} — ${c.reason}${c.decision_note ? ` · ${c.decision_note}` : ''}`}
             right={<View style={{ alignItems: 'flex-end', gap: 6 }}><Badge label={c.status} />{c.status === 'pending' ? <Button small tone="danger" title="Cancel" onPress={() => cancel(c.id)} /> : null}</View>} />
         )) : <Empty text={loaded ? 'No correction requests' : 'Loading…'} />}
       </Card>

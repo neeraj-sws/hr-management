@@ -8,7 +8,7 @@ import { MonthSwitcher, useMonth } from '../components/MonthSwitcher';
 import { Button, Card, colors, Empty, Field, formatDate, Notice, Screen } from '../components/ui';
 import { ApiError, get, post } from '../lib/api';
 import { enqueue } from '../lib/queue';
-import { todayYmd } from '../components/DateField';
+import { DateField, todayYmd } from '../components/DateField';
 
 type DayInfo = { check_in: string | null; check_out: string | null; worked_seconds: number; break_seconds: number; task_count: number; task_seconds: number; tasks?: { id: number; title: string; status: string; seconds: number }[] };
 type Status = { id: number; work_date: string; yesterday: string | null; plan: string | null; summary: string; blockers: string | null; notes: string | null; submitted_at: string | null; late_reason?: string | null; late?: boolean; day?: DayInfo };
@@ -55,6 +55,9 @@ export default function DailyStatusScreen() {
   useCloseOnSuccess(busy, message, closeForm);
   // A missed day (last 2 days at work, no status): step 1 the reason, step 2 the status; its fine is then removed.
   const [missedWritable, setMissedWritable] = useState<string[]>([]);
+  // HR allowed this person to write earlier days too (past months): the earliest day, and the day picked.
+  const [pastFrom, setPastFrom] = useState<string | null>(null);
+  const [pastDay, setPastDay] = useState('');
   const [missedDate, setMissedDate] = useState<string | null>(null);
   const [missedStep, setMissedStep] = useState<1 | 2>(1);
   const [lateReason, setLateReason] = useState('');
@@ -73,9 +76,10 @@ export default function DailyStatusScreen() {
   const [month, setMonth] = useMonth();
   const load = useCallback(async () => {
     try {
-      const response = await get<{ data: Status[]; today: Status | null; today_info?: DayInfo; month_summary?: MonthSummary; team?: TeamRow[]; reminder_at?: string; missed_writable?: string[] }>(`/daily-status?month=${month}`);
+      const response = await get<{ data: Status[]; today: Status | null; today_info?: DayInfo; month_summary?: MonthSummary; team?: TeamRow[]; reminder_at?: string; missed_writable?: string[]; past_status_from?: string | null }>(`/daily-status?month=${month}`);
       setHistory(response.data);
       setMissedWritable(response.missed_writable ?? []);
+      setPastFrom(response.past_status_from ?? null);
       setTodayStatus(response.today);
       setTodayInfo(response.today_info ?? null);
       if (response.reminder_at) setReminderAt(response.reminder_at);
@@ -227,6 +231,18 @@ export default function DailyStatusScreen() {
           <View style={{ marginTop: 8 }}><Button title="Write the missed day" tone="primary" onPress={() => openMissed(d)} /></View>
         </View>
       ))}
+
+      {/* Earlier days (HR allowed it, e.g. last month): pick the day, then the same steps as a missed day. */}
+      {pastFrom ? (
+        <View style={[styles.today, { borderColor: '#F5DDB0', backgroundColor: amber.bg }]}>
+          <Text style={[styles.dayLine, { color: amber.fg }]}>Add a missed status for an earlier day</Text>
+          <Text style={[styles.meta, { color: amber.fg }]}>From {formatDate(pastFrom)} to yesterday.</Text>
+          <View style={{ marginTop: 8 }}>
+            <DateField label="Day" value={pastDay} onChange={setPastDay} minimumDate={pastFrom} maximumDate={yesterdayYmd()} />
+            <Button title="Add status for this day" tone="primary" onPress={() => { if (pastDay) openMissed(pastDay); }} />
+          </View>
+        </View>
+      ) : null}
 
       {/* Month in numbers */}
       {summary ? (
@@ -393,3 +409,10 @@ const styles = StyleSheet.create({
   tasksBox: { backgroundColor: colors.canvas, borderRadius: 12, padding: 10, marginBottom: 12 },
   blockerInput: { borderColor: red.line, backgroundColor: '#FFF7F7' },
 });
+
+/** Yesterday as YYYY-MM-DD (the last day an earlier status can be written for). */
+function yesterdayYmd(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
