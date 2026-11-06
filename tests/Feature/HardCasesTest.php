@@ -535,9 +535,27 @@ class HardCasesTest extends TestCase
         $workflow->lockPayroll($run->fresh(), $this->admin->id);
         $workflow->pay($item->fresh(), ['amount' => 20000, 'paid_on' => '2026-11-03', 'reference' => 'NEFT-1', 'method' => 'bank_transfer'], $this->admin->id);
         $workflow->pay($item->fresh(), ['amount' => 25717.95, 'paid_on' => '2026-11-05', 'reference' => 'NEFT-2', 'method' => 'bank_transfer'], $this->admin->id);
-        $this->expectFailure(fn () => $workflow->pay($item->fresh(), ['amount' => 5000, 'paid_on' => '2026-11-06', 'reference' => 'X', 'method' => 'bank_transfer'], $this->admin->id));
-        $this->assertEquals(45717.95, (float) $item->fresh()->payments()->sum('amount'));
-        $this->actingAs($this->employeeUser)->get(route('hr.payslips.show', $item->fresh()->payslip))->assertOk()->assertSee('45,717.95');
+        // Paying above the net salary is allowed: the part above it is extra pay for the month, never recovered later.
+        $this->expectFailure(fn () => $workflow->pay($item->fresh(), ['amount' => 0, 'paid_on' => '2026-11-06', 'reference' => 'X', 'method' => 'bank_transfer'], $this->admin->id));
+        $extra = $workflow->pay($item->fresh(), ['amount' => 5000, 'paid_on' => '2026-11-06', 'reference' => 'X', 'method' => 'bank_transfer'], $this->admin->id);
+        $this->assertEquals(50717.95, (float) $item->fresh()->payments()->sum('amount'));
+        $this->assertEquals(5000.0, $item->fresh()->load('payments')->extraPay());
+        $this->assertEquals(5000.0, $extra->load('payrollItem.payments')->extraPart());
+        $this->assertEquals(0.0, $item->fresh()->payments()->where('reference', 'NEFT-2')->first()->load('payrollItem.payments')->extraPart());
+        $this->assertSame(5000.0, (float) AuditLog::where('action', 'payroll.payment_recorded')->latest('id')->first()->metadata['extra_pay']);
+        $this->assertSame(1, SalaryAdvance::count()); // not an advance: nothing to recover from later salaries
+        $this->actingAs($this->employeeUser)->get(route('hr.payslips.show', $item->fresh()->payslip))->assertOk()->assertSee('45,717.95')->assertSee('Extra pay (paid above net pay, not recovered)')->assertSee('5,000.00');
+        $month = app(\App\Services\SalarySummaryService::class)->forItem($item->fresh());
+        $this->assertEquals([5000.0, 0.0], [$month['extra_pay'], $month['remaining']]);
+        // The month card shows the month's extra pay without opening it; Attendance records (one employee) has an Extra pay card.
+        $this->blade('<x-salary-month :month="$m" />', ['m' => $month])->assertSee('Extra pay')->assertSee('+ 5,000.00');
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Attendance\Records::class, ['employee' => (string) $this->employee->id, 'from' => '2026-10-01', 'to' => '2026-10-31'])->assertSee('Extra pay')->assertSee('Oct 2026: ₹5,000');
+        $reports = app(\App\Services\ReportService::class);
+        $this->assertEquals([5000.0, 0.0], [$reports->rows($this->admin, 'payroll', ['from' => '2026-10-01', 'to' => '2026-10-31'])->first()['extra_pay'], $reports->rows($this->admin, 'payroll', ['from' => '2026-10-01', 'to' => '2026-10-31'])->first()['balance']]);
+        $this->assertEquals(5000.0, $reports->rows($this->admin, 'payments', ['from' => '2026-11-01', 'to' => '2026-11-30'])->firstWhere('reference', 'X')['extra_pay']);
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Payroll\Payments::class, ['from' => '2026-11-01', 'to' => '2026-11-30'])->assertSee('Extra pay')->assertSee('5,000.00');
+        Sanctum::actingAs($this->employeeUser, ['*']);
+        $this->getJson('/api/payslips/'.$item->fresh()->payslip->id)->assertOk()->assertJsonPath('data.extra_pay', 5000)->assertJsonPath('data.balance', 0);
         $this->assertSame('recovered', SalaryAdvance::first()->status);
         foreach (['payroll.calculated', 'payroll.approved', 'payroll.locked'] as $action) $this->assertTrue(AuditLog::where('action', $action)->exists(), $action);
     }

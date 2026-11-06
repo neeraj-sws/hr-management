@@ -1059,11 +1059,13 @@ class HrWorkflowService
             $run = PayrollRun::whereKey($item->payroll_run_id)->lockForUpdate()->firstOrFail();
             if ($run->status !== 'locked') throw ValidationException::withMessages(['payment' => 'Payroll must be locked before payment.']);
             $paid = (float) $item->payments()->sum('amount');
-            if ((float) $data['amount'] <= 0 || $paid + (float) $data['amount'] > (float) $item->net_amount) throw ValidationException::withMessages(['amount' => 'Payment exceeds the remaining payroll balance.']);
+            if ((float) $data['amount'] <= 0) throw ValidationException::withMessages(['amount' => 'Enter an amount above zero.']);
+            // Paying more than the net salary is allowed: the part above it is extra pay for the month (not an advance, never recovered).
+            $extra = round(max(0, $paid + (float) $data['amount'] - max((float) $item->net_amount, $paid)), 2);
             $payment = $item->payments()->create([...$data, 'recorded_by' => $userId]);
             $payslip = Payslip::firstOrCreate(['payroll_item_id' => $item->id], ['employee_id' => $item->employee_id, 'issued_at' => now(), 'reference' => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT)]);
-            $this->audit->record('payroll.payment_recorded', $payment, ['payroll_item_id' => $item->id]);
-            $amount = number_format((float) $payment->amount, 2);
+            $this->audit->record('payroll.payment_recorded', $payment, ['payroll_item_id' => $item->id, 'extra_pay' => $extra]);
+            $amount = number_format((float) $payment->amount, 2).($extra > 0 ? ' (including '.number_format($extra, 2).' extra pay)' : '');
             // The first payment issues the payslip: say so plainly (it is what the employee is waiting for).
             if ($payslip->wasRecentlyCreated) {
                 Notifier::send($item->employee?->user, 'Payslip', $payslip->id, 'Your payslip for '.$run->period_starts_on->format('F Y').' is ready. Salary payment of '.$amount.' recorded.', route('hr.payslips.show', $payslip, false));

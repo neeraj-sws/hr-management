@@ -69,7 +69,7 @@
                             <td class="num">{{ number_format((float) $item->gross_amount, 2) }}</td>
                             <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if($claimsPaid > 0) · <span style="color:var(--green, #1E7A41)">+ claims {{ number_format($claimsPaid, 2) }} in net</span>@endif@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
                             <td class="num"><strong>{{ number_format((float) $item->net_amount, 2) }}</strong></td>
-                            <td class="num">{{ number_format($paid, 2) }}@if($sheetPaid > 0)<small>old sheet{{ ! empty($item->calculation_breakdown['old_sheet']['payment_date']) ? ' · '.\Illuminate\Support\Carbon::parse($item->calculation_breakdown['old_sheet']['payment_date'])->format('d M Y') : '' }}</small>@elseif($paid > 0 && $paid < (float) $item->net_amount)<small>partial</small>@endif</td>
+                            <td class="num">{{ number_format($paid, 2) }}@if($sheetPaid > 0)<small>old sheet{{ ! empty($item->calculation_breakdown['old_sheet']['payment_date']) ? ' · '.\Illuminate\Support\Carbon::parse($item->calculation_breakdown['old_sheet']['payment_date'])->format('d M Y') : '' }}</small>@elseif($paid > 0 && $paid < (float) $item->net_amount)<small>partial</small>@elseif($paid - (float) $item->net_amount > 0.005)<small>incl. {{ number_format($paid - (float) $item->net_amount, 2) }} extra pay</small>@endif</td>
                             <td><div class="row-actions">
                                 <button class="btn btn-sm" wire:click="$set('breakdownItemId', {{ $item->id }})">Breakdown</button>
                                 @if($selected->status === 'locked' && $paid < (float) $item->net_amount && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="openPayment({{ $item->id }})">Pay</button>@endif
@@ -88,7 +88,7 @@
     @if($paying)
         <x-modal title="Record payment · {{ $paying->employee?->name }}">
             <form wire:submit="pay"><div class="modal-body"><x-errors />
-                <p class="small muted" style="margin-top:0">Net {{ number_format((float) $paying->net_amount, 2) }} · already paid {{ number_format((float) $paying->payments->sum('amount'), 2) }}. Partial payments are allowed.</p>
+                <p class="small muted" style="margin-top:0">Net {{ number_format((float) $paying->net_amount, 2) }} · already paid {{ number_format((float) $paying->payments->sum('amount'), 2) }}. Partial payments are allowed. Paying more than the net saves the part above it as extra pay for this month (not an advance, never cut from later salaries).</p>
                 <div class="form-grid"><x-field label="Amount" name="paymentAmount"><input type="number" step="0.01" min="0.01" wire:model="paymentAmount"></x-field><x-field label="Bank / reference" name="paymentReference"><input wire:model="paymentReference"></x-field></div>
             </div><div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Record payment</button></div></form>
         </x-modal>
