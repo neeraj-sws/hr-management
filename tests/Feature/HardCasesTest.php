@@ -547,6 +547,9 @@ class HardCasesTest extends TestCase
         $this->actingAs($this->employeeUser)->get(route('hr.payslips.show', $item->fresh()->payslip))->assertOk()->assertSee('45,717.95')->assertSee('Extra pay (paid above net pay, not recovered)')->assertSee('5,000.00');
         $month = app(\App\Services\SalarySummaryService::class)->forItem($item->fresh());
         $this->assertEquals([5000.0, 0.0], [$month['extra_pay'], $month['remaining']]);
+        // The month card shows the month's extra pay without opening it; Attendance records (one employee) has an Extra pay card.
+        $this->blade('<x-salary-month :month="$m" />', ['m' => $month])->assertSee('Extra pay')->assertSee('+ 5,000.00');
+        \Livewire\Livewire::actingAs($this->admin)->test(\App\Livewire\Attendance\Records::class, ['employee' => (string) $this->employee->id, 'from' => '2026-10-01', 'to' => '2026-10-31'])->assertSee('Extra pay')->assertSee('Oct 2026: ₹5,000');
         $reports = app(\App\Services\ReportService::class);
         $this->assertEquals([5000.0, 0.0], [$reports->rows($this->admin, 'payroll', ['from' => '2026-10-01', 'to' => '2026-10-31'])->first()['extra_pay'], $reports->rows($this->admin, 'payroll', ['from' => '2026-10-01', 'to' => '2026-10-31'])->first()['balance']]);
         $this->assertEquals(5000.0, $reports->rows($this->admin, 'payments', ['from' => '2026-11-01', 'to' => '2026-11-30'])->firstWhere('reference', 'X')['extra_pay']);

@@ -44,6 +44,7 @@
             ] as [$label, $value, $hint, $tone])
                 <div class="ar-mini ar-mini-{{ $tone }}"><span>{{ $label }}</span><strong>{{ $value }}</strong><small>{{ $hint }}</small></div>
             @endforeach
+            @if($person['extra_pay'] !== null)<div class="ar-mini ar-mini-{{ $person['extra_pay'] > 0 ? 'green' : 'gray' }}" title="Paid above the net salary · not an advance, never cut from later salaries"><span>Extra pay</span><strong>₹{{ number_format($person['extra_pay'], 0) }}</strong><small>{{ $person['extra_pay_months'] ?: 'none in these months' }}</small></div>@endif
             @if($person['conflict'])<div class="ar-mini ar-mini-blue"><span>Worked on leave</span><strong>{{ $person['conflict'] }}</strong><small><a href="{{ route('attendance.conflicts') }}">decide in Conflicts</a></small></div>@endif
         </div>
     @else

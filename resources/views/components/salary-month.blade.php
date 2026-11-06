@@ -19,6 +19,7 @@
             <span><small>Earned</small>{{ $fmt($m['gross']) }}</span>
             <span class="neg"><small>Deductions</small>{{ $fmt($m['deductions_total']) }}</span>
             <span><small>{{ $estimate ? 'Net so far' : 'Net' }}</small><strong>{{ $fmt($m['net']) }}</strong></span>
+            @if(($m['extra_pay'] ?? 0) > 0)<span title="Paid above the net salary · not an advance, never cut from later salaries"><small>Extra pay</small>+ {{ $fmt($m['extra_pay']) }}</span>@endif
         </div>
         @if($estimate)<span class="sm-pill sm-pill-blue">So far</span>
         @elseif($due)<span class="sm-pill sm-pill-amber" title="Still due">Due {{ $fmt($m['remaining']) }}</span>

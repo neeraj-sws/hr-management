@@ -263,6 +263,12 @@ class Records extends Component
         $worked = (int) $sessions->sum(fn ($s) => $attendance->workedSeconds($s));
         // Idle, break and meeting time: the same figures as each row.
         $figures = $sessions->map(fn ($s) => $attendance->liveFigures($s));
+        // Extra pay (paid above the net salary) of the salary months inside the chosen dates; salary figures only for people who may see salaries.
+        $extraPay = auth()->user()?->canAny(['payroll.manage', 'payroll.approve', 'hr.manage'])
+            ? \App\Models\PayrollItem::with(['run', 'payments'])->where('employee_id', $employee->id)
+                ->whereHas('run', fn ($q) => $q->whereDate('period_starts_on', '<=', $this->to)->whereDate('period_ends_on', '>=', $this->from))->get()
+                ->map(fn ($item) => ['month' => $item->run->period_starts_on->format('M Y'), 'amount' => $item->extraPay()])->filter(fn ($e) => $e['amount'] > 0)->values()
+            : null;
 
         return [
             // Working days in the range (weekly offs and holidays not counted; before joining / after leaving neither).
@@ -286,6 +292,8 @@ class Records extends Component
             'fines' => (float) $fines->where('status', 'approved')->sum('amount'),
             'fines_count' => $fines->where('status', 'approved')->count(),
             'fines_pending' => $fines->where('status', 'pending')->count(),
+            'extra_pay' => $extraPay?->sum('amount'),
+            'extra_pay_months' => $extraPay?->map(fn ($e) => $e['month'].': ₹'.number_format($e['amount'], 0))->join(' · '),
         ];
     }
 
