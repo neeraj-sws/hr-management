@@ -5,7 +5,7 @@
         <div class="card-head"><div><h2>Outstanding on locked payroll</h2><p>{{ $outstanding->count() }} employees · {{ number_format($outstanding->sum('balance'), 2) }} remaining</p></div></div>
         <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Period</th><th class="num">Net</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead><tbody>
             @forelse($outstanding as $item)
-                <tr><td><strong>{{ $item->employee?->name }}</strong></td><td>{{ $item->run->period_starts_on->format('d M') }} – {{ $item->run->period_ends_on->format('d M Y') }}</td><td class="num">{{ number_format((float) $item->net_amount, 2) }}</td><td class="num">{{ number_format((float) $item->payments->sum('amount'), 2) }}</td><td class="num"><strong>{{ number_format($item->balance, 2) }}</strong></td>
+                <tr><td><strong>{{ $item->employee?->name }}</strong></td><td>{{ $item->run->period_starts_on->format('d M') }} – {{ $item->run->period_ends_on->format('d M Y') }}</td><td class="num">{{ number_format((float) $item->net_amount, 2) }}</td><td class="num">{{ number_format($item->totalPaid(), 2) }}</td><td class="num"><strong>{{ number_format($item->balance, 2) }}</strong></td>
                     <td>@can('payroll.manage')<button class="btn btn-sm btn-primary" wire:click="openPayment({{ $item->id }})">Record payment</button>@endcan</td></tr>
             @empty<tr><td colspan="6"><x-empty title="Nothing outstanding" icon="check-circle" /></td></tr>@endforelse
         </tbody></table></div>

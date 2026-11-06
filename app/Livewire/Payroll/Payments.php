@@ -34,7 +34,7 @@ class Payments extends Component
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $item = PayrollItem::with('payments')->findOrFail($itemId);
-        $this->fill(['payingItemId' => $itemId, 'amount' => number_format(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2, '.', ''), 'reference' => '', 'method' => 'bank_transfer', 'paidOn' => today()->toDateString()]);
+        $this->fill(['payingItemId' => $itemId, 'amount' => number_format(max(0, (float) $item->net_amount - $item->totalPaid()), 2, '.', ''), 'reference' => '', 'method' => 'bank_transfer', 'paidOn' => today()->toDateString()]);
         $this->resetValidation();
     }
 
@@ -61,7 +61,7 @@ class Payments extends Component
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('reference', 'like', "%{$term}%")->orWhereHas('payrollItem.employee', fn ($e) => $e->where('name', 'like', "%{$term}%"))))
             ->latest('id')->paginate(20);
         $outstanding = PayrollItem::with(['employee', 'run', 'payments'])->whereHas('run', fn ($q) => $q->where('status', 'locked'))->get()
-            ->map(fn ($item) => tap($item, fn ($i) => $i->setAttribute('balance', round((float) $i->net_amount - (float) $i->payments->sum('amount'), 2))))
+            ->map(fn ($item) => tap($item, fn ($i) => $i->setAttribute('balance', round((float) $i->net_amount - $i->totalPaid(), 2))))
             ->filter(fn ($item) => $item->balance > 0)->values();
 
         return $this->page('livewire.payroll.payments', [

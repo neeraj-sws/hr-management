@@ -34,7 +34,7 @@
 <body>
 @php($item = $payslip->item)
 @php($b = $item->calculation_breakdown ?? [])
-@php($paid = (float) $item->payments->sum('amount'))
+@php($paid = $item->totalPaid())
 @php($earnings = collect($b['salary_components'] ?? [])->map(fn ($a, $n) => [$n, (float) $a])->values())
 @php($earnings = $earnings->isEmpty() ? collect([['Basic salary', (float) ($b['base_salary'] ?? 0)]]) : $earnings)
 @php($deductions = collect())
@@ -71,7 +71,7 @@
             <div><span>Department</span><strong>{{ $payslip->employee->department?->name ?? '—' }}</strong></div>
             <div><span>Pay period</span><strong>{{ $item->run->period_starts_on->format('d M') }} – {{ $item->run->period_ends_on->format('d M Y') }}</strong></div>
             <div><span>Date of joining</span><strong>{{ $payslip->employee->joined_at?->format('d M Y') ?? '—' }}</strong></div>
-            <div><span>Paid on</span><strong>{{ $item->payments->max('paid_on')?->format('d M Y') ?? '—' }}</strong></div>
+            <div><span>Paid on</span><strong>{{ ($item->payments->max('paid_on') ?? ($item->sheetPaid() > 0 && ! empty($b['old_sheet']['payment_date']) ? \Illuminate\Support\Carbon::parse($b['old_sheet']['payment_date']) : null))?->format('d M Y') ?? '—' }}</strong></div>
         </div>
         <div class="slip-days">
             <div><span>Working days</span><strong>{{ $item->working_days }}</strong></div>
@@ -97,7 +97,8 @@
             <strong>₹{{ number_format((float) $item->net_amount, 2) }}</strong>
         </div>
         <table class="slip-table"><thead><tr><th>Payment date</th><th>Method / reference</th><th class="amt">Amount (₹)</th></tr></thead><tbody>
-            @forelse($item->payments as $payment)<tr><td>{{ $payment->paid_on->format('d M Y') }}</td><td>{{ \App\Models\SalaryPayment::METHODS[$payment->method] ?? '' }} {{ $payment->reference ?: '' }}</td><td class="amt">{{ number_format((float) $payment->amount, 2) }}</td></tr>@empty<tr><td colspan="3">No payments recorded.</td></tr>@endforelse
+            @if($item->sheetPaid() > 0)<tr><td>{{ ! empty($b['old_sheet']['payment_date']) ? \Illuminate\Support\Carbon::parse($b['old_sheet']['payment_date'])->format('d M Y') : '—' }}</td><td>Old salary sheet</td><td class="amt">{{ number_format($item->sheetPaid(), 2) }}</td></tr>@endif
+            @forelse($item->payments as $payment)<tr><td>{{ $payment->paid_on->format('d M Y') }}</td><td>{{ \App\Models\SalaryPayment::METHODS[$payment->method] ?? '' }} {{ $payment->reference ?: '' }}</td><td class="amt">{{ number_format((float) $payment->amount, 2) }}</td></tr>@empty @if($item->sheetPaid() <= 0)<tr><td colspan="3">No payments recorded.</td></tr>@endif @endforelse
         </tbody><tfoot>
             <tr><th colspan="2">Total paid</th><th class="amt">{{ number_format($paid, 2) }}</th></tr>
             @if($paid - (float) $item->net_amount > 0.005)<tr><th colspan="2">Extra pay (paid above net pay, not recovered)</th><th class="amt">{{ number_format($paid - (float) $item->net_amount, 2) }}</th></tr>@endif

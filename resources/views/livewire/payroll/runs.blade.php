@@ -88,7 +88,7 @@
     @if($paying)
         <x-modal title="Record payment · {{ $paying->employee?->name }}">
             <form wire:submit="pay"><div class="modal-body"><x-errors />
-                <p class="small muted" style="margin-top:0">Net {{ number_format((float) $paying->net_amount, 2) }} · already paid {{ number_format((float) $paying->payments->sum('amount'), 2) }}. Partial payments are allowed. Paying more than the net saves the part above it as extra pay for this month (not an advance, never cut from later salaries).</p>
+                <p class="small muted" style="margin-top:0">Net {{ number_format((float) $paying->net_amount, 2) }} · already paid {{ number_format($paying->totalPaid(), 2) }}. Partial payments are allowed. Paying more than the net saves the part above it as extra pay for this month (not an advance, never cut from later salaries).</p>
                 <div class="form-grid"><x-field label="Amount" name="paymentAmount"><input type="number" step="0.01" min="0.01" wire:model="paymentAmount"></x-field><x-field label="Bank / reference" name="paymentReference"><input wire:model="paymentReference"></x-field></div>
             </div><div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Record payment</button></div></form>
         </x-modal>

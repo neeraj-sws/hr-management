@@ -48,7 +48,7 @@ class FinalSettlementService
             if ($coveredThrough->gt($end)) $coveredThrough = $end->copy();
             if (! $lastCoveredDate || $coveredThrough->gt($lastCoveredDate)) $lastCoveredDate = $coveredThrough;
 
-            $lockedUnpaid += max(0, (float) $item->net_amount - (float) $item->payments->sum('amount'));
+            $lockedUnpaid += max(0, (float) $item->net_amount - $item->totalPaid());
         }
         $start = $lastCoveredDate
             ? $lastCoveredDate->copy()->addDay()->startOfDay()

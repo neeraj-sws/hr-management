@@ -29,7 +29,7 @@ class PayslipController extends ApiController
     private function present(Payslip $p, bool $detail): array
     {
         $item = $p->item;
-        $paid = (float) $item->payments->sum('amount');
+        $paid = $item->totalPaid();
         $data = ['id' => $p->id, 'reference' => $p->reference, 'issued_at' => $p->issued_at->toIso8601String(), 'period_start' => $item->run->period_starts_on->toDateString(), 'period_end' => $item->run->period_ends_on->toDateString(), 'gross' => (float) $item->gross_amount, 'net' => (float) $item->net_amount, 'paid' => round($paid, 2), 'balance' => round(max(0, (float) $item->net_amount - $paid), 2), 'extra_pay' => round(max(0, $paid - (float) $item->net_amount), 2)];
         if ($detail) {
             $data['breakdown'] = $item->calculation_breakdown;
