@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Candidate extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its JobOpening is of that company. */
+    public function companyOwner(): array { return ['job_opening_id', JobOpening::class]; }
+
     public const STAGES = ['applied' => 'Applied', 'screening' => 'Screening', 'interview' => 'Interview', 'offer' => 'Offer', 'hired' => 'Hired', 'rejected' => 'Rejected'];
     public const SOURCES = ['referral' => 'Referral', 'job_portal' => 'Job portal', 'website' => 'Company website', 'walk_in' => 'Walk-in', 'agency' => 'Agency', 'other' => 'Other'];
 

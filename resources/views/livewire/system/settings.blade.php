@@ -7,7 +7,7 @@
             @if($rulesCompany !== '')<span class="small muted">Leave types, offices, e-mail, Google Sheets, security, leave year and offboarding are the same for all companies.</span>@endif
         </div></section>
     @endif
-    @if($limited)<p class="small muted mb">These rules are your company's own. Leave types and offices are shared with the other company (view only).</p>@endif
+    @if($limited)<p class="small muted mb">These rules are your company's own. Leave types and offices without your company are shared by all companies: you can add your own, the shared ones are view only.</p>@endif
     <div class="tabs">
         @foreach(array_diff_key(['leave' => 'Leave types', 'calendar' => 'Working calendar & weekly offs', 'hours' => 'Work hours & attendance', 'locations' => 'Office locations', 'capture' => 'Screen capture', 'payroll' => $otEnabled ? 'Payroll & overtime' : 'Payroll', 'statutory' => 'Statutory components', 'sheets' => 'Google Sheets', 'email' => 'E-mail', 'security' => 'Security', 'offboarding' => 'Offboarding'], $limited ? array_flip(['sheets', 'email', 'security', 'offboarding']) : []) as $key => $label)
             <button class="tab {{ $tab === $key ? 'active' : '' }}" wire:click="$set('tab','{{ $key }}')">{{ $label }}</button>
@@ -41,7 +41,7 @@
         </section>
         @endunless
         <section class="card">
-            <div class="card-head"><div><h2>Leave types</h2><p>Monthly accrual &gt; 0 means balances build up each month (via the scheduled <code>leave:accrue</code> job); otherwise the annual allowance is granted up-front.</p></div>@unless($limited)<button class="btn btn-primary btn-sm" wire:click="editType"><x-icon name="plus" class="icon-sm" />Add leave type</button>@endunless</div>
+            <div class="card-head"><div><h2>Leave types</h2><p>Monthly accrual &gt; 0 means balances build up each month (via the scheduled <code>leave:accrue</code> job); otherwise the annual allowance is granted up-front.</p></div><button class="btn btn-primary btn-sm" wire:click="editType"><x-icon name="plus" class="icon-sm" />Add leave type</button></div>
             <div class="table-wrap"><table class="table">
                 <thead><tr><th>Name</th><th class="num">Annual</th><th class="num">Monthly accrual</th><th>Carry forward</th><th>Advance</th><th>Paid</th><th>Status</th><th></th></tr></thead>
                 <tbody>
@@ -49,9 +49,9 @@
                     <tr><td><strong>{{ $t->name }}</strong><small>{{ $t->describe() }}</small></td><td class="num">{{ (float) $t->annual_allowance }}</td><td class="num">{{ (float) $t->monthly_accrual }}</td>
                         <td>{{ $t->carry_forward ? 'up to '.(float) $t->carry_forward_limit.' days'.($t->carry_forward_expiry_months ? ', expires after '.$t->carry_forward_expiry_months.' mo' : '') : 'No' }}</td>
                         <td>{{ $t->allow_advance ? 'Allowed' : 'No' }}</td><td>{{ $t->paid ? 'Paid' : 'Unpaid' }}</td><td><x-badge :status="$t->is_active ? 'active' : 'inactive'" /></td>
-                        <td class="nowrap">@unless($limited)<button class="btn btn-sm" wire:click="editType({{ $t->id }})">Edit</button>
+                        <td class="nowrap">@if($t->changeable())<button class="btn btn-sm" wire:click="editType({{ $t->id }})">Edit</button>
                             @if(! $t->used)<button class="btn btn-sm btn-danger" wire:click="deleteType({{ $t->id }})" wire:confirm="Delete the leave type {{ $t->name }}? It has never been used, so nothing else changes.">Delete</button>
-                            @elseif($t->is_active)<button class="btn btn-sm" wire:click="deleteType({{ $t->id }})" wire:confirm="{{ $t->name }} is already used in leave history, so it cannot be deleted. Make it inactive? Nobody can apply for it any more; past leave stays as it is." title="Used in leave history: can be made inactive, not deleted">Make inactive</button>@endif @endunless</td></tr>
+                            @elseif($t->is_active)<button class="btn btn-sm" wire:click="deleteType({{ $t->id }})" wire:confirm="{{ $t->name }} is already used in leave history, so it cannot be deleted. Make it inactive? Nobody can apply for it any more; past leave stays as it is." title="Used in leave history: can be made inactive, not deleted">Make inactive</button>@endif @endif</td></tr>
                 @endforeach
                 </tbody>
             </table></div>
@@ -233,12 +233,12 @@
             </form>
         </section>
         <section class="card">
-            <div class="card-head"><div><h2>Offices</h2><p>Tip: open the office in Google Maps, right-click the building and copy the latitude, longitude.</p></div>@unless($limited)<button class="btn btn-primary btn-sm" wire:click="editOffice"><x-icon name="plus" class="icon-sm" />Add office</button>@endunless</div>
+            <div class="card-head"><div><h2>Offices</h2><p>Tip: open the office in Google Maps, right-click the building and copy the latitude, longitude.</p></div><button class="btn btn-primary btn-sm" wire:click="editOffice"><x-icon name="plus" class="icon-sm" />Add office</button></div>
             <div class="table-wrap"><table class="table">
                 <thead><tr><th>Office</th><th>Latitude, longitude</th><th class="num">Radius</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                 @forelse($offices as $o)
-                    <tr wire:key="office-{{ $o->id }}"><td><strong>{{ $o->name }}</strong></td><td>{{ $o->latitude }}, {{ $o->longitude }}</td><td class="num">{{ $o->radius_meters }} m</td><td><x-badge :status="$o->is_active ? 'active' : 'inactive'" /></td><td class="nowrap">@unless($limited)<button class="btn btn-sm" wire:click="editOffice({{ $o->id }})">Edit</button> @php($officeUsed = \App\Models\AttendanceSession::where('check_in_office_id', $o->id)->orWhere('check_out_office_id', $o->id)->count())<button class="btn btn-sm btn-danger" wire:click="deleteOffice({{ $o->id }})" wire:confirm="Delete the office &quot;{{ $o->name }}&quot;?{{ $officeUsed ? ' '.$officeUsed.' attendance day(s) were marked here: they keep their time and map position, only the office name goes. To keep it, untick Active (Edit) instead.' : '' }}">Delete</button>@endunless</td></tr>
+                    <tr wire:key="office-{{ $o->id }}"><td><strong>{{ $o->name }}</strong></td><td>{{ $o->latitude }}, {{ $o->longitude }}</td><td class="num">{{ $o->radius_meters }} m</td><td><x-badge :status="$o->is_active ? 'active' : 'inactive'" /></td><td class="nowrap">@if($o->changeable())<button class="btn btn-sm" wire:click="editOffice({{ $o->id }})">Edit</button> @php($officeUsed = \App\Models\AttendanceSession::where('check_in_office_id', $o->id)->orWhere('check_out_office_id', $o->id)->count())<button class="btn btn-sm btn-danger" wire:click="deleteOffice({{ $o->id }})" wire:confirm="Delete the office &quot;{{ $o->name }}&quot;?{{ $officeUsed ? ' '.$officeUsed.' attendance day(s) were marked here: they keep their time and map position, only the office name goes. To keep it, untick Active (Edit) instead.' : '' }}">Delete</button>@endif</td></tr>
                 @empty
                     <tr><td colspan="5"><x-empty title="No offices yet" icon="building" /></td></tr>
                 @endforelse

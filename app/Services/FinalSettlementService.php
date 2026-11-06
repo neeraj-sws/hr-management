@@ -111,7 +111,7 @@ class FinalSettlementService
         }
         $policy = app(PeopleOperationsService::class)->policy($employee, 'leave.final_settlement', ['leave_encashment_enabled' => false, 'rate_per_day' => 0]);
         $leaveRemaining = 0.0;
-        foreach (\App\Models\LeaveType::where('is_active', true)->where('paid', true)->get() as $type) $leaveRemaining += max(0, (float) app(LeaveAccrualService::class)->balance($employee, $type, \App\Support\LeaveYear::of($end))['remaining']);
+        foreach (\App\Models\LeaveType::where('is_active', true)->where('paid', true)->forEmployeeCompany($employee)->get() as $type) $leaveRemaining += max(0, (float) app(LeaveAccrualService::class)->balance($employee, $type, \App\Support\LeaveYear::of($end))['remaining']);
         $leaveCashout = !empty($policy['leave_encashment_enabled']) ? round($leaveRemaining * max(0, (float) ($policy['rate_per_day'] ?? 0)), 2) : 0;
         $reimbursements = round((float) \App\Models\ExpenseClaim::where('employee_id', $employee->id)->where('status', 'approved')->whereNull('payroll_item_id')->sum('amount'), 2);
         $gross = round($base + $overtime + $earnings + $leaveCashout + $lockedUnpaid + $reimbursements, 2);

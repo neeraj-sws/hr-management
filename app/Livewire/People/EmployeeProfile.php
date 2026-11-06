@@ -49,7 +49,7 @@ class EmployeeProfile extends Component
     public function openRecordLeave(string $date): void
     {
         abort_unless($this->user()->canAny(['leave.manage', 'hr.manage']), 403);
-        $this->fill(['recordDate' => $date, 'recordTypeId' => LeaveType::where('is_active', true)->orderByDesc('paid')->orderBy('name')->value('id'), 'recordDuration' => 'full', 'recordNote' => '', 'showRecordLeave' => true]);
+        $this->fill(['recordDate' => $date, 'recordTypeId' => LeaveType::where('is_active', true)->forEmployeeCompany($this->employee)->orderByDesc('paid')->orderBy('name')->value('id'), 'recordDuration' => 'full', 'recordNote' => '', 'showRecordLeave' => true]);
         $this->resetValidation();
     }
 
@@ -121,7 +121,7 @@ class EmployeeProfile extends Component
     {
         abort_unless(\App\Services\HrLetterService::canManage($this->user()), 403);
         $letters = app(\App\Services\HrLetterService::class);
-        $template = ($category ? $letters->templateFor($category) : null) ?? \App\Models\LetterTemplate::where('is_active', true)->orderBy('name')->first();
+        $template = ($category ? $letters->templateFor($category) : null) ?? \App\Models\LetterTemplate::where('is_active', true)->forEmployeeCompany($this->employee)->orderBy('name')->first();
         $this->resetErrorBag();
         $this->letterOpen = true;
         $this->letterTemplateId = $template?->id;
@@ -329,7 +329,7 @@ class EmployeeProfile extends Component
         $user = $this->user();
         $days = $attendance->days($employee, now()->startOfMonth(), today());
         $summary = $days->countBy('status');
-        $balances = LeaveType::where('is_active', true)->get()->map(fn ($type) => ['type' => $type, ...$leave->balance($employee, $type, \App\Support\LeaveYear::current())]);
+        $balances = LeaveType::where('is_active', true)->forEmployeeCompany($employee)->get()->map(fn ($type) => ['type' => $type, ...$leave->balance($employee, $type, \App\Support\LeaveYear::current())]);
         $metrics = $work->productivity(collect([$employee]), now()->startOfMonth()->toDateString(), today()->toDateString())->first();
         $isSelf = $employee->user_id === $user->id;
         $showSalary = $isSelf || $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage']);
@@ -382,7 +382,7 @@ class EmployeeProfile extends Component
             'assets' => $employee->assets()->latest()->get(),
             'documents' => $canSeeDocs ? $employee->documents()->latest()->get() : collect(),
             'canIssueLetters' => \App\Services\HrLetterService::canManage($user),
-            'letterTemplates' => $this->letterOpen ? \App\Models\LetterTemplate::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
+            'letterTemplates' => $this->letterOpen ? \App\Models\LetterTemplate::where('is_active', true)->forEmployeeCompany($this->employee)->orderBy('name')->get(['id', 'name']) : collect(),
             // Home address and emergency contact: the person, HR and admins (the same people who see documents).
             'canSeeContact' => $canSeeDocs,
             'showSalary' => $showSalary,
@@ -412,7 +412,7 @@ class EmployeeProfile extends Component
             'recentLeave' => $employee->leaveRequests()->with('leaveType')->latest('starts_on')->limit(10)->get(),
             // Leave tab: totals, every request and the days absent with no leave for the chosen leave year.
             'leaveHistory' => \App\Support\LeaveHistory::month($employee, preg_match('/^\d{4}-\d{2}$/', $this->leaveMonth) ? $this->leaveMonth : now()->format('Y-m')),
-            'recordTypes' => $this->showRecordLeave ? LeaveType::where('is_active', true)->orderByDesc('paid')->orderBy('name')->get() : collect(),
+            'recordTypes' => $this->showRecordLeave ? LeaveType::where('is_active', true)->forEmployeeCompany($this->employee)->orderByDesc('paid')->orderBy('name')->get() : collect(),
             'canRecordLeave' => $user->canAny(['leave.manage', 'hr.manage']),
 
         ], $employee->name);

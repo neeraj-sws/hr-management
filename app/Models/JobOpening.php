@@ -8,10 +8,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class JobOpening extends Model
 {
+    use Concerns\HasCompany;
+
+    /** No company = the main company (everything made before companies is SWS's). */
+    public function companyNullIsShared(): bool { return false; }
+
     public const TYPES = ['full_time' => 'Full time', 'part_time' => 'Part time', 'contract' => 'Contract', 'intern' => 'Internship'];
     public const STATUSES = ['open' => 'Open', 'on_hold' => 'On hold', 'closed' => 'Closed'];
 
-    protected $fillable = ['title', 'department_id', 'location', 'employment_type', 'openings', 'description', 'status', 'hiring_manager_id', 'closes_on', 'created_by'];
+    protected $fillable = ['company_id', 'title', 'department_id', 'location', 'employment_type', 'openings', 'description', 'status', 'hiring_manager_id', 'closes_on', 'created_by'];
     protected $casts = ['closes_on' => 'date', 'openings' => 'integer'];
 
     public function department(): BelongsTo { return $this->belongsTo(Department::class); }

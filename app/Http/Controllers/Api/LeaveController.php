@@ -19,8 +19,9 @@ class LeaveController extends ApiController
     public function types(Request $request): JsonResponse
     {
         $this->apiUser($request);
+        $employee = $request->user()?->employeeProfile;
 
-        return response()->json(['data' => LeaveType::where('is_active', true)->orderBy('name')->get()->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'paid' => $t->paid, 'is_other' => (bool) $t->is_other, 'allow_advance' => $t->allow_advance, 'annual_allowance' => (float) $t->annual_allowance, 'monthly_accrual' => (float) $t->monthly_accrual])]);
+        return response()->json(['data' => LeaveType::where('is_active', true)->forEmployeeCompany($employee)->orderBy('name')->get()->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'paid' => $t->paid, 'is_other' => (bool) $t->is_other, 'allow_advance' => $t->allow_advance, 'annual_allowance' => (float) $t->annual_allowance, 'monthly_accrual' => (float) $t->monthly_accrual])]);
     }
 
     public function balances(Request $request, LeaveAccrualService $accrual): JsonResponse
@@ -28,7 +29,7 @@ class LeaveController extends ApiController
         $employee = $this->apiEmployee($request);
         $year = (int) ($request->validate(['year' => ['nullable', 'integer', 'between:2000,2100']])['year'] ?? \App\Support\LeaveYear::current());
 
-        return response()->json(['data' => LeaveType::where('is_active', true)->orderBy('name')->get()->map(fn ($t) => ['leave_type' => ['id' => $t->id, 'name' => $t->name, 'paid' => $t->paid], 'year' => $year, ...$accrual->balance($employee, $t, $year)])]);
+        return response()->json(['data' => LeaveType::where('is_active', true)->forEmployeeCompany($employee)->orderBy('name')->get()->map(fn ($t) => ['leave_type' => ['id' => $t->id, 'name' => $t->name, 'paid' => $t->paid], 'year' => $year, ...$accrual->balance($employee, $t, $year)])]);
     }
 
     public function index(Request $request): JsonResponse

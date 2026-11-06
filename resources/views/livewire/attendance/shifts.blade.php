@@ -11,7 +11,7 @@
             <tbody>
             @forelse($shiftList as $s)
                 <tr wire:key="shift-{{ $s->id }}"><td><strong>{{ $s->name }}</strong>@if($s->crossesMidnight())<small>ends next day</small>@endif</td><td>{{ $s->hours() }}</td><td class="num">{{ $s->grace_minutes !== null ? $s->grace_minutes.' min' : 'default' }}</td><td class="num">{{ $s->assignments_count }}</td><td><x-badge :status="$s->is_active ? 'active' : 'inactive'" /></td>
-                    <td><div class="row-actions"><button class="btn btn-sm" wire:click="openAssign({{ $s->id }})">Assign</button><button class="btn btn-sm" wire:click="editShift({{ $s->id }})">Edit</button></div></td></tr>
+                    <td><div class="row-actions"><button class="btn btn-sm" wire:click="openAssign({{ $s->id }})">Assign</button>@if($s->changeable())<button class="btn btn-sm" wire:click="editShift({{ $s->id }})">Edit</button>@endif</div></td></tr>
             @empty
                 <tr><td colspan="6"><x-empty title="No shifts yet" icon="clock">Create shifts such as "General 09:30–18:30" or "Night 21:00–06:00".</x-empty></td></tr>
             @endforelse

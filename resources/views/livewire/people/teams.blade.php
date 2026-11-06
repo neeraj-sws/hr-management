@@ -9,7 +9,7 @@
                     @if($team->description)<p class="small muted" style="margin-top:0">{{ $team->description }}</p>@endif
                     <p><x-people-count :people="$team->members->sortBy('name')" :title="'Team · '.$team->name" empty="No members yet" /></p>
                 </div>
-                @if($canManage)<div class="card-foot actions"><button class="btn btn-sm" wire:click="edit({{ $team->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="remove({{ $team->id }})" wire:confirm="Remove the team {{ $team->name }}? Only possible when it never had members — otherwise archive it.">Remove</button><button class="btn btn-sm" wire:click="archive({{ $team->id }})" wire:confirm="{{ $team->is_active ? 'Archive this team?' : 'Restore this team?' }}">{{ $team->is_active ? 'Archive' : 'Restore' }}</button></div>@endif
+                @if($canManage && $team->changeable())<div class="card-foot actions"><button class="btn btn-sm" wire:click="edit({{ $team->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="remove({{ $team->id }})" wire:confirm="Remove the team {{ $team->name }}? Only possible when it never had members — otherwise archive it.">Remove</button><button class="btn btn-sm" wire:click="archive({{ $team->id }})" wire:confirm="{{ $team->is_active ? 'Archive this team?' : 'Restore this team?' }}">{{ $team->is_active ? 'Archive' : 'Restore' }}</button></div>@endif
             </section>
         @empty
             <div class="card" style="grid-column:1/-1"><x-empty title="No teams to show" icon="team">{{ $canManage ? 'Create a team to group employees.' : 'You have not been added to a team yet.' }}</x-empty></div>

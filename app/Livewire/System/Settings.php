@@ -278,7 +278,6 @@ class Settings extends Component
 
     public function editType(?int $id = null): void
     {
-        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $type = $id ? LeaveType::findOrFail($id) : null;
         $this->editingTypeId = $type?->id;
@@ -289,7 +288,6 @@ class Settings extends Component
 
     public function saveType(AuditLogger $audit): void
     {
-        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate([
             'type.name' => ['required', 'string', 'max:100', Rule::unique('leave_types', 'name')->ignore($this->editingTypeId)],
@@ -308,7 +306,6 @@ class Settings extends Component
     /** Deletes a leave type made by mistake; a type already used is made inactive instead (history stays). */
     public function deleteType(int $id, AuditLogger $audit): void
     {
-        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $type = LeaveType::findOrFail($id);
         if ($type->isUsed()) {
@@ -828,7 +825,6 @@ class Settings extends Component
 
     public function editOffice(?int $id = null): void
     {
-        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $office = $id ? OfficeLocation::findOrFail($id) : null;
         $this->fill(['officeId' => $office?->id, 'officeName' => $office?->name ?? '', 'officeLat' => $office ? (string) $office->latitude : '', 'officeLng' => $office ? (string) $office->longitude : '', 'officeRadius' => (string) ($office?->radius_meters ?? 200), 'officeActive' => $office?->is_active ?? true]);
@@ -838,7 +834,6 @@ class Settings extends Component
 
     public function saveOffice(AuditLogger $audit): void
     {
-        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $this->validate(['officeName' => ['required', 'string', 'max:120'], 'officeLat' => ['required', 'numeric', 'between:-90,90'], 'officeLng' => ['required', 'numeric', 'between:-180,180'], 'officeRadius' => ['required', 'integer', 'min:25', 'max:5000']], [], ['officeName' => 'name', 'officeLat' => 'latitude', 'officeLng' => 'longitude', 'officeRadius' => 'radius']);
         $office = OfficeLocation::updateOrCreate(['id' => $this->officeId], ['name' => $this->officeName, 'latitude' => $this->officeLat, 'longitude' => $this->officeLng, 'radius_meters' => (int) $this->officeRadius, 'is_active' => $this->officeActive]);
@@ -853,7 +848,6 @@ class Settings extends Component
      */
     public function deleteOffice(int $id, AuditLogger $audit): void
     {
-        $this->allCompaniesOnly();
         $this->authorizeSettings();
         $office = OfficeLocation::findOrFail($id);
         if (($this->requireLocation || $this->requireLocationWeb) && $office->is_active && OfficeLocation::where('is_active', true)->whereKeyNot($office->id)->doesntExist()) {

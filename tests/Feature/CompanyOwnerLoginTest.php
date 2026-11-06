@@ -303,6 +303,72 @@ class CompanyOwnerLoginTest extends TestCase
         Livewire::test(\App\Livewire\System\Settings::class)->set('rulesCompany', (string) $this->itweb->id)->assertSet('graceMinutes', '20');
     }
 
+    public function test_shared_lists_and_each_company_s_own_items(): void
+    {
+        $shared = \App\Models\Department::create(['name' => 'Development', 'code' => 'DEV']);
+        $swsProject = \App\Models\Project::create(['name' => 'SWS Website', 'status' => 'active']);
+
+        $this->actingAs($this->owner);
+        Livewire::test(\App\Livewire\People\Departments::class)->set('name', 'ITWeb Sales')->set('code', 'IWS')->call('save')->assertHasNoErrors();
+        $this->assertSame($this->itweb->id, \App\Models\Department::where('code', 'IWS')->value('company_id'), 'his own');
+        $this->assertNotNull(\App\Models\Department::find($shared->id), 'the shared one is there for him too');
+        Livewire::test(\App\Livewire\People\Departments::class)->call('edit', $shared->id)->set('name', 'Renamed')->call('save')->assertForbidden();
+        $this->assertSame('Development', $shared->fresh()->name);
+
+        // Projects: SWS's are not his; the ones he makes are ITWeb's.
+        $this->assertNull(\App\Models\Project::find($swsProject->id));
+        $mine = \App\Models\Project::create(['name' => 'ITWeb App', 'status' => 'active']);
+        $this->assertSame($this->itweb->id, $mine->company_id);
+
+        $this->actingAs($this->admin);
+        $this->assertSame(2, \App\Models\Project::count(), 'the Super Admin sees both');
+        $this->assertSame(2, \App\Models\Department::whereIn('code', ['DEV', 'IWS'])->count());
+    }
+
+    public function test_a_company_s_own_leave_type_is_for_its_people_only(): void
+    {
+        $type = \App\Models\LeaveType::create(['company_id' => $this->itweb->id, 'name' => 'ITWeb Special', 'annual_allowance' => 3, 'paid' => true, 'is_active' => true]);
+        $this->assertTrue(\App\Models\LeaveType::forEmployeeCompany($this->preeti)->whereKey($type->id)->exists());
+        $this->assertFalse(\App\Models\LeaveType::forEmployeeCompany($this->sws)->whereKey($type->id)->exists());
+
+        try {
+            app(HrWorkflowService::class)->requestLeave($this->sws, ['leave_type_id' => $type->id, 'starts_on' => Carbon::parse('2026-11-20'), 'ends_on' => Carbon::parse('2026-11-20'), 'duration' => 'full', 'reason' => 'Wedding']);
+            $this->fail('An SWS employee used an ITWeb leave type.');
+        } catch (ValidationException $e) {
+            $this->assertSame('Choose a leave type.', $e->errors()['leave_type_id'][0] ?? null);
+        }
+    }
+
+    public function test_every_menu_page_opens_for_the_owner_without_the_other_company(): void
+    {
+        // Records of both companies, including an ITWeb person's task in an SWS project.
+        $this->praveen->update(['employment_type' => 'owner']);
+        $this->leave($this->sws);
+        $this->leave($this->preeti);
+        $swsProject = \App\Models\Project::create(['name' => 'SWS Website', 'status' => 'active', 'manager_id' => $this->sws->id]);
+        \App\Models\Task::create(['project_id' => $swsProject->id, 'assignee_id' => $this->sws->id, 'title' => 'SWS home page', 'status' => 'pending', 'priority' => 'normal']);
+        \App\Models\Task::create(['project_id' => $swsProject->id, 'assignee_id' => $this->preeti->id, 'title' => 'ITWeb banner', 'status' => 'pending', 'priority' => 'normal']);
+        PayrollRun::create(['company_id' => null, 'period_starts_on' => '2026-10-01', 'period_ends_on' => '2026-10-31', 'status' => 'draft']);
+        $this->actingAs($this->admin);
+        app(\App\Services\AuditLogger::class)->record('employee.updated', $this->sws);
+
+        $failed = [];
+        $visited = 0;
+        foreach (config('navigation') as $group) {
+            foreach ($group['items'] ?? [] as $item) {
+                if (! Navigation::canAccess($this->owner->fresh(), $item['route'], $item['params'] ?? [])) continue;
+                $this->app['auth']->forgetGuards();
+                $response = $this->actingAs($this->owner->fresh())->get(route($item['route'], $item['params'] ?? []));
+                $visited++;
+                if ($response->getStatusCode() >= 500 || str_contains((string) $response->getContent(), 'Swati Sharma')) {
+                    $failed[] = $item['label'].' '.$response->getStatusCode();
+                }
+            }
+        }
+        $this->assertGreaterThan(60, $visited, 'the owner opens most of the menu');
+        $this->assertSame([], $failed, 'pages that failed or showed an SWS employee');
+    }
+
     public function test_itweb_payslips_carry_the_itweb_name(): void
     {
         $run = PayrollRun::create(['company_id' => $this->itweb->id, 'period_starts_on' => '2026-10-01', 'period_ends_on' => '2026-10-31', 'status' => 'locked']);

@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class OfficeLocation extends Model
 {
-    protected $fillable = ['name', 'latitude', 'longitude', 'radius_meters', 'is_active'];
+    use Concerns\HasCompany;
+
+    protected $fillable = ['company_id', 'name', 'latitude', 'longitude', 'radius_meters', 'is_active'];
     protected $casts = ['latitude' => 'float', 'longitude' => 'float', 'radius_meters' => 'integer', 'is_active' => 'boolean'];
 
     /** Great-circle distance in metres (haversine). */

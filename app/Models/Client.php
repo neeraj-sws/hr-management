@@ -9,7 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** A customer company whose people sign in to the client portal to review project timesheets. */
 class Client extends Model
 {
-    protected $fillable = ['name', 'contact_name', 'email', 'phone', 'billing_customer_id', 'is_active', 'notes'];
+    use Concerns\HasCompany;
+
+    /** No company = the main company (everything made before companies is SWS's). */
+    public function companyNullIsShared(): bool { return false; }
+
+    protected $fillable = ['company_id', 'name', 'contact_name', 'email', 'phone', 'billing_customer_id', 'is_active', 'notes'];
 
     protected $casts = ['is_active' => 'boolean'];
 

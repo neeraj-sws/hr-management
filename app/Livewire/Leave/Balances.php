@@ -99,8 +99,8 @@ class Balances extends Component
 
     public function render(LeaveAccrualService $accrual)
     {
-        $types = LeaveType::where('is_active', true)->orderBy('name')->get();
         $own = $this->ownEmployee();
+        $types = LeaveType::where('is_active', true)->forEmployeeCompany($own)->orderBy('name')->get();
         $mine = $own ? $types->map(fn ($t) => ['type' => $t, ...$accrual->balance($own, $t, $this->year)]) : collect();
         $history = $own ? LeaveRequest::with('leaveType')->where('employee_id', $own->id)->whereBetween('starts_on', [LeaveYear::start($this->year)->toDateString(), LeaveYear::end($this->year)->toDateString()])->latest('starts_on')->get() : collect();
 

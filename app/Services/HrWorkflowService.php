@@ -127,7 +127,7 @@ class HrWorkflowService
                 // The salary record carries the hours entered for the employee, so Payroll shows the same working day.
                 SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'pay_basis' => $payBasis, 'daily_rate' => $dailyRate, 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
             }
-            foreach (LeaveType::where('is_active', true)->get() as $leaveType) {
+            foreach (LeaveType::where('is_active', true)->forEmployeeCompany($employee)->get() as $leaveType) {
                 LeaveBalance::open($employee->id, $leaveType, LeaveYear::current());
             }
             $this->audit->record('employee.created', $employee, ['employee_code' => $employee->employee_code]);
@@ -234,7 +234,8 @@ class HrWorkflowService
                 return $leave;
             }
             $balance = LeaveBalance::where('employee_id', $employee->id)->where('leave_type_id', $data['leave_type_id'])->where('year', $year)->lockForUpdate()->first();
-            $leaveType = LeaveType::whereKey($data['leave_type_id'])->firstOrFail();
+            // Another company's own leave type cannot be used.
+            $leaveType = LeaveType::withoutGlobalScopes()->forEmployeeCompany($employee)->whereKey($data['leave_type_id'])->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
             if (! $balance) {
                 $balance = LeaveBalance::open($employee->id, $leaveType, $year);
             }
@@ -287,7 +288,7 @@ class HrWorkflowService
         return DB::transaction(function () use ($leave, $employee, $leaveTypeId, $reason, $userId, $otherType) {
             $leave = LeaveRequest::with('leaveType')->whereKey($leave->id)->lockForUpdate()->firstOrFail();
             if ($leave->status !== 'pending') throw ValidationException::withMessages(['leave_type_id' => 'Only a request still waiting for a decision can be changed. Ask HR to change a decided leave.']);
-            $type = LeaveType::where('is_active', true)->whereKey($leaveTypeId)->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
+            $type = LeaveType::withoutGlobalScopes()->where('is_active', true)->forEmployeeCompany($employee)->whereKey($leaveTypeId)->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
             $reason = trim((string) $reason) !== '' ? mb_substr(trim((string) $reason), 0, 1000) : $leave->reason;
             $other = self::otherType($type, $otherType ?? ($type->id === $leave->leave_type_id ? $leave->other_type : null));
             if ($type->id === $leave->leave_type_id && $reason === $leave->reason && $other === $leave->other_type) throw ValidationException::withMessages(['leave_type_id' => 'Nothing changed.']);

@@ -968,7 +968,7 @@ class AttendanceService
             return $none;
         }
 
-        $nearest = OfficeLocation::where('is_active', true)->get()
+        $nearest = OfficeLocation::where('is_active', true)->forEmployeeCompany($employee)->get()
             ->map(fn (OfficeLocation $office) => ['office' => $office, 'distance' => $office->distanceTo($latitude, $longitude)])
             ->sortBy('distance')->first();
         $tolerance = (int) min(max((float) ($location['accuracy'] ?? 0), 0), 100);

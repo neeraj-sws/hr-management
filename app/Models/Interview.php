@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Interview extends Model
 {
+    use Concerns\BelongsToEmployeeCompany;
+
+    /** A login limited to one company sees this only when its Candidate is of that company. */
+    public function companyOwner(): array { return ['candidate_id', Candidate::class]; }
+
     public const MODES = ['in_person' => 'In person', 'video' => 'Video call', 'phone' => 'Phone'];
     public const RECOMMENDATIONS = ['hire' => 'Hire', 'hold' => 'Hold', 'reject' => 'Reject'];
 
