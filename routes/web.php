@@ -37,6 +37,11 @@ Route::get('/files/documents/{document}', [HrFileController::class, 'signedDocum
 Route::get('/files/documents/{document}/viewer', [HrFileController::class, 'documentViewer'])->middleware(['signed', 'throttle:30,1'])->name('files.document.viewer');
 Route::get('/files/payslips/{payslip}', [HrFileController::class, 'signedPayslip'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip');
 Route::get('/files/payslip-requests/{payslipRequest}', [\App\Http\Controllers\PayslipRequestController::class, 'signed'])->middleware(['signed', 'throttle:30,1'])->name('files.payslip-request');
+// An invoice the customer opens from the shared link (no sign-in; the signature makes the link unguessable).
+Route::get('/estimate/{estimate}/view', [\App\Http\Controllers\BillingPrintController::class, 'publicEstimate'])->middleware(['signed', 'throttle:60,1'])->name('billing.estimates.public');
+Route::get('/statement/{customer}', [\App\Http\Controllers\BillingPrintController::class, 'publicStatement'])->middleware(['signed', 'throttle:60,1'])->name('billing.customers.statement.public');
+Route::get('/invoice/{invoice}/download', [\App\Http\Controllers\BillingPrintController::class, 'publicInvoiceDownload'])->middleware(['signed', 'throttle:60,1'])->name('billing.invoices.public.download');
+Route::get('/invoice/{invoice}/view', [\App\Http\Controllers\BillingPrintController::class, 'publicInvoice'])->middleware(['signed', 'throttle:60,1'])->name('billing.invoices.public');
 Route::get('/files/support/{attachment}', [\App\Http\Controllers\SupportAttachmentController::class, 'signed'])->middleware(['signed', 'throttle:60,1'])->name('files.support-attachment');
 
 Route::middleware(['auth', 'account.active'])->group(function () {
@@ -132,19 +137,38 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     // Billing / Invoicing (per company: a company owner sees and makes his company's)
     Route::middleware('access:hr.manage,payroll.manage')->group(function () {
         Route::get('/billing/customers', Livewire\Billing\Customers::class)->name('billing.customers');
+        Route::get('/billing/customers/export', [\App\Http\Controllers\BillingExportController::class, 'customers'])->name('billing.customers.export');
+        Route::get('/billing/customers/sample', [\App\Http\Controllers\BillingExportController::class, 'customerSample'])->name('billing.customers.sample');
+        Route::get('/billing/customers/{customer}', Livewire\Billing\CustomerShow::class)->name('billing.customers.show');
+        Route::get('/billing/customers/{customer}/statement', [\App\Http\Controllers\BillingPrintController::class, 'statement'])->name('billing.customers.statement');
         Route::get('/billing/products', Livewire\Billing\Products::class)->name('billing.products');
         Route::get('/billing/taxes', Livewire\Billing\Taxes::class)->name('billing.taxes');
         Route::get('/billing/invoices', Livewire\Billing\Invoices::class)->name('billing.invoices');
+        Route::get('/billing/invoices/export', [\App\Http\Controllers\BillingExportController::class, 'invoices'])->name('billing.invoices.export');
         Route::get('/billing/invoices/create', Livewire\Billing\InvoiceForm::class)->name('billing.invoices.create');
         Route::get('/billing/invoices/{invoice}/edit', Livewire\Billing\InvoiceForm::class)->name('billing.invoices.edit');
         Route::get('/billing/invoices/{invoice}', Livewire\Billing\InvoiceShow::class)->name('billing.invoices.show');
         Route::get('/billing/estimates', Livewire\Billing\Estimates::class)->name('billing.estimates');
+        Route::get('/billing/estimates/export', [\App\Http\Controllers\BillingExportController::class, 'estimates'])->name('billing.estimates.export');
         Route::get('/billing/estimates/create', Livewire\Billing\EstimateForm::class)->name('billing.estimates.create');
         Route::get('/billing/estimates/{estimate}/edit', Livewire\Billing\EstimateForm::class)->name('billing.estimates.edit');
         Route::get('/billing/estimates/{estimate}', Livewire\Billing\EstimateShow::class)->name('billing.estimates.show');
+        Route::get('/billing/bank-accounts', Livewire\Billing\BankAccounts::class)->name('billing.bank-accounts');
+        Route::get('/billing/transfers', Livewire\Billing\Transfers::class)->name('billing.transfers');
+        Route::get('/billing/vendors', Livewire\Billing\Vendors::class)->name('billing.vendors');
+        Route::get('/billing/vendors/export', [\App\Http\Controllers\BillingExportController::class, 'vendors'])->name('billing.vendors.export');
+        Route::get('/billing/bills', Livewire\Billing\Bills::class)->name('billing.bills');
+        Route::get('/billing/bills/create', Livewire\Billing\BillForm::class)->name('billing.bills.create');
+        Route::get('/billing/bills/{bill}/edit', Livewire\Billing\BillForm::class)->name('billing.bills.edit');
+        Route::get('/billing/bills/{bill}', Livewire\Billing\BillShow::class)->name('billing.bills.show');
+        Route::get('/billing/expenses', Livewire\Billing\Expenses::class)->name('billing.expenses');
+        Route::get('/billing/debit-notes', Livewire\Billing\DebitNotes::class)->name('billing.debit-notes');
+        Route::get('/billing/categories', Livewire\Billing\Categories::class)->name('billing.categories');
+        Route::get('/billing/receipts/{kind}/{id}', [\App\Http\Controllers\BillingFileController::class, 'receipt'])->whereIn('kind', ['payment', 'revenue', 'bill-payment', 'expense'])->whereNumber('id')->name('billing.receipt-file');
         Route::get('/billing/credit-notes', Livewire\Billing\CreditNotes::class)->name('billing.credit-notes');
         Route::get('/billing/revenue', Livewire\Billing\Revenues::class)->name('billing.revenue');
         Route::get('/billing/settings', Livewire\Billing\Settings::class)->name('billing.settings');
+        Route::get('/billing/payments/{payment}/receipt', [\App\Http\Controllers\BillingPrintController::class, 'receipt'])->name('billing.payments.receipt');
         Route::get('/billing/invoices/{invoice}/print', [\App\Http\Controllers\BillingPrintController::class, 'invoice'])->name('billing.invoices.print');
         Route::get('/billing/estimates/{estimate}/print', [\App\Http\Controllers\BillingPrintController::class, 'estimate'])->name('billing.estimates.print');
     });
