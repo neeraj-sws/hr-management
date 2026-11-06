@@ -623,6 +623,15 @@ class AttendanceService
                 if (! $session || $session->check_out) return;
                 $lastEvent = $session->events()->max('event_time');
                 $end = collect([$session->check_in, $session->last_sync_at, $session->screen_reported_at, $lastEvent ? Carbon::parse($lastEvent) : null])->filter()->max();
+                // Checked in on the mobile app and still working: the phone sends no activity during the day, so
+                // the last activity is usually the check-in itself. The day ends at the shift end instead.
+                $atShiftEnd = false;
+                $checkIn = $session->events()->where('event_type', 'check_in')->oldest('event_time')->first();
+                if ($session->status === 'working' && ($checkIn?->metadata['source'] ?? null) === 'mobile' && $session->employee
+                    && ($shiftEnd = $this->expectedEnd($session->employee, $session->work_date->toDateString())) && $shiftEnd->gt($end) && $shiftEnd->lte(now())) {
+                    $end = $shiftEnd->copy();
+                    $atShiftEnd = true;
+                }
                 if ($session->status === 'on_break') {
                     $start = $session->events()->where('event_type', 'break_start')->latest('event_time')->first();
                     if ($start && $end->gte($start->event_time)) {
@@ -635,9 +644,9 @@ class AttendanceService
                 $active = (int) max($session->check_in->diffInSeconds($end) - (int) $session->break_seconds - $session->deductedIdleSeconds(), 0);
                 $session->update(['check_out' => $end, 'active_seconds' => $active, 'status' => 'completed', 'closed_automatically' => true]);
                 $session->increment('server_version');
-                $this->event($session, 'auto_check_out', $end->copy()->addSeconds(2), 0, ['source' => 'system', 'reason' => 'no check-out']);
-                $this->audit->record('attendance.auto_checked_out', $session, ['check_out' => $end->toDateTimeString(), 'active_seconds' => $active]);
-                $message = 'No check-out on '.$session->work_date->format('d M').'. It was set to '.$end->format('h:i A').' (last activity). Ask for a correction if you worked longer.';
+                $this->event($session, 'auto_check_out', $end->copy()->addSeconds(2), 0, ['source' => 'system', 'reason' => $atShiftEnd ? 'no check-out (mobile, shift end)' : 'no check-out']);
+                $this->audit->record('attendance.auto_checked_out', $session, ['check_out' => $end->toDateTimeString(), 'active_seconds' => $active] + ($atShiftEnd ? ['at' => 'shift_end'] : []));
+                $message = 'No check-out on '.$session->work_date->format('d M').'. It was set to '.$end->format('h:i A').($atShiftEnd ? ' (your shift end).' : ' (last activity).').' Ask for a correction if you worked longer.';
                 $session->employee?->user?->notify(new \App\Notifications\ApprovalRequested('AttendanceSession', $session->id, $message, route('attendance.corrections', ['date' => $session->work_date->toDateString()], false)));
                 $session->employee?->manager?->user?->notify(new \App\Notifications\ApprovalRequested('AttendanceSession', $session->id, "{$session->employee->name} did not check out on {$session->work_date->format('d M')}; check-out was set to {$end->format('h:i A')}.", route('attendance.records', [], false)));
                 $closed++;
