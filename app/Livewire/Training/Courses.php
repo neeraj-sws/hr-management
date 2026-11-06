@@ -14,22 +14,7 @@ use Livewire\Component;
 /** HR manages the catalogue; managers can assign courses to their own team. */
 class Courses extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
-
-    public bool $showForm = false;
-    public ?int $editingId = null;
-    public string $title = '';
-    public string $description = '';
-    public string $category = '';
-    public string $provider = '';
-    public string $durationHours = '';
-    /** Paid course (trainees): fee, duration as said to them, discount when paid at once. */
-    public string $fee = '';
-    public string $oneTimeDiscount = '';
-    public string $durationLabel = '';
-    public string $materialUrl = '';
-    public bool $isMandatory = false;
-    public bool $isActive = true;
+    use InteractsWithHr, \App\Livewire\Concerns\EditsTrainingCourse, \Livewire\WithPagination;
 
     public ?int $assigningId = null;
     public array $employeeIds = [];
@@ -52,33 +37,15 @@ class Courses extends Component
         return $query;
     }
 
+    /** New course / edit course: the shared course form. */
     public function edit(?int $id = null): void
     {
-        abort_unless($this->canManage(), 403);
-        $c = $id ? TrainingCourse::findOrFail($id) : null;
-        $this->fill(['editingId' => $c?->id, 'title' => $c?->title ?? '', 'description' => (string) $c?->description, 'category' => (string) $c?->category, 'provider' => (string) $c?->provider,
-            'durationHours' => $c?->duration_hours !== null ? (string) (float) $c?->duration_hours : '',
-            'fee' => $c?->fee !== null ? (string) (float) $c->fee : '', 'oneTimeDiscount' => $c && (float) $c->one_time_discount > 0 ? (string) (float) $c->one_time_discount : '', 'durationLabel' => (string) $c?->duration_label, 'materialUrl' => (string) $c?->material_url, 'isMandatory' => (bool) $c?->is_mandatory, 'isActive' => $c?->is_active ?? true]);
-        $this->resetValidation();
-        $this->showForm = true;
+        $this->editCourse($id);
     }
 
-    public function save(AuditLogger $audit): void
+    public function save(AuditLogger $audit, \App\Services\TrainingMentorService $mentors): void
     {
-        abort_unless($this->canManage(), 403);
-        $this->validate([
-            'title' => ['required', 'string', 'max:160'], 'description' => ['nullable', 'string', 'max:5000'],
-            'category' => ['nullable', 'string', 'max:60'], 'provider' => ['nullable', 'string', 'max:120'],
-            'durationHours' => ['nullable', 'numeric', 'min:0', 'max:1000'], 'materialUrl' => ['nullable', 'url:http,https', 'max:500'],
-            'fee' => ['nullable', 'numeric', 'min:0', 'max:10000000'], 'oneTimeDiscount' => ['nullable', 'numeric', 'min:0', 'lte:'.((float) $this->fee ?: 0)], 'durationLabel' => ['nullable', 'string', 'max:60'],
-        ], ['oneTimeDiscount.lte' => 'The discount cannot be more than the fee.'], ['durationHours' => 'duration', 'materialUrl' => 'material link', 'oneTimeDiscount' => 'discount']);
-        $course = TrainingCourse::updateOrCreate(['id' => $this->editingId], ['title' => $this->title, 'description' => $this->description ?: null, 'category' => $this->category ?: null, 'provider' => $this->provider ?: null,
-            'duration_hours' => $this->durationHours === '' ? null : $this->durationHours,
-            'fee' => $this->fee === '' ? null : $this->fee, 'one_time_discount' => $this->fee === '' ? 0 : ((float) $this->oneTimeDiscount ?: 0), 'duration_label' => $this->durationLabel ?: null, 'material_url' => $this->materialUrl ?: null, 'is_mandatory' => $this->isMandatory, 'is_active' => $this->isActive]
-            + ($this->editingId ? [] : ['created_by' => auth()->id()]));
-        $audit->record($this->editingId ? 'training.course_updated' : 'training.course_created', $course);
-        $this->showForm = false;
-        $this->toast('Course saved.');
+        $this->saveCourse($audit, $mentors);
     }
 
     public function openAssign(int $id): void
@@ -105,7 +72,7 @@ class Courses extends Component
 
     public function closeModal(): void
     {
-        $this->showForm = false;
+        $this->showCourseForm = false;
         $this->assigningId = null;
         $this->progressId = null;
     }
@@ -115,7 +82,7 @@ class Courses extends Component
         $scope = $this->canManage() ? null : $this->assignable()->pluck('id');
 
         return $this->page('livewire.training.courses', [
-            'courses' => TrainingCourse::withCount([
+            'courses' => TrainingCourse::with('topics.mentors:id,name')->withCount('enrollments')->withCount([
                 'assignments' => fn ($q) => $scope ? $q->whereIn('employee_id', $scope) : $q,
                 'assignments as completed_count' => fn ($q) => ($scope ? $q->whereIn('employee_id', $scope) : $q)->where('status', 'completed'),
             ])->when(! $this->canManage(), fn ($q) => $q->where('is_active', true))->orderByDesc('is_active')->latest('id')->paginate(15),
@@ -125,6 +92,7 @@ class Courses extends Component
             'departments' => Department::orderBy('name')->get(['id', 'name']),
             'progress' => $this->progressId ? TrainingAssignment::with('employee')->where('training_course_id', $this->progressId)->when($scope, fn ($q) => $q->whereIn('employee_id', $scope))->get() : null,
             'progressCourse' => $this->progressId ? TrainingCourse::find($this->progressId) : null,
+            'mentorOptions' => $this->showCourseForm ? $this->mentorOptions() : collect(),
         ], 'Training Courses');
     }
 }

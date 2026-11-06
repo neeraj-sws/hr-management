@@ -19,7 +19,7 @@ class MyFees extends Component
         $employee = $this->ownEmployee();
 
         return $this->page('livewire.training.my-fees', [
-            'enrollments' => $employee ? TrainingEnrollment::with(['payments', 'course'])->where('employee_id', $employee->id)->latest('id')->get() : collect(),
+            'enrollments' => $employee ? TrainingEnrollment::with(['payments', 'course', 'topics.mentor:id,name'])->where('employee_id', $employee->id)->latest('id')->get() : collect(),
         ], 'My course & fees');
     }
 }

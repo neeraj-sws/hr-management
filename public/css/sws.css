@@ -1665,3 +1665,36 @@ div.tm-card{cursor:default}
 .inv-terms{min-height:84px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:13px;white-space:pre-line}
 .inv-form-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 @media (max-width:640px){.inv-form-title{align-items:flex-start}.inv-form-icon{width:42px;height:42px}.inv-form-foot .btn{flex:1;justify-content:center}}
+
+/* Training: course form (topics with mentors, two prices), course lists and the enrol form. */
+.tc-duration{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:8px}
+.tc-box{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--canvas,#f7f9fc)}
+.tc-box-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.tc-box-head strong{font-size:13px;color:var(--ink-2)}
+.tc-fees{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tc-topic{display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff;margin-bottom:8px}
+.tc-topic-no{flex:none;width:24px;height:24px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:7px}
+.tc-topic-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.tc-topic-main>input{width:100%}
+.tc-topic-actions{flex:none;display:flex;gap:4px;margin-top:4px}
+.tc-mentors{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.tc-mentor{display:inline-flex;align-items:center;gap:4px;background:var(--blue-soft);color:var(--blue);border-radius:999px;padding:3px 4px 3px 10px;font-size:12px;font-weight:600}
+.tc-mentor button{border:0;background:none;color:inherit;font-size:15px;line-height:1;cursor:pointer;padding:0 5px;border-radius:50%}
+.tc-mentor button:hover{background:rgba(0,0,0,.08)}
+.tc-add-mentor{width:auto!important;min-width:150px;height:30px!important;padding:0 28px 0 10px!important;font-size:12px!important;border-radius:999px!important;background-position:right 10px center!important;background-size:10px!important}
+.tc-course-cell{min-width:220px;max-width:420px}
+.tc-topic-line{display:grid;justify-items:center;gap:2px;margin-top:5px;font-size:11.5px;color:var(--muted)}
+.tc-topic-pill{white-space:nowrap}
+.tc-topic-pill b{color:var(--ink-2);font-weight:600}
+.tc-price{display:block}
+.tc-price+.tc-price{margin-top:4px}
+.tc-now{color:var(--ink-2)!important}
+.tc-now b{color:var(--blue)}
+.tc-paymode{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tc-paymode-opt{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;background:#fff}
+.tc-paymode-opt.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset;background:var(--blue-soft)}
+.tc-paymode-opt input{width:16px;height:16px;margin-top:2px}
+.tc-paymode-opt b{display:block;font-size:13px;color:var(--ink-2)}
+.tc-paymode-opt small{display:block;color:var(--muted);font-size:12px}
+.tc-enrol-topics select{width:100%;min-width:160px}
+@media (max-width:640px){.tc-fees,.tc-paymode{grid-template-columns:1fr}.tc-topic{flex-wrap:wrap}.tc-topic-actions{margin-left:34px}}

@@ -37,6 +37,7 @@
             <div class="toolbar">
                 <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Trainee name or code"></label>
                 <label class="field"><span>Course</span><select wire:model.live="courseFilter"><option value="">All courses</option>@foreach($courseNames as $n)<option value="{{ $n }}">{{ $n }}</option>@endforeach</select></label>
+                @if($mentors->isNotEmpty())<label class="field"><span>Mentor</span><select wire:model.live="mentorFilter"><option value="">All mentors</option>@foreach($mentors as $m)<option value="{{ $m->id }}">{{ $m->name }}</option>@endforeach</select></label>@endif
                 <label class="field"><span>Show</span><select wire:model.live="statusFilter"><option value="active">Studying</option><option value="due">With fees due</option><option value="completed">Completed</option><option value="dropped">Left the course</option><option value="all">Everyone</option></select></label>
             </div>
             <div class="table-wrap"><table class="table">
@@ -46,7 +47,9 @@
                     @php($last = $e->payments->last())
                     <tr wire:key="enr-{{ $e->id }}">
                         <td><strong>{{ $e->employee?->name }}</strong><small>{{ $e->employee?->employee_code }}@if($e->employee?->department) · {{ $e->employee->department->name }}@endif</small></td>
-                        <td>{{ $e->course_name }}<small>@if($e->starts_on){{ $e->starts_on->format('d M Y') }}@endif @if($e->ends_on)– {{ $e->ends_on->format('d M Y') }}@endif</small></td>
+                        @php($now = $e->topics->firstWhere('status', 'active'))
+                        <td>{{ $e->course_name }}<small>@if($e->starts_on){{ $e->starts_on->format('d M Y') }}@endif @if($e->ends_on)– {{ $e->ends_on->format('d M Y') }}@endif</small>
+                            @if($e->topics->isNotEmpty())<small class="tc-now">@if($now)Now: <b>{{ $now->title }}</b> · {{ $now->mentor?->name ?? 'no mentor yet' }}@elseif($e->topics->every(fn ($t) => $t->status === 'completed'))All topics done @else Not started @endif</small><small>{{ $e->topics->where('status', 'completed')->count() }} of {{ $e->topics->count() }} topics done</small>@endif</td>
                         <td class="num">{{ $money($e->payable()) }}@if((float) $e->discount)<small>{{ $money($e->total_fee) }} − {{ $money($e->discount) }} discount</small>@endif</td>
                         <td class="num">{{ $money($e->paid()) }}</td>
                         <td class="num"><strong style="color:{{ $e->balance() > 0 ? 'var(--amber)' : 'var(--green)' }}">{{ $money($e->balance()) }}</strong></td>
@@ -97,13 +100,16 @@
     @else
         <section class="card">
             <div class="table-wrap"><table class="table">
-                <thead><tr><th>Course</th><th>Duration</th><th class="num">Fee</th><th class="num">Discount if paid at once</th><th class="num">Trainees</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Course</th><th>Duration</th><th class="num">Fee</th><th class="num">Trainees</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                 @forelse($courses as $c)
-                    <tr wire:key="fc-{{ $c->id }}"><td><strong>{{ $c->title }}</strong>@if($c->description)<small>{{ \Illuminate\Support\Str::limit($c->description, 80) }}</small>@endif</td><td>{{ $c->duration_label ?? ($c->duration_hours !== null ? (float) $c->duration_hours.' h' : '—') }}</td><td class="num">{{ $c->fee !== null ? $money($c->fee) : '—' }}</td><td class="num">{{ (float) $c->one_time_discount > 0 ? $money($c->one_time_discount) : '—' }}</td><td class="num">{{ $c->enrollments_count }}</td>
+                    <tr wire:key="fc-{{ $c->id }}"><td class="tc-course-cell"><strong>{{ $c->title }}</strong>@if($c->topics->isNotEmpty())@include('livewire.training.partials.course-topics', ['course' => $c])@elseif($c->description)<small>{{ \Illuminate\Support\Str::limit($c->description, 80) }}</small>@endif</td>
+                        <td class="nowrap">{{ $c->durationText() ?? '—' }}</td>
+                        <td class="num nowrap">@if($c->fee !== null)@include('livewire.training.partials.course-price', ['course' => $c])@else<span class="muted">Free</span>@endif</td>
+                        <td class="num">{{ $c->enrollments_count }}</td>
                         <td><x-badge :status="$c->is_active ? 'active' : 'inactive'" /></td><td><button class="btn btn-sm" wire:click="editCourse({{ $c->id }})">Edit</button></td></tr>
                 @empty
-                    <tr><td colspan="7"><x-empty title="No courses yet" icon="list">Add the courses you teach, e.g. "Web Development - 6 months" with its fee.</x-empty></td></tr>
+                    <tr><td colspan="6"><x-empty title="No courses yet" icon="list">Add the courses you teach, e.g. "Web Development - 6 months" with its fee.</x-empty></td></tr>
                 @endforelse
                 </tbody>
             </table></div>
@@ -116,14 +122,41 @@
                 @if(! $enrollmentId)
                     <x-field label="Trainee" name="employeeId" full hint="people whose employment type is Trainee"><select wire:model="employeeId"><option value="">Select</option>@foreach($trainees as $t)<option value="{{ $t->id }}">{{ $t->name }} ({{ $t->employee_code }})</option>@endforeach</select></x-field>
                 @endif
-                <x-field label="Course" name="feeCourseId" hint="from Training > Courses"><select wire:model.live="feeCourseId"><option value="">Select a course</option>@foreach($courses->where('is_active', true) as $c)<option value="{{ $c->id }}">{{ $c->title }}{{ $c->fee !== null ? ' · '.$money($c->fee) : '' }}</option>@endforeach<option value="0">A course not in the list…</option></select></x-field>
+                <x-field label="Course" name="feeCourseId" hint="from Training > Courses"><select wire:model.live="feeCourseId"><option value="">Select a course</option>@foreach($courses->where('is_active', true) as $c)<option value="{{ $c->id }}">{{ $c->title }}{{ $c->durationText() ? ' · '.$c->durationText() : '' }}</option>@endforeach<option value="0">A course not in the list…</option></select></x-field>
                 @if($feeCourseId === 0 || ($feeCourseId === null && $courseName !== ''))<x-field label="Course name" name="courseName" hint="only for a course not in the list"><input wire:model="courseName"></x-field>@endif
+                @php($picked = $feeCourseId ? $courses->firstWhere('id', $feeCourseId) : null)
+                <div class="field full"><span class="label">How will they pay?</span>
+                    <div class="tc-paymode">
+                        <label class="tc-paymode-opt {{ $payMode === 'once' ? 'on' : '' }}"><input type="radio" value="once" wire:model.live="payMode"><span><b>At once</b>@if($picked?->fee !== null)<small>{{ $money($picked->atOnceFee()) }} in one payment</small>@else<small>one payment</small>@endif</span></label>
+                        <label class="tc-paymode-opt {{ $payMode === 'installments' ? 'on' : '' }}"><input type="radio" value="installments" wire:model.live="payMode"><span><b>In installments</b>@if($picked?->fee !== null)<small>{{ $money($picked->installmentFee()) }}{{ $picked->default_installments ? ', usually '.$picked->default_installments.' installments' : '' }}</small>@else<small>monthly</small>@endif</span></label>
+                    </div>
+                </div>
                 <x-field label="Fee" name="totalFee"><input type="number" step="0.01" min="0" wire:model="totalFee"></x-field>
-                <x-field label="Discount" name="discount" hint="0 if none"><input type="number" step="0.01" min="0" wire:model="discount"></x-field>
-                <x-field label="Installments" name="installments" hint="1 = pays at once (gets the course's one-time discount)"><input type="number" min="1" max="36" wire:model.live.debounce.300ms="installments"></x-field>
-                <x-field label="Starts" name="startsOn"><input type="date" wire:model="startsOn"></x-field>
-                <x-field label="Ends" name="endsOn"><input type="date" wire:model="endsOn"></x-field>
+                <x-field label="Discount" name="discount" hint="{{ $payMode === 'once' ? 'for paying at once' : '0 if none' }}"><input type="number" step="0.01" min="0" wire:model="discount"></x-field>
+                @if($payMode === 'installments')<x-field label="Installments" name="installments" hint="any number, e.g. 3 or 6"><input type="number" min="2" max="36" wire:model.live.debounce.300ms="installments"></x-field>@endif
+                <x-field label="Starts" name="startsOn"><input type="date" wire:model.live="startsOn"></x-field>
+                <x-field label="Ends" name="endsOn" hint="{{ $picked?->durationText() ? 'start + '.$picked->durationText() : '' }}"><input type="date" wire:model="endsOn"></x-field>
                 @if($enrollmentId)<x-field label="Status" name="enrollStatus"><select wire:model="enrollStatus">@foreach(\App\Models\TrainingEnrollment::STATUSES as $k => $v)<option value="{{ $k }}">{{ $v }}</option>@endforeach</select></x-field>@endif
+                @if($enrollTopics)
+                    @php($topicMentors = $picked ? $picked->topics->keyBy('id') : collect())
+                    <div class="field full"><span class="label">Topics and mentors <span class="hint">· pick who teaches this trainee each topic</span></span>
+                        <div class="table-wrap"><table class="table tc-enrol-topics"><thead><tr><th>#</th><th>Topic</th><th>Mentor</th>@if($enrollmentId)<th>Progress</th>@endif</tr></thead><tbody>
+                            @foreach($enrollTopics as $i => $t)
+                                @php($suggested = $topicMentors->get($t['course_topic_id'])?->mentors ?? collect())
+                                <tr wire:key="et-{{ $i }}-{{ $t['course_topic_id'] ?? $t['id'] }}"><td>{{ $i + 1 }}</td><td><strong>{{ $t['title'] }}</strong></td>
+                                    <td><select wire:model="enrollTopics.{{ $i }}.mentor_id"><option value="">Choose later</option>
+                                        @if($suggested->isNotEmpty())<optgroup label="Mentors of this topic">@foreach($suggested as $m)<option value="{{ $m->id }}">{{ $m->name }}</option>@endforeach</optgroup>@endif
+                                        <optgroup label="{{ $suggested->isNotEmpty() ? 'Anyone else' : 'Employees' }}">@foreach($mentorOptions->whereNotIn('id', $suggested->pluck('id')) as $m)<option value="{{ $m->id }}">{{ $m->name }}</option>@endforeach</optgroup>
+                                    </select></td>
+                                    @if($enrollmentId)<td><select wire:model="enrollTopics.{{ $i }}.status">@foreach(\App\Models\TrainingEnrollmentTopic::STATUSES as $k => [$label]) <option value="{{ $k }}">{{ $label }}</option>@endforeach</select></td>@endif
+                                </tr>
+                            @endforeach
+                        </tbody></table></div>
+                        @error('enrollTopics.*')<span class="error">{{ $message }}</span>@enderror
+                    </div>
+                @elseif($picked)
+                    <p class="small muted full" style="margin:0">{{ $picked->title }} has no topics yet. Add them with their mentors under Courses &amp; fees › Edit.</p>
+                @endif
                 <x-field label="Notes" name="notes" full><textarea wire:model="notes" rows="2"></textarea></x-field>
                 {{-- The installment plan: each installment's amount and due date (the trainee sees it and is reminded before each). --}}
                 <div class="field" style="grid-column:1/-1"><span class="label" style="display:flex;justify-content:space-between;align-items:center">Installments: amount and due date <button type="button" class="btn btn-sm" wire:click="equalPlan" title="Fee less discount in equal monthly installments from the start date">Equal monthly</button></span>
@@ -174,17 +207,7 @@
         </x-modal>
     @endif
 
-    @if($showCourse)
-        <x-modal :title="$courseId ? 'Edit course' : 'New course'">
-            <form wire:submit="saveCourse"><div class="modal-body"><div class="form-grid">
-                <x-field label="Course name" name="cName" full><input wire:model="cName" placeholder="e.g. Web Development"></x-field>
-                <x-field label="Duration" name="cDuration"><input wire:model="cDuration" placeholder="e.g. 6 months"></x-field>
-                <x-field label="Fee" name="cFee"><input type="number" step="0.01" min="0" wire:model="cFee"></x-field>
-                <x-field label="Discount if paid at once" name="cDiscount" hint="e.g. 3000 off when the whole fee is paid in one go; none for installments"><input type="number" step="0.01" min="0" wire:model="cDiscount"></x-field>
-                <x-field label="Description" name="cDescription" full><textarea wire:model="cDescription" rows="2"></textarea></x-field>
-                <label class="check"><input type="checkbox" wire:model="cActive"> Offered now</label>
-            </div></div>
-            <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Save</button></div></form>
-        </x-modal>
+    @if($showCourseForm)
+        @include('livewire.training.partials.course-form')
     @endif
 </div>
