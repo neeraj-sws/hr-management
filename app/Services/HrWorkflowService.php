@@ -1029,20 +1029,17 @@ class HrWorkflowService
             }
             $run->update(['status' => 'locked', 'locked_by' => $userId, 'locked_at' => now()]);
             $this->audit->record('payroll.locked', $run);
-            // Auto-create payslips for employees fully paid via the legacy salary sheet (old_sheet in breakdown).
+            // Auto-create payslips for employees paid via the legacy salary sheet (old_sheet in breakdown).
             // These employees never go through pay(), so their payslip is created here on lock instead.
-            // Only when old_sheet.remains <= 0 (fully paid); partially paid old-sheet employees get theirs via pay().
+            // A payslip is a salary breakdown record — it is issued on lock regardless of remaining balance.
             foreach ($run->items()->with(['payslip', 'employee.user'])->get() as $item) {
-                if (! $item->payslip && $item->employee_id) {
-                    $oldSheet = (array) (((array) ($item->calculation_breakdown ?? []))['old_sheet'] ?? []);
-                    if (! empty($oldSheet) && ((float) ($oldSheet['remains'] ?? 1)) <= 0.005) {
-                        \App\Models\Payslip::create([
-                            'payroll_item_id' => $item->id,
-                            'employee_id'     => $item->employee_id,
-                            'issued_at'       => now(),
-                            'reference'       => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT),
-                        ]);
-                    }
+                if (! $item->payslip && $item->employee_id && ! empty(((array) ($item->calculation_breakdown ?? []))['old_sheet'])) {
+                    \App\Models\Payslip::create([
+                        'payroll_item_id' => $item->id,
+                        'employee_id'     => $item->employee_id,
+                        'issued_at'       => now(),
+                        'reference'       => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT),
+                    ]);
                 }
                 $item->employee?->user?->notify(new \App\Notifications\ApprovalRequested('PayrollRun', $run->id, 'The payroll period has been locked.'));
             }
