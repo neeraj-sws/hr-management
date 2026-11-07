@@ -4,6 +4,7 @@ namespace App\Livewire\Payroll;
 
 use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\ApprovalRequest;
+use App\Models\Company;
 use App\Models\PayrollItem;
 use App\Models\PayrollRun;
 use App\Services\ApprovalInbox;
@@ -23,6 +24,10 @@ class Runs extends Component
 
     #[Locked] public bool $approvalsOnly = false;
     #[Url] public ?int $run = null;
+    /** Runs of one company only ('' = all companies). */
+    #[Url] public string $company = '';
+    /** The company whose payroll "Calculate payroll" makes. */
+    public string $calcCompany = '';
 
     public string $periodStart = '';
     public string $periodEnd = '';
@@ -31,28 +36,40 @@ class Runs extends Component
     public string $paymentReference = '';
     public string $rejectNote = '';
     public ?int $breakdownItemId = null;
+    public ?int $autoAdjustItemId = null;
+    public bool $showAutoAdjust = false;
 
     public function mount(): void
     {
         $this->approvalsOnly = request()->routeIs('payroll.approvals');
         $this->periodStart = now()->subMonthNoOverflow()->startOfMonth()->toDateString();
         $this->periodEnd = now()->subMonthNoOverflow()->endOfMonth()->toDateString();
+        $this->calcCompany = $this->company !== '' ? $this->company : (string) (Company::main()?->id ?? '');
+        // A login limited to one company makes only that company's payroll.
+        if ($limited = \App\Support\CompanyAccess::limitedCompanyId()) $this->calcCompany = (string) $limited;
+    }
+
+    public function updatedCompany(): void
+    {
+        $this->resetPage();
+        if ($this->company !== '') $this->calcCompany = $this->company;
     }
 
     public function calculate(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $this->validate(['periodStart' => ['required', 'date'], 'periodEnd' => ['required', 'date', 'after_or_equal:periodStart']], [], ['periodStart' => 'period start', 'periodEnd' => 'period end']);
-        $run = $workflow->calculatePayroll($this->periodStart, $this->periodEnd, auth()->id());
+        $company = $this->calcCompany !== '' ? Company::find((int) $this->calcCompany) : null;
+        $run = $workflow->calculatePayroll($this->periodStart, $this->periodEnd, auth()->id(), $company?->id);
         $this->run = $run->id;
-        $this->toast("Payroll calculated for {$run->items->count()} employees and sent for approval.");
+        $this->toast(($company && Company::count() > 1 ? $company->name.': p' : 'P')."ayroll calculated for {$run->items->count()} employees and sent for approval.");
     }
 
     public function recalculate(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $run = PayrollRun::findOrFail($this->run);
-        $workflow->calculatePayroll($run->period_starts_on->toDateString(), $run->period_ends_on->toDateString(), auth()->id());
+        $workflow->calculatePayroll($run->period_starts_on->toDateString(), $run->period_ends_on->toDateString(), auth()->id(), $run->company_id);
         $this->showCompare = false;
         $this->toast('Draft payroll recalculated from the latest data.');
     }
@@ -82,8 +99,6 @@ class Runs extends Component
 
     public string $reopenReason = '';
     public bool $showReopen = false;
-    public ?int $autoAdjustItemId = null;
-    public bool $showAutoAdjust = false;
 
     /** "Compare": this draft's stored salary for days worked against a fresh calculation now (nothing is saved). */
     public bool $showCompare = false;
@@ -152,7 +167,7 @@ class Runs extends Component
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $item = PayrollItem::with('payments')->findOrFail($itemId);
-        $this->fill(['payingItemId' => $item->id, 'paymentAmount' => number_format(max(0, (float) $item->net_amount - (float) $item->payments->sum('amount')), 2, '.', ''), 'paymentReference' => '']);
+        $this->fill(['payingItemId' => $item->id, 'paymentAmount' => number_format(max(0, (float) $item->net_amount - $item->totalPaid()), 2, '.', ''), 'paymentReference' => '']);
         $this->resetValidation();
     }
 
@@ -169,37 +184,30 @@ class Runs extends Component
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
         $this->fill(['autoAdjustItemId' => $itemId, 'showAutoAdjust' => true]);
-        $this->resetValidation();
     }
 
     public function confirmAutoAdjust(): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
-        $item = PayrollItem::with(['payments'])->findOrFail($this->autoAdjustItemId);
-        $sheetPaid = (float) ($item->calculation_breakdown['old_sheet']['paid'] ?? 0);
-        $paid = (float) $item->payments->sum('amount') + $sheetPaid;
+        $item = \App\Models\PayrollItem::with(['payments'])->findOrFail($this->autoAdjustItemId);
+        $paid = (float) $item->payments->sum('amount');
         $extra = round($paid - (float) $item->net_amount, 2);
-
-        if ($extra > 0) {
-            $run = PayrollRun::find($item->payroll_run_id);
-            $nextMonth = ($run?->period_ends_on ?? now())->addMonthNoOverflow()->startOfMonth();
-            \App\Models\SalaryAdjustment::create([
-                'employee_id'                  => $item->employee_id,
-                'effective_on'                 => $nextMonth,
-                'amount'                       => $extra,
-                'kind'                         => 'arrear_recovery',
-                'is_recurring'                 => false,
-                'status'                       => 'approved',
-                'reason'                       => 'Extra pay recovery – overpaid ₹'.number_format($extra, 2).' in '.($run?->period_starts_on->format('F Y') ?? 'previous period'),
-                'requested_by'                 => auth()->id(),
-                'decided_by'                   => auth()->id(),
-                'decided_at'                   => now(),
-                'carried_from_payroll_item_id' => $item->id,
-            ]);
-            $this->showAutoAdjust = false;
-            $this->autoAdjustItemId = null;
-            $this->toast('Recovery of ₹'.number_format($extra, 2).' added to '.$nextMonth->format('F Y').' payroll.');
-        }
+        if ($extra <= 0) { $this->showAutoAdjust = false; $this->autoAdjustItemId = null; return; }
+        $nextMonth = ($item->run?->period_ends_on ?? now())->addMonthNoOverflow()->startOfMonth();
+        \App\Models\SalaryAdjustment::create([
+            'employee_id' => $item->employee_id,
+            'amount' => $extra,
+            'kind' => 'arrear_recovery',
+            'effective_on' => $nextMonth,
+            'is_recurring' => false,
+            'status' => 'approved',
+            'reason' => 'Overpaid in '.($item->run?->period_starts_on?->format('M Y') ?? 'previous month'),
+            'carried_from_payroll_item_id' => $item->id,
+            'requested_by' => auth()->id(),
+        ]);
+        $this->showAutoAdjust = false;
+        $this->autoAdjustItemId = null;
+        $this->toast('Adjustment created — will be deducted in '.$nextMonth->format('F Y').' payroll.');
     }
 
     public function closeModal(): void
@@ -215,14 +223,18 @@ class Runs extends Component
 
     public function render(ApprovalInbox $inbox)
     {
-        $runs = PayrollRun::withCount('items')->withSum('items', 'net_amount')
+        $companies = Company::orderByDesc('is_main')->orderBy('name')->get();
+        $runs = PayrollRun::with('company')->withCount('items')->withSum('items', 'net_amount')
             ->when($this->approvalsOnly, fn ($q) => $q->where('status', 'draft'))
-            ->latest('period_starts_on')->paginate(12);
-        $selected = $this->run ? PayrollRun::with(['items.employee', 'items.payments', 'items.payslip'])->find($this->run) : null;
+            ->when($this->company !== '' && ($filter = $companies->firstWhere('id', (int) $this->company)), fn ($q) => $q->forCompany($filter->is_main ? null : $filter->id))
+            ->latest('period_starts_on')->orderBy('company_id')->paginate(12);
+        $selected = $this->run ? PayrollRun::with(['company', 'items.employee', 'items.payments', 'items.payslip'])->find($this->run) : null;
         $approval = $selected ? ApprovalRequest::with('approver')->where('approvable_type', PayrollRun::class)->where('approvable_id', $selected->id)->latest('id')->first() : null;
 
         return $this->page('livewire.payroll.runs', [
             'runs' => $runs,
+            // Company choices only when there is more than one company.
+            'companies' => $companies->count() > 1 ? $companies : collect(),
             'selected' => $selected,
             'approval' => $approval,
             'canDecide' => $approval && $approval->status === 'pending' && $inbox->canDecide($this->user(), $approval->load('approvable')),
