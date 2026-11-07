@@ -187,8 +187,12 @@ class CompanyOwnerLoginTest extends TestCase
         $this->actingAs($this->owner);
         $this->get(route('system.telegram'))->assertForbidden();
         $this->get(route('system.roles'))->assertOk();
-        // Billing is per company now: open to him, with his company's documents only.
+        // Billing is closed to a login limited to one company (menu hidden, pages 403) until Billing is split by company everywhere.
+        $this->assertFalse(Navigation::canAccess($this->owner, 'billing.invoices'));
+        $this->get(route('billing.invoices'))->assertForbidden();
+        config(['features.company_billing' => true]);
         $this->assertTrue(Navigation::canAccess($this->owner, 'billing.invoices'));
+        config(['features.company_billing' => false]);
         $this->assertTrue(Navigation::canAccess($this->owner, 'payroll.runs'));
         $this->assertTrue(Navigation::canAccess($this->admin, 'billing.invoices'));
     }
@@ -392,6 +396,7 @@ class CompanyOwnerLoginTest extends TestCase
 
     public function test_billing_is_per_company_with_its_own_numbers(): void
     {
+        config(['features.company_billing' => true]); // the per-company Billing, when switched on
         $billing = app(\App\Services\BillingService::class);
         $this->actingAs($this->admin);
         $swsCustomer = \App\Models\BillingCustomer::create(['name' => 'Sharma Traders']);
