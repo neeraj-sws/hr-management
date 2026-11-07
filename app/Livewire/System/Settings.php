@@ -22,7 +22,7 @@ class Settings extends Component
 
     #[Url] public string $tab = 'leave';
     /** Super Admin: whose rules this page shows and saves ('' = all companies; a company id = that company's own). */
-    public string $rulesCompany = '';
+    #[Url(as: 'company')] public string $rulesCompany = '';
 
     // Leave types
     public ?int $editingTypeId = null;

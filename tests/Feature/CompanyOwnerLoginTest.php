@@ -380,6 +380,28 @@ class CompanyOwnerLoginTest extends TestCase
         $this->assertEqualsCanonicalizing(['ITWeb React Batch', 'SWS Laravel Batch'], \App\Models\TrainingCourse::pluck('title')->all());
     }
 
+    public function test_company_profile_shows_each_company_s_own_rules(): void
+    {
+        $people = app(\App\Services\PeopleOperationsService::class);
+        // ITWeb has its own working calendar (Mon-Sat, no off Saturday) and its own late fine; SWS keeps the shared ones.
+        \App\Support\CompanyAccess::withRulesCompany($this->itweb->id, function () use ($people) {
+            $people->setPolicy('calendar.working_days', 'calendar', 'Calendar', ['days' => [1, 2, 3, 4, 5, 6], 'holidays' => []], null, $this->admin->id, '2026-01-01');
+        });
+        // The Super Admin: the list of companies, then a company's profile with an Edit rules link on that company.
+        $this->actingAs($this->admin);
+        $this->get(route('company.profile'))->assertOk()->assertSee('ITWeb')->assertSee('Own rules')->assertSee('Same as all companies');
+        $this->get(route('company.profile', $this->itweb))->assertOk()->assertSee('Mon, Tue, Wed, Thu, Fri, Sat')->assertSee('None (no 2nd / 3rd Saturday rule)')
+            ->assertSee('system/settings?company='.$this->itweb->id.'&amp;tab=payroll', false);
+        $this->assertTrue(Navigation::canAccess($this->admin, 'company.profile'));
+        // Settings opens on that company when the link is followed.
+        Livewire::withQueryParams(['company' => (string) $this->itweb->id, 'tab' => 'payroll'])->test(\App\Livewire\System\Settings::class)->assertSet('rulesCompany', (string) $this->itweb->id);
+        // The ITWeb owner: his own company's profile only, never SWS.
+        $this->actingAs($this->owner);
+        $this->get(route('company.profile'))->assertOk()->assertSee('ITWeb')->assertDontSee('All companies');
+        $this->get(route('company.profile', Company::main()))->assertNotFound(); // SWS's profile is "not found" for him, like every SWS link
+        $this->assertTrue(Navigation::canAccess($this->owner, 'company.profile'));
+    }
+
     public function test_every_menu_page_opens_for_the_owner_without_the_other_company(): void
     {
         // Records of both companies, including an ITWeb person's task in an SWS project.

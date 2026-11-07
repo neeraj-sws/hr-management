@@ -17,6 +17,7 @@ return [
         ['label' => 'Instructions', 'route' => 'company.instructions', 'icon' => 'shield'],
         ['label' => 'Celebrations', 'route' => 'company.celebrations', 'icon' => 'star'],
         ['label' => 'Org Chart', 'route' => 'company.org-chart', 'icon' => 'team'],
+        ['label' => 'Company profile', 'route' => 'company.profile', 'icon' => 'building'],
     ]],
     ['heading' => 'People', 'items' => [
         // Only people who manage someone see it (access:manager on the route).

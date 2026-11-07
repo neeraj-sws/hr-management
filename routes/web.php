@@ -164,6 +164,8 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/company/instructions', Livewire\Company\Instructions::class)->middleware('access:any')->name('company.instructions');
     Route::get('/company/celebrations', Livewire\Company\Celebrations::class)->middleware('access:any')->name('company.celebrations');
     Route::get('/company/org-chart', Livewire\Company\OrgChart::class)->middleware('access:any')->name('company.org-chart');
+    // Company profile: each company's own rules (salary, calendar, penalties, leave types). The Super Admin gets the list.
+    Route::get('/company/profile/{company?}', Livewire\Company\Profile::class)->middleware('access:policies.manage')->name('company.profile');
 
     // Recruitment
     Route::get('/recruitment/jobs', Livewire\Recruitment\Jobs::class)->middleware('access:recruitment.manage')->name('recruitment.jobs');
