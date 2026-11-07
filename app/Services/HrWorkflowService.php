@@ -127,7 +127,7 @@ class HrWorkflowService
                 // The salary record carries the hours entered for the employee, so Payroll shows the same working day.
                 SalaryProfile::create(['employee_id' => $employee->id, 'monthly_salary' => $data['monthly_salary'], 'pay_basis' => $payBasis, 'daily_rate' => $dailyRate, 'effective_from' => $data['joined_at'] ?? today(), 'configured_by' => $userId, 'standard_daily_hours' => (float) ($data['daily_work_hours'] ?? 0) > 0 ? (float) $data['daily_work_hours'] : 8]);
             }
-            foreach (LeaveType::where('is_active', true)->forEmployeeCompany($employee)->get() as $leaveType) {
+            foreach (LeaveType::where('is_active', true)->get() as $leaveType) {
                 LeaveBalance::open($employee->id, $leaveType, LeaveYear::current());
             }
             $this->audit->record('employee.created', $employee, ['employee_code' => $employee->employee_code]);
@@ -234,8 +234,7 @@ class HrWorkflowService
                 return $leave;
             }
             $balance = LeaveBalance::where('employee_id', $employee->id)->where('leave_type_id', $data['leave_type_id'])->where('year', $year)->lockForUpdate()->first();
-            // Another company's own leave type cannot be used.
-            $leaveType = LeaveType::withoutGlobalScopes()->forEmployeeCompany($employee)->whereKey($data['leave_type_id'])->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
+            $leaveType = LeaveType::whereKey($data['leave_type_id'])->firstOrFail();
             if (! $balance) {
                 $balance = LeaveBalance::open($employee->id, $leaveType, $year);
             }
@@ -288,7 +287,7 @@ class HrWorkflowService
         return DB::transaction(function () use ($leave, $employee, $leaveTypeId, $reason, $userId, $otherType) {
             $leave = LeaveRequest::with('leaveType')->whereKey($leave->id)->lockForUpdate()->firstOrFail();
             if ($leave->status !== 'pending') throw ValidationException::withMessages(['leave_type_id' => 'Only a request still waiting for a decision can be changed. Ask HR to change a decided leave.']);
-            $type = LeaveType::withoutGlobalScopes()->where('is_active', true)->forEmployeeCompany($employee)->whereKey($leaveTypeId)->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
+            $type = LeaveType::where('is_active', true)->whereKey($leaveTypeId)->first() ?? throw ValidationException::withMessages(['leave_type_id' => 'Choose a leave type.']);
             $reason = trim((string) $reason) !== '' ? mb_substr(trim((string) $reason), 0, 1000) : $leave->reason;
             $other = self::otherType($type, $otherType ?? ($type->id === $leave->leave_type_id ? $leave->other_type : null));
             if ($type->id === $leave->leave_type_id && $reason === $leave->reason && $other === $leave->other_type) throw ValidationException::withMessages(['leave_type_id' => 'Nothing changed.']);
@@ -419,26 +418,34 @@ class HrWorkflowService
         return $decided;
     }
 
-    /** One company's payroll for the period ($companyId null = the main company): only that company's employees. */
-    public function calculatePayroll(string $start, string $end, int $userId, ?int $companyId = null): PayrollRun
+    public function calculatePayroll(string $start, string $end, int $userId): PayrollRun
     {
         if ($end < $start) throw ValidationException::withMessages(['period' => 'The end date must be on or after the start date.']);
-        $companyId = \App\Models\Company::payrollKey($companyId);
-        // A login limited to one company makes only that company's payroll.
-        $limited = \App\Support\CompanyAccess::limitedCompanyId();
-        if ($limited && $companyId !== \App\Models\Company::payrollKey($limited)) throw ValidationException::withMessages(['period' => 'You can make the payroll of your own company only.']);
-        return DB::transaction(function () use ($start, $end, $userId, $companyId) {
-            $run=PayrollRun::forCompany($companyId)->whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->lockForUpdate()->first();
-            if(!$run && ($clash = PayrollRun::forCompany($companyId)->whereDate('period_starts_on','<=',$end)->whereDate('period_ends_on','>=',$start)->orderBy('period_starts_on')->first())){
+        return DB::transaction(function () use ($start, $end, $userId) {
+            $run=PayrollRun::whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->lockForUpdate()->first();
+            if(!$run && ($clash = PayrollRun::whereDate('period_starts_on','<=',$end)->whereDate('period_ends_on','>=',$start)->orderBy('period_starts_on')->first())){
                 throw ValidationException::withMessages(['period' => 'These dates overlap the payroll for '.$clash->period_starts_on->format('d M').' – '.$clash->period_ends_on->format('d M Y').' ('.$clash->status.'). Recalculate that one'.($clash->status === 'draft' ? ', or delete it first' : '').', so nobody is paid twice for the same days.']);
             }
             if(!$run){
-                try{$run=PayrollRun::create(['company_id'=>$companyId,'period_starts_on'=>$start,'period_ends_on'=>$end,'created_by'=>$userId,'status'=>'draft']);}
-                catch(QueryException $exception){$run=PayrollRun::forCompany($companyId)->whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->first();if(!$run)throw $exception;}
+                try{$run=PayrollRun::create(['period_starts_on'=>$start,'period_ends_on'=>$end,'created_by'=>$userId,'status'=>'draft']);}
+                catch(QueryException $exception){$run=PayrollRun::whereDate('period_starts_on',$start)->whereDate('period_ends_on',$end)->first();if(!$run)throw $exception;}
             }
             $hasPendingApproval=ApprovalRequest::where('approvable_type',PayrollRun::class)->where('approvable_id',$run->id)->where('status','pending')->exists();
             if(!$hasPendingApproval){ApprovalRequest::create(['approvable_type'=>PayrollRun::class,'approvable_id'=>$run->id,'step'=>1,'status'=>'pending']);foreach(\App\Models\User::permission('payroll.approve')->get() as $approver)$approver->notify(new \App\Notifications\ApprovalRequested('PayrollRun',$run->id,'A payroll run needs approval.'));}
             if ($run->status !== 'draft') throw ValidationException::withMessages(['payroll' => 'Only draft payroll can be recalculated.']);
+            // Save payment data before items are deleted (CASCADE removes them with the items)
+            $savedPayments = [];
+            foreach ($run->items()->with('payments')->get() as $oldItem) {
+                if ($oldItem->employee_id && $oldItem->payments->isNotEmpty()) {
+                    $savedPayments[$oldItem->employee_id] = $oldItem->payments->map(fn ($p) => [
+                        'amount' => $p->amount,
+                        'paid_on' => $p->paid_on->toDateString(),
+                        'reference' => $p->reference,
+                        'method' => $p->method,
+                        'recorded_by' => $p->recorded_by,
+                    ])->toArray();
+                }
+            }
             foreach ($run->items as $oldItem) {
                 foreach (SalaryAdvanceRepayment::where('payroll_item_id', $oldItem->id)->get() as $repayment) {
                     SalaryAdvance::whereKey($repayment->salary_advance_id)->decrement('recovered_amount', $repayment->amount);
@@ -447,7 +454,7 @@ class HrWorkflowService
                 }
             }
             $run->items()->delete();
-            $employees = AttendanceEmployee::where('is_active', true)->onPayroll()->inPayrollCompany($companyId)->get(); // trainees pay a fee, they are not paid; other companies have their own payroll
+            $employees = AttendanceEmployee::where('is_active', true)->onPayroll()->get(); // trainees pay a fee, they are not paid
             // A month that was already paid from the old salary sheet (Payroll > Legacy Salary) takes the sheet's
             // figures: that is what was really calculated and paid. Advances, adjustments and penalties are not
             // attached to it — the sheet already settled that month.
@@ -482,6 +489,16 @@ class HrWorkflowService
                     if ((float)$advance->recovered_amount >= (float)$advance->disbursed_amount && (float)$advance->disbursed_amount >= (float)$advance->amount) $advance->update(['status'=>'recovered']);
                 }
                 $item->update(['advances_amount' => (float) $advanceRows->sum('disbursed_amount')]);
+            }
+            // Re-link saved payments to the newly created items
+            if ($savedPayments) {
+                foreach ($run->items()->get() as $newItem) {
+                    if ($newItem->employee_id && isset($savedPayments[$newItem->employee_id])) {
+                        foreach ($savedPayments[$newItem->employee_id] as $paymentData) {
+                            SalaryPayment::create(array_merge($paymentData, ['payroll_item_id' => $newItem->id]));
+                        }
+                    }
+                }
             }
             $run->update(['needs_recalculation' => false]);
             $this->audit->record('payroll.calculated', $run, ['items' => $run->items()->count()]);
@@ -534,8 +551,6 @@ class HrWorkflowService
         // Per-day salary: monthly salary ÷ a fixed number of days (default), or ÷ that month's own working days
         // from the calendar (Settings > Payroll) — e.g. 25 in September, 26 in July, as in a salary sheet.
         $calendarDivisor = ($payrollPolicy['divisor'] ?? 'fixed') === 'calendar';
-        // Every day of the month (30 / 31) is paid; only absent days are cut (a company's own choice in Settings > Payroll).
-        $monthDaysMode = ($payrollPolicy['divisor'] ?? 'fixed') === 'month_days';
         $monthDivisors = [];
         // An explicit payroll rule wins; otherwise the employee's own working hours (same value attendance uses).
         $standardDailyHours = (float) ($payrollPolicy['standard_daily_hours'] ?? app(AttendanceService::class)->dailyHours($employee, $end));
@@ -687,13 +702,12 @@ class HrWorkflowService
                 $dayProfile = $profileOn($date);
                 if (! $dayProfile) continue;
                 $segment = &$segments[$dayProfile->id];
-                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0, 'present' => 0, 'span' => 0, 'unpaidHolidays' => 0];
-                $segment['span']++;
+                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0, 'present' => 0];
                 if (! $this->isConfiguredWorkday($date,$calendar)) {
                     // A holiday on what would otherwise be a working day: paid or unpaid per Settings > Calendar.
                     if (in_array($date, \App\Support\WorkCalendar::offHolidays($calendar), true) && $this->isConfiguredWorkday($date, [...$calendar, 'holidays' => []])) {
                         if (\App\Support\WorkCalendar::holidayTypeOf($calendar, $date)['paid']) { $paidHolidaySet[$date] = true; $segment['holidays']++; $monthPaidHolidays++; }
-                        else { $unpaidHolidaySet[$date] = true; $monthUnpaidHolidays++; $segment['unpaidHolidays']++; }
+                        else { $unpaidHolidaySet[$date] = true; $monthUnpaidHolidays++; }
                     }
                     unset($segment); continue;
                 }
@@ -714,12 +728,11 @@ class HrWorkflowService
             // that divisor (it is paid like a day worked); in a month that already has enough working days
             // it changes nothing. An unpaid holiday takes one day off what the month can pay.
             $sheetDays = $this->sheetWorkingDays($monthKey);
-            $monthDays = $monthDaysMode && ! $sheetDays; // a month taken from the old salary sheet keeps its own days
-            $monthDivisor = $sheetDays ?: ($monthDays ? $monthStart->daysInMonth : ($calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth));
+            $monthDivisor = $sheetDays ?: ($calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth);
             $monthDivisors[$monthKey] = $monthDivisor;
             // Judged on the whole month's working days (not only the days counted so far), so the "so far" estimate
             // in the middle of a month pays a holiday exactly as the month's payroll will.
-            $topUp = $monthDays ? 0 : min($monthPaidHolidays, max(0, $monthDivisor - max($scheduledMonth, $this->calendarDaysInMonth($monthStart, $calendar))));
+            $topUp = min($monthPaidHolidays, max(0, $monthDivisor - max($scheduledMonth, $this->calendarDaysInMonth($monthStart, $calendar))));
             foreach ($segments as &$seg) {
                 $take = min($seg['holidays'], $topUp);
                 $seg['scheduled'] += $take;
@@ -728,10 +741,10 @@ class HrWorkflowService
             }
             unset($seg);
             $scheduledMonth = array_sum(array_column($segments, 'scheduled'));
-            $cap = $monthDays ? $monthDivisor : max(0, min($scheduledMonth, $monthDivisor - $monthUnpaidHolidays));
+            $cap = max(0, min($scheduledMonth, $monthDivisor - $monthUnpaidHolidays));
             $scheduledTotal += $cap;
             $paidMonth = array_sum(array_map(fn ($seg) => $attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled'], $segments));
-            $scale = ! $monthDays && $paidMonth > $cap && $paidMonth > 0 ? $cap / $paidMonth : 1;
+            $scale = $paidMonth > $cap && $paidMonth > 0 ? $cap / $paidMonth : 1;
             foreach ($segments as $seg) {
                 // Daily wage: the day's rate for every working day actually attended (no monthly divisor or components).
                 if ($seg['profile']->isDaily()) {
@@ -739,11 +752,8 @@ class HrWorkflowService
                     $salarySegments[] = ['month' => $monthKey, 'pay_basis' => 'daily', 'daily_rate' => (float) $seg['profile']->daily_rate, 'monthly_salary' => (float) $seg['profile']->monthly_salary, 'effective_from' => $seg['profile']->effective_from->toDateString(), 'paid_days' => $seg['present']];
                     continue;
                 }
-                // Every-day-of-the-month pay: all the segment's days are paid, less the working days not at work (absent, unpaid leave) and unpaid holidays.
-                $segDays = $monthDays
-                    ? max(0, $seg['span'] - ($attendanceProration ? max(0, $seg['scheduled'] - min($seg['scheduled'], $seg['eligible'])) : 0) - $seg['unpaidHolidays'])
-                    : ($attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled']) * $scale;
-                $segDivisor = ($calendarDivisor || $monthDays || $sheetDays) ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
+                $segDays = ($attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled']) * $scale;
+                $segDivisor = ($calendarDivisor || $sheetDays) ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
                 $basePay += ((float) $seg['profile']->monthly_salary / max(1, $segDivisor)) * $segDays;
                 foreach ($structure->components($seg['profile'], $employee, $end) as $component) {
                     if ($component['type'] !== 'earning') continue;
@@ -777,7 +787,7 @@ class HrWorkflowService
         // Per-hour rate = one day's pay ÷ $rateHours (set above).
         $hourly = $profile->isDaily()
             ? (float) $profile->daily_rate / max(0.25, $rateHours)
-            : (float)$profile->monthly_salary / max(1,(($calendarDivisor || $monthDaysMode) && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
+            : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
         $overtimeHours = $approvedMinutes/60;
         $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
         // Extra working: the hours worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set),
@@ -986,12 +996,10 @@ class HrWorkflowService
             // Requests still waiting for a decision would be stuck forever once the period is locked.
             $from = $run->period_starts_on->toDateString();
             $to = $run->period_ends_on->toDateString();
-            // Only this company's employees: another company's pending requests do not hold up this payroll.
-            $staff = AttendanceEmployee::inPayrollCompany($run->company_id)->select('id');
             $pending = array_filter([
-                'leave' => LeaveRequest::where('status', 'pending')->whereIn('employee_id', $staff)->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->count(),
-                'overtime' => OvertimeRequest::where('status', 'pending')->whereIn('employee_id', $staff)->whereBetween('work_date', [$from, $to])->count(),
-                'attendance correction' => \App\Models\AttendanceCorrection::where('status', 'pending')->whereIn('employee_id', $staff)->whereBetween('work_date', [$from, $to])->count(),
+                'leave' => LeaveRequest::where('status', 'pending')->whereDate('starts_on', '<=', $to)->whereDate('ends_on', '>=', $from)->count(),
+                'overtime' => OvertimeRequest::where('status', 'pending')->whereBetween('work_date', [$from, $to])->count(),
+                'attendance correction' => \App\Models\AttendanceCorrection::where('status', 'pending')->whereBetween('work_date', [$from, $to])->count(),
             ]);
             if ($pending) {
                 $list = collect($pending)->map(fn ($n, $what) => "{$n} {$what} ".str('request')->plural($n))->join(', ');
@@ -1047,8 +1055,7 @@ class HrWorkflowService
         return DB::transaction(function () use ($run, $actor, $reason) {
             $run = PayrollRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
             if (! in_array($run->status, ['approved', 'locked'], true)) throw ValidationException::withMessages(['payroll' => 'Only an approved or locked payroll can be reopened.']);
-            $payments = SalaryPayment::whereIn('payroll_item_id', $run->items()->pluck('id'))->count();
-            if ($payments) throw ValidationException::withMessages(['payroll' => "{$payments} salary payment(s) are already recorded for this period, so it cannot be reopened. Corrections for this period go into the next payroll as salary adjustments."]);
+            // Existing payments are preserved on reopen — remaining/extra column shows correct diff after recalculation.
             $before = $run->status;
             $run->update(['status' => 'draft', 'locked_by' => null, 'locked_at' => null, 'needs_recalculation' => true]);
             ApprovalRequest::create(['approvable_type' => PayrollRun::class, 'approvable_id' => $run->id, 'step' => 1, 'status' => 'pending']);
@@ -1065,14 +1072,12 @@ class HrWorkflowService
             $item = PayrollItem::whereKey($item->id)->lockForUpdate()->firstOrFail();
             $run = PayrollRun::whereKey($item->payroll_run_id)->lockForUpdate()->firstOrFail();
             if ($run->status !== 'locked') throw ValidationException::withMessages(['payment' => 'Payroll must be locked before payment.']);
-            $paid = $item->totalPaid();
-            if ((float) $data['amount'] <= 0) throw ValidationException::withMessages(['amount' => 'Enter an amount above zero.']);
-            // Paying more than the net salary is allowed: the part above it is extra pay for the month (not an advance, never recovered).
-            $extra = round(max(0, $paid + (float) $data['amount'] - max((float) $item->net_amount, $paid)), 2);
+            $paid = (float) $item->payments()->sum('amount');
+            if ((float) $data['amount'] <= 0) throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
             $payment = $item->payments()->create([...$data, 'recorded_by' => $userId]);
             $payslip = Payslip::firstOrCreate(['payroll_item_id' => $item->id], ['employee_id' => $item->employee_id, 'issued_at' => now(), 'reference' => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT)]);
-            $this->audit->record('payroll.payment_recorded', $payment, ['payroll_item_id' => $item->id, 'extra_pay' => $extra]);
-            $amount = number_format((float) $payment->amount, 2).($extra > 0 ? ' (including '.number_format($extra, 2).' extra pay)' : '');
+            $this->audit->record('payroll.payment_recorded', $payment, ['payroll_item_id' => $item->id]);
+            $amount = number_format((float) $payment->amount, 2);
             // The first payment issues the payslip: say so plainly (it is what the employee is waiting for).
             if ($payslip->wasRecentlyCreated) {
                 Notifier::send($item->employee?->user, 'Payslip', $payslip->id, 'Your payslip for '.$run->period_starts_on->format('F Y').' is ready. Salary payment of '.$amount.' recorded.', route('hr.payslips.show', $payslip, false));
@@ -1135,7 +1140,6 @@ class HrWorkflowService
         $policy = $this->policyConfiguration($employee, 'payroll.calculation', $date, []);
         $month = \Illuminate\Support\Carbon::parse($date)->startOfMonth();
         if ($sheet = $this->sheetWorkingDays($month->format('Y-m'))) return ['days' => $sheet, 'auto' => false, 'month' => $month->format('M Y')];
-        if (($policy['divisor'] ?? 'fixed') === 'month_days') return ['days' => $month->daysInMonth, 'auto' => true, 'month' => $month->format('M Y')];
         if (($policy['divisor'] ?? 'fixed') === 'calendar') {
             $calendar = $this->policyConfiguration($employee, 'calendar.working_days', $month->copy()->endOfMonth()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
 
