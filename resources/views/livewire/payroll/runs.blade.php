@@ -78,7 +78,7 @@
                             </td>
                             <td><div class="row-actions">
                                 <button class="btn btn-sm" wire:click="$set('breakdownItemId', {{ $item->id }})">Breakdown</button>
-                                @if($selected->status === 'locked' && $paid <= (float) $item->net_amount && (float) $item->net_amount > 0 && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="openPayment({{ $item->id }})">Pay</button>@endif
+                                @if($selected->status === 'locked' && $paid < (float) $item->net_amount && (float) $item->net_amount > 0 && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="openPayment({{ $item->id }})">Pay</button>@endif
                                 @if($overpaid > 0.005 && $selected->status === 'locked' && auth()->user()->can('payroll.manage'))
                                     @if($alreadyAdjusted)
                                         <span class="btn btn-sm" style="background:var(--green-soft,#e6f4ea);color:var(--green,#1E7A41);cursor:default">Adjusted ✓</span>
