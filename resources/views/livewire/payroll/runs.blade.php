@@ -7,6 +7,7 @@
     @if(!$approvalsOnly && auth()->user()->can('payroll.manage'))
         <section class="card mb">
             <form class="toolbar" wire:submit="calculate" style="border:0">
+                @if($companies->isNotEmpty())<label class="field"><span>Company</span><select wire:model="calcCompany">@foreach($companies as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></label>@endif
                 <label class="field"><span>Period start</span><input type="date" wire:model="periodStart"></label>
                 <label class="field"><span>Period end</span><input type="date" wire:model="periodEnd" x-bind:min="$wire.periodStart"></label>
                 <button class="btn btn-primary" wire:loading.attr="disabled"><span wire:loading wire:target="calculate" class="spinner"></span><x-icon name="refresh" class="icon-sm" />Calculate payroll</button>
@@ -17,11 +18,13 @@
 
     <div class="grid grid-master grid-master-wide">
         <section class="card">
-            <div class="card-head"><h2>Runs</h2></div>
+            <div class="card-head"><h2>Runs</h2>
+                @if($companies->isNotEmpty())<select wire:model.live="company" aria-label="Company" style="width:auto"><option value="">All companies</option>@foreach($companies as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select>@endif
+            </div>
             <div class="list">
                 @forelse($runs as $r)
                     <button type="button" class="list-row" wire:click="$set('run', {{ $r->id }})" style="background:{{ $selected?->id === $r->id ? 'var(--blue-soft)' : 'transparent' }};border:0;border-bottom:1px solid var(--line-2);text-align:left;cursor:pointer;width:100%">
-                        <div><strong>{{ $r->period_starts_on->format('d M') }} – {{ $r->period_ends_on->format('d M Y') }}</strong><small>{{ $r->items_count }} employees · net {{ number_format((float) $r->items_sum_net_amount, 2) }}</small></div><x-badge :status="$r->status" />
+                        <div><strong>{{ $r->period_starts_on->format('d M') }} – {{ $r->period_ends_on->format('d M Y') }}</strong><small>@if($companies->isNotEmpty())<b>{{ $r->companyName() }}</b> · @endif{{ $r->items_count }} employees · net {{ number_format((float) $r->items_sum_net_amount, 2) }}</small></div><x-badge :status="$r->status" />
                     </button>
                 @empty
                     <x-empty :title="$approvalsOnly ? 'No payroll awaiting approval' : 'No payroll runs yet'" icon="layers" />
@@ -35,7 +38,7 @@
                 <x-empty title="Select a payroll run" icon="layers">Pick a run on the left to see employee lines, approve, lock and pay.</x-empty>
             @else
                 <div class="card-head">
-                    <div><h2>{{ $selected->period_starts_on->format('d M Y') }} – {{ $selected->period_ends_on->format('d M Y') }} <x-badge :status="$selected->status" />@if($selected->needs_recalculation) <x-badge tone="red">Inputs changed — recalculate</x-badge>@endif</h2>
+                    <div><h2>@if($companies->isNotEmpty()){{ $selected->companyName() }} · @endif{{ $selected->period_starts_on->format('d M Y') }} – {{ $selected->period_ends_on->format('d M Y') }} <x-badge :status="$selected->status" />@if($selected->needs_recalculation) <x-badge tone="red">Inputs changed — recalculate</x-badge>@endif</h2>
                         <p>@if($approval)Approval: {{ $approval->status }}@if($approval->approver) by {{ $approval->approver->name }}@endif @if($approval->comment) — “{{ $approval->comment }}”@endif @endif @if($selected->locked_at)· locked {{ $selected->locked_at->format('d M Y H:i') }}@endif</p></div>
                     <div class="actions">
                         @if($selected->status === 'draft' && auth()->user()->can('payroll.manage'))<button class="btn btn-sm" wire:click="recalculate" wire:loading.attr="disabled">Recalculate</button><button class="btn btn-sm" wire:click="openCompare" title="This draft against a fresh calculation now: half days and salary for days worked. Nothing is saved.">Compare</button><button class="btn btn-sm btn-danger" wire:click="openDelete">Delete draft</button>@endif
