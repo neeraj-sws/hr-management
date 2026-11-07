@@ -99,6 +99,7 @@
         </tbody><tfoot>
             <tr><th colspan="2">Total paid</th><th class="amt">{{ number_format($paid, 2) }}</th></tr>
             @if((float) $item->net_amount - $paid > 0.005)<tr><th colspan="2">Balance due</th><th class="amt" style="color:var(--red)">{{ number_format((float) $item->net_amount - $paid, 2) }}</th></tr>@endif
+            @if($paid - (float) $item->net_amount > 0.005)<tr><th colspan="2">Extra paid</th><th class="amt" style="color:var(--orange,#C4621A)">{{ number_format($paid - (float) $item->net_amount, 2) }}</th></tr>@endif
         </tfoot></table>
         <div class="slip-foot"><span>This is a system-generated payslip from locked payroll records and does not need a signature.</span><span>{{ config('app.name') }}</span></div>
     </div>

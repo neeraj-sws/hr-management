@@ -50,7 +50,7 @@
                 @endif
                 @php($runHasOt = $selected->items->contains(fn ($i) => (float) $i->overtime_amount > 0 || (float) $i->overtime_hours > 0))
                 <div class="table-wrap"><table class="table">
-                    <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th>@if($runHasOt)<th class="num">OT</th>@endif<th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th></th></tr></thead>
+                    <thead><tr><th>Employee</th><th class="num">Days (work/present/PL/UL)</th>@if($runHasOt)<th class="num">OT</th>@endif<th class="num">Gross</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Paid</th><th class="num">Remaining</th><th></th></tr></thead>
                     <tbody>
                     @forelse($selected->items->sortBy(fn ($i) => sprintf('%04d%s', strlen((string) $i->employee?->employee_code), $i->employee?->employee_code)) as $item)
                         {{-- A month from the old salary sheet: what the sheet says was paid counts as paid. --}}
@@ -67,14 +67,30 @@
                             <td class="num">{{ number_format($deductions, 2) }}<small>pen {{ (float) $item->penalties_amount }} · adv {{ (float) $item->recovery_amount }}@if($claimsPaid > 0) · <span style="color:var(--green, #1E7A41)">+ claims {{ number_format($claimsPaid, 2) }} in net</span>@endif@if((float) ($item->calculation_breakdown['short_hours']['amount'] ?? 0) > 0) · short {{ \App\Support\Duration::hms($item->calculation_breakdown['short_hours']['short_seconds']) }}@endif</small></td>
                             <td class="num"><strong>{{ number_format((float) $item->net_amount, 2) }}</strong></td>
                             <td class="num">{{ number_format($paid, 2) }}@if($sheetPaid > 0)<small>old sheet{{ ! empty($item->calculation_breakdown['old_sheet']['payment_date']) ? ' · '.\Illuminate\Support\Carbon::parse($item->calculation_breakdown['old_sheet']['payment_date'])->format('d M Y') : '' }}</small>@elseif($paid > 0 && $paid < (float) $item->net_amount)<small>partial</small>@endif</td>
+                            @php($overpaid = round($paid - (float) $item->net_amount, 2))
+                            @php($alreadyAdjusted = in_array($item->id, $adjustedItemIds))
+                            <td class="num">
+                                @if($overpaid > 0.005)
+                                    <span style="color:var(--orange,#C4621A);font-weight:600">Extra: {{ number_format($overpaid, 2) }}</span>
+                                @else
+                                    {{ number_format(max(0, -$overpaid), 2) }}
+                                @endif
+                            </td>
                             <td><div class="row-actions">
                                 <button class="btn btn-sm" wire:click="$set('breakdownItemId', {{ $item->id }})">Breakdown</button>
-                                @if($selected->status === 'locked' && $paid < (float) $item->net_amount && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="openPayment({{ $item->id }})">Pay</button>@endif
+                                @if($selected->status === 'locked' && $paid <= (float) $item->net_amount && (float) $item->net_amount > 0 && auth()->user()->can('payroll.manage'))<button class="btn btn-sm btn-primary" wire:click="openPayment({{ $item->id }})">Pay</button>@endif
+                                @if($overpaid > 0.005 && $selected->status === 'locked' && auth()->user()->can('payroll.manage'))
+                                    @if($alreadyAdjusted)
+                                        <span class="btn btn-sm" style="background:var(--green-soft,#e6f4ea);color:var(--green,#1E7A41);cursor:default">Adjusted ✓</span>
+                                    @else
+                                        <button class="btn btn-sm" style="background:var(--orange-soft,#fff3e0);color:var(--orange,#C4621A)" wire:click="openAutoAdjust({{ $item->id }})">Auto adjust</button>
+                                    @endif
+                                @endif
                                 @if($item->payslip)<a class="btn btn-sm" href="{{ route('hr.payslips.show', $item->payslip) }}" target="_blank">Payslip</a>@endif
                             </div></td>
                         </tr>
                     @empty
-                        <tr><td colspan="8"><x-empty title="No employees in this run" icon="users">Only active employees with a salary profile are included.</x-empty></td></tr>
+                        <tr><td colspan="9"><x-empty title="No employees in this run" icon="users">Only active employees with a salary profile are included.</x-empty></td></tr>
                     @endforelse
                     </tbody>
                 </table></div>
@@ -85,7 +101,7 @@
     @if($paying)
         <x-modal title="Record payment · {{ $paying->employee?->name }}">
             <form wire:submit="pay"><div class="modal-body"><x-errors />
-                <p class="small muted" style="margin-top:0">Net {{ number_format((float) $paying->net_amount, 2) }} · already paid {{ number_format((float) $paying->payments->sum('amount'), 2) }}. Partial payments are allowed.</p>
+                <p class="small muted" style="margin-top:0">Net {{ number_format((float) $paying->net_amount, 2) }} · already paid {{ number_format((float) $paying->payments->sum('amount'), 2) }}. Partial payments are allowed. Paying more than the net records the extra as overpayment for this month.</p>
                 <div class="form-grid"><x-field label="Amount" name="paymentAmount"><input type="number" step="0.01" min="0.01" wire:model="paymentAmount"></x-field><x-field label="Bank / reference" name="paymentReference"><input wire:model="paymentReference"></x-field></div>
             </div><div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Record payment</button></div></form>
         </x-modal>
@@ -162,6 +178,26 @@
                 <p class="small" style="margin-top:0">This draft and its {{ $selected->items->count() }} salary rows are removed. Salary adjustments, expense claims, penalties and advance recoveries it had taken are given back, so the right payroll picks them up when it is calculated. Only a draft with no payment can be deleted. This is written to the audit log.</p>
                 <x-field label="Why is it being deleted?" name="deleteReason" full><textarea wire:model="deleteReason" rows="3" placeholder="e.g. Made for the wrong dates (01–13 Oct); the month is 01–31 Oct"></textarea></x-field>
             </div><div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-danger" wire:loading.attr="disabled">Delete draft payroll</button></div></form>
+        </x-modal>
+    @endif
+    @if($showAutoAdjust && $autoAdjust)
+        @php($aSheetPaid = (float) ($autoAdjust->calculation_breakdown['old_sheet']['paid'] ?? 0))
+        @php($aPaid = (float) $autoAdjust->payments->sum('amount') + $aSheetPaid)
+        @php($aExtra = round($aPaid - (float) $autoAdjust->net_amount, 2))
+        @php($aNextMonth = ($autoAdjust->run?->period_ends_on ?? now())->addMonthNoOverflow()->startOfMonth())
+        <x-modal title="Auto adjustment · {{ $autoAdjust->employee?->name }}">
+            <div class="modal-body">
+                <p class="small" style="margin-top:0">{{ $autoAdjust->employee?->name }} ko ₹{{ number_format($aExtra, 2) }} extra pay hua hai. Neeche ka adjustment {{ $aNextMonth->format('F Y') }} ke payroll mein automatically deduct ho jayega.</p>
+                <table class="table"><tbody>
+                    <tr><td>Extra paid</td><td class="num" style="color:var(--orange,#C4621A)"><strong>₹{{ number_format($aExtra, 2) }}</strong></td></tr>
+                    <tr><td>Recovery month</td><td class="num">{{ $aNextMonth->format('F Y') }}</td></tr>
+                    <tr><td>Type</td><td class="num">Recovery (earlier period)</td></tr>
+                </tbody></table>
+            </div>
+            <div class="modal-foot">
+                <button type="button" class="btn" wire:click="closeModal">Cancel</button>
+                <button class="btn btn-primary" wire:click="confirmAutoAdjust" wire:loading.attr="disabled">Create adjustment</button>
+            </div>
         </x-modal>
     @endif
     @if($showReopen && $selected)

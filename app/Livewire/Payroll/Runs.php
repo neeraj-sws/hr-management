@@ -82,6 +82,8 @@ class Runs extends Component
 
     public string $reopenReason = '';
     public bool $showReopen = false;
+    public ?int $autoAdjustItemId = null;
+    public bool $showAutoAdjust = false;
 
     /** "Compare": this draft's stored salary for days worked against a fresh calculation now (nothing is saved). */
     public bool $showCompare = false;
@@ -163,6 +165,43 @@ class Runs extends Component
         $this->toast('Payment recorded and payslip issued.');
     }
 
+    public function openAutoAdjust(int $itemId): void
+    {
+        abort_unless($this->user()->can('payroll.manage'), 403);
+        $this->fill(['autoAdjustItemId' => $itemId, 'showAutoAdjust' => true]);
+        $this->resetValidation();
+    }
+
+    public function confirmAutoAdjust(): void
+    {
+        abort_unless($this->user()->can('payroll.manage'), 403);
+        $item = PayrollItem::with(['payments'])->findOrFail($this->autoAdjustItemId);
+        $sheetPaid = (float) ($item->calculation_breakdown['old_sheet']['paid'] ?? 0);
+        $paid = (float) $item->payments->sum('amount') + $sheetPaid;
+        $extra = round($paid - (float) $item->net_amount, 2);
+
+        if ($extra > 0) {
+            $run = PayrollRun::find($item->payroll_run_id);
+            $nextMonth = ($run?->period_ends_on ?? now())->addMonthNoOverflow()->startOfMonth();
+            \App\Models\SalaryAdjustment::create([
+                'employee_id'                  => $item->employee_id,
+                'effective_on'                 => $nextMonth,
+                'amount'                       => $extra,
+                'kind'                         => 'arrear_recovery',
+                'is_recurring'                 => false,
+                'status'                       => 'approved',
+                'reason'                       => 'Extra pay recovery – overpaid ₹'.number_format($extra, 2).' in '.($run?->period_starts_on->format('F Y') ?? 'previous period'),
+                'requested_by'                 => auth()->id(),
+                'decided_by'                   => auth()->id(),
+                'decided_at'                   => now(),
+                'carried_from_payroll_item_id' => $item->id,
+            ]);
+            $this->showAutoAdjust = false;
+            $this->autoAdjustItemId = null;
+            $this->toast('Recovery of ₹'.number_format($extra, 2).' added to '.$nextMonth->format('F Y').' payroll.');
+        }
+    }
+
     public function closeModal(): void
     {
         $this->payingItemId = null;
@@ -170,6 +209,8 @@ class Runs extends Component
         $this->showReopen = false;
         $this->showDelete = false;
         $this->showCompare = false;
+        $this->showAutoAdjust = false;
+        $this->autoAdjustItemId = null;
     }
 
     public function render(ApprovalInbox $inbox)
@@ -188,6 +229,8 @@ class Runs extends Component
             'paying' => $this->payingItemId ? PayrollItem::with(['employee', 'payments'])->find($this->payingItemId) : null,
             'breakdown' => $this->breakdownItemId ? PayrollItem::with('employee')->find($this->breakdownItemId) : null,
             'compare' => $this->showCompare && $selected && $selected->status === 'draft' ? $this->compareRows($selected) : null,
+            'autoAdjust' => $this->autoAdjustItemId ? PayrollItem::with(['employee', 'payments', 'run'])->find($this->autoAdjustItemId) : null,
+            'adjustedItemIds' => $selected ? (function () use ($selected) { try { return \App\Models\SalaryAdjustment::whereNotNull('carried_from_payroll_item_id')->whereIn('carried_from_payroll_item_id', $selected->items->pluck('id'))->pluck('carried_from_payroll_item_id')->all(); } catch (\Throwable $e) { return []; } })() : [],
         ], $this->approvalsOnly ? 'Payroll Approvals' : 'Payroll');
     }
 }

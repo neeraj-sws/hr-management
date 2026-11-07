@@ -1,101 +1,146 @@
 {
-  "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "sws-hr-uat",
-      "runtimeExecutable": "php",
-      "runtimeArgs": [
-        "artisan",
-        "serve",
-        "--host=0.0.0.0",
-        "--port=8020"
-      ],
-      "port": 8020,
-      "env": {
-        "DB_DATABASE": "sws_hr_uat",
-        "QUEUE_CONNECTION": "sync",
-        "APP_TIMEZONE": "Asia/Kolkata",
-        "APP_URL": "http://localhost:8020"
-      }
-    },
-    {
-      "name": "sws-mobile-web",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": [
-        "expo",
-        "start",
-        "--web",
-        "--port",
-        "8082",
-        "--clear"
-      ],
-      "cwd": "mobile",
-      "port": 8082,
-      "env": {
-        "CI": "1",
-        "BROWSER": "none",
-        "npm_config_cache": "E:/devcache/npm",
-        "TEMP": "E:/devcache/tmp",
-        "TMP": "E:/devcache/tmp"
-      }
-    },
-    {
-      "name": "sws-mobile-web-local",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": [
-        "expo",
-        "start",
-        "--web",
-        "--port",
-        "8083"
-      ],
-      "cwd": "mobile",
-      "port": 8083,
-      "env": {
-        "CI": "1",
-        "BROWSER": "none"
-      }
-    },
-    {
-      "name": "sws-hr-local-test",
-      "runtimeExecutable": "php",
-      "runtimeArgs": [
-        "artisan",
-        "serve",
-        "--host=127.0.0.1",
-        "--port=8021"
-      ],
-      "port": 8021,
-      "env": {
-        "DB_CONNECTION": "sqlite",
-        "DB_DATABASE": "C:/Users/hp/AppData/Local/Temp/claude/D--vh-hr-management/35e9be75-ba08-463b-810a-deeb42b6473e/scratchpad/uat.sqlite",
-        "QUEUE_CONNECTION": "sync",
-        "APP_URL": "http://localhost:8021",
-        "MAIL_MAILER": "log",
-        "SESSION_DRIVER": "file",
-        "SESSION_SECURE_COOKIE": "false",
-        "SESSION_DOMAIN": "",
-        "APP_ENV": "local",
-        "CACHE_STORE": "file"
-      }
-    },
-    {
-      "name": "sws-hr-local-live",
-      "runtimeExecutable": "php",
-      "runtimeArgs": [
-        "artisan",
-        "serve",
-        "--host=127.0.0.1",
-        "--port=8030"
-      ],
-      "port": 8030,
-      "env": {
-        "QUEUE_CONNECTION": "sync",
-        "MAIL_MAILER": "log",
-        "APP_URL": "http://localhost:8030",
-        "SESSION_SECURE_COOKIE": "false",
-        "SESSION_DOMAIN": ""
-      }
-    }
-  ]
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "name": "sws-hr-uat",
+            "runtimeExecutable": "php",
+            "runtimeArgs": [
+                "artisan",
+                "serve",
+                "--host=0.0.0.0",
+                "--port=8020"
+            ],
+            "port": 8020,
+            "env": {
+                "DB_DATABASE": "sws_hr_uat",
+                "QUEUE_CONNECTION": "sync",
+                "APP_TIMEZONE": "Asia/Kolkata",
+                "APP_URL": "http://localhost:8020"
+            }
+        },
+        {
+            "name": "sws-mobile-web",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": [
+                "expo",
+                "start",
+                "--web",
+                "--port",
+                "8082",
+                "--clear"
+            ],
+            "cwd": "mobile",
+            "port": 8082,
+            "env": {
+                "CI": "1",
+                "BROWSER": "none",
+                "npm_config_cache": "E:/devcache/npm",
+                "TEMP": "E:/devcache/tmp",
+                "TMP": "E:/devcache/tmp"
+            }
+        },
+        {
+            "name": "sws-mobile-web-local",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": [
+                "expo",
+                "start",
+                "--web",
+                "--port",
+                "8083"
+            ],
+            "cwd": "mobile",
+            "port": 8083,
+            "env": {
+                "CI": "1",
+                "BROWSER": "none"
+            }
+        },
+        {
+            "name": "sws-hr-local-test",
+            "runtimeExecutable": "php",
+            "runtimeArgs": [
+                "artisan",
+                "serve",
+                "--host=127.0.0.1",
+                "--port=8021"
+            ],
+            "port": 8021,
+            "env": {
+                "DB_CONNECTION": "sqlite",
+                "DB_DATABASE": "C:/Users/hp/AppData/Local/Temp/claude/D--vh-hr-management/35e9be75-ba08-463b-810a-deeb42b6473e/scratchpad/uat.sqlite",
+                "QUEUE_CONNECTION": "sync",
+                "APP_URL": "http://localhost:8021",
+                "MAIL_MAILER": "log",
+                "SESSION_DRIVER": "file",
+                "SESSION_SECURE_COOKIE": "false",
+                "SESSION_DOMAIN": "",
+                "APP_ENV": "local",
+                "CACHE_STORE": "file"
+            }
+        },
+        {
+            "name": "sws-hr-local-live",
+            "runtimeExecutable": "php",
+            "runtimeArgs": [
+                "artisan",
+                "serve",
+                "--host=127.0.0.1",
+                "--port=8030"
+            ],
+            "port": 8030,
+            "env": {
+                "QUEUE_CONNECTION": "sync",
+                "MAIL_MAILER": "log",
+                "APP_URL": "http://localhost:8030",
+                "SESSION_SECURE_COOKIE": "false",
+                "SESSION_DOMAIN": ""
+            }
+        },
+        {
+            "name": "sws-hr-training-check",
+            "runtimeExecutable": "php",
+            "runtimeArgs": [
+                "artisan",
+                "serve",
+                "--host=127.0.0.1",
+                "--port=8024"
+            ],
+            "port": 8024,
+            "env": {
+                "DB_CONNECTION": "sqlite",
+                "DB_DATABASE": "C:/Users/hp/AppData/Local/Temp/claude/D--vh-hr-management/a1383ba0-8b45-4869-b1b6-4fcf544a381e/scratchpad/training.sqlite",
+                "QUEUE_CONNECTION": "sync",
+                "APP_URL": "http://localhost:8024",
+                "MAIL_MAILER": "log",
+                "SESSION_DRIVER": "file",
+                "SESSION_SECURE_COOKIE": "false",
+                "SESSION_DOMAIN": "",
+                "APP_ENV": "local",
+                "CACHE_STORE": "file"
+            }
+        },
+        {
+            "name": "company-owner-local",
+            "runtimeExecutable": "php",
+            "runtimeArgs": [
+                "artisan",
+                "serve",
+                "--host=127.0.0.1",
+                "--port=8032"
+            ],
+            "port": 8032,
+            "env": {
+                "DB_DATABASE": "hr_company_owner",
+                "QUEUE_CONNECTION": "sync",
+                "MAIL_MAILER": "log",
+                "APP_URL": "http://localhost:8032",
+                "SESSION_SECURE_COOKIE": "false",
+                "SESSION_DOMAIN": "",
+                "SESSION_DRIVER": "file",
+                "CACHE_STORE": "file"
+            },
+            "cwd": "D:/vh/hr-management/.claude/worktrees/company-owner"
+        }
+    ]
 }

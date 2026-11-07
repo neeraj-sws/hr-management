@@ -433,6 +433,19 @@ class HrWorkflowService
             $hasPendingApproval=ApprovalRequest::where('approvable_type',PayrollRun::class)->where('approvable_id',$run->id)->where('status','pending')->exists();
             if(!$hasPendingApproval){ApprovalRequest::create(['approvable_type'=>PayrollRun::class,'approvable_id'=>$run->id,'step'=>1,'status'=>'pending']);foreach(\App\Models\User::permission('payroll.approve')->get() as $approver)$approver->notify(new \App\Notifications\ApprovalRequested('PayrollRun',$run->id,'A payroll run needs approval.'));}
             if ($run->status !== 'draft') throw ValidationException::withMessages(['payroll' => 'Only draft payroll can be recalculated.']);
+            // Save payment data before items are deleted (CASCADE removes them with the items)
+            $savedPayments = [];
+            foreach ($run->items()->with('payments')->get() as $oldItem) {
+                if ($oldItem->employee_id && $oldItem->payments->isNotEmpty()) {
+                    $savedPayments[$oldItem->employee_id] = $oldItem->payments->map(fn ($p) => [
+                        'amount' => $p->amount,
+                        'paid_on' => $p->paid_on->toDateString(),
+                        'reference' => $p->reference,
+                        'method' => $p->method,
+                        'recorded_by' => $p->recorded_by,
+                    ])->toArray();
+                }
+            }
             foreach ($run->items as $oldItem) {
                 foreach (SalaryAdvanceRepayment::where('payroll_item_id', $oldItem->id)->get() as $repayment) {
                     SalaryAdvance::whereKey($repayment->salary_advance_id)->decrement('recovered_amount', $repayment->amount);
@@ -476,6 +489,16 @@ class HrWorkflowService
                     if ((float)$advance->recovered_amount >= (float)$advance->disbursed_amount && (float)$advance->disbursed_amount >= (float)$advance->amount) $advance->update(['status'=>'recovered']);
                 }
                 $item->update(['advances_amount' => (float) $advanceRows->sum('disbursed_amount')]);
+            }
+            // Re-link saved payments to the newly created items
+            if ($savedPayments) {
+                foreach ($run->items()->get() as $newItem) {
+                    if ($newItem->employee_id && isset($savedPayments[$newItem->employee_id])) {
+                        foreach ($savedPayments[$newItem->employee_id] as $paymentData) {
+                            SalaryPayment::create(array_merge($paymentData, ['payroll_item_id' => $newItem->id]));
+                        }
+                    }
+                }
             }
             $run->update(['needs_recalculation' => false]);
             $this->audit->record('payroll.calculated', $run, ['items' => $run->items()->count()]);
@@ -1032,8 +1055,7 @@ class HrWorkflowService
         return DB::transaction(function () use ($run, $actor, $reason) {
             $run = PayrollRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
             if (! in_array($run->status, ['approved', 'locked'], true)) throw ValidationException::withMessages(['payroll' => 'Only an approved or locked payroll can be reopened.']);
-            $payments = SalaryPayment::whereIn('payroll_item_id', $run->items()->pluck('id'))->count();
-            if ($payments) throw ValidationException::withMessages(['payroll' => "{$payments} salary payment(s) are already recorded for this period, so it cannot be reopened. Corrections for this period go into the next payroll as salary adjustments."]);
+            // Existing payments are preserved on reopen — remaining/extra column shows correct diff after recalculation.
             $before = $run->status;
             $run->update(['status' => 'draft', 'locked_by' => null, 'locked_at' => null, 'needs_recalculation' => true]);
             ApprovalRequest::create(['approvable_type' => PayrollRun::class, 'approvable_id' => $run->id, 'step' => 1, 'status' => 'pending']);
@@ -1051,7 +1073,7 @@ class HrWorkflowService
             $run = PayrollRun::whereKey($item->payroll_run_id)->lockForUpdate()->firstOrFail();
             if ($run->status !== 'locked') throw ValidationException::withMessages(['payment' => 'Payroll must be locked before payment.']);
             $paid = (float) $item->payments()->sum('amount');
-            if ((float) $data['amount'] <= 0 || $paid + (float) $data['amount'] > (float) $item->net_amount) throw ValidationException::withMessages(['amount' => 'Payment exceeds the remaining payroll balance.']);
+            if ((float) $data['amount'] <= 0) throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
             $payment = $item->payments()->create([...$data, 'recorded_by' => $userId]);
             $payslip = Payslip::firstOrCreate(['payroll_item_id' => $item->id], ['employee_id' => $item->employee_id, 'issued_at' => now(), 'reference' => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT)]);
             $this->audit->record('payroll.payment_recorded', $payment, ['payroll_item_id' => $item->id]);
