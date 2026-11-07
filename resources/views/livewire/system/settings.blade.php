@@ -276,9 +276,13 @@
                     {{-- No overtime in this company: only the switch to turn it back on. --}}
                     <label class="check small muted" style="grid-column:1/-1"><input type="checkbox" wire:model.live="otEnabled"> Overtime is off (not used in this company). Tick only to start using it.</label>
                 @endif
-                <x-field label="Per-day salary" name="salaryDivisor" hint="what the monthly salary is divided by" full><select wire:model.live="salaryDivisor"><option value="calendar">Each month's own working days from the calendar (e.g. Sep 25, Jul 26, Aug 24)</option><option value="fixed">A fixed number of days (below), every month</option></select></x-field>
+                <x-field label="Per-day salary" name="salaryDivisor" hint="what the monthly salary is divided by" full><select wire:model.live="salaryDivisor"><option value="calendar">Each month's own working days from the calendar (e.g. Sep 25, Jul 26, Aug 24)</option><option value="month_days">Every day of the month (30 or 31): all days are paid, only absent days are cut</option><option value="fixed">A fixed number of days (below), every month</option></select></x-field>
                 @if($salaryDivisor === 'fixed')
                     <x-field label="Working days per month (salary divisor)" name="workingDaysPerMonth"><input type="number" min="1" max="31" wire:model="workingDaysPerMonth"></x-field>
+                @elseif($salaryDivisor === 'month_days')
+                    <div class="field"><span class="label">Days in the month</span>
+                        <p class="small" style="margin:6px 0 0">@foreach([today()->subMonthNoOverflow(), today(), today()->addMonthNoOverflow()] as $m)<span class="pill" style="margin:0 6px 4px 0"><b>{{ $m->format('M Y') }}</b> = {{ $m->daysInMonth }} days</span>@endforeach</p>
+                        <small class="muted">Each month's salary ÷ the days of that month. Weekly offs and holidays are paid; a day absent without paid leave is cut (salary ÷ days of the month). Turn "Prorate salary by attendance" off below to pay every day.</small></div>
                 @else
                     {{-- Each month's own working days: shown for this month and the next two (nothing to type). --}}
                     <div class="field"><span class="label">Working days (from the calendar)</span>

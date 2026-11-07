@@ -119,7 +119,7 @@
                 @else
                 <tr style="background:var(--canvas)"><td><strong>Monthly basic salary</strong><small>from the salary profile</small></td><td class="num"><strong>{{ number_format($monthly, 2) }}</strong></td></tr>
                 @endif
-                @if($days > 0 && ($cd['pay_basis'] ?? 'monthly') !== 'daily')<tr><td>Per-day rate<small>{{ number_format($monthly, 2) }} ÷ {{ $days }} working days{{ ($cd['divisor'] ?? 'fixed') === 'calendar' ? ' (this month, from the calendar)' : '' }}</small></td><td class="num">{{ number_format($monthly / $days, 2) }}</td></tr>@endif
+                @if($days > 0 && ($cd['pay_basis'] ?? 'monthly') !== 'daily')<tr><td>Per-day rate<small>{{ number_format($monthly, 2) }} ÷ {{ $days }} {{ ($cd['divisor'] ?? 'fixed') === 'month_days' ? 'days (every day of this month)' : 'working days' }}{{ ($cd['divisor'] ?? 'fixed') === 'calendar' ? ' (this month, from the calendar)' : '' }}</small></td><td class="num">{{ number_format($monthly / $days, 2) }}</td></tr>@endif
                 @php($otKeys = ['approved_overtime_minutes', 'holiday_overtime_minutes', 'overtime_multiplier', 'holiday_overtime_multiplier', 'overtime_amount'])
                 @php($hasOt = (float) ($breakdown->calculation_breakdown['overtime_amount'] ?? 0) > 0 || (int) ($breakdown->calculation_breakdown['approved_overtime_minutes'] ?? 0) > 0)
                 @foreach(($breakdown->calculation_breakdown ?? []) as $label => $value)

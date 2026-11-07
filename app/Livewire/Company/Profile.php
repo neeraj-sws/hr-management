@@ -51,9 +51,13 @@ class Profile extends Component
         $yes = fn ($v) => $v ? 'Yes' : 'No';
 
         $pay = $rule('payroll.calculation');
-        $divisorFixed = ($pay['divisor'] ?? 'calendar') === 'fixed';
+        $divisor = $pay['divisor'] ?? 'fixed';
         $salary = [
-            ['Per-day salary', $divisorFixed ? 'Monthly salary ÷ '.(int) ($pay['working_days_per_month'] ?? 26).' days (fixed)' : "Monthly salary ÷ that month's working days from the calendar"],
+            ['Per-day salary', match ($divisor) {
+                'month_days' => 'Monthly salary ÷ the days of the month (30 / 31): every day is paid, only absent days are cut',
+                'calendar' => "Monthly salary ÷ that month's working days from the calendar",
+                default => 'Monthly salary ÷ '.(int) ($pay['working_days_per_month'] ?? 26).' days (fixed)',
+            }],
             ['Absent days cut the pay', $yes($pay['attendance_proration'] ?? true)],
             ['Approved paid leave counts as paid', $yes($pay['include_paid_leave'] ?? true)],
             ['Half day pays half a day', $yes($pay['half_day_pay'] ?? false)],

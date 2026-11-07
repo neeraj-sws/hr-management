@@ -534,6 +534,8 @@ class HrWorkflowService
         // Per-day salary: monthly salary ÷ a fixed number of days (default), or ÷ that month's own working days
         // from the calendar (Settings > Payroll) — e.g. 25 in September, 26 in July, as in a salary sheet.
         $calendarDivisor = ($payrollPolicy['divisor'] ?? 'fixed') === 'calendar';
+        // Every day of the month (30 / 31) is paid; only absent days are cut (a company's own choice in Settings > Payroll).
+        $monthDaysMode = ($payrollPolicy['divisor'] ?? 'fixed') === 'month_days';
         $monthDivisors = [];
         // An explicit payroll rule wins; otherwise the employee's own working hours (same value attendance uses).
         $standardDailyHours = (float) ($payrollPolicy['standard_daily_hours'] ?? app(AttendanceService::class)->dailyHours($employee, $end));
@@ -685,12 +687,13 @@ class HrWorkflowService
                 $dayProfile = $profileOn($date);
                 if (! $dayProfile) continue;
                 $segment = &$segments[$dayProfile->id];
-                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0, 'present' => 0];
+                $segment ??= ['profile' => $dayProfile, 'scheduled' => 0, 'eligible' => 0, 'holidays' => 0, 'present' => 0, 'span' => 0, 'unpaidHolidays' => 0];
+                $segment['span']++;
                 if (! $this->isConfiguredWorkday($date,$calendar)) {
                     // A holiday on what would otherwise be a working day: paid or unpaid per Settings > Calendar.
                     if (in_array($date, \App\Support\WorkCalendar::offHolidays($calendar), true) && $this->isConfiguredWorkday($date, [...$calendar, 'holidays' => []])) {
                         if (\App\Support\WorkCalendar::holidayTypeOf($calendar, $date)['paid']) { $paidHolidaySet[$date] = true; $segment['holidays']++; $monthPaidHolidays++; }
-                        else { $unpaidHolidaySet[$date] = true; $monthUnpaidHolidays++; }
+                        else { $unpaidHolidaySet[$date] = true; $monthUnpaidHolidays++; $segment['unpaidHolidays']++; }
                     }
                     unset($segment); continue;
                 }
@@ -711,11 +714,12 @@ class HrWorkflowService
             // that divisor (it is paid like a day worked); in a month that already has enough working days
             // it changes nothing. An unpaid holiday takes one day off what the month can pay.
             $sheetDays = $this->sheetWorkingDays($monthKey);
-            $monthDivisor = $sheetDays ?: ($calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth);
+            $monthDays = $monthDaysMode && ! $sheetDays; // a month taken from the old salary sheet keeps its own days
+            $monthDivisor = $sheetDays ?: ($monthDays ? $monthStart->daysInMonth : ($calendarDivisor ? $this->calendarDaysInMonth($monthStart, $calendar) : $workingDaysPerMonth));
             $monthDivisors[$monthKey] = $monthDivisor;
             // Judged on the whole month's working days (not only the days counted so far), so the "so far" estimate
             // in the middle of a month pays a holiday exactly as the month's payroll will.
-            $topUp = min($monthPaidHolidays, max(0, $monthDivisor - max($scheduledMonth, $this->calendarDaysInMonth($monthStart, $calendar))));
+            $topUp = $monthDays ? 0 : min($monthPaidHolidays, max(0, $monthDivisor - max($scheduledMonth, $this->calendarDaysInMonth($monthStart, $calendar))));
             foreach ($segments as &$seg) {
                 $take = min($seg['holidays'], $topUp);
                 $seg['scheduled'] += $take;
@@ -724,10 +728,10 @@ class HrWorkflowService
             }
             unset($seg);
             $scheduledMonth = array_sum(array_column($segments, 'scheduled'));
-            $cap = max(0, min($scheduledMonth, $monthDivisor - $monthUnpaidHolidays));
+            $cap = $monthDays ? $monthDivisor : max(0, min($scheduledMonth, $monthDivisor - $monthUnpaidHolidays));
             $scheduledTotal += $cap;
             $paidMonth = array_sum(array_map(fn ($seg) => $attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled'], $segments));
-            $scale = $paidMonth > $cap && $paidMonth > 0 ? $cap / $paidMonth : 1;
+            $scale = ! $monthDays && $paidMonth > $cap && $paidMonth > 0 ? $cap / $paidMonth : 1;
             foreach ($segments as $seg) {
                 // Daily wage: the day's rate for every working day actually attended (no monthly divisor or components).
                 if ($seg['profile']->isDaily()) {
@@ -735,8 +739,11 @@ class HrWorkflowService
                     $salarySegments[] = ['month' => $monthKey, 'pay_basis' => 'daily', 'daily_rate' => (float) $seg['profile']->daily_rate, 'monthly_salary' => (float) $seg['profile']->monthly_salary, 'effective_from' => $seg['profile']->effective_from->toDateString(), 'paid_days' => $seg['present']];
                     continue;
                 }
-                $segDays = ($attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled']) * $scale;
-                $segDivisor = ($calendarDivisor || $sheetDays) ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
+                // Every-day-of-the-month pay: all the segment's days are paid, less the working days not at work (absent, unpaid leave) and unpaid holidays.
+                $segDays = $monthDays
+                    ? max(0, $seg['span'] - ($attendanceProration ? max(0, $seg['scheduled'] - min($seg['scheduled'], $seg['eligible'])) : 0) - $seg['unpaidHolidays'])
+                    : ($attendanceProration ? min($seg['scheduled'], $seg['eligible']) : $seg['scheduled']) * $scale;
+                $segDivisor = ($calendarDivisor || $monthDays || $sheetDays) ? $monthDivisor : (int) ($payrollPolicy['working_days_per_month'] ?? $seg['profile']->working_days_per_month);
                 $basePay += ((float) $seg['profile']->monthly_salary / max(1, $segDivisor)) * $segDays;
                 foreach ($structure->components($seg['profile'], $employee, $end) as $component) {
                     if ($component['type'] !== 'earning') continue;
@@ -770,7 +777,7 @@ class HrWorkflowService
         // Per-hour rate = one day's pay ÷ $rateHours (set above).
         $hourly = $profile->isDaily()
             ? (float) $profile->daily_rate / max(0.25, $rateHours)
-            : (float)$profile->monthly_salary / max(1,($calendarDivisor && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
+            : (float)$profile->monthly_salary / max(1,(($calendarDivisor || $monthDaysMode) && $monthDivisors ? (int) end($monthDivisors) : $workingDaysPerMonth)*$rateHours);
         $overtimeHours = $approvedMinutes/60;
         $overtimeAmount = round($hourly*(($approvedMinutes-$holidayMinutes)/60)*$multiplier + $hourly*($holidayMinutes/60)*$holidayMultiplier,2);
         // Extra working: the hours worked on those days × hourly rate × the weekly-off / holiday multiplier (1 when not set),
@@ -1128,6 +1135,7 @@ class HrWorkflowService
         $policy = $this->policyConfiguration($employee, 'payroll.calculation', $date, []);
         $month = \Illuminate\Support\Carbon::parse($date)->startOfMonth();
         if ($sheet = $this->sheetWorkingDays($month->format('Y-m'))) return ['days' => $sheet, 'auto' => false, 'month' => $month->format('M Y')];
+        if (($policy['divisor'] ?? 'fixed') === 'month_days') return ['days' => $month->daysInMonth, 'auto' => true, 'month' => $month->format('M Y')];
         if (($policy['divisor'] ?? 'fixed') === 'calendar') {
             $calendar = $this->policyConfiguration($employee, 'calendar.working_days', $month->copy()->endOfMonth()->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
 
