@@ -94,6 +94,8 @@ class Navigation
         // Trainees pay a fee and get no salary: no salary, payslip, advance or fine pages in their menu (HR / payroll staff keep them).
         if (in_array($routeName, ['payroll.salary', 'payroll.day-wise', 'payroll.payslips', 'payroll.advances', 'compliance.penalties'], true)
             && $user->employeeProfile?->isTrainee() && ! $user->canAny(['payroll.manage', 'payroll.approve', 'hr.manage', 'penalties.manage'])) return false;
+        // A company owner is not an employee: no personal attendance, timer or timesheet in his menu.
+        if (in_array($routeName, ['attendance.my', 'work.timer', 'work.my-timesheet'], true) && $user->employeeProfile?->isOwner()) return false;
         // Screenshots: nobody sees their own, so the page is for HR and managers with a team.
         if ($routeName === 'monitoring.screenshots' && ! $user->can('monitoring.view') && ! $user->employeeProfile?->directReports()->exists()) return false;
         if ($routeName === 'reports.show') {

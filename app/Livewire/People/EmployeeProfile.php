@@ -109,6 +109,7 @@ class EmployeeProfile extends Component
         $this->leaveMonth = now()->format('Y-m');
         $tab = (string) request()->query('tab', '');
         if (in_array($tab, ['overview', 'attendance', 'leave', 'work', 'payroll', 'docs', 'compliance', 'settings', 'history'], true)) $this->initialTab = $tab;
+        if ($employee->isOwner() && in_array($this->initialTab, ['attendance', 'leave', 'payroll', 'compliance'], true)) $this->initialTab = 'overview'; // an owner is not an employee: those tabs are not shown
         // ?letter=appointment (after adding an employee) / relieving / experience_issued (after an exit): open that letter.
         $letter = (string) request()->query('letter', '');
         if ($letter !== '' && \App\Services\HrLetterService::canManage($this->user())) {

@@ -230,6 +230,27 @@ class CompanyOwnerLoginTest extends TestCase
         $this->get(route('people.employees'))->assertOk()->assertSee('Praveen Vaishnav')->assertSee('Owner');
     }
 
+    public function test_the_owner_has_no_my_attendance_absent_days_or_my_salary(): void
+    {
+        $this->praveen->update(['employment_type' => 'owner']);
+        $this->actingAs($this->owner);
+        Livewire::test(\App\Livewire\Attendance\MyAttendance::class)->assertSee('Attendance is not tracked for you')->assertDontSee('Absent');
+        Livewire::test(\App\Livewire\Payroll\Salary::class)->assertDontSee('Pending amount')->assertDontSee('Salary history');
+        foreach (['attendance.my', 'work.timer', 'work.my-timesheet'] as $route) $this->assertFalse(Navigation::canAccess($this->owner->fresh(), $route), $route.' is not in the owner menu');
+        $this->assertTrue(Navigation::canAccess($this->owner->fresh(), 'attendance.records'));
+        $this->assertTrue(Navigation::canAccess($this->preeti->user->fresh(), 'attendance.my'));
+        // His profile page has no attendance, leave, payroll or compliance tabs and no present / absent counters.
+        $this->actingAs($this->admin);
+        Livewire::test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $this->praveen])->assertSee('Overview')->assertDontSee('Present (month)')->assertDontSee('Absent (month)')->assertDontSee('>Payroll<', false)->assertDontSee('>Compliance<', false);
+        $this->actingAs($this->owner);
+        // An ordinary employee still has both.
+        $this->actingAs($this->preeti->user);
+        Livewire::test(\App\Livewire\Attendance\MyAttendance::class)->assertDontSee('Attendance is not tracked for you');
+        Livewire::test(\App\Livewire\Payroll\Salary::class)->assertSee('Pending amount');
+        $this->actingAs($this->admin);
+        Livewire::test(\App\Livewire\People\EmployeeProfile::class, ['employee' => $this->preeti])->assertSee('Present (month)')->assertSee('>Payroll<', false);
+    }
+
     public function test_audit_logs_and_salary_payments_of_the_other_company_are_hidden(): void
     {
         $audit = app(\App\Services\AuditLogger::class);

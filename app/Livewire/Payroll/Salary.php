@@ -247,6 +247,7 @@ class Salary extends Component
     {
         $user = $this->user();
         $own = $this->ownEmployee();
+        if ($own?->isOwner()) $own = null; // a company owner is not an employee: no "My salary", pending amount or salary history for him
         $employees = null;
         if ($this->canManage() || $user->can('payroll.approve')) {
             $employees = AttendanceEmployee::with(['salaryProfile', 'department'])->where('is_active', true)->onPayroll()

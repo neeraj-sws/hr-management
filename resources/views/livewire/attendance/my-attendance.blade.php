@@ -1,6 +1,9 @@
 <div class="ma-page" @if($session && !$session->check_out) wire:poll.30s @endif>
     <div class="page-head"><div><h1>My Attendance</h1><p>{{ today()->format('l, d F Y') }} · @if($rules['shift']){{ $rules['shift'] }} shift, starts @else Scheduled @endif{{ $rules['work_start'] ? substr($rules['work_start'], 0, 5) : 'flexible' }}@if($rules['grace_minutes']) (+{{ $rules['grace_minutes'] }} min grace)@endif</p></div><a class="btn btn-sm" href="{{ route('attendance.corrections') }}"><x-icon name="edit" class="icon-sm" />Corrections</a></div>
     <x-errors />
+    @if($employee->isOwner())
+        <section class="card card-body mb"><x-empty title="Attendance is not tracked for you" icon="user" /><p class="small muted" style="text-align:center;margin:0">You are the company owner (not an employee), so there is no check-in, absent count or working-time record for you. Your employees' attendance is under Attendance > Attendance records.</p></section>
+    @else
     @if($session && $session->wasForcedOut())
         <div class="alert alert-info">{{ $session->forcedBy?->name ?? 'An administrator' }} checked you out at {{ $session->check_out->format('h:i A') }}. Reason: {{ $session->forcedReasonLabel() }}. You cannot check out again today — <a href="{{ route('attendance.corrections', ['date' => $session->work_date->toDateString()]) }}">ask for a correction</a> if this is wrong.</div>
     @endif
@@ -164,5 +167,6 @@
         </div>
         @endif
     </section>
+    @endif
     @endif
 </div>
