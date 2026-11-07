@@ -364,6 +364,22 @@ class CompanyOwnerLoginTest extends TestCase
         }
     }
 
+    public function test_training_courses_are_per_company(): void
+    {
+        $this->praveen->update(['employment_type' => 'owner']);
+        $swsCourse = \App\Models\TrainingCourse::create(['title' => 'SWS Laravel Batch', 'is_active' => true]);
+        $this->actingAs($this->owner);
+        // The owner makes a course: it is ITWeb's, and he does not see SWS's.
+        $mine = \App\Models\TrainingCourse::create(['title' => 'ITWeb React Batch', 'is_active' => true]);
+        $this->assertSame($this->itweb->id, $mine->fresh()->company_id);
+        $this->assertSame(['ITWeb React Batch'], \App\Models\TrainingCourse::pluck('title')->all());
+        Livewire::test(\App\Livewire\Training\Courses::class)->assertSee('ITWeb React Batch')->assertDontSee('SWS Laravel Batch');
+        Livewire::test(\App\Livewire\Training\Fees::class)->assertDontSee('SWS Laravel Batch');
+        // The Super Admin still sees both.
+        $this->actingAs($this->admin);
+        $this->assertEqualsCanonicalizing(['ITWeb React Batch', 'SWS Laravel Batch'], \App\Models\TrainingCourse::pluck('title')->all());
+    }
+
     public function test_every_menu_page_opens_for_the_owner_without_the_other_company(): void
     {
         // Records of both companies, including an ITWeb person's task in an SWS project.

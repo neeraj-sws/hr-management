@@ -7,10 +7,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TrainingCourse extends Model
 {
+    use Concerns\HasCompany;
+
+    /** No company = the main company (every course made before companies is SWS's). */
+    public function companyNullIsShared(): bool { return false; }
+
     /** Units a course duration is counted in (e.g. 6 months). */
     public const DURATION_UNITS = ['days' => 'days', 'weeks' => 'weeks', 'months' => 'months', 'years' => 'years'];
 
-    protected $fillable = ['title', 'description', 'category', 'provider', 'duration_hours', 'fee', 'one_time_discount', 'default_installments', 'duration_label', 'duration_value', 'duration_unit', 'material_url', 'is_mandatory', 'is_active', 'created_by'];
+    protected $fillable = ['company_id', 'title', 'description', 'category', 'provider', 'duration_hours', 'fee', 'one_time_discount', 'default_installments', 'duration_label', 'duration_value', 'duration_unit', 'material_url', 'is_mandatory', 'is_active', 'created_by'];
     protected $casts = ['is_mandatory' => 'boolean', 'is_active' => 'boolean', 'duration_hours' => 'decimal:2', 'fee' => 'decimal:2', 'one_time_discount' => 'decimal:2', 'duration_value' => 'integer', 'default_installments' => 'integer'];
 
     /** Trainees enrolled in this course (Course fees). */
