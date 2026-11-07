@@ -60,12 +60,42 @@ class Policies extends Component
     public array $overrideValues = [];
     public string $overrideFrom = '';
 
-    public function mount(PolicyConfigurationService $policies): void
+    /** Super Admin: whose rules the page shows and saves ('' = the rules for all companies). A company owner always has his own. */
+    #[\Livewire\Attributes\Url(as: 'company')]
+    public string $rulesCompany = '';
+
+    private function applyRulesCompany(): void
+    {
+        if (\App\Support\CompanyAccess::isLimited($this->user())) return;
+        $company = $this->rulesCompany !== '' ? \App\Models\Company::find((int) $this->rulesCompany) : null;
+        if (! $company) $this->rulesCompany = '';
+        \App\Support\CompanyAccess::chooseRulesCompany($company?->id);
+    }
+
+    public function hydrate(): void
+    {
+        $this->applyRulesCompany();
+    }
+
+    public function updatedRulesCompany(): void
+    {
+        $this->applyRulesCompany();
+        $this->loadValues(app(PolicyConfigurationService::class));
+        $this->toast($this->rulesCompany === '' ? 'Showing the rules for all companies.' : 'Showing '.\App\Models\Company::find((int) $this->rulesCompany)?->name.'\'s own rules: what you save here is for that company only.');
+    }
+
+    private function loadValues(PolicyConfigurationService $policies): void
     {
         foreach (self::RULES as $key => [, $fields]) {
             $config = $policies->forEmployee(null, $key, today()->toDateString(), []);
             foreach ($fields as $field => $label) $this->values[self::slot($key)][$field] = (string) ($config[$field] ?? self::DEFAULTS[$field] ?? '0');
         }
+    }
+
+    public function mount(PolicyConfigurationService $policies): void
+    {
+        $this->applyRulesCompany();
+        $this->loadValues($policies);
         $this->assessFrom = now()->subMonthNoOverflow()->startOfMonth()->toDateString();
         $this->assessTo = now()->subMonthNoOverflow()->endOfMonth()->toDateString();
         $this->overrideFrom = today()->toDateString();
@@ -191,6 +221,7 @@ class Policies extends Component
             'teamOverrides' => \App\Models\TeamPolicyOverride::with('team')->whereIn('rule_key', array_keys(self::OVERRIDABLE))->latest()->get(),
             'teams' => \App\Models\Team::orderBy('name')->get(['id', 'name']),
             'canConfigure' => $this->user()->can('policies.manage'),
+            'ruleCompanies' => \App\Support\CompanyAccess::isLimited($this->user()) ? collect() : \App\Models\Company::orderByDesc('is_main')->orderBy('name')->get(['id', 'name']),
             'overrides' => EmployeePolicyOverride::whereIn('rule_key', array_keys(self::OVERRIDABLE))->with('employee')->latest()->paginate(15, ['*'], 'overridesPage'),
             'history' => PolicyRule::whereIn('rule_key', array_keys(self::RULES))->latest('effective_from')->latest('id')->limit(15)->get(),
             'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']),

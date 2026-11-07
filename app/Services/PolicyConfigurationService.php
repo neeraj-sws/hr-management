@@ -54,7 +54,7 @@ class PolicyConfigurationService
         'calendar.working_days', 'work.hours', 'attendance.rules', 'attendance.idle', 'attendance.auto_checkout', 'attendance.sources',
         'attendance.selfie', 'attendance.location', 'attendance.late_penalty', 'attendance.early_checkout', 'attendance.unauthorized_absence',
         'overtime.multiplier', 'payroll.calculation', 'payroll.statutory', 'payroll.salary_structure', 'leave.advance_limit',
-        'leave.final_settlement', 'leave.late_application', 'task.late_penalty', 'monitoring.screenshots', 'monitoring.app_usage',
+        'leave.final_settlement', 'leave.late_application', 'task.late_penalty', 'task.missing_entry', 'task.late_entry', 'daily_status.missing', 'monitoring.screenshots', 'monitoring.app_usage',
         'monitoring.window_titles', 'billing.company', 'letters.settings',
     ];
 

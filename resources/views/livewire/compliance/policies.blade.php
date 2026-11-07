@@ -2,6 +2,11 @@
     <div class="page-head"><div><h1>Compliance</h1><p>Employer-configured rules. A value of 0 disables a rule. Assessments only create <em>pending</em> penalties — each needs approval before it reaches payroll.</p></div>
         <a class="btn" href="{{ route('compliance.penalties') }}"><x-icon name="alert" class="icon-sm" />Penalties</a></div>
     <x-errors />
+    @if($ruleCompanies->count() > 1)
+        <section class="card mb"><div class="card-body toolbar">
+            <x-field label="Rules for" name="rulesCompany" hint="a company's own rules replace the ones for all companies for its people"><select wire:model.live="rulesCompany"><option value="">All companies</option>@foreach($ruleCompanies as $rc)<option value="{{ $rc->id }}">{{ $rc->name }} only</option>@endforeach</select></x-field>
+        </div></section>
+    @endif
 
     <section class="card mb">
         <div class="card-head"><div><h2>Run compliance assessment</h2><p>Checks late check-ins, unauthorized absences (no attendance and no approved leave on a workday) and overdue tasks. Re-running never duplicates penalties.</p></div></div>
