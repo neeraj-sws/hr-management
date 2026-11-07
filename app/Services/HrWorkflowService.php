@@ -438,17 +438,26 @@ class HrWorkflowService
             $hasPendingApproval=ApprovalRequest::where('approvable_type',PayrollRun::class)->where('approvable_id',$run->id)->where('status','pending')->exists();
             if(!$hasPendingApproval){ApprovalRequest::create(['approvable_type'=>PayrollRun::class,'approvable_id'=>$run->id,'step'=>1,'status'=>'pending']);foreach(\App\Models\User::permission('payroll.approve')->get() as $approver)$approver->notify(new \App\Notifications\ApprovalRequested('PayrollRun',$run->id,'A payroll run needs approval.'));}
             if ($run->status !== 'draft') throw ValidationException::withMessages(['payroll' => 'Only draft payroll can be recalculated.']);
-            // Save payment data before items are deleted (CASCADE removes them with the items)
+            // Save payment + payslip data before items are deleted (CASCADE removes them with the items)
             $savedPayments = [];
-            foreach ($run->items()->with('payments')->get() as $oldItem) {
-                if ($oldItem->employee_id && $oldItem->payments->isNotEmpty()) {
-                    $savedPayments[$oldItem->employee_id] = $oldItem->payments->map(fn ($p) => [
-                        'amount' => $p->amount,
-                        'paid_on' => $p->paid_on->toDateString(),
-                        'reference' => $p->reference,
-                        'method' => $p->method,
-                        'recorded_by' => $p->recorded_by,
-                    ])->toArray();
+            $savedPayslips = [];
+            foreach ($run->items()->with('payments', 'payslip')->get() as $oldItem) {
+                if ($oldItem->employee_id) {
+                    if ($oldItem->payments->isNotEmpty()) {
+                        $savedPayments[$oldItem->employee_id] = $oldItem->payments->map(fn ($p) => [
+                            'amount' => $p->amount,
+                            'paid_on' => $p->paid_on->toDateString(),
+                            'reference' => $p->reference,
+                            'method' => $p->method,
+                            'recorded_by' => $p->recorded_by,
+                        ])->toArray();
+                    }
+                    if ($oldItem->payslip) {
+                        $savedPayslips[$oldItem->employee_id] = [
+                            'issued_at' => $oldItem->payslip->issued_at,
+                            'reference' => $oldItem->payslip->reference,
+                        ];
+                    }
                 }
             }
             foreach ($run->items as $oldItem) {
@@ -495,13 +504,19 @@ class HrWorkflowService
                 }
                 $item->update(['advances_amount' => (float) $advanceRows->sum('disbursed_amount')]);
             }
-            // Re-link saved payments to the newly created items
-            if ($savedPayments) {
+            // Re-link saved payments and payslips to the newly created items
+            if ($savedPayments || $savedPayslips) {
                 foreach ($run->items()->get() as $newItem) {
                     if ($newItem->employee_id && isset($savedPayments[$newItem->employee_id])) {
                         foreach ($savedPayments[$newItem->employee_id] as $paymentData) {
                             SalaryPayment::create(array_merge($paymentData, ['payroll_item_id' => $newItem->id]));
                         }
+                    }
+                    if ($newItem->employee_id && isset($savedPayslips[$newItem->employee_id])) {
+                        \App\Models\Payslip::create(array_merge($savedPayslips[$newItem->employee_id], [
+                            'payroll_item_id' => $newItem->id,
+                            'employee_id' => $newItem->employee_id,
+                        ]));
                     }
                 }
             }
