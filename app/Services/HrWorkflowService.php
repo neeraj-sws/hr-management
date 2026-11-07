@@ -1029,7 +1029,19 @@ class HrWorkflowService
             }
             $run->update(['status' => 'locked', 'locked_by' => $userId, 'locked_at' => now()]);
             $this->audit->record('payroll.locked', $run);
-            foreach ($run->items()->with('employee.user')->get() as $item) $item->employee?->user?->notify(new \App\Notifications\ApprovalRequested('PayrollRun', $run->id, 'The payroll period has been locked.'));
+            // Auto-create payslips for employees paid via the legacy salary sheet (old_sheet in breakdown).
+            // These employees never go through pay(), so their payslip is created here on lock instead.
+            foreach ($run->items()->with(['payslip', 'employee.user'])->get() as $item) {
+                if (! $item->payslip && $item->employee_id && ! empty(((array) ($item->calculation_breakdown ?? []))['old_sheet'])) {
+                    \App\Models\Payslip::create([
+                        'payroll_item_id' => $item->id,
+                        'employee_id'     => $item->employee_id,
+                        'issued_at'       => now(),
+                        'reference'       => 'PS-'.str_pad((string) $item->id, 8, '0', STR_PAD_LEFT),
+                    ]);
+                }
+                $item->employee?->user?->notify(new \App\Notifications\ApprovalRequested('PayrollRun', $run->id, 'The payroll period has been locked.'));
+            }
             return $run->fresh();
         });
     }
