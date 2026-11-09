@@ -274,7 +274,7 @@ class Salary extends Component
             'editing' => $this->profileEmployeeId ? AttendanceEmployee::find($this->profileEmployeeId) : null,
             // Days one month's salary is divided by — auto from the calendar every month, or the fixed number.
             'salaryDays' => $employees ? $employees->getCollection()->filter->salaryProfile->mapWithKeys(fn ($e) => [$e->id => app(\App\Services\HrWorkflowService::class)->salaryDaysFor($e, today()->toDateString(), $e->salaryProfile)])->all() : [],
-            'autoDays' => $this->profileEmployeeId && ($e = AttendanceEmployee::find($this->profileEmployeeId)) && ($d = app(\App\Services\HrWorkflowService::class)->salaryDaysFor($e, $this->effectiveFrom ?: today()->toDateString()))['auto'] ? $d : null,
+            'autoDays' => $this->profileEmployeeId && ($e = AttendanceEmployee::find($this->profileEmployeeId)) && ($d = app(\App\Services\HrWorkflowService::class)->salaryDaysFor($e, today()->toDateString()))['auto'] ? $d : null,
         ], 'Salary');
     }
 }
