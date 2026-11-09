@@ -277,8 +277,10 @@ class WorkService
     public function notifyDailyStatus(AttendanceEmployee $employee, \App\Models\DailyWorkStatus $status): void
     {
         $projectIds = collect((array) ($status->project_updates ?? []))->pluck('project_id')->filter()->all();
+        $admins = rescue(fn () => \App\Models\User::role('Master Admin')->where('is_active', true)->get(), collect(), false);
         $recipients = collect([$employee->manager?->user])
             ->merge(Project::with('manager.user')->whereIn('id', $projectIds ?: [0])->get()->map(fn ($p) => $p->manager?->user))
+            ->merge($admins)
             ->filter()->unique('id')->reject(fn ($u) => $u->id === $employee->user_id)
             ->reject(fn ($u) => $u->notifications()->where('data->kind', 'DailyStatusSubmitted')->where('data->record_id', $status->id)->exists());
         if ($recipients->isEmpty()) return;

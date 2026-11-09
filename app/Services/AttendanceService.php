@@ -126,6 +126,7 @@ class AttendanceService
         rescue(fn () => app(TelegramEvents::class)->checkedIn($session->loadMissing('employee.user')), null, true);
         // Late arrival: the employee and their manager are told straight away (Settings > late/absent alerts).
         rescue(fn () => app(AttendanceAlertService::class)->lateCheckIn($session), null, true);
+        rescue(fn () => app(AttendanceAlertService::class)->checkedIn($employee, $session), null, true);
         return $session;
     }
 
@@ -263,6 +264,7 @@ class AttendanceService
         }
         rescue(fn () => app(TelegramEvents::class)->checkedOut($session->fresh(['employee.user'])), null, true);
         $w = $this->workedSeconds($session->fresh()); app(\App\Services\WhatsAppNotifier::class)->checkedOut($employee, now()->format('h:i A'), intdiv($w, 3600).'h '.intdiv($w % 3600, 60).'m');
+        rescue(fn () => app(AttendanceAlertService::class)->checkedOut($employee, $session->fresh()), null, true);
         return $session;
     }
 

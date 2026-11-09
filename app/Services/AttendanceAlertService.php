@@ -78,6 +78,25 @@ class AttendanceAlertService
         return $absent->count();
     }
 
+    /** Check-in: manager, HR and admins are told when an employee checks in. */
+    public function checkedIn(AttendanceEmployee $employee, AttendanceSession $session): void
+    {
+        if (! ($this->settings()['enabled'] ?? true)) return;
+        $at = $session->check_in->format('h:i A');
+        $late = $this->attendance->isLate($session) ? ' (late)' : '';
+        $this->toManager($employee, $session->check_in, 'AttendanceSession', $session->id, "{$employee->name} checked in at {$at}{$late}.");
+    }
+
+    /** Check-out: manager, HR and admins are told when an employee checks out. */
+    public function checkedOut(AttendanceEmployee $employee, AttendanceSession $session): void
+    {
+        if (! ($this->settings()['enabled'] ?? true)) return;
+        $checkout = $session->check_out ?? now();
+        $w = max(0, (int) $session->worked_seconds);
+        $worked = $w > 0 ? ' · '.intdiv($w, 3600).'h '.intdiv($w % 3600, 60).'m worked' : '';
+        $this->toManager($employee, $checkout, 'AttendanceSession', $session->id, "{$employee->name} checked out at {$checkout->format('h:i A')}{$worked}.");
+    }
+
     /** Break started: the manager, HR and admins get a bell notification and a phone push (no e-mail). */
     public function breakStarted(AttendanceEmployee $employee, AttendanceSession $session, Carbon|\Carbon\CarbonInterface $at): void
     {
