@@ -126,6 +126,38 @@ class SelfServiceController extends ApiController
         ]);
     }
 
+    /** One team member's attendance detail for today (manager or HR/admin only). */
+    public function teamMember(Request $request, AttendanceEmployee $employee, AttendanceService $attendance): JsonResponse
+    {
+        $user = $this->apiUser($request);
+        $own = $user->employeeProfile;
+        $canSeeAll = $user->canAny(['approvals.manage', 'hr.manage']);
+        $isDirectReport = $own && AttendanceEmployee::where('is_active', true)->where('id', $employee->id)->where('manager_id', $own->id)->exists();
+        abort_unless($isDirectReport || $canSeeAll, 403, 'You do not have access to this employee.');
+
+        $session = AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', today())->latest()->first();
+        $leave = LeaveRequest::where('employee_id', $employee->id)->where('status', 'approved')->whereDate('starts_on', '<=', today())->whereDate('ends_on', '>=', today())->first();
+        $status = DailyWorkStatus::where('employee_id', $employee->id)->whereDate('work_date', today())->first();
+        $state = $session ? $session->status : ($leave ? 'on_leave' : 'not_in');
+
+        return response()->json([
+            'employee' => ['id' => $employee->id, 'name' => $employee->name, 'designation' => $employee->designation, 'department' => $employee->department?->name, 'code' => $employee->employee_code],
+            'session' => $session ? [
+                'state' => $state,
+                'check_in' => $session->check_in?->toIso8601String(),
+                'check_out' => $session->check_out?->toIso8601String(),
+                'worked_seconds' => $attendance->workedSeconds($session),
+                'break_seconds' => (int) $session->break_seconds,
+                'active_seconds' => (int) $session->active_seconds,
+                'late' => $attendance->isLate($session),
+                'closed_automatically' => (bool) $session->closed_automatically,
+            ] : null,
+            'state' => $state,
+            'on_leave' => $leave ? ['type' => $leave->leave_type, 'starts_on' => $leave->starts_on->toDateString(), 'ends_on' => $leave->ends_on->toDateString()] : null,
+            'daily_status' => $status ? ['submitted' => true, 'blockers' => $status->blockers] : ['submitted' => false, 'blockers' => null],
+        ]);
+    }
+
     /** The employee's own salary: this month so far (as payroll would pay it today) and month-by-month history with every deduction. */
     public function salary(Request $request, \App\Services\SalarySummaryService $salary): JsonResponse
     {
