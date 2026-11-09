@@ -617,7 +617,16 @@ class AttendanceService
         $candidates = AttendanceSession::with('employee.user', 'employee.manager.user')->whereNull('check_out')->where('check_in', '<', now()->subHours(4))->get();
         foreach ($candidates as $candidate) {
             $employee = $candidate->employee;
-            if (! $employee || $candidate->check_in->gt(now()->subHours($this->maxSessionHours($employee)))) continue;
+            if (! $employee) continue;
+            if ($candidate->check_in->gt(now()->subHours($this->maxSessionHours($employee)))) {
+                // Not past maxSessionHours yet — still close web sessions that are past shift end + idle buffer
+                $checkInEvt = $candidate->events()->where('event_type', 'check_in')->oldest('event_time')->first();
+                if (($checkInEvt?->metadata['source'] ?? null) !== 'web') continue;
+                $policy = $this->autoCheckoutPolicy($employee);
+                if (! $policy['enabled']) continue;
+                $shiftEnd = $this->expectedEnd($employee, $candidate->work_date->toDateString());
+                if (! $shiftEnd || $shiftEnd->copy()->addMinutes($policy['idle_minutes'])->gt(now())) continue;
+            }
             DB::transaction(function () use ($candidate, &$closed) {
                 $session = AttendanceSession::whereKey($candidate->id)->lockForUpdate()->first();
                 if (! $session || $session->check_out) return;
@@ -627,7 +636,7 @@ class AttendanceService
                 // the last activity is usually the check-in itself. The day ends at the shift end instead.
                 $atShiftEnd = false;
                 $checkIn = $session->events()->where('event_type', 'check_in')->oldest('event_time')->first();
-                if ($session->status === 'working' && ($checkIn?->metadata['source'] ?? null) === 'mobile' && $session->employee
+                if ($session->status === 'working' && in_array($checkIn?->metadata['source'] ?? null, ['mobile', 'web'], true) && $session->employee
                     && ($shiftEnd = $this->expectedEnd($session->employee, $session->work_date->toDateString())) && $shiftEnd->gt($end) && $shiftEnd->lte(now())) {
                     $end = $shiftEnd->copy();
                     $atShiftEnd = true;
@@ -644,7 +653,9 @@ class AttendanceService
                 $active = (int) max($session->check_in->diffInSeconds($end) - (int) $session->break_seconds - $session->deductedIdleSeconds(), 0);
                 $session->update(['check_out' => $end, 'active_seconds' => $active, 'status' => 'completed', 'closed_automatically' => true]);
                 $session->increment('server_version');
-                $this->event($session, 'auto_check_out', $end->copy()->addSeconds(2), 0, ['source' => 'system', 'reason' => $atShiftEnd ? 'no check-out (mobile, shift end)' : 'no check-out']);
+                $source = $checkIn?->metadata['source'] ?? 'unknown';
+                $reason = $atShiftEnd ? "no check-out ({$source}, shift end)" : 'no check-out';
+                $this->event($session, 'auto_check_out', $end->copy()->addSeconds(2), 0, ['source' => 'system', 'reason' => $reason]);
                 $this->audit->record('attendance.auto_checked_out', $session, ['check_out' => $end->toDateTimeString(), 'active_seconds' => $active] + ($atShiftEnd ? ['at' => 'shift_end'] : []));
                 $message = 'No check-out on '.$session->work_date->format('d M').'. It was set to '.$end->format('h:i A').($atShiftEnd ? ' (your shift end).' : ' (last activity).').' Ask for a correction if you worked longer.';
                 $session->employee?->user?->notify(new \App\Notifications\ApprovalRequested('AttendanceSession', $session->id, $message, route('attendance.corrections', ['date' => $session->work_date->toDateString()], false)));
