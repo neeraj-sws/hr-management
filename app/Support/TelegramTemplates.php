@@ -7,6 +7,7 @@ use App\Models\LeaveRequest;
 use App\Models\Payslip;
 use App\Models\SalaryAdvance;
 use App\Models\SalaryPayment;
+use App\Models\SalaryProfile;
 use App\Models\Task;
 use App\Services\TelegramNotificationService as Telegram;
 use Illuminate\Support\Carbon;
@@ -25,6 +26,7 @@ class TelegramTemplates
         'CheckoutReminder' => 'Check-out reminder', 'ShiftReminder' => 'Shift reminder', 'LeaveBalance' => 'Leave balance updated', 'SalaryAdjustment' => 'Salary adjustment',
         'SalaryAdvance' => 'Salary advance', 'OvertimeRequest' => 'Overtime', 'ExpenseClaim' => 'Expense claim', 'NightWork' => 'Night work', 'LateArrival' => 'Late arrival', 'OffDay' => 'Off day', 'TaskComment' => 'Task comment', 'TaskCompleted' => 'Task completed',
         'TaskOverdue' => 'Task overdue', 'TaskUpdated' => 'Task updated', 'PayslipRequest' => 'Payslip request', 'LeaveReminder' => 'Leave waiting for you', 'LeaveEscalated' => 'Leave not decided for 24 hours', 'LeaveUrgent' => 'Urgent: leave not decided', 'EmployeeDocument' => 'Document', 'TrainingAssignment' => 'Training', 'Announcement' => 'Announcement', 'SupportTicket' => 'Help & Support',
+        'SalaryProfile' => 'Salary updated',
     ];
 
     private static function money(float $v): string
@@ -90,6 +92,11 @@ class TelegramTemplates
                 if (! $task || $task->assignee?->user_id !== $userId) return null;
 
                 return [$kind === 'TaskAssignment' ? 'Task assigned' : 'Task updated', [$hello, $message, 'Task' => $task->title, 'Project' => $task->project?->name, 'Status' => str_replace('_', ' ', (string) $task->status), 'Due' => self::date($task->due_on), 'Priority' => $task->priority ? ucfirst((string) $task->priority) : null]];
+            case 'SalaryProfile':
+                $profile = SalaryProfile::with('employee')->find($id);
+                if (! $profile || $profile->employee?->user_id !== $userId) return null;
+
+                return ['Salary updated', [$hello, $message, 'Effective from' => self::date($profile->effective_from?->toDateString())]];
         }
 
         return null;
