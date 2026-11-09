@@ -6,6 +6,7 @@ use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\AttendanceEmployee;
 use App\Models\EmployeeAsset;
 use App\Services\AuditLogger;
+use App\Support\CompanyAccess;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -16,11 +17,19 @@ class Assets extends Component
     /** '' = every asset: returned ones stay listed (with their history) instead of disappearing. */
     #[Url] public string $status = '';
     #[Url] public string $search = '';
+
+    // Add / Edit asset
     public bool $showForm = false;
-    public ?int $employeeId = null;
+    public ?int $editingId = null;      // null = adding new; non-null = editing existing
     public string $assetTag = '';
     public string $name = '';
     public string $conditionNotes = '';
+
+    // Assign asset to employee
+    public ?int $assigningId = null;    // asset id being assigned
+    public ?int $employeeId = null;
+
+    // Return / Lost / Reissue / History (unchanged)
     public ?int $returningId = null;
     public string $returnNotes = '';
     public ?int $lostId = null;
@@ -32,6 +41,9 @@ class Assets extends Component
     public ?int $reissueEmployeeId = null;
     public string $reissueNotes = '';
 
+    // Confirm delete
+    public ?int $deletingId = null;
+
     public function updated($property): void
     {
         if (in_array($property, ['status', 'search'], true)) $this->resetPage();
@@ -42,25 +54,126 @@ class Assets extends Component
         return $this->user()->can('lifecycle.manage');
     }
 
+    // ── Add to inventory ────────────────────────────────────────────────
+
     public function create(): void
     {
         abort_unless($this->canManage(), 403);
-        $this->reset('employeeId', 'assetTag', 'name', 'conditionNotes');
+        $this->reset('editingId', 'assetTag', 'name', 'conditionNotes');
         $this->resetValidation();
         $this->showForm = true;
+    }
+
+    public function store(AuditLogger $audit): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->validate([
+            'assetTag' => ['required', 'string', 'max:100', 'unique:employee_assets,asset_tag'],
+            'name'     => ['required', 'string', 'max:255'],
+            'conditionNotes' => ['nullable', 'string', 'max:1000'],
+        ], [], ['assetTag' => 'asset tag']);
+
+        $asset = EmployeeAsset::create([
+            'company_id'     => CompanyAccess::rulesCompanyId(),
+            'asset_tag'      => $this->assetTag,
+            'name'           => $this->name,
+            'status'         => 'available',
+            'condition_notes'=> $this->conditionNotes ?: null,
+        ]);
+        $asset->recordEvent('added', null, $this->conditionNotes ?: null);
+        $audit->record('employee.asset_added', $asset, ['asset_tag' => $asset->asset_tag]);
+        $this->showForm = false;
+        $this->toast('Asset added to inventory.');
+    }
+
+    // ── Edit ──────────────────────────────────────────────────────────
+
+    public function edit(int $id): void
+    {
+        abort_unless($this->canManage(), 403);
+        $asset = $this->visibleAssets()->findOrFail($id);
+        $this->fill([
+            'editingId'     => $id,
+            'assetTag'      => $asset->asset_tag,
+            'name'          => $asset->name,
+            'conditionNotes'=> $asset->condition_notes ?? '',
+        ]);
+        $this->resetValidation();
+        $this->showForm = true;
+    }
+
+    public function saveEdit(AuditLogger $audit): void
+    {
+        abort_unless($this->canManage(), 403);
+        $asset = $this->visibleAssets()->findOrFail($this->editingId);
+        $this->validate([
+            'assetTag' => ['required', 'string', 'max:100', "unique:employee_assets,asset_tag,{$this->editingId}"],
+            'name'     => ['required', 'string', 'max:255'],
+            'conditionNotes' => ['nullable', 'string', 'max:1000'],
+        ], [], ['assetTag' => 'asset tag']);
+
+        $asset->update([
+            'asset_tag'      => $this->assetTag,
+            'name'           => $this->name,
+            'condition_notes'=> $this->conditionNotes ?: null,
+        ]);
+        $audit->record('employee.asset_updated', $asset, ['asset_tag' => $asset->asset_tag]);
+        $this->showForm = false;
+        $this->toast('Asset updated.');
+    }
+
+    // ── Delete (only available/returned assets) ───────────────────────
+
+    public function confirmDelete(int $id): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->deletingId = $id;
+    }
+
+    public function deleteAsset(AuditLogger $audit): void
+    {
+        abort_unless($this->canManage(), 403);
+        $asset = $this->visibleAssets()->whereIn('status', ['available', 'returned', 'written_off'])->findOrFail($this->deletingId);
+        $audit->record('employee.asset_deleted', $asset, ['asset_tag' => $asset->asset_tag, 'name' => $asset->name]);
+        $asset->events()->delete();
+        $asset->delete();
+        $this->deletingId = null;
+        $this->toast('Asset removed.');
+    }
+
+    // ── Assign to employee ────────────────────────────────────────────
+
+    public function openAssign(int $id): void
+    {
+        abort_unless($this->canManage(), 403);
+        $this->fill(['assigningId' => $id, 'employeeId' => null]);
+        $this->resetValidation();
     }
 
     public function assign(AuditLogger $audit): void
     {
         abort_unless($this->canManage(), 403);
-        $this->validate(['employeeId' => ['required', 'exists:attendance_employees,id'], 'assetTag' => ['required', 'string', 'max:100', 'unique:employee_assets,asset_tag'], 'name' => ['required', 'string', 'max:255'], 'conditionNotes' => ['nullable', 'string', 'max:1000']], [], ['employeeId' => 'employee', 'assetTag' => 'asset tag']);
-        $asset = EmployeeAsset::create(['employee_id' => $this->employeeId, 'asset_tag' => $this->assetTag, 'name' => $this->name, 'status' => 'assigned', 'assigned_on' => today(), 'condition_notes' => $this->conditionNotes ?: null]);
-        $asset->recordEvent('assigned', $asset->employee_id, $this->conditionNotes);
+        $this->validate([
+            'employeeId' => ['required', 'exists:attendance_employees,id'],
+        ], [], ['employeeId' => 'employee']);
+
+        $asset = $this->visibleAssets()->whereIn('status', ['available', 'returned'])->findOrFail($this->assigningId);
+        $employee = AttendanceEmployee::findOrFail($this->employeeId);
+        $asset->update([
+            'company_id'  => $employee->company_id ?? $asset->company_id,
+            'employee_id' => $this->employeeId,
+            'status'      => 'assigned',
+            'assigned_on' => today(),
+            'returned_on' => null,
+        ]);
+        $asset->recordEvent('assigned', $this->employeeId, null);
         $audit->record('employee.asset_assigned', $asset, ['employee_id' => $asset->employee_id, 'asset_tag' => $asset->asset_tag]);
-        $this->notifyHolder($asset, "{$asset->name} ({$asset->asset_tag}) was issued to you.");
-        $this->showForm = false;
+        $this->notifyHolder($asset->fresh(), "{$asset->name} ({$asset->asset_tag}) was issued to you.");
+        $this->assigningId = null;
         $this->toast('Asset assigned.');
     }
+
+    // ── Return / Lost / Reissue (unchanged) ──────────────────────────
 
     public function openReturn(int $id): void
     {
@@ -73,7 +186,6 @@ class Assets extends Component
     {
         abort_unless($this->canManage(), 403);
         $asset = EmployeeAsset::where('status', 'assigned')->findOrFail($this->returningId);
-        // The asset keeps who had it, so it stays in both the employee's and the admin's lists as "returned".
         $asset->update(['status' => 'returned', 'returned_on' => today(), 'condition_notes' => trim(($asset->condition_notes ? $asset->condition_notes."\n" : '').($this->returnNotes ? 'Returned: '.$this->returnNotes : '')) ?: null]);
         $asset->recordEvent('returned', $asset->employee_id, $this->returnNotes);
         $audit->record('employee.asset_returned', $asset, ['employee_id' => $asset->employee_id, 'asset_tag' => $asset->asset_tag]);
@@ -87,7 +199,6 @@ class Assets extends Component
         $this->historyId = $this->visibleAssets()->findOrFail($id)->id;
     }
 
-    /** Issues a returned asset to someone (or the same person) again; earlier holders stay in its history. */
     public function openReissue(int $id): void
     {
         abort_unless($this->canManage(), 403);
@@ -109,21 +220,6 @@ class Assets extends Component
         $this->toast('Asset issued again. Its earlier assignments are kept in the history.');
     }
 
-    private function notifyHolder(EmployeeAsset $asset, string $message): void
-    {
-        \App\Services\Notifier::send($asset->employee()->with('user')->first()?->user, 'EmployeeAsset', $asset->id, $message, route('lifecycle.assets', [], false), auth()->id());
-    }
-
-    /** Admins see all assets; an employee sees assets they hold or held before. */
-    private function visibleAssets()
-    {
-        if ($this->canManage()) return EmployeeAsset::query();
-        $own = $this->ownEmployee()?->id ?? 0;
-
-        return EmployeeAsset::query()->where(fn ($q) => $q->where('employee_id', $own)->orWhereHas('events', fn ($e) => $e->where('employee_id', $own)));
-    }
-
-    /** lost → (written_off | recovery requested through the normal salary-adjustment approval) — never a direct payroll deduction. */
     public function openLost(int $id, string $action = 'lost'): void
     {
         abort_unless($this->canManage(), 403);
@@ -160,13 +256,31 @@ class Assets extends Component
         $this->lostId = null;
     }
 
+    // ─────────────────────────────────────────────────────────────────
+
+    private function notifyHolder(EmployeeAsset $asset, string $message): void
+    {
+        \App\Services\Notifier::send($asset->employee()->with('user')->first()?->user, 'EmployeeAsset', $asset->id, $message, route('lifecycle.assets', [], false), auth()->id());
+    }
+
+    /** Admins see all assets; an employee sees assets they hold or held before. */
+    private function visibleAssets()
+    {
+        if ($this->canManage()) return EmployeeAsset::query();
+        $own = $this->ownEmployee()?->id ?? 0;
+
+        return EmployeeAsset::query()->where(fn ($q) => $q->where('employee_id', $own)->orWhereHas('events', fn ($e) => $e->where('employee_id', $own)));
+    }
+
     public function closeModal(): void
     {
         $this->showForm = false;
+        $this->assigningId = null;
         $this->returningId = null;
         $this->lostId = null;
         $this->historyId = null;
         $this->reissueId = null;
+        $this->deletingId = null;
     }
 
     public function render()
@@ -176,13 +290,14 @@ class Assets extends Component
         $assets = $this->visibleAssets()->with('employee')->withCount('events')
             ->when($this->status, fn ($q, $s) => $q->where('status', $s))
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q->where('asset_tag', 'like', "%{$term}%")->orWhere('name', 'like', "%{$term}%")->orWhereHas('employee', fn ($e) => $e->where('name', 'like', "%{$term}%"))))
-            ->orderByRaw("CASE status WHEN 'assigned' THEN 0 WHEN 'lost' THEN 1 ELSE 2 END")->latest('updated_at')->paginate(15);
+            ->orderByRaw("CASE status WHEN 'assigned' THEN 0 WHEN 'available' THEN 1 WHEN 'lost' THEN 2 ELSE 3 END")->latest('updated_at')->paginate(15);
 
         return $this->page('livewire.lifecycle.assets', [
-            'assets' => $assets,
-            'own' => $own,
-            'history' => $this->historyId ? $this->visibleAssets()->with(['events.employee', 'events.recorder'])->find($this->historyId) : null,
+            'assets'    => $assets,
+            'own'       => $own,
+            'history'   => $this->historyId ? $this->visibleAssets()->with(['events.employee', 'events.recorder'])->find($this->historyId) : null,
             'reissuing' => $this->reissueId ? EmployeeAsset::find($this->reissueId) : null,
+            'assigning' => $this->assigningId ? EmployeeAsset::find($this->assigningId) : null,
             'canManage' => $this->canManage(),
             'employees' => $this->canManage() ? AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']) : collect(),
         ], 'Assets');
