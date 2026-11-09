@@ -587,6 +587,82 @@ class AttendanceService
     }
 
     /**
+     * Browser-side activity ping: records that the web user is still present.
+     * Called from the layout JS every 2 minutes when there is mouse/keyboard activity.
+     */
+    public function webPing(AttendanceEmployee $employee): void
+    {
+        $session = $this->today($employee);
+        if ($session && ! $session->check_out && $session->status === 'working') {
+            $session->update(['web_last_seen_at' => now()]);
+        }
+    }
+
+    /**
+     * Web equivalent of autoCheckOut(): browser activity stopped after the shift ended.
+     * The employee is checked out at their last web ping time.
+     */
+    public function autoCheckOutWeb(AttendanceEmployee $employee, CarbonInterface $lastWebActivity): AttendanceSession
+    {
+        if (! $this->autoCheckoutPolicy($employee)['enabled']) throw ValidationException::withMessages(['attendance' => 'Automatic check-out is turned off.']);
+        $at = $this->local($lastWebActivity);
+        if ($at->gt(now())) $at = now();
+        if ($at->lt(now()->subHours(12))) throw ValidationException::withMessages(['attendance' => 'That is too long ago; ask for an attendance correction.']);
+
+        $session = DB::transaction(function () use ($employee, $at) {
+            $session = $this->lockedOpenSession($employee, $at);
+            if ($session->status !== 'working') throw ValidationException::withMessages(['attendance' => 'Only a working day can be checked out automatically.']);
+            if ($at->lt($session->check_in)) $at = $session->check_in->copy();
+            $session = $this->completeCheckOut($employee, 'web', $at, ['latitude' => null, 'longitude' => null, 'office_id' => null, 'distance' => null], null);
+            $event = $session->events()->where('event_type', 'check_out')->latest('id')->first();
+            $event?->update(['metadata' => [...(array) $event->metadata, 'auto' => 'web_idle', 'last_activity' => $at->toDateTimeString()]]);
+            $this->audit->record('attendance.auto_checked_out', $session, ['check_out' => $at->toDateTimeString(), 'reason' => 'no browser activity after the shift']);
+
+            return $session->fresh();
+        });
+        \App\Services\Notifier::send($employee->user, 'AutoCheckout', $session->id,
+            'You were checked out automatically at '.$session->check_out->format('h:i A').': no browser activity was recorded after your shift. Ask for a correction if you were still working.',
+            route('attendance.corrections', ['date' => $session->work_date->toDateString()], false));
+
+        return $session;
+    }
+
+    /**
+     * Web equivalent of autoCheckOutIdleSessions(): sessions where the browser stopped
+     * sending pings after the shift ended. Web-only (no desktop screen data).
+     */
+    public function autoCheckOutWebIdleSessions(?CarbonInterface $now = null): int
+    {
+        $now = $now ? Carbon::instance($now) : now();
+        $done = 0;
+        $sessions = AttendanceSession::with('employee')
+            ->whereNull('check_out')->where('status', 'working')
+            ->whereNotNull('web_last_seen_at')
+            ->where(fn ($q) => $q->whereNull('screen_reported_at')
+                ->whereDoesntHave('events', fn ($e) => $e->where('event_type', 'screen_state')))
+            ->whereDate('work_date', '>=', $now->copy()->subDay()->toDateString())
+            ->get();
+        foreach ($sessions as $session) {
+            $employee = $session->employee;
+            if (! $employee || $session->isFieldWork()) continue;
+            $policy = $this->autoCheckoutPolicy($employee);
+            if (! $policy['enabled']) continue;
+            $shiftEnd = $this->expectedEnd($employee, $session->work_date->toDateString());
+            if (! $shiftEnd || $now->lt($shiftEnd->copy()->addMinutes($policy['idle_minutes']))) continue;
+            $lastSeen = Carbon::parse($session->web_last_seen_at);
+            if ($lastSeen->gt($now->copy()->subMinutes($policy['idle_minutes']))) continue;
+            try {
+                $this->autoCheckOutWeb($employee, $lastSeen);
+                $done++;
+            } catch (ValidationException) {
+                // Already checked out, on a break, or too long ago.
+            }
+        }
+
+        return $done;
+    }
+
+    /**
      * When the computer was last used, from what the desktop app reported: the start of an idle stretch it is
      * still in, or its last report when it stopped reporting (off / asleep / closed). Null while it is in use or
      * in a meeting.

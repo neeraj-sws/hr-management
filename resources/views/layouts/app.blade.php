@@ -352,5 +352,23 @@
     </script>
     <script src="{{ asset('js/offline-action-queue.js') }}" defer></script>
     <script src="{{ asset('js/table-sort.js') }}?v={{ filemtime(public_path('js/table-sort.js')) }}" defer></script>
+    <script>
+        (() => {
+            let lastActivity = Date.now(), busy = false;
+            const track = () => { lastActivity = Date.now(); };
+            ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'].forEach((e) => document.addEventListener(e, track, { passive: true }));
+            setInterval(async () => {
+                if (busy || Date.now() - lastActivity > 3 * 60 * 1000) return;
+                busy = true;
+                try {
+                    await fetch('{{ route('attendance.web-ping') }}', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                    });
+                } catch (e) {} finally { busy = false; }
+            }, 2 * 60 * 1000);
+        })();
+    </script>
 </body>
 </html>
