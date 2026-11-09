@@ -48,7 +48,10 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/me/two-factor', [MeController::class, 'twoFactor'])->name('api.me.two-factor');
 
     Route::get('/employees', [EmployeeController::class, 'index'])->name('api.employees.index');
+    Route::get('/employees/form-options', [EmployeeController::class, 'formOptions'])->name('api.employees.form-options');
+    Route::post('/employees', [EmployeeController::class, 'store'])->name('api.employees.store');
     Route::get('/employees/{employee}', [EmployeeController::class, 'show'])->name('api.employees.show');
+    Route::patch('/employees/{employee}', [EmployeeController::class, 'update'])->name('api.employees.update');
     Route::get('/teams', [TeamController::class, 'index'])->name('api.teams.index');
     Route::post('/teams', [TeamController::class, 'store'])->middleware('can:teams.manage')->name('api.teams.store');
 
