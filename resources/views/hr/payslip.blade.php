@@ -2,10 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    {{-- An ITWeb (not main company) employee's payslip carries ITWeb's name. --}}
-    @php($companyName = $payslip->employee?->company_id ? ($payslip->employee->company?->name ?: config('app.name')) : config('app.name'))
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Payslip {{ $payslip->reference }} · {{ $companyName }}</title>
+    <title>Payslip {{ $payslip->reference }} · {{ config('app.name') }}</title>
     <link rel="stylesheet" href="{{ asset('css/sws.css') }}">
     <style>
         body{background:#eef1f6;color:var(--ink-2)}
@@ -34,18 +32,27 @@
 <body>
 @php($item = $payslip->item)
 @php($b = $item->calculation_breakdown ?? [])
-@php($paid = $item->totalPaid())
-@php($earnings = collect($b['salary_components'] ?? [])->map(fn ($a, $n) => [$n, (float) $a])->values())
-@php($earnings = $earnings->isEmpty() ? collect([['Basic salary', (float) ($b['base_salary'] ?? 0)]]) : $earnings)
+@php($oldSheet = $b['old_sheet'] ?? null)
+@php($oldSheetLines = (array) ($oldSheet['lines'] ?? []))
+@php($oldSheetPaid = (float) ($oldSheet['paid'] ?? 0))
+@php($paid = (float) $item->payments->sum('amount') + $oldSheetPaid)
+@php($earnings = $oldSheet
+    ? collect([['Basic salary', (float) ($oldSheetLines['salary_before_adjustment'] ?? $oldSheetLines['basic_salary'] ?? 0)]])
+    : collect($b['salary_components'] ?? [])->map(fn ($a, $n) => [$n, (float) $a])->values())
+@php($earnings = (! $oldSheet && $earnings->isEmpty()) ? collect([['Basic salary', (float) ($b['base_salary'] ?? 0)]]) : $earnings)
 @php($deductions = collect())
-@php($adjLines = collect($b['salary_adjustment_lines'] ?? []))
+@if($oldSheet)
+    @if((float) ($oldSheetLines['late_coming_deduction'] ?? 0) > 0)@php($deductions->push(['Late coming deduction', (float) $oldSheetLines['late_coming_deduction']]))@endif
+    @if((float) ($oldSheetLines['without_application_deduction'] ?? 0) > 0)@php($deductions->push(['Leave without application', (float) $oldSheetLines['without_application_deduction']]))@endif
+@endif
+@php($adjLines = collect($oldSheet ? [] : ($b['salary_adjustment_lines'] ?? [])))
 @foreach($adjLines as $line)
     @php((float) $line['amount'] >= 0 ? $earnings->push([$line['label'].(! empty($line['reason']) ? ' · '.$line['reason'] : ''), (float) $line['amount']]) : $deductions->push([$line['label'].(! empty($line['reason']) ? ' · '.$line['reason'] : ''), abs((float) $line['amount'])]))
 @endforeach
-@if($adjLines->isEmpty() && (float) $item->adjustments_amount != 0)
+@if(! $oldSheet && $adjLines->isEmpty() && (float) $item->adjustments_amount != 0)
     @php((float) $item->adjustments_amount > 0 ? $earnings->push(['Adjustments', (float) $item->adjustments_amount]) : $deductions->push(['Adjustments', abs((float) $item->adjustments_amount)]))
 @endif
-@if((float) $item->overtime_amount > 0)@php($earnings->push(['Overtime ('.(float) $item->overtime_hours.' h)', (float) $item->overtime_amount]))@endif
+@if(! $oldSheet && (float) $item->overtime_amount > 0)@php($earnings->push(['Overtime ('.(float) $item->overtime_hours.' h)', (float) $item->overtime_amount]))@endif
 @if((float) ($b['extra_work']['amount'] ?? 0) > 0)@php($earnings->push(['Extra working ('.$b['extra_work']['days'].' off / leave '.str('day')->plural($b['extra_work']['days']).', '.\App\Support\Duration::hms((int) $b['extra_work']['seconds']).($b['extra_work']['multiplier'] != 1 ? ' × '.(float) $b['extra_work']['multiplier'] : '').')', (float) $b['extra_work']['amount']]))@endif
 @foreach(($b['statutory_components'] ?? []) as $c)
     @php(($c['type'] ?? '') === 'deduction' ? $deductions->push([$c['name'] ?? $c['key'], (float) ($c['amount'] ?? 0)]) : $earnings->push([$c['name'] ?? $c['key'], (float) ($c['amount'] ?? 0)]))
@@ -59,7 +66,7 @@
 @php($rows = max($earnings->count(), $deductions->count(), 1))
 <div class="slip">
     <div class="slip-top">
-        <div><h1>{{ $companyName }}</h1><p>Salary slip for {{ $item->run->period_starts_on->format('F Y') }}</p></div>
+        <div><h1>{{ config('app.name') }}</h1><p>Salary slip for {{ $item->run->period_starts_on->format('F Y') }}</p></div>
         <div class="right"><p>Payslip no.</p><strong>{{ $payslip->reference }}</strong><p>Issued {{ $payslip->issued_at->format('d M Y') }}</p></div>
     </div>
     <div class="slip-body">
@@ -71,7 +78,7 @@
             <div><span>Department</span><strong>{{ $payslip->employee->department?->name ?? '—' }}</strong></div>
             <div><span>Pay period</span><strong>{{ $item->run->period_starts_on->format('d M') }} – {{ $item->run->period_ends_on->format('d M Y') }}</strong></div>
             <div><span>Date of joining</span><strong>{{ $payslip->employee->joined_at?->format('d M Y') ?? '—' }}</strong></div>
-            <div><span>Paid on</span><strong>{{ ($item->payments->max('paid_on') ?? ($item->sheetPaid() > 0 && ! empty($b['old_sheet']['payment_date']) ? \Illuminate\Support\Carbon::parse($b['old_sheet']['payment_date']) : null))?->format('d M Y') ?? '—' }}</strong></div>
+            <div><span>Paid on</span><strong>{{ $item->payments->max('paid_on')?->format('d M Y') ?? '—' }}</strong></div>
         </div>
         <div class="slip-days">
             <div><span>Working days</span><strong>{{ $item->working_days }}</strong></div>
@@ -97,14 +104,16 @@
             <strong>₹{{ number_format((float) $item->net_amount, 2) }}</strong>
         </div>
         <table class="slip-table"><thead><tr><th>Payment date</th><th>Method / reference</th><th class="amt">Amount (₹)</th></tr></thead><tbody>
-            @if($item->sheetPaid() > 0)<tr><td>{{ ! empty($b['old_sheet']['payment_date']) ? \Illuminate\Support\Carbon::parse($b['old_sheet']['payment_date'])->format('d M Y') : '—' }}</td><td>Old salary sheet</td><td class="amt">{{ number_format($item->sheetPaid(), 2) }}</td></tr>@endif
-            @forelse($item->payments as $payment)<tr><td>{{ $payment->paid_on->format('d M Y') }}</td><td>{{ \App\Models\SalaryPayment::METHODS[$payment->method] ?? '' }} {{ $payment->reference ?: '' }}</td><td class="amt">{{ number_format((float) $payment->amount, 2) }}</td></tr>@empty @if($item->sheetPaid() <= 0)<tr><td colspan="3">No payments recorded.</td></tr>@endif @endforelse
+            @if($oldSheet && $oldSheetPaid > 0)<tr><td>{{ ! empty($oldSheet['payment_date']) ? \Illuminate\Support\Carbon::parse($oldSheet['payment_date'])->format('d M Y') : '—' }}</td><td>Salary sheet · {{ $oldSheet['sheet'] ?? $oldSheet['file'] ?? '' }}</td><td class="amt">{{ number_format($oldSheetPaid, 2) }}</td></tr>@endif
+            @foreach($item->payments as $payment)<tr><td>{{ $payment->paid_on->format('d M Y') }}</td><td>{{ \App\Models\SalaryPayment::METHODS[$payment->method] ?? '' }} {{ $payment->reference ?: '' }}</td><td class="amt">{{ number_format((float) $payment->amount, 2) }}</td></tr>@endforeach
+            @if(! $oldSheet && $item->payments->isEmpty())<tr><td colspan="3">No payments recorded.</td></tr>@endif
+            @if($oldSheet && $oldSheetPaid <= 0 && $item->payments->isEmpty())<tr><td colspan="3">No payments recorded.</td></tr>@endif
         </tbody><tfoot>
             <tr><th colspan="2">Total paid</th><th class="amt">{{ number_format($paid, 2) }}</th></tr>
-            @if($paid - (float) $item->net_amount > 0.005)<tr><th colspan="2">Extra pay (paid above net pay, not recovered)</th><th class="amt">{{ number_format($paid - (float) $item->net_amount, 2) }}</th></tr>@endif
             @if((float) $item->net_amount - $paid > 0.005)<tr><th colspan="2">Balance due</th><th class="amt" style="color:var(--red)">{{ number_format((float) $item->net_amount - $paid, 2) }}</th></tr>@endif
+            @if($paid - (float) $item->net_amount > 0.005)<tr><th colspan="2">Extra paid</th><th class="amt" style="color:var(--orange,#C4621A)">{{ number_format($paid - (float) $item->net_amount, 2) }}</th></tr>@endif
         </tfoot></table>
-        <div class="slip-foot"><span>This is a system-generated payslip from locked payroll records and does not need a signature.</span><span>{{ $companyName }}</span></div>
+        <div class="slip-foot"><span>This is a system-generated payslip from locked payroll records and does not need a signature.</span><span>{{ config('app.name') }}</span></div>
     </div>
 </div>
 </body>

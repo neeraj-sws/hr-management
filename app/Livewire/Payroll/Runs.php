@@ -36,6 +36,8 @@ class Runs extends Component
     public string $paymentReference = '';
     public string $rejectNote = '';
     public ?int $breakdownItemId = null;
+    public ?int $autoAdjustItemId = null;
+    public bool $showAutoAdjust = false;
 
     public function mount(): void
     {
@@ -178,6 +180,36 @@ class Runs extends Component
         $this->toast('Payment recorded and payslip issued.');
     }
 
+    public function openAutoAdjust(int $itemId): void
+    {
+        abort_unless($this->user()->can('payroll.manage'), 403);
+        $this->fill(['autoAdjustItemId' => $itemId, 'showAutoAdjust' => true]);
+    }
+
+    public function confirmAutoAdjust(): void
+    {
+        abort_unless($this->user()->can('payroll.manage'), 403);
+        $item = \App\Models\PayrollItem::with(['payments'])->findOrFail($this->autoAdjustItemId);
+        $paid = (float) $item->payments->sum('amount');
+        $extra = round($paid - (float) $item->net_amount, 2);
+        if ($extra <= 0) { $this->showAutoAdjust = false; $this->autoAdjustItemId = null; return; }
+        $nextMonth = ($item->run?->period_ends_on ?? now())->addMonthNoOverflow()->startOfMonth();
+        \App\Models\SalaryAdjustment::create([
+            'employee_id' => $item->employee_id,
+            'amount' => $extra,
+            'kind' => 'arrear_recovery',
+            'effective_on' => $nextMonth,
+            'is_recurring' => false,
+            'status' => 'approved',
+            'reason' => 'Overpaid in '.($item->run?->period_starts_on?->format('M Y') ?? 'previous month'),
+            'carried_from_payroll_item_id' => $item->id,
+            'requested_by' => auth()->id(),
+        ]);
+        $this->showAutoAdjust = false;
+        $this->autoAdjustItemId = null;
+        $this->toast('Adjustment created — will be deducted in '.$nextMonth->format('F Y').' payroll.');
+    }
+
     public function closeModal(): void
     {
         $this->payingItemId = null;
@@ -185,6 +217,8 @@ class Runs extends Component
         $this->showReopen = false;
         $this->showDelete = false;
         $this->showCompare = false;
+        $this->showAutoAdjust = false;
+        $this->autoAdjustItemId = null;
     }
 
     public function render(ApprovalInbox $inbox)
@@ -207,6 +241,8 @@ class Runs extends Component
             'paying' => $this->payingItemId ? PayrollItem::with(['employee', 'payments'])->find($this->payingItemId) : null,
             'breakdown' => $this->breakdownItemId ? PayrollItem::with('employee')->find($this->breakdownItemId) : null,
             'compare' => $this->showCompare && $selected && $selected->status === 'draft' ? $this->compareRows($selected) : null,
+            'autoAdjust' => $this->autoAdjustItemId ? PayrollItem::with(['employee', 'payments', 'run'])->find($this->autoAdjustItemId) : null,
+            'adjustedItemIds' => $selected ? (function () use ($selected) { try { return \App\Models\SalaryAdjustment::whereNotNull('carried_from_payroll_item_id')->whereIn('carried_from_payroll_item_id', $selected->items->pluck('id'))->pluck('carried_from_payroll_item_id')->all(); } catch (\Throwable $e) { return []; } })() : [],
         ], $this->approvalsOnly ? 'Payroll Approvals' : 'Payroll');
     }
 }
