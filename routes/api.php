@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\OfflineActionSyncController;
 use App\Http\Controllers\Api\OvertimeController;
 use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\ScreenCaptureController;
+use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\SelfServiceController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TeamController;
@@ -95,6 +96,13 @@ Route::middleware(['auth:sanctum', 'account.active', 'throttle:120,1'])->group(f
     Route::post('/my/fines/{penalty}/reason', [\App\Http\Controllers\Api\FineController::class, 'reason'])->name('api.my.fines.reason');
     Route::get('/team/today', [SelfServiceController::class, 'team'])->name('api.team.today');
     Route::get('/team/today/{employee}', [SelfServiceController::class, 'teamMember'])->name('api.team.today.member');
+
+    // Admin-only endpoints (require hr.manage or approvals.manage).
+    Route::get('/admin/dashboard', [AdminController::class, 'dashboard'])->name('api.admin.dashboard');
+    Route::get('/admin/attendance', [AdminController::class, 'attendance'])->name('api.admin.attendance');
+    Route::get('/admin/leave', [AdminController::class, 'leaveRequests'])->name('api.admin.leave');
+    Route::post('/announcements', [AdminController::class, 'createAnnouncement'])->name('api.announcements.store');
+    Route::delete('/announcements/{announcement}', [AdminController::class, 'deleteAnnouncement'])->name('api.announcements.destroy');
 
     Route::get('/daily-status', [DailyStatusController::class, 'index'])->name('api.daily-status.index');
     Route::post('/daily-status', [DailyStatusController::class, 'store'])->name('api.daily-status.store');
