@@ -3,6 +3,7 @@
 namespace App\Livewire\Security;
 
 use App\Livewire\Concerns\InteractsWithHr;
+use App\Models\AttendanceEmployee;
 use App\Models\AuditLog;
 use App\Models\User;
 use Livewire\Attributes\Url;
@@ -87,7 +88,12 @@ class AuditLogs extends Component
             'counts' => $counts,
             'total' => $counts->sum(),
             'categories' => AuditLog::CATEGORIES,
-            'actors' => User::whereIn('id', AuditLog::query()->select('actor_id')->distinct())->orderBy('name')->get(['id', 'name']),
+            'actors' => User::whereIn('id', AuditLog::query()->select('actor_id')->distinct())
+                ->when(\App\Support\CompanyAccess::limitedCompanyId(), fn ($q, $companyId) => $q->where(fn ($q) => $q
+                    ->where('company_id', $companyId)
+                    ->orWhere(fn ($q) => $q->whereNull('company_id')
+                        ->whereIn('id', AttendanceEmployee::query()->select('user_id')->whereNotNull('user_id')))))
+                ->orderBy('name')->get(['id', 'name']),
             'records' => AuditLog::query()->whereNotNull('subject_type')->distinct()->pluck('subject_type')->map(fn ($type) => class_basename($type))->unique()->sort()->values(),
             'employeeName' => $this->employee ? \App\Models\AttendanceEmployee::whereKey($this->employee)->value('name') : null,
             'viewing' => $this->viewingId ? AuditLog::with('actor')->find($this->viewingId) : null,
