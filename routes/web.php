@@ -147,6 +147,9 @@ Route::middleware(['auth', 'account.active'])->group(function () {
         Route::get('/billing/settings', Livewire\Billing\Settings::class)->name('billing.settings');
         Route::get('/billing/invoices/{invoice}/print', [\App\Http\Controllers\BillingPrintController::class, 'invoice'])->name('billing.invoices.print');
         Route::get('/billing/estimates/{estimate}/print', [\App\Http\Controllers\BillingPrintController::class, 'estimate'])->name('billing.estimates.print');
+        Route::get('/billing/customers/export', [\App\Http\Controllers\BillingPrintController::class, 'exportCustomers'])->name('billing.customers.export');
+        Route::get('/billing/invoices/export', [\App\Http\Controllers\BillingPrintController::class, 'exportInvoices'])->name('billing.invoices.export');
+        Route::get('/billing/estimates/export', [\App\Http\Controllers\BillingPrintController::class, 'exportEstimates'])->name('billing.estimates.export');
     });
 
     // Performance
