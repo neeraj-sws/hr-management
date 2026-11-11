@@ -325,6 +325,48 @@
 
     @livewireScripts
     <script>
+        // Every wire:confirm asks with one CMS-style "Are you sure?" box (No / Yes) instead of the browser's own dialog.
+        (function () {
+            var box = null;
+            function build() {
+                box = document.createElement('div');
+                box.id = 'sws-confirm';
+                box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+                box.style.cssText = 'display:none;position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:16px';
+                box.innerHTML = '<div style="background:#fff;color:#1e293b;border-radius:10px;max-width:440px;width:100%;padding:30px 28px 26px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.3)">'
+                    + '<div style="width:74px;height:74px;border:4px solid #fcd9a4;border-radius:50%;color:#f8a63a;font-size:46px;line-height:66px;margin:0 auto 14px;font-weight:300">!</div>'
+                    + '<h3 style="margin:0 0 10px;font-size:26px;font-weight:600">Are you sure?</h3>'
+                    + '<p id="sws-confirm-msg" style="margin:0 0 22px;color:#475569;font-size:15px;line-height:1.5">This action can not be undone. Do you want to continue?</p>'
+                    + '<div style="display:flex;gap:12px;justify-content:center"><button type="button" id="sws-confirm-no" style="background:#ff3a6e;color:#fff;border:0;border-radius:6px;padding:9px 26px;font-size:15px;cursor:pointer">No</button>'
+                    + '<button type="button" id="sws-confirm-yes" style="background:#6fd943;color:#fff;border:0;border-radius:6px;padding:9px 26px;font-size:15px;cursor:pointer">Yes</button></div></div>';
+                document.body.appendChild(box);
+            }
+            document.addEventListener('click', function (e) {
+                var el = e.target.closest ? e.target.closest('[wire\:confirm]') : null;
+                if (!el || el.__swsYes) return;
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (!box) build();
+                var custom = el.getAttribute('wire:confirm');
+                // Short, specific questions keep their text; the usual wording becomes the standard CMS line.
+                box.querySelector('#sws-confirm-msg').textContent = 'This action can not be undone. Do you want to continue?';
+                if (custom && custom.length < 140 && !/delete|remove|hata|cancel/i.test(custom)) box.querySelector('#sws-confirm-msg').textContent = custom;
+                box.style.display = 'flex';
+                var done = function (ok) {
+                    box.style.display = 'none';
+                    box.querySelector('#sws-confirm-yes').onclick = box.querySelector('#sws-confirm-no').onclick = null;
+                    if (!ok) return;
+                    var orig = window.confirm; window.confirm = function () { return true; };
+                    el.__swsYes = true;
+                    try { el.click(); } finally { el.__swsYes = false; window.confirm = orig; }
+                };
+                box.querySelector('#sws-confirm-yes').onclick = function () { done(true); };
+                box.querySelector('#sws-confirm-no').onclick = function () { done(false); };
+                box.querySelector('#sws-confirm-no').focus();
+            }, true);
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && box && box.style.display === 'flex') box.querySelector('#sws-confirm-no').click(); });
+        })();
+    </script>
+    <script>
         // A ⋮ menu inside a scrolling table floats above the page, so it is never cut off by the table edge;
         // near the bottom of the screen it opens upwards.
         document.addEventListener('toggle', (e) => {

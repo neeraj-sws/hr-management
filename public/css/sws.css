@@ -321,11 +321,11 @@ button.pill:hover{border-color:var(--line)}
 .link-sm{font-size:12.5px;font-weight:600;color:#3461d1;margin-left:auto}
 .card-head{display:flex;align-items:center;gap:10px}
 
-/* Tables: cell content centred everywhere (header, numbers, badges and row actions). */
-.table th,.table td,.table .num{text-align:center}
-.table .row-actions{justify-content:center}
-.table td .progress{margin-left:auto;margin-right:auto}
-.table td .pill-row{justify-content:center}
+/* Tables: cell content left-aligned everywhere (header, numbers, badges and row actions), like the old CMS. */
+.table th,.table td,.table .num{text-align:left}
+.table .row-actions{justify-content:flex-start}
+.table td .progress{margin-left:0;margin-right:auto}
+.table td .pill-row{justify-content:flex-start}
 .badge-gray,.badge-cancelled,.badge-ex_employee,.badge-not_run,.badge-declined{background:#eef1f6;color:#5b6576}
 
 /* Task view modal */

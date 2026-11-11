@@ -169,6 +169,9 @@ class Settings extends Component
     public string $statutoryJson = '';
     public string $twoFactorMode = 'off';
     public string $webAccessMode = 'all';
+    // IP restriction (website opens only from these IPs / ranges; Master Admin always can).
+    public bool $ipRestrictEnabled = false;
+    public string $ipRestrictList = '';
     public array $webAccessRoles = [];
     public array $webAccessUserIds = [];
     public bool $twoFactorApps = false;
@@ -237,6 +240,7 @@ class Settings extends Component
             'webAccessMode' => ($web = app(\App\Services\WebAccessService::class)->settings())['mode'],
             'webAccessRoles' => $web['roles'],
             'webAccessUserIds' => array_map('strval', $web['user_ids']),
+            'ipRestrictEnabled' => ($ipr = app(\App\Services\IpRestrictionService::class)->settings())['enabled'], 'ipRestrictList' => implode("\n", $ipr['ips']),
             'twoFactorApps' => app(\App\Services\TwoFactorService::class)->settings()['apps'],
             'offboardingWindowHours' => (string) ($offboarding['correction_window_hours'] ?? 72),
             'workdays' => array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]),
@@ -347,6 +351,14 @@ class Settings extends Component
         $this->authorizeSettings();
         $this->holidays = implode("\n", collect($this->holidayList())->reject(fn ($d) => $d === $date)->values()->all());
         unset($this->holidayNames[$date], $this->holidayTypes[$date]);
+    }
+
+    /** Flips a listed holiday between paid and unpaid (kept after "Save calendar"). */
+    public function toggleHolidayPaid(string $date): void
+    {
+        $this->authorizeSettings();
+        $type = \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $this->holidayTypes], $date);
+        $this->holidayTypes[$date] = [...$type, 'paid' => ! $type['paid']];
     }
 
     public function saveLeaveYear(PeopleOperationsService $people): void
@@ -536,6 +548,26 @@ class Settings extends Component
             'mode' => $data['webAccessMode'], 'roles' => array_values($data['webAccessRoles'] ?? []), 'user_ids' => array_values(array_map('intval', $data['webAccessUserIds'] ?? [])),
         ], null, auth()->id(), today()->toDateString());
         $this->toast($data['webAccessMode'] === 'all' ? 'Everyone can use the website.' : 'Saved. Others are signed out of the website on their next click and use the desktop / mobile app.');
+    }
+
+    /** IP restriction: the website opens only from the listed office IPs / ranges (apps and Master Admin are not affected). */
+    public function saveIpRestriction(PeopleOperationsService $people): void
+    {
+        $this->authorizeSettings();
+        $this->resetValidation('ipRestrictList');
+        $ips = collect(preg_split('/[\s,;]+/', trim($this->ipRestrictList)))->filter()->unique()->values();
+        if ($bad = $ips->first(fn ($ip) => ! \App\Services\IpRestrictionService::valid($ip))) { $this->addError('ipRestrictList', "\"$bad\" is not an IP address or range (e.g. 103.21.4.17 or 103.21.4.0/24)."); return; }
+        if ($this->ipRestrictEnabled && $ips->isEmpty()) { $this->addError('ipRestrictList', 'Kam se kam ek office IP daalo.'); return; }
+        $people->setPolicy(\App\Services\IpRestrictionService::POLICY, 'security', 'IP restriction', ['enabled' => $this->ipRestrictEnabled, 'ips' => $ips->all()], null, auth()->id(), today()->toDateString());
+        $this->ipRestrictList = $ips->implode("\n");
+        $this->toast($this->ipRestrictEnabled ? 'IP restriction on: the website opens only from '$ips->count().' allowed IP(s).' : 'IP restriction off.');
+    }
+
+    public function addMyIp(): void
+    {
+        $this->authorizeSettings();
+        $mine = (string) request()->ip();
+        if (! str_contains("\n"$this->ipRestrictList."\n", "\n"$mine."\n")) $this->ipRestrictList = trim($this->ipRestrictList."\n"$mine);
     }
 
     /** 2-step sign-in: who must enter an e-mailed code after the password. */
