@@ -95,7 +95,7 @@
                         @endif
                     </td>
                     <td>
-                        <button class="btn btn-sm" wire:click="edit({{ $login->id }})">Edit</button>
+                        <button class="btn btn-sm" wire:click="openEdit({{ $login->id }})">Edit</button>
                         <button class="btn btn-sm" wire:click="openPasswordReset({{ $login->id }})">Reset password</button>
                         @if($login->is_active ?? true)
                             <button class="btn btn-sm" wire:click="deactivate({{ $login->id }})" wire:confirm="Deactivate {{ $login->name }}? They will not be able to log in.">Deactivate</button>

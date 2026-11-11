@@ -123,7 +123,7 @@ class CompanyLogins extends Component
         $this->resetForm();
     }
 
-    public function edit(int $userId): void
+    public function openEdit(int $userId): void
     {
         abort_if(\App\Support\CompanyAccess::isLimited($this->user()), 403);
         $user = User::withoutGlobalScopes()->where('company_id', $this->company->id)->findOrFail($userId);
