@@ -4,7 +4,7 @@
     </div>
     <x-errors />
 
-    @if(!$approvalsOnly && auth()->user()->can('payroll.manage') && !auth()->user()->hasRole('Master Admin'))
+    @if(!$approvalsOnly && auth()->user()->can('payroll.manage'))
         <section class="card mb">
             <form class="toolbar" wire:submit="calculate" style="border:0">
                 @if($companies->isNotEmpty())<label class="field"><span>Company</span><select wire:model="calcCompany">@foreach($companies as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></label>@endif
