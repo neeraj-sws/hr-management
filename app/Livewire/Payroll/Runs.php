@@ -26,6 +26,7 @@ class Runs extends Component
     #[Url] public ?int $run = null;
     /** Runs of one company only ('' = all companies). */
     #[Url] public string $company = '';
+    #[Url] public string $filterStatus = '';
     /** The company whose payroll "Calculate payroll" makes. */
     public string $calcCompany = '';
 
@@ -228,6 +229,7 @@ class Runs extends Component
         $runs = PayrollRun::with('company')->withCount('items')->withSum('items', 'net_amount')
             ->when($this->approvalsOnly, fn ($q) => $q->where('status', 'draft'))
             ->when($this->company !== '' && ($filter = $companies->firstWhere('id', (int) $this->company)), fn ($q) => $q->forCompany($filter->is_main ? null : $filter->id))
+            ->when($this->filterStatus !== '' && !$this->approvalsOnly, fn ($q) => $q->where('status', $this->filterStatus))
             ->latest('period_starts_on')->orderBy('company_id')->paginate(12);
         $selected = $this->run ? PayrollRun::with(['company', 'items.employee', 'items.payments', 'items.payslip'])->find($this->run) : null;
         $approval = $selected ? ApprovalRequest::with('approver')->where('approvable_type', PayrollRun::class)->where('approvable_id', $selected->id)->latest('id')->first() : null;

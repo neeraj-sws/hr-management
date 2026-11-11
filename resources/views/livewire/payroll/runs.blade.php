@@ -20,6 +20,7 @@
         <section class="card">
             <div class="card-head"><h2>Runs</h2>
                 @if($companies->isNotEmpty())<select wire:model.live="company" aria-label="Company" style="width:auto"><option value="">All companies</option>@foreach($companies as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select>@endif
+                @if(!$approvalsOnly)<select wire:model.live="filterStatus" aria-label="Status" style="width:auto"><option value="">All statuses</option><option value="draft">Draft</option><option value="approved">Approved</option><option value="locked">Locked</option><option value="paid">Paid</option></select>@endif
             </div>
             <div class="list">
                 @forelse($runs as $r)
