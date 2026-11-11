@@ -23,6 +23,8 @@ class CompanyLogins extends Component
 
     public bool $showForm = false;
     public bool $showPasswordForm = false;
+    public bool $showEditForm = false;
+    public int $editingUserId = 0;
     public int $resetUserId = 0;
     public string $newPassword = '';
     public string $loginName = '';
@@ -118,6 +120,47 @@ class CompanyLogins extends Component
     public function cancel(): void
     {
         $this->showForm = false;
+        $this->resetForm();
+    }
+
+    public function edit(int $userId): void
+    {
+        abort_if(\App\Support\CompanyAccess::isLimited($this->user()), 403);
+        $user = User::withoutGlobalScopes()->where('company_id', $this->company->id)->findOrFail($userId);
+        $this->editingUserId = $userId;
+        $this->loginName = $user->name;
+        $this->loginEmail = $user->email;
+        $this->loginRole = $user->roles->first()?->name ?? '';
+        $this->showEditForm = true;
+        $this->showForm = false;
+        $this->showPasswordForm = false;
+        $this->resetValidation();
+    }
+
+    public function saveEdit(): void
+    {
+        abort_if(\App\Support\CompanyAccess::isLimited($this->user()), 403);
+        $this->validate([
+            'loginName'  => ['required', 'string', 'max:120'],
+            'loginEmail' => ['required', 'email', 'max:120', Rule::unique('users', 'email')->ignore($this->editingUserId)],
+            'loginRole'  => ['required', Rule::in($this->allowedRoles())],
+        ], [], ['loginName' => 'name', 'loginEmail' => 'email', 'loginRole' => 'role']);
+
+        $user = User::withoutGlobalScopes()->where('company_id', $this->company->id)->findOrFail($this->editingUserId);
+        $user->update(['name' => trim($this->loginName), 'email' => trim($this->loginEmail)]);
+        $user->syncRoles([$this->loginRole]);
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $this->toast('Login updated for '.$user->name.'.');
+        $this->showEditForm = false;
+        $this->editingUserId = 0;
+        $this->resetForm();
+    }
+
+    public function cancelEdit(): void
+    {
+        $this->showEditForm = false;
+        $this->editingUserId = 0;
         $this->resetForm();
     }
 
