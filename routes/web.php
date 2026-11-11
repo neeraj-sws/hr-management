@@ -97,6 +97,12 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/attendance/conflicts', Livewire\Attendance\Conflicts::class)->middleware('access:attendance.correct,leave.manage,hr.manage')->name('attendance.conflicts');
     Route::get('/attendance/devices', Livewire\Attendance\Devices::class)->middleware('access:employees.manage,hr.manage')->name('attendance.devices');
     Route::get('/attendance/shifts', Livewire\Attendance\Shifts::class)->middleware('access:shifts.manage,hr.manage')->name('attendance.shifts');
+    Route::post('/attendance/web-ping', function (\Illuminate\Http\Request $request) {
+        $employee = $request->user()?->employeeProfile;
+        if ($employee) app(\App\Services\AttendanceService::class)->webPing($employee);
+
+        return response()->noContent();
+    })->name('attendance.web-ping');
 
     // Work
     Route::get('/work/projects', Livewire\Work\Projects::class)->middleware('access:projects.manage,hr.manage')->name('work.projects');
