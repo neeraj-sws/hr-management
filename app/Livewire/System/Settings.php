@@ -567,7 +567,7 @@ class Settings extends Component
     {
         $this->authorizeSettings();
         $mine = (string) request()->ip();
-        if (! str_contains("\n"$this->ipRestrictList."\n", "\n"$mine."\n")) $this->ipRestrictList = trim($this->ipRestrictList."\n"$mine);
+        if (! str_contains("\n" . $this->ipRestrictList . "\n", "\n" . $mine . "\n")) $this->ipRestrictList = trim($this->ipRestrictList . "\n" . $mine);
     }
 
     /** 2-step sign-in: who must enter an e-mailed code after the password. */
