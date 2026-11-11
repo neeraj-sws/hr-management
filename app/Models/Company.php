@@ -22,6 +22,23 @@ class Company extends Model
         static::addGlobalScope('company', function (\Illuminate\Database\Eloquent\Builder $query) {
             if ($companyId = \App\Support\CompanyAccess::limitedCompanyId()) $query->whereKey($companyId);
         });
+        static::creating(function (self $company) {
+            if (empty($company->code)) $company->code = static::generateCode($company->name);
+        });
+    }
+
+    /** Generate a unique short code from the company name (initials, uppercase). */
+    public static function generateCode(string $name): string
+    {
+        $words = preg_split('/[\s_\-]+/', trim($name), -1, PREG_SPLIT_NO_EMPTY);
+        $base  = strtoupper(implode('', array_map(fn ($w) => $w[0], $words)));
+        $base  = $base ?: strtoupper(substr(preg_replace('/[^a-z]/i', '', $name), 0, 4));
+        $code  = $base;
+        $i     = 2;
+        while (static::withoutGlobalScopes()->where('code', $code)->exists()) {
+            $code = $base . $i++;
+        }
+        return $code;
     }
 
     public function employees(): HasMany
