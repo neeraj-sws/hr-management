@@ -28,6 +28,8 @@ class DatabaseSeeder extends Seeder
         'support.manage', 'support.handle', 'support.payroll',
         // Company owner: give the HR / Accounts / Manager / Employee roles to logins of his own company.
         'logins.manage',
+        // Master Admin only: create and manage companies and their logins.
+        'company.manage',
     ];
 
     public const ROLE_PERMISSIONS = [
@@ -49,7 +51,7 @@ class DatabaseSeeder extends Seeder
         $permissions = collect(self::PERMISSIONS)->map(fn (string $name) => Permission::firstOrCreate(['name' => $name, 'guard_name' => 'web']));
         Role::firstOrCreate(['name' => 'Master Admin', 'guard_name' => 'web'])->syncPermissions($permissions);
         // Company Owner: everything about his own company, except Roles & Permissions (the Super Admin's).
-        Role::firstOrCreate(['name' => 'Company Owner', 'guard_name' => 'web'])->syncPermissions($permissions->where('name', '!=', 'roles.manage'));
+        Role::firstOrCreate(['name' => 'Company Owner', 'guard_name' => 'web'])->syncPermissions($permissions->whereNotIn('name', ['roles.manage', 'company.manage']));
         foreach (self::ROLE_PERMISSIONS as $roleName => $names) {
             Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'web'])->syncPermissions($permissions->whereIn('name', $names));
         }
