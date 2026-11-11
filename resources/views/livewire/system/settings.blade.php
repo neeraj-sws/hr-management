@@ -52,7 +52,11 @@
                         <td>@if($t->paid_per_month)<span title="{{ $t->paid_per_month }} paid leave(s) per month; rest unpaid">{{ $t->paid_per_month }}/month</span>@else{{ $t->paid ? 'Paid' : 'Unpaid' }}@endif</td><td><x-badge :status="$t->is_active ? 'active' : 'inactive'" /></td>
                         <td class="nowrap">@if($t->changeable())<button class="btn btn-sm" wire:click="editType({{ $t->id }})">Edit</button>
                             @if(! $t->used)<button class="btn btn-sm btn-danger" wire:click="deleteType({{ $t->id }})" wire:confirm="Delete the leave type {{ $t->name }}? It has never been used, so nothing else changes.">Delete</button>
-                            @elseif($t->is_active)<button class="btn btn-sm" wire:click="deleteType({{ $t->id }})" wire:confirm="{{ $t->name }} is already used in leave history, so it cannot be deleted. Make it inactive? Nobody can apply for it any more; past leave stays as it is." title="Used in leave history: can be made inactive, not deleted">Make inactive</button>@endif @endif</td></tr>
+                            @elseif($t->is_active)<button class="btn btn-sm" wire:click="deleteType({{ $t->id }})" wire:confirm="{{ $t->name }} is already used in leave history, so it cannot be deleted. Make it inactive? Nobody can apply for it any more; past leave stays as it is." title="Used in leave history: can be made inactive, not deleted">Make inactive</button>@endif
+                        @elseif($limited && $t->company_id === null)
+                            @if($t->is_active)<button class="btn btn-sm" wire:click="toggleSharedTypeActive({{ $t->id }})" wire:confirm="Deactivate {{ $t->name }}? This is a shared type — nobody in any company will be able to apply for it. Continue?">Deactivate</button>
+                            @else<button class="btn btn-sm btn-primary" wire:click="toggleSharedTypeActive({{ $t->id }})">Activate</button>@endif
+                        @endif</td></tr>
                 @endforeach
                 </tbody>
             </table></div>

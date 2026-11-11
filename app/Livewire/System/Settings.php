@@ -313,6 +313,17 @@ class Settings extends Component
         $this->toast('Leave type saved.');
     }
 
+    /** Company Owner can toggle active/inactive on shared (global) leave types. */
+    public function toggleSharedTypeActive(int $id, AuditLogger $audit): void
+    {
+        $this->authorizeSettings();
+        $type = LeaveType::withoutGlobalScopes()->findOrFail($id);
+        abort_if($type->company_id !== null, 403, 'Use the regular edit/delete for company-specific types.');
+        $type->update(['is_active' => ! $type->is_active]);
+        $audit->record($type->is_active ? 'leave_type.activated' : 'leave_type.deactivated', $type, ['name' => $type->name]);
+        $this->toast($type->name.' '.($type->is_active ? 'activated.' : 'deactivated.'));
+    }
+
     /** Deletes a leave type made by mistake; a type already used is made inactive instead (history stays). */
     public function deleteType(int $id, AuditLogger $audit): void
     {
