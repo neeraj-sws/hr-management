@@ -285,7 +285,7 @@ class Settings extends Component
         $newCompanyId = $limited
             ? \App\Support\CompanyAccess::limitedCompanyId()
             : ($this->rulesCompany !== '' ? (int) $this->rulesCompany : null);
-        $this->type = ['company_id' => $type ? $type->company_id : $newCompanyId, 'name' => $type?->name ?? '', 'annual_allowance' => (string) ($type?->annual_allowance ?? 0), 'monthly_accrual' => (string) ($type?->monthly_accrual ?? 0), 'carry_forward' => (bool) $type?->carry_forward, 'carry_forward_limit' => (string) ($type?->carry_forward_limit ?? 0), 'carry_forward_expiry_months' => (string) ($type?->carry_forward_expiry_months ?? ''), 'allow_advance' => (bool) $type?->allow_advance, 'paid' => $type ? (bool) $type->paid : true, 'is_active' => $type ? (bool) $type->is_active : true];
+        $this->type = ['company_id' => $type ? $type->company_id : $newCompanyId, 'name' => $type?->name ?? '', 'annual_allowance' => (string) ($type?->annual_allowance ?? 0), 'monthly_accrual' => (string) ($type?->monthly_accrual ?? 0), 'paid_per_month_enabled' => $type?->paid_per_month !== null, 'paid_per_month' => (string) ($type?->paid_per_month ?? ''), 'carry_forward' => (bool) $type?->carry_forward, 'carry_forward_limit' => (string) ($type?->carry_forward_limit ?? 0), 'carry_forward_expiry_months' => (string) ($type?->carry_forward_expiry_months ?? ''), 'allow_advance' => (bool) $type?->allow_advance, 'paid' => $type ? (bool) $type->paid : true, 'is_active' => $type ? (bool) $type->is_active : true];
         $this->resetValidation();
         $this->showTypeForm = true;
     }
@@ -297,10 +297,16 @@ class Settings extends Component
             'type.name' => ['required', 'string', 'max:100', Rule::unique('leave_types', 'name')->where(fn ($q) => is_null($this->type['company_id'] ?? null) ? $q->whereNull('company_id') : $q->where('company_id', $this->type['company_id']))->ignore($this->editingTypeId)],
             'type.annual_allowance' => ['required', 'numeric', 'min:0', 'max:365'],
             'type.monthly_accrual' => ['required', 'numeric', 'min:0', 'max:31'],
+            'type.paid_per_month' => ['nullable', 'integer', 'min:1', 'max:31'],
             'type.carry_forward_limit' => ['required', 'numeric', 'min:0', 'max:365'],
             'type.carry_forward_expiry_months' => ['nullable', 'integer', 'min:1', 'max:24'],
-        ], [], ['type.name' => 'name', 'type.annual_allowance' => 'annual allowance', 'type.monthly_accrual' => 'monthly accrual', 'type.carry_forward_limit' => 'carry-forward limit', 'type.carry_forward_expiry_months' => 'carry-forward expiry']);
-        $data = [...$this->type, 'carry_forward_expiry_months' => $this->type['carry_forward_expiry_months'] === '' ? null : (int) $this->type['carry_forward_expiry_months']];
+        ], [], ['type.name' => 'name', 'type.annual_allowance' => 'annual allowance', 'type.monthly_accrual' => 'monthly accrual', 'type.paid_per_month' => 'paid per month', 'type.carry_forward_limit' => 'carry-forward limit', 'type.carry_forward_expiry_months' => 'carry-forward expiry']);
+        $data = [...$this->type,
+            'paid_per_month' => ($this->type['paid_per_month_enabled'] ?? false) && ($this->type['paid_per_month'] ?? '') !== ''
+                ? (int) $this->type['paid_per_month'] : null,
+            'carry_forward_expiry_months' => $this->type['carry_forward_expiry_months'] === '' ? null : (int) $this->type['carry_forward_expiry_months'],
+        ];
+        unset($data['paid_per_month_enabled']);
         $type = LeaveType::updateOrCreate(['id' => $this->editingTypeId], $data);
         $audit->record($this->editingTypeId ? 'leave_type.updated' : 'leave_type.created', $type);
         $this->showTypeForm = false;

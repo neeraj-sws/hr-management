@@ -48,7 +48,8 @@
                 @foreach($leaveTypes as $t)
                     <tr><td><strong>{{ $t->name }}</strong><small>{{ $t->describe() }}</small></td>@if(!$limited)<td>@if($t->company_id)<span class="pill pill-sm">{{ $t->company?->name }}</span>@else<span class="muted small">All companies</span>@endif</td>@endif<td class="num">{{ (float) $t->annual_allowance }}</td><td class="num">{{ (float) $t->monthly_accrual }}</td>
                         <td>{{ $t->carry_forward ? 'up to '.(float) $t->carry_forward_limit.' days'.($t->carry_forward_expiry_months ? ', expires after '.$t->carry_forward_expiry_months.' mo' : '') : 'No' }}</td>
-                        <td>{{ $t->allow_advance ? 'Allowed' : 'No' }}</td><td>{{ $t->paid ? 'Paid' : 'Unpaid' }}</td><td><x-badge :status="$t->is_active ? 'active' : 'inactive'" /></td>
+                        <td>{{ $t->allow_advance ? 'Allowed' : 'No' }}</td>
+                        <td>@if($t->paid_per_month)<span title="{{ $t->paid_per_month }} paid leave(s) per month; rest unpaid">{{ $t->paid_per_month }}/month</span>@else{{ $t->paid ? 'Paid' : 'Unpaid' }}@endif</td><td><x-badge :status="$t->is_active ? 'active' : 'inactive'" /></td>
                         <td class="nowrap">@if($t->changeable())<button class="btn btn-sm" wire:click="editType({{ $t->id }})">Edit</button>
                             @if(! $t->used)<button class="btn btn-sm btn-danger" wire:click="deleteType({{ $t->id }})" wire:confirm="Delete the leave type {{ $t->name }}? It has never been used, so nothing else changes.">Delete</button>
                             @elseif($t->is_active)<button class="btn btn-sm" wire:click="deleteType({{ $t->id }})" wire:confirm="{{ $t->name }} is already used in leave history, so it cannot be deleted. Make it inactive? Nobody can apply for it any more; past leave stays as it is." title="Used in leave history: can be made inactive, not deleted">Make inactive</button>@endif @endif</td></tr>
@@ -532,6 +533,14 @@
                 <x-field label="Carry-forward expires after (months)" name="type.carry_forward_expiry_months" hint="blank = never"><input type="number" min="1" max="24" wire:model="type.carry_forward_expiry_months"></x-field>
                 <label class="check"><input type="checkbox" wire:model="type.allow_advance"> Allow advance leave (negative balance within limit)</label>
                 <label class="check"><input type="checkbox" wire:model="type.paid"> Paid leave</label>
+                <div>
+                    <label class="check"><input type="checkbox" wire:model.live="type.paid_per_month_enabled"> Monthly paid leave limit <span class="muted small">(up to N leaves per month are paid; rest are unpaid)</span></label>
+                    @if($type['paid_per_month_enabled'] ?? false)
+                    <x-field label="Paid leaves per month" name="type.paid_per_month" hint="e.g. 1 → first leave each month is paid, any further leaves that month are unpaid">
+                        <input type="number" min="1" max="31" wire:model="type.paid_per_month" placeholder="1">
+                    </x-field>
+                    @endif
+                </div>
                 <label class="check"><input type="checkbox" wire:model="type.is_active"> Active</label>
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Save</button></div></form>

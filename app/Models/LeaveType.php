@@ -9,7 +9,7 @@ class LeaveType extends Model
 {
     use Concerns\HasCompany;
 
-    protected $fillable = ['company_id', 'name', 'annual_allowance', 'carry_forward', 'carry_forward_limit', 'carry_forward_expiry_months', 'paid', 'is_active', 'monthly_accrual', 'allow_advance', 'is_other'];
+    protected $fillable = ['company_id', 'name', 'annual_allowance', 'carry_forward', 'carry_forward_limit', 'carry_forward_expiry_months', 'paid', 'is_active', 'monthly_accrual', 'paid_per_month', 'allow_advance', 'is_other'];
     protected $casts = ['annual_allowance' => 'decimal:2', 'carry_forward_limit' => 'decimal:2', 'monthly_accrual' => 'decimal:3', 'carry_forward' => 'boolean', 'paid' => 'boolean', 'is_active' => 'boolean', 'allow_advance' => 'boolean', 'is_other' => 'boolean'];
     public function requests(): HasMany { return $this->hasMany(LeaveRequest::class); }
 
