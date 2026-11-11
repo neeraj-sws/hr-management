@@ -58,6 +58,7 @@ class Runs extends Component
     public function calculate(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
+        abort_if($this->user()->hasRole('Master Admin') && ! $this->user()->company_id, 403, 'The Master Admin can view payroll but each company owner or accounts team should run their own payroll.');
         $this->validate(['periodStart' => ['required', 'date'], 'periodEnd' => ['required', 'date', 'after_or_equal:periodStart']], [], ['periodStart' => 'period start', 'periodEnd' => 'period end']);
         $company = $this->calcCompany !== '' ? Company::find((int) $this->calcCompany) : null;
         $run = $workflow->calculatePayroll($this->periodStart, $this->periodEnd, auth()->id(), $company?->id);
