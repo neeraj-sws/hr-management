@@ -66,6 +66,17 @@ class AttendanceEmployee extends Authenticatable
         static::addGlobalScope('company', function (\Illuminate\Database\Eloquent\Builder $query) {
             if ($companyId = \App\Support\CompanyAccess::limitedCompanyId()) \App\Support\CompanyAccess::whereCompany($query, $companyId, $query->getModel()->qualifyColumn('company_id'));
         });
+        static::creating(function (self $employee) {
+            if (empty($employee->employee_code)) $employee->employee_code = static::nextCode($employee->company_id);
+        });
+    }
+
+    /** Generate the next EMP-XX code, incrementing from the current max. */
+    public static function nextCode(?int $companyId): string
+    {
+        $existing = static::withoutGlobalScopes()->pluck('employee_code')
+            ->map(fn ($c) => preg_match('/^EMP-(\d+)$/', $c, $m) ? (int) $m[1] : 0)->max() ?? 0;
+        return 'EMP-' . str_pad($existing + 1, 2, '0', STR_PAD_LEFT);
     }
 
     public function devices(): HasMany

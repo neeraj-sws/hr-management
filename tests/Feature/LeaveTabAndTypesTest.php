@@ -68,7 +68,7 @@ class LeaveTabAndTypesTest extends TestCase
         LeaveRequest::create(['employee_id' => $this->employee->id, 'leave_type_id' => $sick->id, 'starts_on' => '2026-10-23', 'ends_on' => '2026-10-23', 'duration' => 'full', 'days' => 1, 'reason' => 'Fever', 'status' => 'approved', 'decided_by' => $this->admin->id, 'decided_at' => now()]);
 
         $page = Livewire::actingAs($this->admin)->test(EmployeeProfile::class, ['employee' => $this->employee])
-            ->assertSee('Leave · October 2026')->assertSee('Full day leave')->assertSee('Half day leave')->assertSee('Doctor visit · approved by SWS Admin')
+            ->assertSee('Leave · October 2026')->assertSee('Full day leave')->assertSee('Half day leave')->assertSee('Doctor visit · approved by Master Admin')
             ->assertSee('at work 03:00:00')->assertSee('Absent, no leave')->assertSee('Record as leave');
         $m = $page->viewData('leaveHistory');
         $this->assertSame(['2026-10-20' => 'half_day', '2026-10-21' => 'half', '2026-10-22' => 'absent', '2026-10-23' => 'full'], $m['days']->mapWithKeys(fn ($d) => [$d['date'] => $d['kind']])->all());

@@ -1,7 +1,7 @@
 <div>
     <div class="page-head">
         <div><h1>Expense Claims</h1><p>Claim work expenses with a receipt. Approved claims are paid with your next salary as a reimbursement.</p></div>
-        @if($own)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />New claim</button>@endif
+        @if($own && !auth()->user()->hasAnyRole(['Master Admin', 'Company Owner']))<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />New claim</button>@endif
     </div>
     @if($totals)
         <div class="stats">

@@ -128,6 +128,7 @@ class Employees extends Component
         if (! empty($hours['end_time'])) $this->workEnd = substr((string) $hours['end_time'], 0, 5);
         if ((float) ($hours['standard_daily_hours'] ?? 0) > 0) $this->dailyHours = (string) (float) $hours['standard_daily_hours'];
         if ($this->traineesOnly) $this->employmentType = EmployeeService::TRAINEE;
+        $this->employeeCode = \App\Models\AttendanceEmployee::nextCode(\App\Support\CompanyAccess::limitedCompanyId());
         $this->showForm = true;
     }
 

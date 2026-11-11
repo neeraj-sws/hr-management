@@ -1,7 +1,7 @@
 <div>
     <div class="page-head">
         <div><h1>Night work</h1><p>Worked at night (after the office day)? Ask for it with the tasks and what you did. When your manager approves, the time is paid with your salary (hourly rate).</p></div>
-        @if($own)<div class="actions"><button class="btn btn-primary" wire:click="$set('showForm', true)"><x-icon name="plus" class="icon-sm" />Add night work</button></div>@endif
+        @if($own && !auth()->user()->hasAnyRole(['Master Admin', 'Company Owner']))<div class="actions"><button class="btn btn-primary" wire:click="$set('showForm', true)"><x-icon name="plus" class="icon-sm" />Add night work</button></div>@endif
     </div>
     <x-errors />
 

@@ -195,7 +195,7 @@ class Records extends Component
                 'at' => Carbon::parse($event->event_time)->format('d M Y, h:i A'),
                 'by' => $correction?->decider?->name ?? \App\Models\User::find($meta['approved_by'] ?? 0)?->name ?? 'HR',
                 'direct' => $direct,
-                // "Changed by SWS Admin: Forgot to check out" → "Forgot to check out"
+                // "Changed by Master Admin: Forgot to check out" → "Forgot to check out"
                 'reason' => $direct ? (string) \Illuminate\Support\Str::after($reason, ': ') : $reason,
                 'changes' => $changes,
             ];

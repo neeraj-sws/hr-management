@@ -197,6 +197,10 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/company/instructions', Livewire\Company\Instructions::class)->middleware('access:any')->name('company.instructions');
     Route::get('/company/celebrations', Livewire\Company\Celebrations::class)->middleware('access:any')->name('company.celebrations');
     Route::get('/company/org-chart', Livewire\Company\OrgChart::class)->middleware('access:any')->name('company.org-chart');
+    // Company management (Master Admin only): list / create / edit companies.
+    Route::get('/company/companies', Livewire\Company\Companies::class)->middleware('access:company.manage')->name('company.companies');
+    // Company logins (Master Admin only): create logins for a company.
+    Route::get('/company/companies/{company}/logins', Livewire\Company\CompanyLogins::class)->middleware('access:company.manage')->name('company.logins');
     // Company profile: each company's own rules (salary, calendar, penalties, leave types). The Super Admin gets the list.
     Route::get('/company/profile/{company?}', Livewire\Company\Profile::class)->middleware('access:policies.manage')->name('company.profile');
 
@@ -270,3 +274,4 @@ Route::middleware(['auth', 'account.active'])->group(function () {
     Route::get('/system/telegram', Livewire\System\Telegram::class)->middleware('access:roles.manage')->name('system.telegram');
     Route::get('/system/settings', Livewire\System\Settings::class)->middleware('access:policies.manage')->name('system.settings');
 });
+

@@ -148,7 +148,7 @@ class CompanyOwnerLoginTest extends TestCase
     public function test_the_owner_gives_roles_to_his_own_company_logins_only(): void
     {
         $this->actingAs($this->owner);
-        $page = Livewire::test(Roles::class)->assertSet('tab', 'users')->assertSee('Preeti Prajapati')->assertDontSee('Swati Sharma')->assertDontSee('SWS Admin');
+        $page = Livewire::test(Roles::class)->assertSet('tab', 'users')->assertSee('Preeti Prajapati')->assertDontSee('Swati Sharma')->assertDontSee('Master Admin');
 
         $page->call('editUser', $this->preeti->user_id)->set('userRoles', ['Employee', 'HR', 'Master Admin', 'Company Owner'])->call('saveUserRoles')->assertHasNoErrors();
         $hr = $this->preeti->user->fresh();

@@ -26,6 +26,7 @@ class Runs extends Component
     #[Url] public ?int $run = null;
     /** Runs of one company only ('' = all companies). */
     #[Url] public string $company = '';
+    #[Url] public string $filterStatus = '';
     /** The company whose payroll "Calculate payroll" makes. */
     public string $calcCompany = '';
 
@@ -174,7 +175,7 @@ class Runs extends Component
     public function pay(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
-        $this->validate(['paymentAmount' => ['required', 'numeric', 'gt:0'], 'paymentReference' => ['nullable', 'string', 'max:255']], [], ['paymentAmount' => 'amount']);
+        $this->validate(['paymentAmount' => ['required', 'numeric', 'gt:0'], 'paymentReference' => ['required', 'string', 'max:255']], [], ['paymentAmount' => 'amount']);
         $workflow->pay(PayrollItem::findOrFail($this->payingItemId), ['amount' => $this->paymentAmount, 'paid_on' => today(), 'reference' => $this->paymentReference ?: null], auth()->id());
         $this->payingItemId = null;
         $this->toast('Payment recorded and payslip issued.');
@@ -227,6 +228,7 @@ class Runs extends Component
         $runs = PayrollRun::with('company')->withCount('items')->withSum('items', 'net_amount')
             ->when($this->approvalsOnly, fn ($q) => $q->where('status', 'draft'))
             ->when($this->company !== '' && ($filter = $companies->firstWhere('id', (int) $this->company)), fn ($q) => $q->forCompany($filter->is_main ? null : $filter->id))
+            ->when($this->filterStatus !== '' && !$this->approvalsOnly, fn ($q) => $q->where('status', $this->filterStatus))
             ->latest('period_starts_on')->orderBy('company_id')->paginate(12);
         $selected = $this->run ? PayrollRun::with(['company', 'items.employee', 'items.payments', 'items.payslip'])->find($this->run) : null;
         $approval = $selected ? ApprovalRequest::with('approver')->where('approvable_type', PayrollRun::class)->where('approvable_id', $selected->id)->latest('id')->first() : null;
