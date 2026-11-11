@@ -110,7 +110,7 @@ class Policies extends Component
     public function saveRule(string $key, PeopleOperationsService $people): void
     {
         abort_unless($this->user()->can('policies.manage'), 403);
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can save rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view rules, not save them.');
         abort_unless(isset(self::RULES[$key]), 404);
         $rules = [];
         $slot = self::slot($key);
@@ -132,7 +132,7 @@ class Policies extends Component
     public function editOverride(string $ref): void
     {
         abort_unless($this->user()->can('policies.manage'), 403);
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can edit rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view rules, not edit them.');
         $row = $this->overrideRow($ref);
         abort_unless(isset(self::OVERRIDABLE[$row->rule_key]), 404);
         $team = $row instanceof \App\Models\TeamPolicyOverride;
@@ -155,7 +155,7 @@ class Policies extends Component
     public function openStop(string $ref): void
     {
         abort_unless($this->user()->can('policies.manage'), 403);
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can stop rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view rules, not stop them.');
         $this->overrideRow($ref);
         $this->fill(['stopping' => $ref, 'stopFrom' => today()->toDateString()]);
         $this->resetValidation();
@@ -164,7 +164,7 @@ class Policies extends Component
     public function saveStop(PeopleOperationsService $people): void
     {
         abort_unless($this->user()->can('policies.manage'), 403);
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can stop rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view rules, not stop them.');
         $this->validate(['stopFrom' => ['required', 'date']], [], ['stopFrom' => 'date']);
         $people->stopOverride($this->overrideRow($this->stopping), $this->stopFrom, auth()->id());
         if ($this->editing === $this->stopping) $this->cancelEdit();
@@ -180,7 +180,7 @@ class Policies extends Component
     public function saveOverride(PeopleOperationsService $people): void
     {
         abort_unless($this->user()->can('policies.manage'), 403);
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can save rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view rules, not save them.');
         if ($this->editing) $this->overrideKey = $this->overrideRow($this->editing)->rule_key;
         abort_unless(isset(self::OVERRIDABLE[$this->overrideKey]), 404);
         $rules = match ($this->overrideScope) {
@@ -212,7 +212,7 @@ class Policies extends Component
     public function assess(PeopleOperationsService $people): void
     {
         abort_unless($this->user()->canAny(['policies.manage', 'penalties.manage']), 403);
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can run compliance assessment.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view rules, not run assessments.');
         $this->validate(['assessFrom' => ['required', 'date'], 'assessTo' => ['required', 'date', 'after_or_equal:assessFrom', 'before_or_equal:today']], [], ['assessFrom' => 'from date', 'assessTo' => 'to date']);
         $count = $people->assessCompliance($this->assessFrom, $this->assessTo, auth()->id());
         $this->toast($count ? "{$count} penalty requests created and sent for approval." : 'No new violations found for this period.');

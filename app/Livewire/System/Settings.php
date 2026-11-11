@@ -785,7 +785,7 @@ class Settings extends Component
     public function savePayroll(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can save salary rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view salary rules, not save them.');
         $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0'], 'hourlyRateHours' => ['nullable', 'numeric', 'gt:0', 'max:24'], 'halfDayPayFrom' => ['required', 'date'], 'lateCheckinAfter' => ['required', 'date_format:H:i'], 'payrollFrom' => ['required', 'date']], [], ['halfDayPayFrom' => 'half-day pay start date', 'lateCheckinAfter' => 'late check-in time', 'payrollFrom' => 'apply from date']);
         $from = \Illuminate\Support\Carbon::parse($this->payrollFrom)->toDateString();
         // From an earlier date: approved / locked payroll in that time is refused; drafts are marked for recalculation.
@@ -808,7 +808,7 @@ class Settings extends Component
     public function saveStatutory(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can save salary rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view salary rules, not save them.');
         $components = json_decode($this->statutoryJson ?: '[]', true);
         if (! is_array($components) || ! array_is_list($components)) {
             $this->addError('statutoryJson', 'Enter a JSON array of components (use [] for none).');
@@ -877,7 +877,7 @@ class Settings extends Component
     public function saveStructure(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        abort_unless(\App\Support\CompanyAccess::limitedCompanyId(), 403, 'Only a company login can save salary rules.');
+        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view salary rules, not save them.');
         $this->validate(['structureRows.*.name' => ['required', 'string', 'max:60'], 'structureRows.*.type' => ['required', 'in:earning,deduction'], 'structureRows.*.value' => ['required', 'numeric', 'min:0']], [], ['structureRows.*.name' => 'component name', 'structureRows.*.value' => 'value']);
         $percent = collect($this->structureRows)->where('type', 'earning')->sum(fn ($r) => (float) $r['value']);
         if ($percent > 100.0001) { $this->addError('structureRows', 'Earning percentages add up to '.$percent.'%; they cannot exceed 100%.'); return; }
