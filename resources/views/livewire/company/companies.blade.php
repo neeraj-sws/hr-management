@@ -41,7 +41,6 @@
                 <tr>
                     <td>
                         <strong>{{ $company->name }}</strong>
-                        @if($company->is_main) <span class="pill pill-sm">Main</span> @endif
                         @if($company->email)<br><small class="muted">{{ $company->email }}</small>@endif
                     </td>
                     <td>{{ $company->code ?? 'â€”' }}</td>
