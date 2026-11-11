@@ -281,7 +281,8 @@ class Settings extends Component
         $this->authorizeSettings();
         $type = $id ? LeaveType::findOrFail($id) : null;
         $this->editingTypeId = $type?->id;
-        $this->type = ['name' => $type?->name ?? '', 'annual_allowance' => (string) ($type?->annual_allowance ?? 0), 'monthly_accrual' => (string) ($type?->monthly_accrual ?? 0), 'carry_forward' => (bool) $type?->carry_forward, 'carry_forward_limit' => (string) ($type?->carry_forward_limit ?? 0), 'carry_forward_expiry_months' => (string) ($type?->carry_forward_expiry_months ?? ''), 'allow_advance' => (bool) $type?->allow_advance, 'paid' => $type ? (bool) $type->paid : true, 'is_active' => $type ? (bool) $type->is_active : true];
+        $newCompanyId = $this->rulesCompany !== '' ? (int) $this->rulesCompany : null;
+        $this->type = ['company_id' => $type ? $type->company_id : $newCompanyId, 'name' => $type?->name ?? '', 'annual_allowance' => (string) ($type?->annual_allowance ?? 0), 'monthly_accrual' => (string) ($type?->monthly_accrual ?? 0), 'carry_forward' => (bool) $type?->carry_forward, 'carry_forward_limit' => (string) ($type?->carry_forward_limit ?? 0), 'carry_forward_expiry_months' => (string) ($type?->carry_forward_expiry_months ?? ''), 'allow_advance' => (bool) $type?->allow_advance, 'paid' => $type ? (bool) $type->paid : true, 'is_active' => $type ? (bool) $type->is_active : true];
         $this->resetValidation();
         $this->showTypeForm = true;
     }
@@ -290,7 +291,7 @@ class Settings extends Component
     {
         $this->authorizeSettings();
         $this->validate([
-            'type.name' => ['required', 'string', 'max:100', Rule::unique('leave_types', 'name')->ignore($this->editingTypeId)],
+            'type.name' => ['required', 'string', 'max:100', Rule::unique('leave_types', 'name')->where(fn ($q) => is_null($this->type['company_id'] ?? null) ? $q->whereNull('company_id') : $q->where('company_id', $this->type['company_id']))->ignore($this->editingTypeId)],
             'type.annual_allowance' => ['required', 'numeric', 'min:0', 'max:365'],
             'type.monthly_accrual' => ['required', 'numeric', 'min:0', 'max:31'],
             'type.carry_forward_limit' => ['required', 'numeric', 'min:0', 'max:365'],
@@ -949,7 +950,14 @@ class Settings extends Component
             : collect();
 
         return $this->page('livewire.system.settings', [
-            'leaveTypes' => LeaveType::orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed())), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
+            'leaveTypes' => (function () {
+                $limited = \App\Support\CompanyAccess::isLimited($this->user());
+                if ($limited) return LeaveType::with('company:id,name')->orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed()));
+                $cid = $this->rulesCompany !== '' ? (int) $this->rulesCompany : null;
+                return $cid
+                    ? LeaveType::withoutGlobalScopes()->with('company:id,name')->forCompany($cid)->orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed()))
+                    : LeaveType::withoutGlobalScopes()->with('company:id,name')->orderBy('company_id')->orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed()));
+            })(), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
             'usageCounts' => $this->tab === 'capture' ? (function () {
                 $usage = app(\App\Services\AppUsageService::class);
                 $people = \App\Models\AttendanceEmployee::where('is_active', true)->get();

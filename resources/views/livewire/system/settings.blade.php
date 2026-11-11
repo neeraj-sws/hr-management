@@ -4,7 +4,7 @@
     @if($ruleCompanies->count() > 1)
         <section class="card mb"><div class="card-body toolbar">
             <x-field label="Rules for" name="rulesCompany" hint="a company's own rules replace the ones for all companies for its people"><select wire:model.live="rulesCompany"><option value="">All companies</option>@foreach($ruleCompanies as $rc)<option value="{{ $rc->id }}">{{ $rc->name }} only</option>@endforeach</select></x-field>
-            @if($rulesCompany !== '')<span class="small muted">Leave types, offices, e-mail, Google Sheets, security, leave year and offboarding are the same for all companies.</span>@endif
+            @if($rulesCompany !== '')<span class="small muted">Offices, e-mail, Google Sheets, security, leave year and offboarding are the same for all companies.</span>@endif
         </div></section>
     @endif
     @if($limited)<p class="small muted mb">These rules are your company's own. Leave types and offices without your company are shared by all companies: you can add your own, the shared ones are view only.</p>@endif
@@ -43,10 +43,10 @@
         <section class="card">
             <div class="card-head"><div><h2>Leave types</h2><p>Monthly accrual &gt; 0 means balances build up each month (via the scheduled <code>leave:accrue</code> job); otherwise the annual allowance is granted up-front.</p></div><button class="btn btn-primary btn-sm" wire:click="editType"><x-icon name="plus" class="icon-sm" />Add leave type</button></div>
             <div class="table-wrap"><table class="table">
-                <thead><tr><th>Name</th><th class="num">Annual</th><th class="num">Monthly accrual</th><th>Carry forward</th><th>Advance</th><th>Paid</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Name</th>@if(!$limited)<th>Company</th>@endif<th class="num">Annual</th><th class="num">Monthly accrual</th><th>Carry forward</th><th>Advance</th><th>Paid</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                 @foreach($leaveTypes as $t)
-                    <tr><td><strong>{{ $t->name }}</strong><small>{{ $t->describe() }}</small></td><td class="num">{{ (float) $t->annual_allowance }}</td><td class="num">{{ (float) $t->monthly_accrual }}</td>
+                    <tr><td><strong>{{ $t->name }}</strong><small>{{ $t->describe() }}</small></td>@if(!$limited)<td>@if($t->company_id)<span class="pill pill-sm">{{ $t->company?->name }}</span>@else<span class="muted small">All companies</span>@endif</td>@endif<td class="num">{{ (float) $t->annual_allowance }}</td><td class="num">{{ (float) $t->monthly_accrual }}</td>
                         <td>{{ $t->carry_forward ? 'up to '.(float) $t->carry_forward_limit.' days'.($t->carry_forward_expiry_months ? ', expires after '.$t->carry_forward_expiry_months.' mo' : '') : 'No' }}</td>
                         <td>{{ $t->allow_advance ? 'Allowed' : 'No' }}</td><td>{{ $t->paid ? 'Paid' : 'Unpaid' }}</td><td><x-badge :status="$t->is_active ? 'active' : 'inactive'" /></td>
                         <td class="nowrap">@if($t->changeable())<button class="btn btn-sm" wire:click="editType({{ $t->id }})">Edit</button>
