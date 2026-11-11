@@ -342,7 +342,7 @@
                 document.body.appendChild(box);
             }
             document.addEventListener('click', function (e) {
-                var el = e.target.closest ? e.target.closest('[wire\:confirm]') : null;
+                var el = e.target.closest ? e.target.closest('[wire\\\\:confirm]') : null;
                 if (!el || el.__swsYes) return;
                 e.preventDefault(); e.stopImmediatePropagation();
                 if (!box) build();
