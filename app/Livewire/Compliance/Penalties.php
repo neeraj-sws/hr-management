@@ -18,6 +18,7 @@ class Penalties extends Component
     use InteractsWithHr, WithPagination;
 
     #[Url] public string $status = '';
+    #[Url] public string $type = '';
     #[Url] public ?int $employee = null;
     public bool $showForm = false;
     public ?int $employeeId = null;
@@ -46,7 +47,7 @@ class Penalties extends Component
 
     public function updated($property): void
     {
-        if (in_array($property, ['status', 'employee', 'month'], true)) { $this->resetPage(); $this->selected = []; }
+        if (in_array($property, ['status', 'type', 'employee', 'month'], true)) { $this->resetPage(); $this->selected = []; }
     }
 
     /** The fines the filters show (for "select all matching"). */
@@ -57,6 +58,8 @@ class Penalties extends Component
         return EmployeePenalty::query()
             ->when(! $this->canManage(), fn ($q) => $q->where('employee_id', $own?->id ?? 0))
             ->when($this->status, fn ($q, $s) => $q->where('status', $s))
+            ->when($this->type === 'manual', fn ($q) => $q->whereNull('policy_rule_id'))
+            ->when($this->type && $this->type !== 'manual', fn ($q) => $q->whereHas('policyRule', fn ($q) => $q->where('rule_key', $this->type)))
             ->when($this->canManage() && $this->employee, fn ($q) => $q->where('employee_id', $this->employee))
             ->when(preg_match('/^\d{4}-\d{2}$/', $this->month), fn ($q) => $q->whereYear('effective_on', (int) substr($this->month, 0, 4))->whereMonth('effective_on', (int) substr($this->month, 5, 2)));
     }

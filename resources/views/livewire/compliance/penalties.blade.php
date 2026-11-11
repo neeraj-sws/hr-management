@@ -9,6 +9,7 @@
     <section class="card">
         <div class="toolbar">
             <label class="field"><span>Status</span><select wire:model.live="status"><option value="">Any</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="waived">Removed / waived</option></select></label>
+            <label class="field"><span>Type</span><select wire:model.live="type"><option value="">All types</option><option value="manual">Manual</option>@foreach(\App\Livewire\Compliance\Policies::RULES as $key => [$label])<option value="{{ $key }}">{{ $label }}</option>@endforeach</select></label>
             @if($canManage)<label class="field grow"><span>Employee</span><select wire:model.live="employee"><option value="">All employees</option>@foreach($employees as $e)<option value="{{ $e->id }}">{{ $e->name }}</option>@endforeach</select></label>@endif
             <label class="field"><span>Month</span><input type="month" wire:model.live="month"></label>
         </div>
