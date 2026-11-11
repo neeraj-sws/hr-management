@@ -32,7 +32,7 @@ class SecuritySettingsPageTest extends TestCase
         $this->assertTrue(app(WebAccessService::class)->allows($abheeshri->fresh()));
 
         $page->call('removeWebUser', $abheeshri->id)->assertSee('Unsaved changes')->call('resetWebAccess')
-            ->assertSet('webAccessUserIds', [(string) $abheeshri->id])->assertSee('Changed by SWS Admin');
+            ->assertSet('webAccessUserIds', [(string) $abheeshri->id])->assertSee('Changed by Master Admin');
         $page->set('twoFactorMode', 'admins')->assertSee('Also for the desktop and mobile apps')->call('resetSecurity')->assertSet('twoFactorMode', 'off');
     }
 }
