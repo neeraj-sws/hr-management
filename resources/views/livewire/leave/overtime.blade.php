@@ -1,7 +1,7 @@
 <div>
     <div class="page-head">
         <div><h1>Overtime</h1><p>Approved overtime is paid in payroll at the configured multiplier{{ isset($policy['multiplier']) ? ' ('.$policy['multiplier'].'×)' : '' }}{{ isset($policy['max_minutes_per_day']) ? ', max '.$policy['max_minutes_per_day'].' min/day' : '' }}.</p></div>
-        @if($own && ($policy['enabled'] ?? true))<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Request overtime</button>@endif
+        @if($own && ($policy['enabled'] ?? true) && !auth()->user()->hasAnyRole(['Master Admin', 'Company Owner']))<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Request overtime</button>@endif
     </div>
     @unless($policy['enabled'] ?? true)<div class="alert alert-info">Overtime is switched off by the company. New requests cannot be made and payroll pays no overtime.</div>@endunless
     @if($own)
