@@ -108,6 +108,17 @@ class Companies extends Component
         $this->resetValidation();
     }
 
+    public function delete(int $id): void
+    {
+        abort_if(\App\Support\CompanyAccess::isLimited($this->user()), 403);
+        $company = \App\Models\Company::withoutGlobalScopes()->findOrFail($id);
+        abort_if($company->is_main, 403, 'The main company cannot be deleted.');
+        abort_if($company->employees()->exists(), 422, 'Cannot delete a company that has employees. Deactivate it instead.');
+        $company->users()->update(['company_id' => null]);
+        $company->delete();
+        $this->toast("Company \"{$company->name}\" deleted.");
+    }
+
     public function render()
     {
         $companies = Company::withoutGlobalScopes()->orderByDesc('is_main')->orderBy('name')->withCount('employees')->get();

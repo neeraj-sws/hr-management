@@ -22,6 +22,9 @@ class CompanyLogins extends Component
     public Company $company;
 
     public bool $showForm = false;
+    public bool $showPasswordForm = false;
+    public int $resetUserId = 0;
+    public string $newPassword = '';
     public string $loginName = '';
     public string $loginEmail = '';
     public string $loginPassword = '';
@@ -59,7 +62,6 @@ class CompanyLogins extends Component
         ]);
         $user->assignRole($this->loginRole);
 
-        // Clear Spatie permission cache so the new role takes effect immediately.
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->toast("Login created for {$user->name} ({$this->loginRole}).");
@@ -82,6 +84,35 @@ class CompanyLogins extends Component
         $user = User::withoutGlobalScopes()->where('company_id', $this->company->id)->findOrFail($userId);
         $user->update(['is_active' => true]);
         $this->toast("{$user->name} reactivated.");
+    }
+
+    public function openPasswordReset(int $userId): void
+    {
+        $this->resetUserId = $userId;
+        $this->newPassword = '';
+        $this->resetValidation();
+        $this->showPasswordForm = true;
+        $this->showForm = false;
+    }
+
+    public function savePassword(): void
+    {
+        abort_if(\App\Support\CompanyAccess::isLimited($this->user()), 403);
+        $this->validate(['newPassword' => ['required', 'string', 'min:8']], [], ['newPassword' => 'new password']);
+        $user = User::withoutGlobalScopes()->where('company_id', $this->company->id)->findOrFail($this->resetUserId);
+        $user->update(['password' => Hash::make($this->newPassword)]);
+        $this->toast("Password updated for {$user->name}.");
+        $this->showPasswordForm = false;
+        $this->resetUserId = 0;
+        $this->newPassword = '';
+    }
+
+    public function cancelPassword(): void
+    {
+        $this->showPasswordForm = false;
+        $this->resetUserId = 0;
+        $this->newPassword = '';
+        $this->resetValidation();
     }
 
     public function cancel(): void

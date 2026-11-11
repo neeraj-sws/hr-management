@@ -6,7 +6,7 @@
         </div>
         <div class="toolbar" style="border:0">
             <a class="btn" href="{{ route('company.companies') }}">← All companies</a>
-            @unless($showForm)
+            @unless($showForm || $showPasswordForm)
                 <button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" /> New login</button>
             @endunless
         </div>
@@ -39,6 +39,21 @@
     </section>
     @endif
 
+    @if($showPasswordForm)
+    <section class="card mb">
+        <div class="card-head"><h2>Reset password</h2></div>
+        <form class="card-body stack" wire:submit="savePassword">
+            <x-field label="New password *" name="newPassword" hint="Minimum 8 characters">
+                <input type="password" wire:model="newPassword" autocomplete="new-password">
+            </x-field>
+            <div class="toolbar" style="border:0;padding:0">
+                <button type="submit" class="btn btn-primary" wire:loading.attr="disabled"><span wire:loading wire:target="savePassword" class="spinner"></span>Set password</button>
+                <button type="button" class="btn" wire:click="cancelPassword">Cancel</button>
+            </div>
+        </form>
+    </section>
+    @endif
+
     <section class="card">
         <table class="table">
             <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
@@ -56,6 +71,7 @@
                         @endif
                     </td>
                     <td>
+                        <button class="btn btn-sm" wire:click="openPasswordReset({{ $login->id }})">Reset password</button>
                         @if($login->is_active ?? true)
                             <button class="btn btn-sm" wire:click="deactivate({{ $login->id }})" wire:confirm="Deactivate {{ $login->name }}? They will not be able to log in.">Deactivate</button>
                         @else
