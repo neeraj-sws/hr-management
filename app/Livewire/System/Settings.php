@@ -560,7 +560,7 @@ class Settings extends Component
         if ($this->ipRestrictEnabled && $ips->isEmpty()) { $this->addError('ipRestrictList', 'Kam se kam ek office IP daalo.'); return; }
         $people->setPolicy(\App\Services\IpRestrictionService::POLICY, 'security', 'IP restriction', ['enabled' => $this->ipRestrictEnabled, 'ips' => $ips->all()], null, auth()->id(), today()->toDateString());
         $this->ipRestrictList = $ips->implode("\n");
-        $this->toast($this->ipRestrictEnabled ? 'IP restriction on: the website opens only from '$ips->count().' allowed IP(s).' : 'IP restriction off.');
+        $this->toast($this->ipRestrictEnabled ? 'IP restriction on: the website opens only from ' . $ips->count() . ' allowed IP(s).' : 'IP restriction off.');
     }
 
     public function addMyIp(): void
