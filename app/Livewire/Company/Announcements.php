@@ -104,7 +104,13 @@ class Announcements extends Component
     public function render()
     {
         $query = Announcement::with(['author', 'department', 'team'])->orderByDesc('is_pinned')->latest('published_at');
-        if (! $this->canManage()) $query->visibleTo($this->ownEmployee());
+        if (! $this->canManage()) {
+            $query->visibleTo($this->ownEmployee());
+        } else {
+            // Expired announcements are only shown to the person who created them.
+            $userId = $this->user()->id;
+            $query->where(fn ($q) => $q->whereNull('expires_on')->orWhereDate('expires_on', '>', today())->orWhere('created_by', $userId));
+        }
 
         return $this->page('livewire.company.announcements', [
             'announcements' => $query->paginate(10),
