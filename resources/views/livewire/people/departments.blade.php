@@ -20,7 +20,7 @@
             <thead><tr><th>Company</th><th class="num">Active employees</th><th></th></tr></thead>
             <tbody>
             @foreach($companies as $c)
-                <tr wire:key="co-{{ $c->id }}"><td><strong>{{ $c->name }}</strong>@if($c->is_main) <x-badge tone="blue">main</x-badge>@endif</td><td class="num">{{ $c->active_count }}</td><td>@if($editCompanies)<div class="row-actions"><button class="btn btn-sm" wire:click="editCompany({{ $c->id }})">Rename</button></div>@endif</td></tr>
+                <tr wire:key="co-{{ $c->id }}"><td><strong>{{ $c->name }}</strong></td><td class="num">{{ $c->active_count }}</td><td>@if($editCompanies)<div class="row-actions"><button class="btn btn-sm" wire:click="editCompany({{ $c->id }})">Rename</button></div>@endif</td></tr>
             @endforeach
             </tbody>
         </table></div>
