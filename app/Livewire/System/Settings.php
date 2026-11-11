@@ -281,7 +281,10 @@ class Settings extends Component
         $this->authorizeSettings();
         $type = $id ? LeaveType::findOrFail($id) : null;
         $this->editingTypeId = $type?->id;
-        $newCompanyId = $this->rulesCompany !== '' ? (int) $this->rulesCompany : null;
+        $limited = \App\Support\CompanyAccess::isLimited($this->user());
+        $newCompanyId = $limited
+            ? \App\Support\CompanyAccess::limitedCompanyId()
+            : ($this->rulesCompany !== '' ? (int) $this->rulesCompany : null);
         $this->type = ['company_id' => $type ? $type->company_id : $newCompanyId, 'name' => $type?->name ?? '', 'annual_allowance' => (string) ($type?->annual_allowance ?? 0), 'monthly_accrual' => (string) ($type?->monthly_accrual ?? 0), 'carry_forward' => (bool) $type?->carry_forward, 'carry_forward_limit' => (string) ($type?->carry_forward_limit ?? 0), 'carry_forward_expiry_months' => (string) ($type?->carry_forward_expiry_months ?? ''), 'allow_advance' => (bool) $type?->allow_advance, 'paid' => $type ? (bool) $type->paid : true, 'is_active' => $type ? (bool) $type->is_active : true];
         $this->resetValidation();
         $this->showTypeForm = true;
