@@ -46,6 +46,7 @@
                     <x-field label="Name" name="loginName"><input wire:model="loginName"></x-field>
                     <x-field label="E-mail (sign-in)" name="loginEmail"><input type="email" wire:model="loginEmail"></x-field>
                     <x-field label="Password" name="loginPassword" hint="at least 10, letters and numbers" full><input type="text" wire:model="loginPassword" autocomplete="new-password"></x-field>
+                    <label class="check"><input type="checkbox" wire:model="loginSendEmail"> Client ko welcome e-mail bhejo (apna password set karne ka link — password mail me nahi jata)</label>
                 </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Create login</button></div></form>
         </x-modal>

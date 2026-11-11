@@ -15,7 +15,71 @@ class BillingService
         'pin' => 'PIN code', 'gstin' => 'GSTIN', 'pan' => 'PAN', 'email' => 'E-mail', 'phone' => 'Phone', 'website' => 'Website',
         'bank_name' => 'Bank name', 'account_name' => 'Account name', 'account_number' => 'Account number', 'ifsc' => 'IFSC', 'upi' => 'UPI ID',
         'terms' => 'Terms & conditions', 'signatory' => 'Authorised signatory', 'due_days' => 'Default due in (days)',
+        // Look & numbering (like the old CMS settings)
+        'logo' => 'Logo', 'invoice_color' => 'Invoice colour', 'estimate_color' => 'Estimate colour', 'show_qr' => 'QR code on invoice',
+        'invoice_prefix' => 'Invoice prefix', 'estimate_prefix' => 'Estimate prefix', 'customer_prefix' => 'Customer prefix', 'vendor_prefix' => 'Vendor prefix', 'bill_prefix' => 'Bill prefix',
+        'date_format' => 'Date format', 'mail_from_address' => 'Send invoices from (e-mail)', 'mail_from_name' => 'Sender name',
+        // Printed under the invoice, like the CMS: footer title + notes (bank details, may hold simple formatting), signature / seal image.
+        'footer_title' => 'Footer title', 'footer_notes' => 'Footer notes (bank details)', 'signature' => 'Signature / seal image',
     ];
+
+    /** Footer notes keep simple formatting (bold, line breaks) but never scripts, links or event handlers. */
+    public static function safeHtml(?string $html): string
+    {
+        $html = strip_tags((string) $html, '<p><br><b><strong><i><em><u><span><div><small>');
+        $html = preg_replace('/\s+on[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html);
+        $html = preg_replace('/(style\s*=\s*"[^"]*)(expression|url\s*\(|javascript:)[^"]*"/i', '$1"', $html);
+
+        return trim($html);
+    }
+
+    /** Date formats offered in Billing settings (PHP format => example). */
+    public const DATE_FORMATS = ['M j, Y' => 'May 1, 2026', 'd M Y' => '01 May 2026', 'd-m-Y' => '01-05-2026', 'd/m/Y' => '01/05/2026'];
+
+    /** Billing settings for this request (read once; saved settings clear it). */
+    public static function settings(): array
+    {
+        if (! app()->bound('billing.settings')) app()->instance('billing.settings', app(self::class)->company());
+
+        return app('billing.settings');
+    }
+
+    public static function forgetSettings(): void
+    {
+        app()->forgetInstance('billing.settings');
+    }
+
+    /** Number prefix for a document: invoice "SWS", estimate "EST", customer "#CUST", vendor "#VEND", bill "BILL". */
+    public static function prefix(string $kind): string
+    {
+        $defaults = ['invoice' => config('billing.prefix', 'SWS'), 'estimate' => '#PROP', 'customer' => '#CUST', 'vendor' => '#VEND', 'bill' => 'BILL'];
+        $saved = trim((string) (self::settings()[$kind.'_prefix'] ?? ''));
+
+        return $saved !== '' ? $saved : ($defaults[$kind] ?? '');
+    }
+
+    /** e.g. #CUST00024. */
+    public static function code(string $kind, int $id): string
+    {
+        return self::prefix($kind).str_pad((string) $id, 5, '0', STR_PAD_LEFT);
+    }
+
+    /** A billing date in the chosen format; null stays null so "?? '—'" works. */
+    public static function date($date): ?string
+    {
+        if ($date === null || $date === '') return null;
+        $format = self::settings()['date_format'] ?? '';
+
+        return Carbon::parse($date)->format(isset(self::DATE_FORMATS[$format]) ? $format : 'M j, Y'); // CMS style by default
+    }
+
+    /** Accent colour of invoices / estimates (hex). */
+    public static function color(string $kind = 'invoice'): string
+    {
+        $c = (string) (self::settings()[$kind.'_color'] ?? '');
+
+        return preg_match('/^#[0-9a-fA-F]{6}$/', $c) ? $c : '#1f3a5f';
+    }
 
     /** The Indian financial year of a date, e.g. 2026-09-30 -> "2026-27", 2027-02-10 -> "2026-27". */
     public function financialYear(Carbon|string $date): string
@@ -27,34 +91,21 @@ class BillingService
     }
 
     /** Next invoice sequence for the financial year of $date (1-based, resets each year). */
-    public function nextInvoiceNumber(Carbon|string $date, ?int $companyId = null): array
+    public function nextInvoiceNumber(Carbon|string $date): array
     {
         $fy = $this->financialYear($date);
-        $company = $this->documentCompany($companyId);
-        $next = (int) BillingInvoice::withoutGlobalScopes()->where('company_id', $company)->where('financial_year', $fy)->lockForUpdate()->max('number') + 1;
+        $next = (int) BillingInvoice::where('financial_year', $fy)->lockForUpdate()->max('number') + 1;
 
-        return ['financial_year' => $fy, 'number' => $next, 'company_id' => $company];
+        return ['financial_year' => $fy, 'number' => $next];
     }
 
-    public function nextEstimateNumber(Carbon|string $date, ?int $companyId = null): array
+    public function nextEstimateNumber(Carbon|string $date): array
     {
+        // One running sequence like the CMS (#PROP00001, #PROP00002 …); the year is only kept for filtering.
         $fy = $this->financialYear($date);
-        $company = $this->documentCompany($companyId);
-        $next = (int) BillingEstimate::withoutGlobalScopes()->where('company_id', $company)->where('financial_year', $fy)->lockForUpdate()->max('number') + 1;
+        $next = (int) BillingEstimate::lockForUpdate()->max('number') + 1;
 
-        return ['financial_year' => $fy, 'number' => $next, 'company_id' => $company];
-    }
-
-    /** Whose numbers: the given company, else the signed-in company owner's, else the main company. */
-    private function documentCompany(?int $companyId): ?int
-    {
-        return \App\Support\CompanyAccess::limitedCompanyId() ?? $companyId ?? \App\Models\Company::main()?->id;
-    }
-
-    /** The company details printed on a document of this company (its own when it has them). */
-    public function companyFor(?int $companyId): array
-    {
-        return \App\Support\CompanyAccess::withRulesCompany($companyId, fn () => $this->company());
+        return ['financial_year' => $fy, 'number' => $next];
     }
 
     /** Company details for invoices, with blanks for anything not set yet. */

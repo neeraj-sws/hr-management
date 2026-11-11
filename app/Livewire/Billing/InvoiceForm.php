@@ -24,6 +24,8 @@ class InvoiceForm extends Component
     public string $issueDate = '';
     public string $dueDate = '';
     public string $refNumber = '';
+    public string $hours = '';
+    public ?int $categoryId = null;
     public string $notes = '';
     public string $terms = '';
     /** State the supply is made to (CGST+SGST if it is our state, otherwise IGST). Defaults to the customer's billing state. */
@@ -39,12 +41,13 @@ class InvoiceForm extends Component
             $invoice->load('items');
             $this->invoiceId = $invoice->id;
             $this->fill(['customerId' => $invoice->customer_id, 'issueDate' => $invoice->issue_date->toDateString(),
-                'dueDate' => $invoice->due_date?->toDateString() ?? '', 'refNumber' => (string) $invoice->ref_number, 'notes' => (string) $invoice->notes, 'terms' => (string) $invoice->terms, 'placeOfSupply' => (string) $invoice->place_of_supply, 'projectId' => $invoice->project_id]);
+                'dueDate' => $invoice->due_date?->toDateString() ?? '', 'refNumber' => (string) $invoice->ref_number, 'hours' => $invoice->hours !== null ? (string) (float) $invoice->hours : '', 'notes' => (string) $invoice->notes, 'terms' => (string) $invoice->terms, 'placeOfSupply' => (string) $invoice->place_of_supply, 'projectId' => $invoice->project_id, 'categoryId' => $invoice->category_id]);
             $this->items = $invoice->items->map(fn ($i) => ['product_id' => $i->product_id, 'name' => $i->name, 'description' => (string) $i->description,
                 'quantity' => (string) (float) $i->quantity, 'price' => (string) (float) $i->price, 'discount' => (string) (float) $i->discount, 'tax_id' => $i->tax_id, 'hsn_sac' => (string) $i->hsn_sac])->all();
         } else {
             $this->issueDate = today()->toDateString();
             $this->dueDate = today()->addDays((int) (app(BillingService::class)->company()['due_days'] ?: 7))->toDateString();
+            if ($cid = (int) request('customer')) { if (BillingCustomer::whereKey($cid)->exists()) { $this->customerId = $cid; $this->updatedCustomerId($cid); } }
             $this->addItem();
         }
     }
@@ -75,11 +78,10 @@ class InvoiceForm extends Component
         }
     }
 
-    /** Picking a customer fills the place of supply with their billing state. */
+    /** Picking a customer sets the place of supply (GST state) to their billing state. */
     public function updatedCustomerId($id): void
     {
-        $state = $id ? BillingCustomer::find($id)?->billing_state : null;
-        if ($state && $this->placeOfSupply === '') $this->placeOfSupply = $state;
+        $this->placeOfSupply = (string) ($id ? BillingCustomer::find($id)?->billing_state : '');
     }
 
     public function lineTotal(array $it): float
@@ -104,6 +106,7 @@ class InvoiceForm extends Component
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.hsn_sac' => ['nullable', 'string', 'max:20'],
             'placeOfSupply' => ['nullable', 'string', 'max:60'],
+            'categoryId' => ['nullable', 'exists:billing_categories,id'],
             'projectId' => ['nullable', 'exists:projects,id'],
         ], [], ['customerId' => 'customer', 'issueDate' => 'issue date', 'dueDate' => 'due date', 'placeOfSupply' => 'place of supply', 'projectId' => 'project']);
         // An invoice that is already (partly) paid may not drop below what was received.
@@ -121,17 +124,17 @@ class InvoiceForm extends Component
         DB::transaction(function () use ($audit, $billing, $send) {
             if ($this->invoiceId) {
                 $invoice = BillingInvoice::findOrFail($this->invoiceId);
-                $changes = ['customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'place_of_supply' => $this->placeOfSupply ?: null, 'project_id' => $this->projectId ?: null,
-                    'due_date' => $this->dueDate ?: null, 'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null];
+                $changes = ['customer_id' => $this->customerId, 'category_id' => $this->categoryId ?: null, 'issue_date' => $this->issueDate, 'place_of_supply' => $this->placeOfSupply ?: null, 'project_id' => $this->projectId ?: null,
+                    'due_date' => $this->dueDate ?: null, 'ref_number' => $this->refNumber ?: null, 'hours' => is_numeric($this->hours) ? (float) $this->hours : null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null];
                 // Moving the issue date into another financial year gives the invoice that year's next number.
-                if ($billing->financialYear($this->issueDate) !== $invoice->financial_year) $changes += $billing->nextInvoiceNumber($this->issueDate, $invoice->company_id);
+                if ($billing->financialYear($this->issueDate) !== $invoice->financial_year) $changes += $billing->nextInvoiceNumber($this->issueDate);
                 $invoice->update($changes);
                 $invoice->items()->delete();
             } else {
                 $n = $billing->nextInvoiceNumber($this->issueDate);
-                $invoice = BillingInvoice::create(['number' => $n['number'], 'financial_year' => $n['financial_year'], 'company_id' => $n['company_id'],
+                $invoice = BillingInvoice::create(['number' => $n['number'], 'financial_year' => $n['financial_year'], 'category_id' => $this->categoryId ?: null,
                     'customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'due_date' => $this->dueDate ?: null,
-                    'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null,
+                    'ref_number' => $this->refNumber ?: null, 'hours' => is_numeric($this->hours) ? (float) $this->hours : null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null,
                     'status' => $send ? 'Sent' : 'Draft', 'send_date' => $send ? now()->toDateString() : null, 'created_by' => auth()->id(),
                     'place_of_supply' => $this->placeOfSupply ?: (BillingCustomer::find($this->customerId)?->billing_state ?: null), 'project_id' => $this->projectId ?: null]);
             }
@@ -157,7 +160,19 @@ class InvoiceForm extends Component
         // Summary box: discount, tax and the GST rate when every taxed line uses the same one.
         $rates = collect($this->items)->map(fn ($it) => $it['tax_id'] ? (float) ($taxes->firstWhere('id', (int) $it['tax_id'])?->rate ?? 0) : 0.0)->filter(fn ($r) => $r > 0)->unique()->values();
 
+        $billing = app(BillingService::class);
+        if ($this->invoiceId) {
+            $numberPreview = BillingInvoice::find($this->invoiceId)?->number();
+        } else {
+            $fy = $billing->financialYear($this->issueDate ?: today());
+            $numberPreview = (new BillingInvoice(['financial_year' => $fy, 'number' => (int) BillingInvoice::where('financial_year', $fy)->max('number') + 1]))->number();
+        }
+
         return $this->page('livewire.billing.invoice-form', [
+            'customer' => $this->customerId ? BillingCustomer::find($this->customerId) : null,
+            'categories' => \App\Models\BillingCategory::where('type', 'income')->orderBy('name')->get(['id', 'name']),
+            'numberPreview' => '#'.ltrim((string) $numberPreview, '#'),
+            'lineTotals' => collect($this->items)->map(fn ($it) => $this->lineTotal($it))->all(),
             'customers' => BillingCustomer::orderBy('name')->get(['id', 'name']),
             'projects' => \App\Models\Project::orderBy('name')->get(['id', 'name']),
             'interState' => $interState,

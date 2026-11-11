@@ -32,6 +32,8 @@ class Clients extends Component
     public string $loginName = '';
     public string $loginEmail = '';
     public string $loginPassword = '';
+    /** "New Client" e-mail: send the client a link to set their own password. */
+    public bool $loginSendEmail = true;
 
     private function guard(): void
     {
@@ -86,7 +88,7 @@ class Clients extends Component
     {
         $this->guard();
         $client = Client::findOrFail($clientId);
-        $this->fill(['loginFor' => $client->id, 'loginName' => (string) ($client->contact_name ?: $client->name), 'loginEmail' => (string) $client->email, 'loginPassword' => '']);
+        $this->fill(['loginFor' => $client->id, 'loginName' => (string) ($client->contact_name ?: $client->name), 'loginEmail' => (string) $client->email, 'loginPassword' => '', 'loginSendEmail' => true]);
         $this->resetValidation();
     }
 
@@ -103,6 +105,12 @@ class Clients extends Component
         $user = User::create(['name' => $this->loginName, 'email' => strtolower(trim($this->loginEmail)), 'password' => $this->loginPassword, 'is_active' => $client->is_active, 'client_id' => $client->id]);
         $audit->record('client.login_created', $user, ['client_id' => $client->id]);
         $this->loginFor = null;
+        if ($this->loginSendEmail) {
+            $error = app(\App\Services\BillingMailer::class)->clientWelcome($user);
+            $this->toast($error ? "Portal login created, but the welcome e-mail failed: {$error}" : "Portal login created and a welcome e-mail (set-password link) sent to {$user->email}.", $error ? 'error' : 'success');
+
+            return;
+        }
         $this->toast("Portal login created for {$user->email}. Share the password with them securely; they sign in on the normal sign-in page.");
     }
 

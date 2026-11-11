@@ -15,19 +15,23 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureWebAccess
 {
-    public function __construct(private readonly WebAccessService $access) {}
+    public function __construct(private readonly WebAccessService $access, private readonly \App\Services\IpRestrictionService $ips) {}
 
     public function handle(Request $request, Closure $next): Response
     {
         $user = Auth::guard('web')->user();
         // Client logins use only the client portal, whatever the staff website-access setting is.
-        if (! $user || $user->client_id || $request->routeIs('logout') || \App\Services\ImpersonationService::active() || $this->access->allows($user)) return $next($request);
+        if (! $user || $user->client_id || $request->routeIs('logout') || \App\Services\ImpersonationService::active()) return $next($request);
+        // Website access by role first, then the office-IP restriction (Settings > Security).
+        $message = ! $this->access->allows($user) ? WebAccessService::MESSAGE
+            : (! $this->ips->allows($user, $request->ip()) ? \App\Services\IpRestrictionService::MESSAGE : null);
+        if ($message === null) return $next($request);
 
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        if ($request->hasHeader('X-Livewire') || $request->expectsJson()) abort(403, WebAccessService::MESSAGE);
+        if ($request->hasHeader('X-Livewire') || $request->expectsJson()) abort(403, $message);
 
-        return redirect()->route('login')->withErrors(['email' => WebAccessService::MESSAGE]);
+        return redirect()->route('login')->withErrors(['email' => $message]);
     }
 }
