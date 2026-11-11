@@ -982,7 +982,7 @@ class HrWorkflowService
             $run = PayrollRun::whereKey($run->id)->lockForUpdate()->firstOrFail();
             if ($run->status !== 'draft') throw ValidationException::withMessages(['payroll' => 'Only draft payroll can be approved.'])->status(409);
             if ($run->needs_recalculation) throw ValidationException::withMessages(['payroll' => 'Leave, overtime, penalties or salary changed after this run was calculated. Recalculate it before approving.']);
-            if ($run->created_by === $userId && ! \App\Models\User::find($userId)?->hasRole('Master Admin')) throw ValidationException::withMessages(['payroll' => 'The person who calculated a payroll run cannot approve it.']);
+            if ($run->created_by === $userId && ! \App\Models\User::find($userId)?->hasAnyRole(['Master Admin', 'Company Owner'])) throw ValidationException::withMessages(['payroll' => 'The person who calculated a payroll run cannot approve it.']);
             $run->update(['status' => 'approved']);
             $approval=ApprovalRequest::where('approvable_type',PayrollRun::class)->where('approvable_id',$run->id)->where('status','pending')->latest('id')->first();
             if(!$approval)throw ValidationException::withMessages(['payroll'=>'A pending payroll approval is required.']);
