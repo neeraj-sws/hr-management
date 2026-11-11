@@ -1,7 +1,7 @@
 <div>
     <div class="page-head">
         <div><h1>Leave Requests</h1><p>Request time off and track approvals.</p></div>
-        @if($own)<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Request leave</button>@endif
+        @if($own && !auth()->user()->hasAnyRole(['Master Admin', 'Company Owner']))<button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Request leave</button>@endif
     </div>
     <x-errors />
     @if(! $own)<div class="alert alert-info">Your account has no employee profile, so you cannot request leave yourself. You can review and approve requests here.</div>@endif

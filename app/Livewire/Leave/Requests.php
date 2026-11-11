@@ -60,6 +60,7 @@ class Requests extends Component
 
     public function create(): void
     {
+        abort_if($this->user()->hasAnyRole(['Master Admin', 'Company Owner']), 403);
         $this->requireEmployee();
         $this->reset('leaveTypeId', 'otherType', 'startsOn', 'endsOn', 'reason');
         $this->duration = 'full';

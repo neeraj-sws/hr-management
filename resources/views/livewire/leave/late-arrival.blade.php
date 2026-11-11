@@ -1,7 +1,7 @@
 <div>
     <div class="page-head">
         <div><h1>Late arrival</h1><p>Coming late? Tell in advance - before your day starts - with your expected check-in time and a valid reason. Management decides; sending it does not mean approval. Approved and in by that time: no late fine and no late cut.</p></div>
-        @if($own)<div class="actions"><button class="btn btn-primary" wire:click="$set('showForm', true)"><x-icon name="plus" class="icon-sm" />I will come late</button></div>@endif
+        @if($own && !auth()->user()->hasAnyRole(['Master Admin', 'Company Owner']))<div class="actions"><button class="btn btn-primary" wire:click="$set('showForm', true)"><x-icon name="plus" class="icon-sm" />I will come late</button></div>@endif
     </div>
     <x-errors />
 

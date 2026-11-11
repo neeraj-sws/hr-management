@@ -41,6 +41,7 @@ class LateArrival extends Component
 
     public function save(LateArrivalService $late): void
     {
+        abort_if($this->user()->hasAnyRole(['Master Admin', 'Company Owner']), 403);
         $this->validate(['workDate' => ['required', 'date'], 'expectedAt' => ['required', 'date_format:H:i'], 'reason' => ['required', 'string', 'min:10', 'max:2000']],
             ['reason.min' => 'Give a valid reason (at least 10 characters).'], ['workDate' => 'date', 'expectedAt' => 'expected check-in']);
         try {
