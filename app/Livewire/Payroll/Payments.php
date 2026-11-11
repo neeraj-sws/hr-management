@@ -41,7 +41,7 @@ class Payments extends Component
     public function pay(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
-        $this->validate(['amount' => ['required', 'numeric', 'gt:0'], 'method' => ['required', \Illuminate\Validation\Rule::in(array_keys(\App\Models\SalaryPayment::METHODS))], 'paidOn' => ['required', 'date', 'before_or_equal:today'], 'reference' => ['nullable', 'string', 'max:255']], [], ['paidOn' => 'payment date']);
+        $this->validate(['amount' => ['required', 'numeric', 'gt:0'], 'method' => ['required', \Illuminate\Validation\Rule::in(array_keys(\App\Models\SalaryPayment::METHODS))], 'paidOn' => ['required', 'date', 'before_or_equal:today'], 'reference' => ['required', 'string', 'max:255']], [], ['paidOn' => 'payment date']);
         $workflow->pay(PayrollItem::findOrFail($this->payingItemId), ['amount' => $this->amount, 'paid_on' => $this->paidOn, 'method' => $this->method, 'reference' => $this->reference ?: null], auth()->id());
         $this->payingItemId = null;
         $this->toast('Payment recorded.');

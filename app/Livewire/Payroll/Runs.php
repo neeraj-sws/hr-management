@@ -175,7 +175,7 @@ class Runs extends Component
     public function pay(HrWorkflowService $workflow): void
     {
         abort_unless($this->user()->can('payroll.manage'), 403);
-        $this->validate(['paymentAmount' => ['required', 'numeric', 'gt:0'], 'paymentReference' => ['nullable', 'string', 'max:255']], [], ['paymentAmount' => 'amount']);
+        $this->validate(['paymentAmount' => ['required', 'numeric', 'gt:0'], 'paymentReference' => ['required', 'string', 'max:255']], [], ['paymentAmount' => 'amount']);
         $workflow->pay(PayrollItem::findOrFail($this->payingItemId), ['amount' => $this->paymentAmount, 'paid_on' => today(), 'reference' => $this->paymentReference ?: null], auth()->id());
         $this->payingItemId = null;
         $this->toast('Payment recorded and payslip issued.');
