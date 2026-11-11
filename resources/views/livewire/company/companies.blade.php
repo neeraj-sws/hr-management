@@ -1,4 +1,4 @@
-﻿<div>
+<div>
     <div class="page-head">
         <div><h1>Companies</h1><p>Create and manage companies. Each company has its own employees, payroll and rules.</p></div>
         @unless($showForm)
@@ -43,9 +43,9 @@
                         <strong>{{ $company->name }}</strong>
                         @if($company->email)<br><small class="muted">{{ $company->email }}</small>@endif
                     </td>
-                    <td>{{ $company->code ?? 'â€”' }}</td>
-                    <td>{{ $company->owner_name ?? 'â€”' }}</td>
-                    <td>{{ $company->phone ?? 'â€”' }}</td>
+                    <td>{{ $company->code ?? '-' }}</td>
+                    <td>{{ $company->owner_name ?? '-' }}</td>
+                    <td>{{ $company->phone ?? '-' }}</td>
                     <td>{{ $company->employees_count }}</td>
                     <td>
                         @if($company->is_active)
