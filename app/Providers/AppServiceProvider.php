@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Gate;
 use App\Http\Middleware\EnsureAccess;
 use App\Http\Middleware\EnsureActiveAccount;
@@ -31,6 +32,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Run any pending migrations automatically on boot (safe on shared hosting where SSH is unavailable).
+        try {
+            Artisan::call('migrate', ['--force' => true]);
+        } catch (\Throwable) {}
+
         Gate::policy(AttendanceEmployee::class,AttendanceEmployeePolicy::class);
         Gate::policy(EmployeeNote::class,EmployeeNotePolicy::class);
         Gate::policy(CredentialVaultEntry::class,CredentialVaultEntryPolicy::class);
