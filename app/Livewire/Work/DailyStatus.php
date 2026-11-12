@@ -367,7 +367,7 @@ class DailyStatus extends Component
         // Only the open tab's data is loaded.
         $data['tab'] = match ($this->viewTab) {
             'timesheet' => \App\Models\TaskTimeEntry::with('task')->where('employee_id', $employee->id)->whereDate('started_at', $day)->orderBy('started_at')->get(),
-            'tasks' => $tasks,
+            'tasks' => $tasks->load(['timeEntries' => fn ($q) => $q->where('employee_id', $employee->id)->whereDate('started_at', $day)->orderBy('started_at')]),
             'projects' => Project::where(fn ($q) => $q->where('manager_id', $employee->id)->orWhereHas('members', fn ($m) => $m->where('attendance_employees.id', $employee->id)))->orderBy('name')->get(),
             'attendance' => \App\Models\AttendanceSession::where('employee_id', $employee->id)->whereDate('work_date', $day)->orderBy('check_in')->get(),
             'leaves' => \App\Models\LeaveRequest::with('leaveType')->where('employee_id', $employee->id)->whereDate('ends_on', '>=', \Illuminate\Support\Carbon::parse($day)->subDays(60))->orderByDesc('starts_on')->limit(10)->get(),
