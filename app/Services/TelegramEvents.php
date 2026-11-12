@@ -15,9 +15,9 @@ use App\Support\Duration;
 use Illuminate\Support\Carbon;
 
 /**
- * The Telegram messages for HR events: the Super Admin's feed and, for check-in / check-out, the employee's own chat
- * (everything else reaches the employee through their normal notifications). Each message has a fixed key, so the
- * same event is never sent twice. Nothing here changes attendance, leave or payroll.
+ * The Telegram messages for HR events: the Super Admin's feed, Company Owners (for their own company's employees),
+ * and for check-in / check-out the employee's own chat. Each message has a fixed key so the same event is never
+ * sent twice. Nothing here changes attendance, leave or payroll.
  */
 class TelegramEvents
 {
@@ -39,7 +39,9 @@ class TelegramEvents
         if (! $e || ! $session->check_in) return;
         $late = rescue(fn () => app(AttendanceService::class)->isLate($session) ? app(AttendanceService::class)->lateMinutes($session) : 0, 0, false);
         $status = $late > 0 ? "Late by {$late} min" : 'On time';
-        $this->telegram->toAdmin('check_in', "in:{$session->id}", TelegramNotificationService::format('Attendance started', [...self::who($e), 'Date' => $session->check_in->format('d F Y'), 'Time' => $session->check_in->format('h:i A'), 'Status' => $status]));
+        $adminText = TelegramNotificationService::format('Attendance started', [...self::who($e), 'Date' => $session->check_in->format('d F Y'), 'Time' => $session->check_in->format('h:i A'), 'Status' => $status]);
+        $this->telegram->toAdmin('check_in', "in:{$session->id}", $adminText);
+        $this->telegram->toCompanyOwners((int) $e->company_id, 'check_in', "in:{$session->id}", $adminText);
         $this->telegram->toUser($e->user, 'check_in', "in:{$session->id}", TelegramNotificationService::format('Attendance started', ['Hello '.$e->name.', your attendance is recorded.', 'Date' => $session->check_in->format('d F Y'), 'Time' => $session->check_in->format('h:i A'), 'Status' => $status]));
     }
 
@@ -49,7 +51,9 @@ class TelegramEvents
         if (! $e || ! $session->check_out) return;
         $worked = rescue(fn () => Duration::hm(app(AttendanceService::class)->workedSeconds($session)), null, false);
         $lines = ['Date' => $session->work_date->format('d F Y'), 'Check-in' => $session->check_in?->format('h:i A'), 'Checkout Time' => $session->check_out->format('h:i A'), 'Worked' => $worked];
-        $this->telegram->toAdmin('check_out', "out:{$session->id}", TelegramNotificationService::format('Checkout completed', [...self::who($e), ...$lines]));
+        $adminText = TelegramNotificationService::format('Checkout completed', [...self::who($e), ...$lines]);
+        $this->telegram->toAdmin('check_out', "out:{$session->id}", $adminText);
+        $this->telegram->toCompanyOwners((int) $e->company_id, 'check_out', "out:{$session->id}", $adminText);
         $this->telegram->toUser($e->user, 'check_out', "out:{$session->id}", TelegramNotificationService::format('Checkout completed', ['Hello '.$e->name.', your checkout is recorded.', ...$lines]));
     }
 
@@ -65,7 +69,9 @@ class TelegramEvents
 
     public function absent(AttendanceEmployee $e, string $date): void
     {
-        $this->telegram->toAdmin('absent', "absent:{$e->id}:{$date}", TelegramNotificationService::format('Not checked in', [...self::who($e), 'Date' => Carbon::parse($date)->format('d F Y'), 'Not checked in and not on approved leave']));
+        $absentText = TelegramNotificationService::format('Not checked in', [...self::who($e), 'Date' => Carbon::parse($date)->format('d F Y'), 'Not checked in and not on approved leave']);
+        $this->telegram->toAdmin('absent', "absent:{$e->id}:{$date}", $absentText);
+        $this->telegram->toCompanyOwners((int) $e->company_id, 'absent', "absent:{$e->id}:{$date}", $absentText);
     }
 
     public function leave(LeaveRequest $leave, string $what): void
@@ -73,16 +79,21 @@ class TelegramEvents
         $leave->loadMissing(['employee', 'leaveType']);
         $title = ['applied' => 'New leave request', 'approved' => 'Leave approved', 'rejected' => 'Leave rejected', 'cancelled' => 'Leave cancelled'][$what] ?? 'Leave updated';
         $event = ['applied' => 'leave_applied', 'cancelled' => 'leave_cancelled'][$what] ?? 'leave_decided';
-        $this->telegram->toAdmin($event, "leave:{$leave->id}:{$what}".($what === 'applied' ? '' : ':'.$leave->decided_at?->timestamp), TelegramNotificationService::format($title, [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
-            'Days' => rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.'), 'Reason' => $what === 'applied' ? $leave->reason : null, 'Status' => $what === 'applied' ? 'Pending Approval' : ucfirst($what), 'Note' => $what !== 'applied' ? $leave->decision_note : null]));
+        $leaveKey = "leave:{$leave->id}:{$what}".($what === 'applied' ? '' : ':'.$leave->decided_at?->timestamp);
+        $leaveText = TelegramNotificationService::format($title, [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
+            'Days' => rtrim(rtrim(number_format((float) $leave->days, 2), '0'), '.'), 'Reason' => $what === 'applied' ? $leave->reason : null, 'Status' => $what === 'applied' ? 'Pending Approval' : ucfirst($what), 'Note' => $what !== 'applied' ? $leave->decision_note : null]);
+        $this->telegram->toAdmin($event, $leaveKey, $leaveText);
+        $this->telegram->toCompanyOwners((int) $leave->employee?->company_id, $event, $leaveKey, $leaveText);
     }
 
     /** A leave asked for a personal reason: rejected by the system at once. */
     public function leaveAutoRejected(LeaveRequest $leave): void
     {
         $leave->loadMissing(['employee', 'leaveType']);
-        $this->telegram->toAdmin('auto_rejected', "leave:{$leave->id}:auto-rejected", TelegramNotificationService::format('Leave rejected automatically', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
-            'Reason given' => $leave->reason, 'Why rejected' => 'Personal reason - not accepted for leave']));
+        $autoRejText = TelegramNotificationService::format('Leave rejected automatically', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
+            'Reason given' => $leave->reason, 'Why rejected' => 'Personal reason - not accepted for leave']);
+        $this->telegram->toAdmin('auto_rejected', "leave:{$leave->id}:auto-rejected", $autoRejText);
+        $this->telegram->toCompanyOwners((int) $leave->employee?->company_id, 'auto_rejected', "leave:{$leave->id}:auto-rejected", $autoRejText);
     }
 
     /** A late fine's reason was a personal reason: rejected by the system, the fine stays. */
@@ -97,14 +108,18 @@ class TelegramEvents
     public function overtimeRequested(\App\Models\OvertimeRequest $request): void
     {
         $request->loadMissing('employee');
-        $this->telegram->toAdmin('overtime_requested', "overtime:{$request->id}:requested", TelegramNotificationService::format('Overtime requested', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Overtime' => Duration::words((int) $request->requested_minutes), 'Reason' => $request->reason, 'Status' => 'Pending approval']));
+        $otText = TelegramNotificationService::format('Overtime requested', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Overtime' => Duration::words((int) $request->requested_minutes), 'Reason' => $request->reason, 'Status' => 'Pending approval']);
+        $this->telegram->toAdmin('overtime_requested', "overtime:{$request->id}:requested", $otText);
+        $this->telegram->toCompanyOwners((int) $request->employee?->company_id, 'overtime_requested', "overtime:{$request->id}:requested", $otText);
     }
 
     public function expenseSubmitted(\App\Models\ExpenseClaim $claim): void
     {
         $claim->loadMissing('employee');
-        $this->telegram->toAdmin('expense_submitted', "expense:{$claim->id}:submitted", TelegramNotificationService::format('Expense claim submitted', [...self::who($claim->employee), 'Spent on' => $claim->spent_on?->format('d F Y'), 'Category' => $claim->category ? ucfirst(str_replace('_', ' ', (string) $claim->category)) : null, 'Amount' => self::money((float) $claim->amount),
-            'Details' => \Illuminate\Support\Str::limit(trim((string) $claim->description), 200), 'Receipt' => $claim->receipt_path ? 'Attached' : 'None', 'Status' => 'Pending approval']));
+        $expText = TelegramNotificationService::format('Expense claim submitted', [...self::who($claim->employee), 'Spent on' => $claim->spent_on?->format('d F Y'), 'Category' => $claim->category ? ucfirst(str_replace('_', ' ', (string) $claim->category)) : null, 'Amount' => self::money((float) $claim->amount),
+            'Details' => \Illuminate\Support\Str::limit(trim((string) $claim->description), 200), 'Receipt' => $claim->receipt_path ? 'Attached' : 'None', 'Status' => 'Pending approval']);
+        $this->telegram->toAdmin('expense_submitted', "expense:{$claim->id}:submitted", $expText);
+        $this->telegram->toCompanyOwners((int) $claim->employee?->company_id, 'expense_submitted', "expense:{$claim->id}:submitted", $expText);
     }
 
     /** How long a leave request has waited, in words ("5 hours", "2 days"). */
@@ -119,8 +134,10 @@ class TelegramEvents
     public function leavePendingEscalated(LeaveRequest $leave): void
     {
         $leave->loadMissing(['employee', 'leaveType']);
-        $this->telegram->toAdmin('leave_pending', "leave:{$leave->id}:pending-24h", TelegramNotificationService::format('Leave not decided for 24 hours', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
-            'Asked on' => $leave->created_at?->format('d F Y, h:i A'), 'Waiting' => self::waiting($leave), 'Reason' => $leave->reason, 'Status' => 'Pending - no action taken yet. Please approve or reject.']));
+        $pendingText = TelegramNotificationService::format('Leave not decided for 24 hours', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'),
+            'Asked on' => $leave->created_at?->format('d F Y, h:i A'), 'Waiting' => self::waiting($leave), 'Reason' => $leave->reason, 'Status' => 'Pending - no action taken yet. Please approve or reject.']);
+        $this->telegram->toAdmin('leave_pending', "leave:{$leave->id}:pending-24h", $pendingText);
+        $this->telegram->toCompanyOwners((int) $leave->employee?->company_id, 'leave_pending', "leave:{$leave->id}:pending-24h", $pendingText);
     }
 
     /** Every morning: one message listing every leave request nobody has decided yet (oldest first). */
@@ -140,29 +157,37 @@ class TelegramEvents
     public function lateArrivalRequested(\App\Models\LateArrivalRequest $request): void
     {
         $request->loadMissing('employee');
-        $this->telegram->toAdmin('late_arrival_requested', "late-arrival:{$request->id}:requested", TelegramNotificationService::format('Late arrival (told in advance)', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Expected check-in' => $request->expectedLabel(),
-            'Reason' => \Illuminate\Support\Str::limit((string) $request->reason, 300), 'Status' => $request->status === 'pending' ? 'Pending approval' : 'Rejected automatically (personal reason)']));
+        $lateText = TelegramNotificationService::format('Late arrival (told in advance)', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Expected check-in' => $request->expectedLabel(),
+            'Reason' => \Illuminate\Support\Str::limit((string) $request->reason, 300), 'Status' => $request->status === 'pending' ? 'Pending approval' : 'Rejected automatically (personal reason)']);
+        $this->telegram->toAdmin('late_arrival_requested', "late-arrival:{$request->id}:requested", $lateText);
+        $this->telegram->toCompanyOwners((int) $request->employee?->company_id, 'late_arrival_requested', "late-arrival:{$request->id}:requested", $lateText);
     }
 
     public function nightWorkRequested(\App\Models\NightWorkRequest $request): void
     {
         $request->loadMissing('employee');
-        $this->telegram->toAdmin('night_work_requested', "night-work:{$request->id}:requested", TelegramNotificationService::format('Night work requested', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Time' => $request->timeRange(), 'Hours' => Duration::words($request->minutes),
-            'Tasks' => $request->tasks()->pluck('title')->join(', ') ?: null, 'Work done' => \Illuminate\Support\Str::limit((string) $request->work_done, 300), 'Status' => 'Pending approval']));
+        $nightText = TelegramNotificationService::format('Night work requested', [...self::who($request->employee), 'Date' => $request->work_date?->format('d F Y'), 'Time' => $request->timeRange(), 'Hours' => Duration::words($request->minutes),
+            'Tasks' => $request->tasks()->pluck('title')->join(', ') ?: null, 'Work done' => \Illuminate\Support\Str::limit((string) $request->work_done, 300), 'Status' => 'Pending approval']);
+        $this->telegram->toAdmin('night_work_requested', "night-work:{$request->id}:requested", $nightText);
+        $this->telegram->toCompanyOwners((int) $request->employee?->company_id, 'night_work_requested', "night-work:{$request->id}:requested", $nightText);
     }
 
     /** The leave day has come and nobody has decided the request. */
     public function leavePendingUrgent(LeaveRequest $leave): void
     {
         $leave->loadMissing(['employee', 'leaveType']);
-        $this->telegram->toAdmin('leave_pending', "leave:{$leave->id}:pending-urgent", TelegramNotificationService::format('Leave not decided', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'), 'Asked on' => $leave->created_at?->format('d F Y'), 'Status' => 'Pending Approval - please approve or reject']));
+        $urgentText = TelegramNotificationService::format('Leave not decided', [...self::who($leave->employee), 'Leave Type' => $leave->typeName() ?? 'Leave', 'From' => $leave->starts_on?->format('d F Y'), 'To' => $leave->ends_on?->format('d F Y'), 'Asked on' => $leave->created_at?->format('d F Y'), 'Status' => 'Pending Approval - please approve or reject']);
+        $this->telegram->toAdmin('leave_pending', "leave:{$leave->id}:pending-urgent", $urgentText);
+        $this->telegram->toCompanyOwners((int) $leave->employee?->company_id, 'leave_pending', "leave:{$leave->id}:pending-urgent", $urgentText);
     }
 
     public function correctionRequested(AttendanceCorrection $c): void
     {
         $c->loadMissing('employee');
-        $this->telegram->toAdmin('correction_requested', "correction:{$c->id}:requested", TelegramNotificationService::format('Attendance correction requested', [...self::who($c->employee), 'Date' => $c->work_date?->format('d F Y'),
-            'Check-in' => $c->requested_check_in?->format('h:i A'), 'Check-out' => $c->requested_check_out?->format('h:i A'), 'Break' => $c->requested_break_minutes ? Duration::words($c->requested_break_minutes) : null, 'Reason' => $c->reason, 'Status' => 'Pending approval']));
+        $corrText = TelegramNotificationService::format('Attendance correction requested', [...self::who($c->employee), 'Date' => $c->work_date?->format('d F Y'),
+            'Check-in' => $c->requested_check_in?->format('h:i A'), 'Check-out' => $c->requested_check_out?->format('h:i A'), 'Break' => $c->requested_break_minutes ? Duration::words($c->requested_break_minutes) : null, 'Reason' => $c->reason, 'Status' => 'Pending approval']);
+        $this->telegram->toAdmin('correction_requested', "correction:{$c->id}:requested", $corrText);
+        $this->telegram->toCompanyOwners((int) $c->employee?->company_id, 'correction_requested', "correction:{$c->id}:requested", $corrText);
     }
 
     /** A daily status: today's, or an old day's (sent late, with the reason given). */
@@ -170,8 +195,10 @@ class TelegramEvents
     {
         $status->loadMissing('employee');
         $old = $status->work_date && $status->work_date->lt(today());
-        $this->telegram->toAdmin('daily_status', "status:{$status->id}", TelegramNotificationService::format($old ? 'Daily status (old day)' : ($status->auto_from_tasks ? 'Daily status (written from tasks)' : 'Daily status submitted'), [...self::who($status->employee), 'Date' => $status->work_date?->format('d F Y'),
-            'Submitted' => now()->format('d F Y, h:i A'), 'Summary' => \Illuminate\Support\Str::limit(trim((string) $status->summary), 300), 'Late reason' => $status->late_reason]));
+        $statusText = TelegramNotificationService::format($old ? 'Daily status (old day)' : ($status->auto_from_tasks ? 'Daily status (written from tasks)' : 'Daily status submitted'), [...self::who($status->employee), 'Date' => $status->work_date?->format('d F Y'),
+            'Submitted' => now()->format('d F Y, h:i A'), 'Summary' => \Illuminate\Support\Str::limit(trim((string) $status->summary), 300), 'Late reason' => $status->late_reason]);
+        $this->telegram->toAdmin('daily_status', "status:{$status->id}", $statusText);
+        $this->telegram->toCompanyOwners((int) $status->employee?->company_id, 'daily_status', "status:{$status->id}", $statusText);
     }
 
     public function correction(AttendanceCorrection $c): void
@@ -185,7 +212,10 @@ class TelegramEvents
     {
         $task->loadMissing(['assignee', 'project']);
         $event = $what === 'completed' ? 'task_completed' : 'task_assigned';
-        $this->telegram->toAdmin($event, "task:{$task->id}:{$what}:".($what === 'assigned' ? $task->assignee_id : ''), TelegramNotificationService::format($what === 'completed' ? 'Task completed' : 'Task assigned', [...self::who($task->assignee), 'Task' => $task->title, 'Project' => $task->project?->name, 'Due' => $task->due_on?->format('d F Y'), 'Priority' => $task->priority ? ucfirst((string) $task->priority) : null]));
+        $taskKey = "task:{$task->id}:{$what}:".($what === 'assigned' ? $task->assignee_id : '');
+        $taskText = TelegramNotificationService::format($what === 'completed' ? 'Task completed' : 'Task assigned', [...self::who($task->assignee), 'Task' => $task->title, 'Project' => $task->project?->name, 'Due' => $task->due_on?->format('d F Y'), 'Priority' => $task->priority ? ucfirst((string) $task->priority) : null]);
+        $this->telegram->toAdmin($event, $taskKey, $taskText);
+        $this->telegram->toCompanyOwners((int) $task->assignee?->company_id, $event, $taskKey, $taskText);
     }
 
     public function payslip(Payslip $payslip): void
