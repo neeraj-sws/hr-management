@@ -241,7 +241,11 @@ class SalarySummaryService
         $notOnProject = array_values((array) ($b['project_days']['not_paid'] ?? []));
         if ($notOnProject) $add('Not on project work ('.implode(', ', (array) ($b['project_days']['projects'] ?? [])).') — '.count($notOnProject).' '.(count($notOnProject) === 1 ? 'day' : 'days'), $dates($notOnProject).' · at work, but no task of the project that day: not paid'.((float) ($b['project_days']['fines_not_cut'] ?? 0) > 0 ? ' (their fines ₹'.number_format((float) $b['project_days']['fines_not_cut'], 2).' not cut either)' : ''), min((float) count($notOnProject), max(0, $left)));
         $unpaid = (float) ($days['unpaid_leave'] ?? 0);
-        if ($unpaid > 0) $add('Unpaid leave — '.$num($unpaid).' '.($unpaid == 1 ? 'day' : 'days'), null, min($unpaid, max(0, $left)));
+        if ($unpaid > 0) {
+            $unpaidDates = array_values(array_filter((array) ($b['unpaid_leave_dates'] ?? [])));
+            $unpaidDetail = $unpaidDates ? $dates($unpaidDates) : null;
+            $add('Unpaid leave — '.$num($unpaid).' '.($unpaid == 1 ? 'day' : 'days'), $unpaidDetail, min($unpaid, max(0, $left)));
+        }
         if ($left > 0.005) {
             $absent = (array) ($b['_days']['absent'] ?? []);
             $upcoming = (array) ($b['_days']['upcoming'] ?? []);
