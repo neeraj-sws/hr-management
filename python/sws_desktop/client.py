@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import json as _json
 import platform
 import ssl
 
@@ -90,8 +91,8 @@ class HrClient:
         except requests.RequestException as exc:
             raise ApiError(f"Cannot reach the SWS HR server ({exc.__class__.__name__}).", 0) from exc
         try:
-            body = response.json() if response.content else None
-        except ValueError:
+            body = _json.loads(response.content.decode("utf-8-sig")) if response.content else None
+        except (ValueError, UnicodeDecodeError):
             body = None
         if 200 <= response.status_code < 300:
             return body
