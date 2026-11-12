@@ -616,7 +616,7 @@ details.nav-group[data-current]>summary.nav-mod{background:#ffffff12;color:#fff}
 .emp-card{background:#fff;border:1px solid var(--line,#e4e9f0);border-radius:12px}
 .emp-filters{display:grid;grid-template-columns:minmax(220px,2.2fr) minmax(150px,1fr) minmax(140px,.9fr) minmax(140px,.9fr) minmax(130px,.9fr) auto;gap:12px;align-items:end;padding:16px 18px;border-bottom:1px solid #EEF1F5}
 .emp-filters .field{margin:0}
-.emp-input-icon{display:flex;align-items:center;gap:8px;border:1px solid var(--line,#e4e9f0);border-radius:8px;padding:0 10px;background:#fff;color:#8a96aa}
+.emp-input-icon{display:flex;align-items:center;gap:8px;border:1px solid var(--line,#e4e9f0);border-radius:9px;padding:0 10px;background:#fff;color:#8a96aa;height:40px;box-sizing:border-box}
 .emp-input-icon:focus-within{border-color:#2B5BD7;box-shadow:0 0 0 3px #2b5bd722}
 .emp-input-icon input{border:0!important;box-shadow:none!important;padding-left:0;flex:1;min-width:0}
 .emp-reset{height:38px}
@@ -1312,6 +1312,7 @@ div.tm-card{cursor:default}
 .why-less .wl-table .num{text-align:right;font-variant-numeric:tabular-nums}
 .why-less .wl-table td small{display:block;color:#8a96aa;font-size:11px}
 .why-less .wl-total{border-top:2px solid #E9C98F;font-weight:700;color:#13254F;font-size:14px}
+.why-less .wl-net-payable{border-top:2px solid #E9C98F;margin-top:4px;padding:10px 12px;background:#FFF3CD;border-radius:8px;font-weight:700;color:#13254F;font-size:15px}
 
 /* ---------- Important reminder popup ---------- */
 .nf-urgent{position:fixed;right:20px;bottom:20px;z-index:80;width:320px;max-width:calc(100vw - 32px);background:#fff;border:1px solid #F0D7A8;border-left:4px solid #854F0B;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:14px 16px}

@@ -45,7 +45,7 @@
         @foreach($s['added'] ?? [] as $a)
             <div class="wl-row"><span>+ {{ $a['label'] }}@if($a['detail'])<small>{{ $a['detail'] }}</small>@endif</span><b class="wl-pos">+{{ $rs($a['amount']) }}</b></div>
         @endforeach
-        <div class="wl-row wl-total"><span>{{ ($s['estimate'] ?? false) ? 'Net salary so far' : 'Net salary' }}</span><b>{{ $rs($s['net']) }}</b></div>
+        <div class="wl-row wl-net-payable"><span>{{ ($s['estimate'] ?? false) ? 'Net salary so far' : 'Net payable' }}</span><b>{{ $rs($s['net']) }}</b></div>
         @if(! empty($s['pending_fines']))
             <div class="wl-pending"><strong>Fines waiting for approval (not cut yet)</strong>
                 @foreach($s['pending_fines'] as $p)<div class="wl-row"><span>{{ $p['label'] }}<small>{{ $p['detail'] }}</small></span><b class="muted">{{ $rs($p['amount']) }}</b></div>@endforeach

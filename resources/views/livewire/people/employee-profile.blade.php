@@ -31,6 +31,8 @@
     @php($tabs['history'] = 'History')
     {{-- A company owner is not an employee: no attendance, leave, salary or compliance tabs. --}}
     @if($employee->isOwner())@php($tabs = array_diff_key($tabs, array_flip(['attendance', 'leave', 'payroll', 'compliance'])))@endif
+    {{-- Trainees are not on payroll. --}}
+    @if($employee->isTrainee())@php($tabs = array_diff_key($tabs, array_flip(['payroll'])))@endif
     <div class="tabbar" role="tablist">
         @foreach($tabs as $key => $label)
             <button type="button" class="tab" :class="{ 'tab-on': tab === '{{ $key }}' }" @click="tab = '{{ $key }}'" role="tab">{{ $label }}</button>
