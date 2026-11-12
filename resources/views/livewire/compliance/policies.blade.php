@@ -8,6 +8,7 @@
         </div></section>
     @endif
 
+    @if($canConfigure)
     <section class="card mb">
         <div class="card-head"><div><h2>Run compliance assessment</h2><p>Checks late check-ins, unauthorized absences (no attendance and no approved leave on a workday) and overdue tasks. Re-running never duplicates penalties.</p></div></div>
         <form class="toolbar" wire:submit="assess" style="border:0">
@@ -16,6 +17,7 @@
             <button class="btn btn-primary" wire:loading.attr="disabled"><span wire:loading wire:target="assess" class="spinner"></span>Run assessment</button>
         </form>
     </section>
+    @endif
 
     <div class="grid grid-3 mb">
         @foreach($rules as $key => [$label, $fields])

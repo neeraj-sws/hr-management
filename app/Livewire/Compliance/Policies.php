@@ -226,7 +226,7 @@ class Policies extends Component
             'overridable' => app(PeopleOperationsService::class)->overtimeEnabled() ? self::OVERRIDABLE : array_diff_key(self::OVERRIDABLE, ['overtime.multiplier' => true]),
             'teamOverrides' => \App\Models\TeamPolicyOverride::with('team')->whereIn('rule_key', array_keys(self::OVERRIDABLE))->latest()->get(),
             'teams' => \App\Models\Team::orderBy('name')->get(['id', 'name']),
-            'canConfigure' => $this->user()->can('policies.manage'),
+            'canConfigure' => $this->user()->can('policies.manage') && ! $this->user()->hasRole('Master Admin'),
             'ruleCompanies' => \App\Support\CompanyAccess::isLimited($this->user()) ? collect() : \App\Models\Company::orderByDesc('is_main')->orderBy('name')->get(['id', 'name']),
             'overrides' => EmployeePolicyOverride::whereIn('rule_key', array_keys(self::OVERRIDABLE))->with('employee')->latest()->paginate(15, ['*'], 'overridesPage'),
             'history' => PolicyRule::whereIn('rule_key', array_keys(self::RULES))->latest('effective_from')->latest('id')->limit(15)->get(),
