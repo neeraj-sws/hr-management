@@ -197,6 +197,28 @@ class TelegramNotificationService
         }
     }
 
+    /**
+     * Send an event to every active Company Owner who has Telegram linked for the given company.
+     * Uses the same admin event toggles (admin.{event} in settings). Never sends to the Super Admin
+     * chat — that is toAdmin()'s job. Duplicate-safe: key is prefixed with co:{companyId}.
+     */
+    public function toCompanyOwners(int $companyId, string $event, string $key, string $text): void
+    {
+        $settings = $this->settings();
+        if (! $this->enabled() || ! ($settings['admin'][$event] ?? false)) return;
+        $adminChat = $this->adminChatId();
+        User::where('company_id', $companyId)
+            ->where('is_active', true)
+            ->role('Company Owner')
+            ->get()
+            ->each(function (User $owner) use ($companyId, $key, $event, $text, $adminChat) {
+                $chat = $this->chatFor($owner->id);
+                if ($chat && $chat !== $adminChat) {
+                    $this->queue('user', $owner->id, "co:{$companyId}:{$key}", $event, $text);
+                }
+            });
+    }
+
     /** A person's own message to their linked chat. $event null = an in-app notification (their own preferences decide). */
     public function toUser(?User $user, ?string $event, string $key, string $text): void
     {
