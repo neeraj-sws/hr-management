@@ -12,7 +12,7 @@ use Livewire\Component;
 /** Managers directory: anyone with direct reports or the Manager role, with team load. */
 class Managers extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     public function render()
     {

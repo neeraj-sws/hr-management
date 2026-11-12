@@ -12,7 +12,7 @@ use Livewire\Component;
 
 class Departments extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     public bool $showForm = false;
     public ?int $editingId = null;

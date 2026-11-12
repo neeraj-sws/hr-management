@@ -12,7 +12,7 @@ use App\Services\AuditLogger;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Revenue / income entries (money received, not necessarily tied to an invoice), like the old CMS. */
 class Revenues extends Component

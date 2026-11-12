@@ -10,7 +10,7 @@ use App\Services\PeopleOperationsService;
 use App\Services\PolicyConfigurationService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 class Overtime extends Component
 {

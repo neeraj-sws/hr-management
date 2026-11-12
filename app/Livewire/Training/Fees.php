@@ -22,7 +22,7 @@ use Livewire\Component;
  */
 class Fees extends Component
 {
-    use InteractsWithHr, \App\Livewire\Concerns\EditsTrainingCourse, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\EditsTrainingCourse, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public string $tab = 'trainees';
     #[Url] public string $search = '';

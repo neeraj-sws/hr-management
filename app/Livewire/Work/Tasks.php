@@ -12,7 +12,7 @@ use App\Services\WorkService;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** "Tasks" (assign/manage team work) and "My Tasks" (own work + timer) share this page. */
 class Tasks extends Component

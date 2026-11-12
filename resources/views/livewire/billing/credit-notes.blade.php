@@ -17,7 +17,7 @@
             <label class="field"><span>Entries per page</span><select wire:model.live="perPage"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Customer, invoice no. or description"></label>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:14%"><col style="width:20%"><col style="width:12%"><col style="width:12%"><col style="width:30%"><col style="width:12%"></colgroup>
             <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th class="num">Amount</th><th>Description</th><th>Action</th></tr></thead>
             <tbody>
             @forelse($notes as $n)

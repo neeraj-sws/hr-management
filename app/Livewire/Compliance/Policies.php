@@ -16,7 +16,7 @@ use Livewire\Component;
  */
 class Policies extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     public const RULES = [
         'attendance.late_penalty' => ['Late attendance', ['salary_rate' => 'Deduct at the employee\'s salary per minute', 'amount_per_minute' => 'Amount per late minute', 'grace_minutes' => 'Grace minutes', 'max_amount' => 'Maximum per day', 'fixed_amount' => 'Fixed amount per late day (0 = per minute above)', 'deduct_now' => 'Deduct automatically', 'hours_cut' => 'Also cut the hours not worked']],

@@ -9,7 +9,7 @@ use App\Models\BillingInvoice;
 use App\Services\AuditLogger;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Credit notes — reduce what a customer owes on an invoice. */
 class CreditNotes extends Component

@@ -9,7 +9,7 @@ use App\Models\BillingVendor;
 use App\Services\AuditLogger;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Purchases → Debit notes: amounts a supplier takes back on a bill (added from the bill page). */
 class DebitNotes extends Component

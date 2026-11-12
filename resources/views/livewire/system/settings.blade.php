@@ -4,7 +4,7 @@
     @if($ruleCompanies->count() > 1)
         <section class="card mb"><div class="card-body toolbar">
             <x-field label="Rules for" name="rulesCompany" hint="a company's own rules replace the ones for all companies for its people"><select wire:model.live="rulesCompany"><option value="">All companies</option>@foreach($ruleCompanies as $rc)<option value="{{ $rc->id }}">{{ $rc->name }} only</option>@endforeach</select></x-field>
-            @if($rulesCompany !== '')<span class="small muted">Offices, e-mail, Google Sheets, security, leave year and offboarding are the same for all companies.</span>@endif
+            @if($rulesCompany !== '')<span class="small muted">Leave types, offices, e-mail, Google Sheets, security, leave year and offboarding are the same for all companies.</span>@endif
         </div></section>
     @endif
     @if($limited)<p class="small muted mb">These rules are your company's own. Leave types and offices without your company are shared by all companies: you can add your own, the shared ones are view only.</p>@endif
@@ -43,20 +43,15 @@
         <section class="card">
             <div class="card-head"><div><h2>Leave types</h2><p>Monthly accrual &gt; 0 means balances build up each month (via the scheduled <code>leave:accrue</code> job); otherwise the annual allowance is granted up-front.</p></div><button class="btn btn-primary btn-sm" wire:click="editType"><x-icon name="plus" class="icon-sm" />Add leave type</button></div>
             <div class="table-wrap"><table class="table">
-                <thead><tr><th>Name</th>@if(!$limited)<th>Company</th>@endif<th class="num">Annual</th><th class="num">Monthly accrual</th><th>Carry forward</th><th>Advance</th><th>Paid</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th class="num">Annual</th><th class="num">Monthly accrual</th><th>Carry forward</th><th>Advance</th><th>Paid</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                 @foreach($leaveTypes as $t)
-                    <tr><td><strong>{{ $t->name }}</strong><small>{{ $t->describe() }}</small></td>@if(!$limited)<td>@if($t->company_id)<span class="pill pill-sm">{{ $t->company?->name }}</span>@else<span class="muted small">All companies</span>@endif</td>@endif<td class="num">{{ (float) $t->annual_allowance }}</td><td class="num">{{ (float) $t->monthly_accrual }}</td>
+                    <tr><td><strong>{{ $t->name }}</strong><small>{{ $t->describe() }}</small></td><td class="num">{{ (float) $t->annual_allowance }}</td><td class="num">{{ (float) $t->monthly_accrual }}</td>
                         <td>{{ $t->carry_forward ? 'up to '.(float) $t->carry_forward_limit.' days'.($t->carry_forward_expiry_months ? ', expires after '.$t->carry_forward_expiry_months.' mo' : '') : 'No' }}</td>
-                        <td>{{ $t->allow_advance ? 'Allowed' : 'No' }}</td>
-                        <td>@if($t->paid_per_month)<span title="{{ $t->paid_per_month }} paid leave(s) per month; rest unpaid">{{ $t->paid_per_month }}/month</span>@else{{ $t->paid ? 'Paid' : 'Unpaid' }}@endif</td><td><x-badge :status="$t->is_active ? 'active' : 'inactive'" /></td>
+                        <td>{{ $t->allow_advance ? 'Allowed' : 'No' }}</td><td>{{ $t->paid ? 'Paid' : 'Unpaid' }}</td><td><x-badge :status="$t->is_active ? 'active' : 'inactive'" /></td>
                         <td class="nowrap">@if($t->changeable())<button class="btn btn-sm" wire:click="editType({{ $t->id }})">Edit</button>
                             @if(! $t->used)<button class="btn btn-sm btn-danger" wire:click="deleteType({{ $t->id }})" wire:confirm="Delete the leave type {{ $t->name }}? It has never been used, so nothing else changes.">Delete</button>
-                            @elseif($t->is_active)<button class="btn btn-sm" wire:click="deleteType({{ $t->id }})" wire:confirm="{{ $t->name }} is already used in leave history, so it cannot be deleted. Make it inactive? Nobody can apply for it any more; past leave stays as it is." title="Used in leave history: can be made inactive, not deleted">Make inactive</button>@endif
-                        @elseif($limited && $t->company_id === null)
-                            @if($t->is_active)<button class="btn btn-sm" wire:click="toggleSharedTypeActive({{ $t->id }})" wire:confirm="Deactivate {{ $t->name }}? This is a shared type — nobody in any company will be able to apply for it. Continue?">Deactivate</button>
-                            @else<button class="btn btn-sm btn-primary" wire:click="toggleSharedTypeActive({{ $t->id }})">Activate</button>@endif
-                        @endif</td></tr>
+                            @elseif($t->is_active)<button class="btn btn-sm" wire:click="deleteType({{ $t->id }})" wire:confirm="{{ $t->name }} is already used in leave history, so it cannot be deleted. Make it inactive? Nobody can apply for it any more; past leave stays as it is." title="Used in leave history: can be made inactive, not deleted">Make inactive</button>@endif @endif</td></tr>
                 @endforeach
                 </tbody>
             </table></div>
@@ -458,7 +453,6 @@
                 </form>
             </section>
 
-
             {{-- IP restriction --}}
             <section class="card sec-card">
                 <div class="sec-head">
@@ -466,7 +460,6 @@
                 </div>
                 <form wire:submit="saveIpRestriction">
                     <div class="sec-body">
-                        <x-errors />
                         <label class="sec-row">
                             <span><strong>Restrict the website to these IPs</strong><small>Baaki jagah se sign-in karne wale agle click par bahar ho jayenge.</small></span>
                             <span class="sec-switch"><input type="checkbox" wire:model.live="ipRestrictEnabled" aria-label="Restrict the website to these IPs"><i aria-hidden="true"></i></span>
@@ -477,6 +470,7 @@
                     <div class="sec-foot"><span class="muted small">Office ka IP badle (naya internet) to yahan update karna.</span><div class="row-actions"><button class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveIpRestriction">Save</button></div></div>
                 </form>
             </section>
+
             {{-- 2-step sign-in --}}
             <section class="card sec-card">
                 <div class="sec-head">
@@ -556,14 +550,6 @@
                 <x-field label="Carry-forward expires after (months)" name="type.carry_forward_expiry_months" hint="blank = never"><input type="number" min="1" max="24" wire:model="type.carry_forward_expiry_months"></x-field>
                 <label class="check"><input type="checkbox" wire:model="type.allow_advance"> Allow advance leave (negative balance within limit)</label>
                 <label class="check"><input type="checkbox" wire:model="type.paid"> Paid leave</label>
-                <div>
-                    <label class="check"><input type="checkbox" wire:model.live="type.paid_per_month_enabled"> Monthly paid leave limit <span class="muted small">(up to N leaves per month are paid; rest are unpaid)</span></label>
-                    @if($type['paid_per_month_enabled'] ?? false)
-                    <x-field label="Paid leaves per month" name="type.paid_per_month" hint="e.g. 1 → first leave each month is paid, any further leaves that month are unpaid">
-                        <input type="number" min="1" max="31" wire:model="type.paid_per_month" placeholder="1">
-                    </x-field>
-                    @endif
-                </div>
                 <label class="check"><input type="checkbox" wire:model="type.is_active"> Active</label>
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Save</button></div></form>

@@ -7,7 +7,7 @@ use App\Models\BillingVendor;
 use App\Services\AuditLogger;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Purchases → Suppliers (vendors): who the company buys from; bills and payments to them. */
 class Vendors extends Component

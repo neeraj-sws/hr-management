@@ -15,9 +15,7 @@ return new class extends Migration
         });
 
         // Backfill company_id from each asset's employee
-        DB::statement('UPDATE employee_assets ea
-            JOIN attendance_employees ae ON ae.id = ea.employee_id
-            SET ea.company_id = ae.company_id');
+        DB::statement('UPDATE employee_assets SET company_id = (SELECT ae.company_id FROM attendance_employees ae WHERE ae.id = employee_assets.employee_id)');
 
         Schema::table('employee_assets', function (Blueprint $table) {
             // Allow assets in inventory that are not yet assigned to anyone

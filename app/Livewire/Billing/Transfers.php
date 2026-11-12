@@ -8,7 +8,7 @@ use App\Models\BillingBankTransfer;
 use App\Services\AuditLogger;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Banking → Transfer: money moved between bank / cash accounts (e.g. cash deposited in HDFC). */
 class Transfers extends Component

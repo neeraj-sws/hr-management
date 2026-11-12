@@ -6,7 +6,7 @@
         <div class="toolbar">
             <label class="field"><span>Type</span><select wire:model.live="type"><option value="">All</option>@foreach(\App\Models\BillingCategory::TYPES as $k => $v)<option value="{{ $k }}">{{ $v }}</option>@endforeach</select></label>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:40%"><col style="width:20%"><col style="width:25%"><col style="width:15%"></colgroup>
             <thead><tr><th>Category</th><th>Type</th><th class="num">Revenue entries</th><th></th></tr></thead>
             <tbody>
             @forelse($categories as $c)

@@ -342,14 +342,13 @@
                 document.body.appendChild(box);
             }
             document.addEventListener('click', function (e) {
-                var el = (function(el){while(el){if(el.hasAttribute&&el.hasAttribute('wire:confirm'))return el;el=el.parentElement;}return null;})(e.target);
+                var el = e.target.closest ? e.target.closest('[wire\:confirm]') : null;
                 if (!el || el.__swsYes) return;
                 e.preventDefault(); e.stopImmediatePropagation();
                 if (!box) build();
-                var custom = el.getAttribute('wire:confirm');
                 // Short, specific questions keep their text; the usual wording becomes the standard CMS line.
+                // Same wording everywhere, like the CMS.
                 box.querySelector('#sws-confirm-msg').textContent = 'This action can not be undone. Do you want to continue?';
-                if (custom && custom.length < 140 && !/delete|remove|hata|cancel/i.test(custom)) box.querySelector('#sws-confirm-msg').textContent = custom;
                 box.style.display = 'flex';
                 var done = function (ok) {
                     box.style.display = 'none';

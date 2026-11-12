@@ -8,7 +8,7 @@ use App\Services\SupportService;
 use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Support desk (support.manage / support.handle): every request the person may see, in tabs, with search, filters and sorting. */
 class Desk extends Component

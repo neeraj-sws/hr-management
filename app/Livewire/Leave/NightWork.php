@@ -11,7 +11,7 @@ use App\Services\ApprovalInbox;
 use App\Services\NightWorkService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /**
  * Leave & Time > Night work: ask for work done at night (time, tasks, what was done) and see the decision; the

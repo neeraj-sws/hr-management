@@ -5,7 +5,9 @@
     Expects: $party (customer / vendor model or null), $partyField (wire model name), $parties, $partyLabel,
     $fieldsView (view with the right-hand fields), $lineTotals, $items, $products, $taxes, $subTotal, $discountTotal, $grandTotal, $back, $saveLabel.
 --}}
-@php($rupee = fn ($v) => number_format((float) $v, 2))
+{{-- Like the CMS edit page: plain numbers (17500.00, no thousand commas). --}}
+@php($rupee = fn ($v) => number_format((float) $v, 2, '.', ''))
+@php($editing = $editing ?? false)
 <style>
     .doc-form .doc-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:24px;padding:22px 24px}
     @media(max-width:900px){.doc-form .doc-top{grid-template-columns:1fr}}
@@ -33,7 +35,7 @@
 <section class="card">
     <div class="doc-top">
         <div>
-            @if($party)
+            @if($party && ! $editing)
                 <div class="doc-party">
                     <div><h3>Bill to</h3><p>
                         {{ $party->billing_name ?: $party->name }}<br>
@@ -63,7 +65,7 @@
     @error('items')<p class="error" style="padding:10px 16px 0">{{ $message }}</p>@enderror
     <div class="doc-items-head"><button type="button" class="btn btn-primary" wire:click="addItem"><x-icon name="plus" class="icon-sm" />Add item</button></div>
     <div class="table-wrap"><table class="doc-items">
-        <thead><tr><th style="width:30%">Items</th><th>Quantity</th><th>Price</th><th>Discount</th><th>Tax (%)</th><th style="text-align:right">Amount<small>after tax &amp; discount</small></th><th></th></tr></thead>
+        <thead><tr><th style="width:30%">Items</th><th>Quantity</th><th>Price</th><th>Discount</th><th>Tax</th><th style="text-align:right">Amount</th><th></th></tr></thead>
         <tbody>
         @foreach($items as $i => $it)
             <tr wire:key="doc-item-{{ $i }}">
@@ -72,11 +74,11 @@
                     @if(! $it['product_id'])<input wire:model="items.{{ $i }}.name" placeholder="Item name (custom)" aria-label="Item name" style="margin-top:6px">@endif
                     @error('items.'.$i.'.name')<span class="error">{{ $message }}</span>@enderror
                 </td>
-                <td><input type="number" step="0.01" min="0" wire:model.live.debounce.400ms="items.{{ $i }}.quantity" placeholder="Qty" aria-label="Quantity"></td>
+                <td><div class="doc-addon"><input type="number" step="0.01" min="0" wire:model.live.debounce.400ms="items.{{ $i }}.quantity" placeholder="Qty" aria-label="Quantity"><span>One</span></div></td>
                 <td><div class="doc-addon"><input type="number" step="0.01" min="0" wire:model.live.debounce.400ms="items.{{ $i }}.price" placeholder="Price" aria-label="Price"><span>Rs</span></div></td>
                 <td><div class="doc-addon"><input type="number" step="0.01" min="0" wire:model.live.debounce.400ms="items.{{ $i }}.discount" placeholder="Discount" aria-label="Discount"><span>Rs</span></div></td>
                 <td><select wire:model.live="items.{{ $i }}.tax_id" aria-label="Tax"><option value="">—</option>@foreach($taxes as $t)<option value="{{ $t->id }}">{{ $t->name }} ({{ (float) $t->rate }}%)</option>@endforeach</select></td>
-                <td class="doc-amount">{{ $rupee($lineTotals[$i] ?? 0) }}</td>
+                <td class="doc-amount">{{ round((float) ($lineTotals[$i] ?? 0), 2) }}</td>
                 <td><button type="button" class="btn btn-sm btn-icon btn-danger" wire:click="removeItem({{ $i }})" title="Remove item" aria-label="Remove item {{ $loop->iteration }}"><x-icon name="trash" class="icon-sm" /></button></td>
             </tr>
             <tr class="doc-desc" wire:key="doc-desc-{{ $i }}"><td colspan="3"><textarea wire:model="items.{{ $i }}.description" rows="2" placeholder="Description" aria-label="Description"></textarea></td><td colspan="4"></td></tr>

@@ -9,7 +9,7 @@ use App\Services\ApprovalInbox;
 use App\Services\LateArrivalService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /**
  * Leave & Time > Late arrival: tell in advance that you will come late (expected check-in time and a valid reason);

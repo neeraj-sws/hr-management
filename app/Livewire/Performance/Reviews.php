@@ -19,7 +19,7 @@ use Livewire\Component;
  */
 class Reviews extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public string $tab = '';
     // New review

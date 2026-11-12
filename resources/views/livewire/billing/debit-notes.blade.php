@@ -9,7 +9,7 @@
             <label class="field"><span>to</span><input type="date" wire:model.live="to"></label>
             <div class="field"><span>&nbsp;</span><button type="button" class="btn" wire:click="resetFilters"><x-icon name="x" class="icon-sm" />Reset</button></div>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:14%"><col style="width:20%"><col style="width:12%"><col style="width:12%"><col style="width:30%"><col style="width:12%"></colgroup>
             <thead><tr><th>Bill</th><th>Supplier</th><th>Date</th><th class="num">Amount</th><th>Description</th><th>Action</th></tr></thead>
             <tbody>
             @forelse($notes as $n)

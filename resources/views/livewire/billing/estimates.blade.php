@@ -13,7 +13,7 @@
             <label class="field"><span>Financial year</span><select wire:model.live="fy"><option value="">All</option>@foreach($years as $y)<option value="{{ $y }}">{{ $y }}</option>@endforeach</select></label>
             <div class="field"><span>&nbsp;</span><button type="button" class="btn" wire:click="resetFilters"><x-icon name="x" class="icon-sm" />Reset</button></div>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:15%"><col style="width:17%"><col style="width:10%"><col style="width:11%"><col style="width:11%"><col style="width:12%"><col style="width:24%"></colgroup>
             <thead><tr><th>Proposal</th><th>Customer</th><th>Category</th><th>Issue Date</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
             @forelse($estimates as $e)

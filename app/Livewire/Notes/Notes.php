@@ -17,7 +17,7 @@ use Livewire\Component;
  */
 class Notes extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Locked] public bool $teamMode = false;
     #[Url] public string $search = '';

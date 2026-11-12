@@ -9,7 +9,7 @@ use App\Services\ApprovalInbox;
 use App\Services\OffDayService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /**
  * Leave & Time > Off day requests: someone whose week-of-month offs (e.g. 2nd Saturday) count only when asked for

@@ -12,7 +12,7 @@ use App\Services\AuditLogger;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Purchases → Expenses / payments: money paid out directly (rent, tea, salary advance…), like the CMS "Payment". */
 class Expenses extends Component

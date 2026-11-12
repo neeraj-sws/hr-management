@@ -13,7 +13,7 @@ use Livewire\Component;
 
 class Report extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     /** Rows read for the on-screen report (paged 25 at a time); the export always has every row. */
     public const PREVIEW_LIMIT = 5000;

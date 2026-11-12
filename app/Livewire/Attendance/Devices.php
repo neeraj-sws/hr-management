@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\PersonalAccessToken;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /**
  * Computers registered for attendance (desktop agent): who they belong to,

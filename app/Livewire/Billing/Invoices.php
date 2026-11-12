@@ -7,7 +7,7 @@ use App\Models\BillingInvoice;
 use App\Services\BillingService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 class Invoices extends Component
 {

@@ -11,7 +11,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 class Employees extends Component
 {

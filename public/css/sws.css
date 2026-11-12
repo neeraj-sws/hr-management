@@ -1699,3 +1699,9 @@ div.tm-card{cursor:default}
 .tc-paymode-opt small{display:block;color:var(--muted);font-size:12px}
 .tc-enrol-topics select{width:100%;min-width:160px}
 @media (max-width:640px){.tc-fees,.tc-paymode{grid-template-columns:1fr}.tc-topic{flex-wrap:wrap}.tc-topic-actions{margin-left:34px}}
+
+/* Billing lists: fixed column widths, so columns do not jump around when the page or the content changes. */
+.table.fx{table-layout:fixed;width:100%;min-width:880px}
+.table.fx th,.table.fx td{overflow-wrap:anywhere;word-break:normal}
+.table.fx .cms-no{white-space:normal;padding:8px 10px;text-align:center}
+.table.fx .cms-pill{min-width:0;max-width:100%}

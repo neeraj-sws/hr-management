@@ -11,7 +11,7 @@ use App\Services\AttendanceService;
 use Illuminate\Support\Carbon;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Organisation-wide attendance sessions over a date range (HR). */
 class Records extends Component

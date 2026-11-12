@@ -237,10 +237,10 @@ class Settings extends Component
             'emailEnabled' => (bool) ($email['enabled'] ?? true), 'dailySummaryTo' => (string) ($email['daily_summary_to'] ?? ''), 'dailySummaryPerson' => (bool) ($email['daily_summary_person'] ?? true), 'dailySummaryManager' => (bool) ($email['daily_summary_manager'] ?? true),
             'testEmail' => (string) $this->user()->email,
             'twoFactorMode' => app(\App\Services\TwoFactorService::class)->settings()['mode'],
+            'ipRestrictEnabled' => ($ipr = app(\App\Services\IpRestrictionService::class)->settings())['enabled'], 'ipRestrictList' => implode("\n", $ipr['ips']),
             'webAccessMode' => ($web = app(\App\Services\WebAccessService::class)->settings())['mode'],
             'webAccessRoles' => $web['roles'],
             'webAccessUserIds' => array_map('strval', $web['user_ids']),
-            'ipRestrictEnabled' => ($ipr = app(\App\Services\IpRestrictionService::class)->settings())['enabled'], 'ipRestrictList' => implode("\n", $ipr['ips']),
             'twoFactorApps' => app(\App\Services\TwoFactorService::class)->settings()['apps'],
             'offboardingWindowHours' => (string) ($offboarding['correction_window_hours'] ?? 72),
             'workdays' => array_map('intval', $calendar['days'] ?? [1, 2, 3, 4, 5]),
@@ -285,11 +285,7 @@ class Settings extends Component
         $this->authorizeSettings();
         $type = $id ? LeaveType::findOrFail($id) : null;
         $this->editingTypeId = $type?->id;
-        $limited = \App\Support\CompanyAccess::isLimited($this->user());
-        $newCompanyId = $limited
-            ? \App\Support\CompanyAccess::limitedCompanyId()
-            : ($this->rulesCompany !== '' ? (int) $this->rulesCompany : null);
-        $this->type = ['company_id' => $type ? $type->company_id : $newCompanyId, 'name' => $type?->name ?? '', 'annual_allowance' => (string) ($type?->annual_allowance ?? 0), 'monthly_accrual' => (string) ($type?->monthly_accrual ?? 0), 'paid_per_month_enabled' => $type?->paid_per_month !== null, 'paid_per_month' => (string) ($type?->paid_per_month ?? ''), 'carry_forward' => (bool) $type?->carry_forward, 'carry_forward_limit' => (string) ($type?->carry_forward_limit ?? 0), 'carry_forward_expiry_months' => (string) ($type?->carry_forward_expiry_months ?? ''), 'allow_advance' => (bool) $type?->allow_advance, 'paid' => $type ? (bool) $type->paid : true, 'is_active' => $type ? (bool) $type->is_active : true];
+        $this->type = ['name' => $type?->name ?? '', 'annual_allowance' => (string) ($type?->annual_allowance ?? 0), 'monthly_accrual' => (string) ($type?->monthly_accrual ?? 0), 'carry_forward' => (bool) $type?->carry_forward, 'carry_forward_limit' => (string) ($type?->carry_forward_limit ?? 0), 'carry_forward_expiry_months' => (string) ($type?->carry_forward_expiry_months ?? ''), 'allow_advance' => (bool) $type?->allow_advance, 'paid' => $type ? (bool) $type->paid : true, 'is_active' => $type ? (bool) $type->is_active : true];
         $this->resetValidation();
         $this->showTypeForm = true;
     }
@@ -298,34 +294,17 @@ class Settings extends Component
     {
         $this->authorizeSettings();
         $this->validate([
-            'type.name' => ['required', 'string', 'max:100', Rule::unique('leave_types', 'name')->where(fn ($q) => is_null($this->type['company_id'] ?? null) ? $q->whereNull('company_id') : $q->where('company_id', $this->type['company_id']))->ignore($this->editingTypeId)],
+            'type.name' => ['required', 'string', 'max:100', Rule::unique('leave_types', 'name')->ignore($this->editingTypeId)],
             'type.annual_allowance' => ['required', 'numeric', 'min:0', 'max:365'],
             'type.monthly_accrual' => ['required', 'numeric', 'min:0', 'max:31'],
-            'type.paid_per_month' => ['nullable', 'integer', 'min:1', 'max:31'],
             'type.carry_forward_limit' => ['required', 'numeric', 'min:0', 'max:365'],
             'type.carry_forward_expiry_months' => ['nullable', 'integer', 'min:1', 'max:24'],
-        ], [], ['type.name' => 'name', 'type.annual_allowance' => 'annual allowance', 'type.monthly_accrual' => 'monthly accrual', 'type.paid_per_month' => 'paid per month', 'type.carry_forward_limit' => 'carry-forward limit', 'type.carry_forward_expiry_months' => 'carry-forward expiry']);
-        $data = [...$this->type,
-            'paid_per_month' => ($this->type['paid_per_month_enabled'] ?? false) && ($this->type['paid_per_month'] ?? '') !== ''
-                ? (int) $this->type['paid_per_month'] : null,
-            'carry_forward_expiry_months' => $this->type['carry_forward_expiry_months'] === '' ? null : (int) $this->type['carry_forward_expiry_months'],
-        ];
-        unset($data['paid_per_month_enabled']);
+        ], [], ['type.name' => 'name', 'type.annual_allowance' => 'annual allowance', 'type.monthly_accrual' => 'monthly accrual', 'type.carry_forward_limit' => 'carry-forward limit', 'type.carry_forward_expiry_months' => 'carry-forward expiry']);
+        $data = [...$this->type, 'carry_forward_expiry_months' => $this->type['carry_forward_expiry_months'] === '' ? null : (int) $this->type['carry_forward_expiry_months']];
         $type = LeaveType::updateOrCreate(['id' => $this->editingTypeId], $data);
         $audit->record($this->editingTypeId ? 'leave_type.updated' : 'leave_type.created', $type);
         $this->showTypeForm = false;
         $this->toast('Leave type saved.');
-    }
-
-    /** Company Owner can toggle active/inactive on shared (global) leave types. */
-    public function toggleSharedTypeActive(int $id, AuditLogger $audit): void
-    {
-        $this->authorizeSettings();
-        $type = LeaveType::withoutGlobalScopes()->findOrFail($id);
-        abort_if($type->company_id !== null, 403, 'Use the regular edit/delete for company-specific types.');
-        $type->update(['is_active' => ! $type->is_active]);
-        $audit->record($type->is_active ? 'leave_type.activated' : 'leave_type.deactivated', $type, ['name' => $type->name]);
-        $this->toast($type->name.' '.($type->is_active ? 'activated.' : 'deactivated.'));
     }
 
     /** Deletes a leave type made by mistake; a type already used is made inactive instead (history stays). */
@@ -372,14 +351,6 @@ class Settings extends Component
         $this->authorizeSettings();
         $this->holidays = implode("\n", collect($this->holidayList())->reject(fn ($d) => $d === $date)->values()->all());
         unset($this->holidayNames[$date], $this->holidayTypes[$date]);
-    }
-
-    /** Flips a listed holiday between paid and unpaid (kept after "Save calendar"). */
-    public function toggleHolidayPaid(string $date): void
-    {
-        $this->authorizeSettings();
-        $type = \App\Support\WorkCalendar::holidayTypeOf(['holiday_types' => $this->holidayTypes], $date);
-        $this->holidayTypes[$date] = [...$type, 'paid' => ! $type['paid']];
     }
 
     public function saveLeaveYear(PeopleOperationsService $people): void
@@ -577,18 +548,18 @@ class Settings extends Component
         $this->authorizeSettings();
         $this->resetValidation('ipRestrictList');
         $ips = collect(preg_split('/[\s,;]+/', trim($this->ipRestrictList)))->filter()->unique()->values();
-        if ($bad = $ips->first(fn ($ip) => ! \App\Services\IpRestrictionService::valid($ip))) { $this->addError('ipRestrictList', "\"$bad\" is not an IP address or range (e.g. 103.21.4.17 or 103.21.4.0/24)."); return; }
+        if ($bad = $ips->first(fn ($ip) => ! \App\Services\IpRestrictionService::valid($ip))) { $this->addError('ipRestrictList', "\"{$bad}\" is not an IP address or range (e.g. 103.21.4.17 or 103.21.4.0/24)."); return; }
         if ($this->ipRestrictEnabled && $ips->isEmpty()) { $this->addError('ipRestrictList', 'Kam se kam ek office IP daalo.'); return; }
         $people->setPolicy(\App\Services\IpRestrictionService::POLICY, 'security', 'IP restriction', ['enabled' => $this->ipRestrictEnabled, 'ips' => $ips->all()], null, auth()->id(), today()->toDateString());
         $this->ipRestrictList = $ips->implode("\n");
-        $this->toast($this->ipRestrictEnabled ? 'IP restriction on: the website opens only from ' . $ips->count() . ' allowed IP(s).' : 'IP restriction off.');
+        $this->toast($this->ipRestrictEnabled ? 'IP restriction on: the website opens only from '.$ips->count().' allowed IP(s).' : 'IP restriction off.');
     }
 
     public function addMyIp(): void
     {
         $this->authorizeSettings();
         $mine = (string) request()->ip();
-        if (! str_contains("\n" . $this->ipRestrictList . "\n", "\n" . $mine . "\n")) $this->ipRestrictList = trim($this->ipRestrictList . "\n" . $mine);
+        if (! str_contains("\n".$this->ipRestrictList."\n", "\n".$mine."\n")) $this->ipRestrictList = trim($this->ipRestrictList."\n".$mine);
     }
 
     /** 2-step sign-in: who must enter an e-mailed code after the password. */
@@ -838,7 +809,6 @@ class Settings extends Component
     public function savePayroll(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view salary rules, not save them.');
         $this->validate(['otMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerDay' => ['nullable', 'integer', 'min:1', 'max:1440'], 'otHolidayMultiplier' => ['nullable', 'numeric', 'min:0', 'max:10'], 'otMaxPerMonthHours' => ['nullable', 'numeric', 'min:0.25', 'max:400'], 'workingDaysPerMonth' => ['required', 'integer', 'min:1', 'max:31'], 'shortHoursGrace' => ['required', 'numeric', 'min:0', 'max:200'], 'advanceLeaveMax' => ['required', 'numeric', 'min:0', 'max:60'], 'encashmentRate' => ['required', 'numeric', 'min:0'], 'hourlyRateHours' => ['nullable', 'numeric', 'gt:0', 'max:24'], 'halfDayPayFrom' => ['required', 'date'], 'lateCheckinAfter' => ['required', 'date_format:H:i'], 'payrollFrom' => ['required', 'date']], [], ['halfDayPayFrom' => 'half-day pay start date', 'lateCheckinAfter' => 'late check-in time', 'payrollFrom' => 'apply from date']);
         $from = \Illuminate\Support\Carbon::parse($this->payrollFrom)->toDateString();
         // From an earlier date: approved / locked payroll in that time is refused; drafts are marked for recalculation.
@@ -861,7 +831,6 @@ class Settings extends Component
     public function saveStatutory(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view salary rules, not save them.');
         $components = json_decode($this->statutoryJson ?: '[]', true);
         if (! is_array($components) || ! array_is_list($components)) {
             $this->addError('statutoryJson', 'Enter a JSON array of components (use [] for none).');
@@ -930,7 +899,6 @@ class Settings extends Component
     public function saveStructure(PeopleOperationsService $people): void
     {
         $this->authorizeSettings();
-        abort_if($this->user()->hasRole('Master Admin'), 403, 'Master Admin can only view salary rules, not save them.');
         $this->validate(['structureRows.*.name' => ['required', 'string', 'max:60'], 'structureRows.*.type' => ['required', 'in:earning,deduction'], 'structureRows.*.value' => ['required', 'numeric', 'min:0']], [], ['structureRows.*.name' => 'component name', 'structureRows.*.value' => 'value']);
         $percent = collect($this->structureRows)->where('type', 'earning')->sum(fn ($r) => (float) $r['value']);
         if ($percent > 100.0001) { $this->addError('structureRows', 'Earning percentages add up to '.$percent.'%; they cannot exceed 100%.'); return; }
@@ -1002,14 +970,7 @@ class Settings extends Component
             : collect();
 
         return $this->page('livewire.system.settings', [
-            'leaveTypes' => (function () {
-                $limited = \App\Support\CompanyAccess::isLimited($this->user());
-                if ($limited) return LeaveType::with('company:id,name')->orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed()));
-                $cid = $this->rulesCompany !== '' ? (int) $this->rulesCompany : null;
-                return $cid
-                    ? LeaveType::withoutGlobalScopes()->with('company:id,name')->forCompany($cid)->orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed()))
-                    : LeaveType::withoutGlobalScopes()->with('company:id,name')->orderBy('company_id')->orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed()));
-            })(), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
+            'leaveTypes' => LeaveType::orderBy('name')->get()->each(fn ($t) => $t->setAttribute('used', $t->isUsed())), 'offices' => OfficeLocation::orderBy('name')->get(), 'canCapture' => $canCapture, 'captureEmployees' => $captureEmployees,
             'usageCounts' => $this->tab === 'capture' ? (function () {
                 $usage = app(\App\Services\AppUsageService::class);
                 $people = \App\Models\AttendanceEmployee::where('is_active', true)->get();

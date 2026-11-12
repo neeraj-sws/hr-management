@@ -6,7 +6,7 @@ use App\Livewire\Concerns\InteractsWithHr;
 use App\Models\BillingEstimate;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Estimates / quotes list. */
 class Estimates extends Component

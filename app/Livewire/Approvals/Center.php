@@ -12,7 +12,7 @@ use Livewire\Component;
 /** Approval Center, Pending Approvals and Approval History share this page. */
 class Center extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Locked] public string $mode = 'center';
     #[Url] public string $type = '';

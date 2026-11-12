@@ -20,7 +20,7 @@ use Livewire\Component;
  */
 class Runs extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Locked] public bool $approvalsOnly = false;
     #[Url] public ?int $run = null;

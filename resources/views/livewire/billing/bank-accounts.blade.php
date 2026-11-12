@@ -4,7 +4,7 @@
         <div class="row-actions"><a class="btn" href="{{ route('billing.transfers') }}"><x-icon name="refresh" class="icon-sm" />Transfers</a><button class="btn btn-primary" wire:click="create"><x-icon name="plus" class="icon-sm" />Add account</button></div></div>
     <x-errors />
     <section class="card">
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:12%"><col style="width:14%"><col style="width:14%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:12%"><col style="width:10%"><col style="width:8%"></colgroup>
             <thead><tr><th>Bank</th><th>Account holder</th><th>Account no.</th><th class="num">Opening (₹)</th><th class="num">Money in (₹)</th><th class="num">Money out (₹)</th><th class="num">Current balance (₹)</th><th>Contact</th><th></th></tr></thead>
             <tbody>
             @forelse($accounts as $a)

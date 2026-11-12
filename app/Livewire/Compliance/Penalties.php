@@ -11,7 +11,7 @@ use App\Services\ApprovalInbox;
 use App\Services\PeopleOperationsService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 class Penalties extends Component
 {

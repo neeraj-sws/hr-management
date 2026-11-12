@@ -10,7 +10,7 @@ use App\Services\ApprovalInbox;
 use App\Services\AttendanceCorrectionService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 class Corrections extends Component
 {

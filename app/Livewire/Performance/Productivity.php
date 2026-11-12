@@ -11,7 +11,7 @@ use Livewire\Component;
 
 class Productivity extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public string $from = '';
     #[Url] public string $to = '';

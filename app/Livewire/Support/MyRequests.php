@@ -8,7 +8,7 @@ use App\Services\SupportService;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Help & Support for the employee: their own requests, and "New request". */
 class MyRequests extends Component

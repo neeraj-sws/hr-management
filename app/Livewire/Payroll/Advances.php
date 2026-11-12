@@ -12,7 +12,7 @@ use Livewire\Component;
 
 class Advances extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public string $status = '';
     public bool $showForm = false;

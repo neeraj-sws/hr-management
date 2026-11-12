@@ -14,7 +14,7 @@ use App\Services\PeopleOperationsService;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 class Salary extends Component
 {

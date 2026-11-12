@@ -16,7 +16,7 @@ use Livewire\Component;
 /** Team attendance for a single day: who is in, late, on break, on leave or absent. */
 class Dashboard extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public string $date = '';
     #[Url] public string $search = '';

@@ -10,7 +10,7 @@
             <label class="field"><span>to</span><input type="date" wire:model.live="to"></label>
             <div class="field"><span>&nbsp;</span><button type="button" class="btn" wire:click="resetFilters"><x-icon name="x" class="icon-sm" />Reset</button></div>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:11%"><col style="width:17%"><col style="width:17%"><col style="width:11%"><col style="width:13%"><col style="width:22%"><col style="width:9%"></colgroup>
             <thead><tr><th>Date</th><th>From account</th><th>To account</th><th class="num">Amount</th><th>Reference</th><th>Description</th><th></th></tr></thead>
             <tbody>
             @forelse($transfers as $t)

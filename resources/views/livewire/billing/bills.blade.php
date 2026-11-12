@@ -18,7 +18,7 @@
             <label class="field"><span>Status</span><select wire:model.live="status"><option value="">Any</option>@foreach(\App\Models\BillingBill::STATUSES as $s)<option value="{{ $s }}">{{ $s === 'Sent' ? 'Received' : $s }}</option>@endforeach</select></label>
             <div class="field"><span>&nbsp;</span><button type="button" class="btn" wire:click="resetFilters"><x-icon name="x" class="icon-sm" />Reset</button></div>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:10%"><col style="width:16%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:16%"></colgroup>
             <thead><tr><th>Bill</th><th>Supplier</th><th>Bill date</th><th>Due date</th><th class="num">Total</th><th class="num">Paid</th><th class="num">Due</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
             @forelse($bills as $b)

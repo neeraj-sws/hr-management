@@ -5,7 +5,7 @@
     <form wire:submit="save">
         @include('billing._doc-form', [
             'party' => $customer, 'partyField' => 'customerId', 'parties' => $customers, 'partyLabel' => 'Customer',
-            'fieldsView' => 'billing._invoice-fields',
+            'fieldsView' => 'billing._invoice-fields', 'editing' => (bool) $invoiceId,
             'back' => $invoiceId ? route('billing.invoices.show', $invoiceId) : route('billing.invoices'),
             'saveLabel' => $invoiceId ? 'Update' : 'Create',
         ])

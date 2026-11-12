@@ -10,7 +10,7 @@
             <label class="field"><span>Entries per page</span><select wire:model.live="perPage"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
             <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Name, email or contact"></label>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:10%"><col style="width:20%"><col style="width:18%"><col style="width:12%"><col style="width:8%"><col style="width:10%"><col style="width:12%"><col style="width:10%"></colgroup>
             <thead><tr><th>Code</th><th>Name</th><th>Email</th><th>Contact</th><th class="num">Bills</th><th class="num">Expenses paid</th><th class="num">Balance to pay</th><th></th></tr></thead>
             <tbody>
             @forelse($vendors as $v)

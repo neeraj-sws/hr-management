@@ -22,7 +22,7 @@
                 <a class="btn" href="{{ route('billing.invoices.export', $filters) }}"><x-icon name="download" class="icon-sm" />Export</a>
             </div></div>
         </div>
-        <div class="table-wrap"><table class="table">
+        <div class="table-wrap"><table class="table fx"><colgroup><col style="width:17%"><col style="width:17%"><col style="width:11%"><col style="width:11%"><col style="width:12%"><col style="width:10%"><col style="width:22%"></colgroup>
             <thead><tr><th>Invoice</th><th>Customer</th><th>Issue Date</th><th>Due Date</th><th>Due Amount</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
             @forelse($invoices as $i)
