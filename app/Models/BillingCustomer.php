@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BillingCustomer extends Model
 {
+    use Concerns\HasCompany;
+
+    /** No company = the main company (everything billed before companies is SWS's). */
+    public function companyNullIsShared(): bool { return false; }
+
     protected $guarded = ['id'];
     protected $casts = ['is_active' => 'boolean', 'opening_balance' => 'decimal:2'];
 

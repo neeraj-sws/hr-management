@@ -119,7 +119,6 @@
 
     <div class="extra">
         @if($hasTax && $pos)<div>Place of supply: {{ \App\Services\BillingService::stateLabel($pos) }} ({{ $interState ? 'IGST' : 'CGST + SGST' }})</div>@endif
-        <div>Amount in words: {{ \App\Support\AmountInWords::rupees($doc->total()) }}</div>
         @if(! empty($company['footer_notes']))
             <div class="foot-notes">@if(! empty($company['footer_title']))<b>{{ $company['footer_title'] }}</b><br>@endif{!! \App\Services\BillingService::safeHtml($company['footer_notes']) !!}</div>
         @elseif($company['bank_name'] || $company['account_number'] || $company['upi'])
@@ -134,7 +133,6 @@
         @if($company['terms'])<p style="white-space:pre-line"><b>Terms:</b> {{ $company['terms'] }}</p>@endif
     </div>
     @if($company['signatory'] || ! empty($company['signature']))<div class="sign">@if(! empty($company['signature']))<img src="{{ $company['signature'] }}" alt="Signature" style="width:150px;display:block;margin-left:auto">@else For <b>{{ $company['name'] }}</b><br><br><br>@endif<b>{{ $company['signatory'] }}</b>@if($company['signatory'])<br><b>Authorised Signatory</b>@endif</div>@endif
-    <div class="foot-note">This is a computer-generated {{ $isInvoice ? 'invoice' : 'proposal' }}.</div>
 </div>
 {{-- "Download" saves a real PDF file (like the CMS); if the PDF library can't load, the print / save-as-PDF dialog opens instead. --}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>

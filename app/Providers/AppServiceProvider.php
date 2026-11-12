@@ -32,10 +32,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Run any pending migrations automatically on boot (safe on shared hosting where SSH is unavailable).
-        try {
-            Artisan::call('migrate', ['--force' => true]);
-        } catch (\Throwable) {}
+        // Run pending migrations automatically for web requests (shared hosting, no SSH). Never inside artisan or tests —
+        // calling Artisan from the booting console drops its commands (scheduler, billing:import-cms …) — and at most every 10 minutes.
+        if (! $this->app->runningInConsole() && ! $this->app->runningUnitTests()) {
+            try {
+                \Illuminate\Support\Facades\Cache::remember('sws.auto-migrate', 600, function () {
+                    Artisan::call('migrate', ['--force' => true]);
+
+                    return true;
+                });
+            } catch (\Throwable) {}
+        }
 
         Gate::policy(AttendanceEmployee::class,AttendanceEmployeePolicy::class);
         Gate::policy(EmployeeNote::class,EmployeeNotePolicy::class);

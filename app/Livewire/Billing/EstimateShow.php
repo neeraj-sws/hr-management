@@ -92,9 +92,10 @@ class EstimateShow extends Component
         }
 
         $invoice = DB::transaction(function () use ($est, $audit, $billing) {
-            $n = $billing->nextInvoiceNumber(today());
+            // The invoice is the estimate's company's.
+            $n = $billing->nextInvoiceNumber(today(), $est->company_id);
             $invoice = BillingInvoice::create([
-                'number' => $n['number'], 'financial_year' => $n['financial_year'],
+                'number' => $n['number'], 'financial_year' => $n['financial_year'], 'company_id' => $n['company_id'],
                 'customer_id' => $est->customer_id, 'issue_date' => today()->toDateString(),
                 'due_date' => today()->addDays(7)->toDateString(), 'notes' => $est->notes,
                 'status' => 'Draft', 'created_by' => auth()->id(),

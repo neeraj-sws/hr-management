@@ -106,6 +106,12 @@ class ImportCmsBilling extends Command
             if (empty($have['footer_notes']) && ! empty($cmsSet['footer_notes'])) $fill['footer_notes'] = BillingService::safeHtml($cmsSet['footer_notes']);
             if (empty($have['footer_title']) && ! empty($cmsSet['footer_title'])) $fill['footer_title'] = trim($cmsSet['footer_title']);
             if (empty($have['signatory'])) $fill['signatory'] = 'Neeraj Malakar';
+            // Company block printed on the invoice (From, PAN, colour…) — same values the CMS prints.
+            foreach (['name' => 'company_name', 'phone' => 'company_telephone', 'address' => 'company_address', 'city' => 'company_city', 'state' => 'company_state', 'pin' => 'company_zipcode', 'mail_from_address' => 'mail_from_address'] as $field => $key) {
+                if (empty($have[$field]) && ! empty($cmsSet[$key])) $fill[$field] = trim($cmsSet[$key]);
+            }
+            if (empty($have['pan'])) $fill['pan'] = 'CPTPM2117J'; // fixed in the CMS invoice template
+            if (empty($have['invoice_color']) && preg_match('/^[0-9a-f]{6}$/i', (string) ($cmsSet['invoice_color'] ?? ''))) $fill['invoice_color'] = '#'.strtolower($cmsSet['invoice_color']);
             if ($fill) {
                 app(\App\Services\PeopleOperationsService::class)->setPolicy('billing.company', 'billing', 'Billing company details', array_merge($have, $fill), null, (int) (\App\Models\User::orderBy('id')->value('id') ?? 1), today()->toDateString());
                 BillingService::forgetSettings();
