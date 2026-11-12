@@ -23,7 +23,7 @@ use Livewire\Component;
  */
 class Cases extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Locked] public string $kind = 'onboarding';
     #[Url] public ?int $case = null;

@@ -67,7 +67,7 @@ class BillingInvoiceTest extends TestCase
 
         $this->actingAs($this->admin)->get(route('billing.invoices.print', $invoice))->assertOk()
             ->assertSee('Tax Invoice')->assertSee('Soham Web Solution')->assertSee('23ABCDE1234F1Z5')->assertSee('27AAACS1234A1Z1')
-            ->assertSee('Intra-state supply: CGST + SGST')->assertSee('998314')->assertSee('Eleven Thousand Eight Hundred Rupees Only')
+            ->assertSee('(CGST + SGST)')->assertSee('998314')->assertSee('Eleven Thousand Eight Hundred Rupees Only')
             ->assertSee('HDFC0001234')->assertSee('SWS/2026-27/00001');
         $this->get(route('billing.invoices.show', $invoice))->assertOk()->assertSee('Print / PDF')->assertSee('CGST');
     }
@@ -77,7 +77,7 @@ class BillingInvoiceTest extends TestCase
         $invoice = $this->invoiceFor($this->customer('Maharashtra'));
         $split = app(\App\Services\BillingService::class)->taxSplit($invoice);
         $this->assertEquals([0.0, 0.0, 1800.0], [$split[0]['cgst'], $split[0]['sgst'], $split[0]['igst']]);
-        $this->actingAs($this->admin)->get(route('billing.invoices.print', $invoice))->assertSee('Inter-state supply: IGST');
+        $this->actingAs($this->admin)->get(route('billing.invoices.print', $invoice))->assertSee('(IGST)');
     }
 
     public function test_states_match_by_name_short_form_or_gst_code_and_gstin_labels_are_cleaned(): void
@@ -119,19 +119,22 @@ class BillingInvoiceTest extends TestCase
     {
         $invoice = $this->invoiceFor($this->customer('Madhya Pradesh'));
         Livewire::actingAs($this->admin)->test(InvoiceShow::class, ['invoice' => $invoice])
-            ->assertSee(['Invoice Summary', 'CGST (9%)', 'SGST (9%)', 'Balance Due', '₹11,800.00', 'Web development', 'Notes', 'Terms &amp; Conditions'], false)
+            ->assertSee(['Invoice Detail', 'Create Invoice', 'Send Invoice', 'Get Paid', 'Product Summary', 'Billed To', 'CGST', 'SGST', 'Rs 11,800.00', 'Web development', 'Receipt Summary', 'Credit Note Summary'], false)
             ->assertSee('Invoice created')
-            ->call('openPayment')->set('payAmount', '11800')->set('payMethod', 'Cash')->call('recordPayment')->assertHasNoErrors()
-            ->assertSee(['Fully Paid', 'Paid on 30 Oct 2026', 'Payment added', 'Payment of ₹11,800.00 recorded.', 'Payment History']);
+            ->call('openPayment')->set('payAmount', '11800')->call('recordPayment')->assertHasNoErrors()
+            ->assertSee(['Status : Paid on Oct 30, 2026', 'Payment added', 'Payment of ₹11,800.00 recorded.', 'Receipt Summary']);
 
-        $this->get(route('billing.invoices.show', $invoice))->assertOk()->assertSee('inv-strip', false);
+        $this->get(route('billing.invoices.show', $invoice))->assertOk()->assertSee('cms-inv', false);
     }
 
-    public function test_edit_page_shows_cards_and_summary_with_gst_split(): void
+    public function test_edit_page_looks_like_the_cms_invoice_form(): void
     {
         $invoice = $this->invoiceFor($this->customer('Madhya Pradesh'));
         Livewire::actingAs($this->admin)->test(InvoiceForm::class, ['invoice' => $invoice])
-            ->assertSee(['Edit Invoice', 'Customer &amp; dates', 'Invoice summary', 'CGST (9%)', 'SGST (9%)', '₹11,800.00', 'Add Item', 'Terms &amp; Conditions', 'Save Invoice'], false)
-            ->call('addItem')->assertSee('— custom item —')->call('save')->assertHasErrors('items.1.name');
+            ->assertSee(['Invoice Edit', 'Customer', 'Invoice Number', $invoice->number(), 'Category', 'Ref Number', 'Hours',
+                'Product &amp; Services', 'Add item', 'Total Amount (Rs)', '11800.00', 'One', 'Update'], false)
+            ->call('addItem')->assertSee('Item name (custom)')->call('save')->assertHasErrors('items.1.name');
+        // "Remove" goes back to picking a customer.
+        Livewire::actingAs($this->admin)->test(InvoiceForm::class, ['invoice' => $invoice])->set('customerId', null)->assertSee('Select customer');
     }
 }

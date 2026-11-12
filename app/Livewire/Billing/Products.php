@@ -8,7 +8,7 @@ use App\Models\BillingTax;
 use App\Services\AuditLogger;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Products & services that can be added to invoices/estimates. */
 class Products extends Component

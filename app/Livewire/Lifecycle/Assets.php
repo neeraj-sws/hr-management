@@ -12,7 +12,7 @@ use Livewire\Component;
 
 class Assets extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     /** '' = every asset: returned ones stay listed (with their history) instead of disappearing. */
     #[Url] public string $status = '';

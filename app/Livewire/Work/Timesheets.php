@@ -26,6 +26,9 @@ class Timesheets extends Component
     #[Locked] public bool $mine = false;
     #[Url] public ?int $project = null;
     #[Url] public string $month = '';
+    /** My Timesheet: "mine" (own lines) or "team" (a manager sees their team's lines, read-only). */
+    #[Url] public string $scope = 'mine';
+    #[Url] public ?int $member = null;
 
     public bool $showEntry = false;
     public ?int $entryId = null;
@@ -60,6 +63,7 @@ class Timesheets extends Component
         $this->guard();
         if (! preg_match('/^\d{4}-\d{2}$/', $this->month)) $this->month = today()->format('Y-m');
         if ($this->mine) {
+            if (! $this->teamView()) $this->scope = 'mine';
             if ($this->project && ! $this->myProjects()->whereKey($this->project)->exists()) $this->project = null;
             $this->project ??= $this->myProjects()->orderByRaw('client_id IS NULL')->orderBy('name')->value('id');
 
@@ -68,12 +72,37 @@ class Timesheets extends Component
         $this->project ??= Project::whereNotNull('client_id')->orderBy('name')->value('id') ?? Project::orderBy('name')->value('id');
     }
 
-    /** Projects the employee works on: manager, member, or has a task on it. */
+    /** Projects the employee works on (manager, member, or has a task on it); in the team view, also their team's. */
     private function myProjects()
     {
         $own = $this->ownEmployee();
+        if (! $own) return Project::query()->whereRaw('1 = 0');
 
-        return $own ? app(TimesheetService::class)->employeeProjects($own) : Project::query()->whereRaw('1 = 0');
+        return $this->teamView()
+            ? app(TimesheetService::class)->projectsOf($this->team()->pluck('id')->push($own->id)->all())
+            : app(TimesheetService::class)->employeeProjects($own);
+    }
+
+    private ?\Illuminate\Support\Collection $teamCache = null;
+
+    /** The manager's team (people reporting to them and members of the teams they lead). */
+    private function team(): \Illuminate\Support\Collection
+    {
+        return $this->teamCache ??= $this->mine && $this->ownEmployee() ? app(TimesheetService::class)->teamOf($this->ownEmployee()) : collect();
+    }
+
+    private function teamView(): bool
+    {
+        return $this->mine && $this->scope === 'team' && $this->team()->isNotEmpty();
+    }
+
+    public function updatedScope(): void
+    {
+        if (! in_array($this->scope, ['mine', 'team'], true) || ! $this->teamView()) $this->scope = 'mine';
+        $this->member = null;
+        if (! $this->project || ! $this->myProjects()->whereKey($this->project)->exists()) {
+            $this->project = $this->myProjects()->orderByRaw('client_id IS NULL')->orderBy('name')->value('id');
+        }
     }
 
     private function projectModel(): ?Project
@@ -108,7 +137,7 @@ class Timesheets extends Component
         $this->entry = ['work_date' => $e?->work_date->toDateString() ?? today()->toDateString(), 'employee_id' => (string) ($e?->employee_id ?? ($this->mine ? $this->ownEmployee()->id : '')), 'developer_name' => (string) $e?->developer_name,
             'start_time' => (string) ($e?->start_time ? substr($e->start_time, 0, 5) : ''), 'end_time' => (string) ($e?->end_time ? substr($e->end_time, 0, 5) : ''),
             'minutes' => (string) ($e?->minutes ?? ''), 'billable_minutes' => (string) ($e?->billable_minutes ?? ''), 'description' => (string) $e?->description,
-            'status' => (string) ($e?->status ?? 'Done'), 'remarks' => (string) $e?->remarks, 'visible_to_client' => $e?->visible_to_client ?? true];
+            'status' => (string) ($e ? $e->status : 'Done'), 'stage' => (string) $e?->stage, 'remarks' => (string) $e?->remarks, 'visible_to_client' => $e?->visible_to_client ?? true];
         $this->resetValidation();
         $this->showEntry = true;
     }
@@ -132,6 +161,16 @@ class Timesheets extends Component
                 if (! WorkCalendar::isWorkday($this->entry['work_date'], $cal)) {
                     $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($this->entry['work_date'], $cal).') — timesheet line add nahi kar sakte.');
                 }
+            }
+
+            return;
+        }
+        // A typed name that is exactly an HRMS employee picks that developer too (when none is chosen yet).
+        if ($key === 'developer_name') {
+            $name = trim((string) $value);
+            if ($name !== '' && empty($this->entry['employee_id'])) {
+                $match = AttendanceEmployee::where('is_active', true)->where('name', $name)->value('id');
+                if ($match) $this->entry['employee_id'] = (string) $match;
             }
 
             return;
@@ -164,7 +203,7 @@ class Timesheets extends Component
             'entry.work_date' => ['required', 'date'], 'entry.employee_id' => ['nullable', 'exists:attendance_employees,id'], 'entry.developer_name' => ['nullable', 'string', 'max:191'],
             'entry.start_time' => ['nullable', 'date_format:H:i'], 'entry.end_time' => ['nullable', 'date_format:H:i'],
             'entry.minutes' => ['required', 'integer', 'min:0', 'max:1440'], 'entry.billable_minutes' => ['nullable', 'integer', 'min:0', 'max:1440'],
-            'entry.description' => ['required', 'string', 'max:5000'], 'entry.status' => ['nullable', 'string', 'max:40'], 'entry.remarks' => ['nullable', 'string', 'max:2000'],
+            'entry.description' => ['required', 'string', 'max:5000'], 'entry.status' => ['nullable', 'string', 'max:40'], 'entry.stage' => ['nullable', 'string', 'max:40'], 'entry.remarks' => ['nullable', 'string', 'max:2000'],
         ], [], ['entry.work_date' => 'date', 'entry.minutes' => 'minutes', 'entry.billable_minutes' => 'billable minutes', 'entry.description' => 'task'])['entry'];
         $cal = $this->workCalendar($data['work_date']);
         if (! WorkCalendar::isWorkday($data['work_date'], $cal)) { $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($data['work_date'], $cal).') — timesheet line add nahi kar sakte.'); return; }
@@ -173,7 +212,7 @@ class Timesheets extends Component
         $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => trim((string) $data['developer_name']) ?: null,
             'start_time' => $data['start_time'] ?: null, 'end_time' => $data['end_time'] ?: null, 'minutes' => (int) $data['minutes'],
             'billable_minutes' => $data['billable_minutes'] === '' || $data['billable_minutes'] === null ? (int) $data['minutes'] : (int) $data['billable_minutes'],
-            'description' => $data['description'], 'status' => $data['status'] ?: null, 'remarks' => $data['remarks'] ?: null, 'visible_to_client' => (bool) $this->entry['visible_to_client']];
+            'description' => $data['description'], 'status' => $data['status'] ?: null, 'stage' => ($data['stage'] ?? null) ?: null, 'remarks' => $data['remarks'] ?: null, 'visible_to_client' => (bool) $this->entry['visible_to_client']];
         $line = $this->entryId ? tap($this->line($this->entryId))->update($values) : TimesheetEntry::create($values + ['source' => 'manual', 'created_by' => auth()->id()]);
         $audit->record($this->entryId ? 'timesheet.entry_updated' : 'timesheet.entry_added', $line, ['billable_minutes' => $values['billable_minutes']]);
         $this->showEntry = false;
@@ -281,17 +320,25 @@ class Timesheets extends Component
         $project = $this->projectModel();
         if ($project) $timesheets->syncFromTimers($project, $this->month);
         $entries = $project ? $timesheets->entries($project, $this->month) : collect();
-        if ($this->mine) $entries = $entries->where('employee_id', $this->ownEmployee()->id)->values();
+        $team = $this->teamView() ? $this->team() : collect();
+        if ($team->isNotEmpty()) {
+            $people = $this->member ? $team->where('id', $this->member) : $team->concat([$this->ownEmployee()]);
+            $entries = $entries->filter(fn ($e) => $timesheets->lineOfAny($e, $people))->values();
+        } elseif ($this->mine) {
+            $entries = $entries->where('employee_id', $this->ownEmployee()->id)->values();
+        }
 
         return $this->page('livewire.work.timesheets', [
             'projects' => ($this->mine ? $this->myProjects() : Project::query())->with('client:id,name')->orderByRaw('client_id IS NULL')->orderBy('name')->get(['id', 'name', 'client_id']),
             'projectModel' => $project,
             'entries' => $entries,
             'summary' => $project ? $timesheets->summary($project, $this->month) : null,
-            'employees' => AttendanceEmployee::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'employees' => AttendanceEmployee::with('teams:id,name')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'answeringObjection' => $this->answering ? TimesheetObjection::with(['entry', 'raiser'])->find($this->answering) : null,
             'canInvoice' => ! $this->mine && $this->user()->canAny(['hr.manage', 'payroll.manage']),
             'ownId' => $this->mine ? $this->ownEmployee()->id : null,
+            'team' => $this->team(),
+            'teamView' => $team->isNotEmpty(),
         ], $this->mine ? 'My Timesheet' : 'Timesheets');
     }
 }

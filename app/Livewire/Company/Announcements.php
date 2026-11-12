@@ -8,7 +8,7 @@ use App\Models\Department;
 use App\Models\Team;
 use App\Services\CompanyService;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 class Announcements extends Component
 {

@@ -30,11 +30,14 @@ class BillingEstimate extends Model
     protected $casts = ['issue_date' => 'date', 'expiry_date' => 'date'];
     public const STATUSES = ['Draft', 'Sent', 'Accepted', 'Declined', 'Converted'];
     public function customer(): BelongsTo { return $this->belongsTo(BillingCustomer::class, 'customer_id'); }
+    public function category(): BelongsTo { return $this->belongsTo(BillingCategory::class, 'category_id'); }
     public function items(): HasMany { return $this->hasMany(BillingEstimateItem::class, 'estimate_id'); }
     public function number(?string $prefix = null): string
     {
-        $prefix ??= ($this->companyPrefix() ? $this->companyPrefix().'-' : '').config('billing.estimate_prefix', 'EST');
-        return $prefix.'/'.$this->financial_year.'/'.str_pad((string) $this->number, 5, '0', STR_PAD_LEFT);
+        // Like the CMS: one running number, no year (#PROP00001); another company's proposals start with its name.
+        $prefix ??= ($this->companyPrefix() ? $this->companyPrefix().'-' : '').\App\Services\BillingService::prefix('estimate');
+
+        return $prefix.str_pad((string) $this->number, 5, '0', STR_PAD_LEFT);
     }
     public function subTotal(): float { return round($this->items->sum(fn ($i) => $i->lineSubtotal()), 2); }
     public function totalTax(): float { return round($this->items->sum(fn ($i) => $i->lineTax()), 2); }

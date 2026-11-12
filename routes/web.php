@@ -177,9 +177,6 @@ Route::middleware(['auth', 'account.active'])->group(function () {
         Route::get('/billing/payments/{payment}/receipt', [\App\Http\Controllers\BillingPrintController::class, 'receipt'])->name('billing.payments.receipt');
         Route::get('/billing/invoices/{invoice}/print', [\App\Http\Controllers\BillingPrintController::class, 'invoice'])->name('billing.invoices.print');
         Route::get('/billing/estimates/{estimate}/print', [\App\Http\Controllers\BillingPrintController::class, 'estimate'])->name('billing.estimates.print');
-        Route::get('/billing/customers/export', [\App\Http\Controllers\BillingPrintController::class, 'exportCustomers'])->name('billing.customers.export');
-        Route::get('/billing/invoices/export', [\App\Http\Controllers\BillingPrintController::class, 'exportInvoices'])->name('billing.invoices.export');
-        Route::get('/billing/estimates/export', [\App\Http\Controllers\BillingPrintController::class, 'exportEstimates'])->name('billing.estimates.export');
     });
 
     // Performance

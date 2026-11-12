@@ -8,7 +8,7 @@ use App\Models\LegacySalaryRecord;
 use App\Services\LegacySalaryImport;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Month-wise salary history imported from the old Excel salary sheet (read-only, stored as written). */
 class LegacySalary extends Component

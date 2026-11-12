@@ -41,9 +41,41 @@ class TimesheetService
     /** Projects an employee works on (and so may fill a timesheet for): manager, member, or has a task on it. */
     public function employeeProjects(AttendanceEmployee $employee): \Illuminate\Database\Eloquent\Builder
     {
-        return Project::query()->where(fn ($q) => $q->where('manager_id', $employee->id)
-            ->orWhereHas('members', fn ($m) => $m->where('attendance_employees.id', $employee->id))
-            ->orWhereHas('tasks', fn ($t) => $t->where('assignee_id', $employee->id)));
+        return $this->projectsOf([$employee->id]);
+    }
+
+    /** Projects any of these employees works on (manager, member, or has a task on it). */
+    public function projectsOf(array $employeeIds): \Illuminate\Database\Eloquent\Builder
+    {
+        return Project::query()->where(fn ($q) => $q->whereIn('manager_id', $employeeIds)
+            ->orWhereHas('members', fn ($m) => $m->whereIn('attendance_employees.id', $employeeIds))
+            ->orWhereHas('tasks', fn ($t) => $t->whereIn('assignee_id', $employeeIds)));
+    }
+
+    /**
+     * A manager's team: people reporting to them, plus members of the teams they lead
+     * (Teams → manager). Active employees only, not the manager themself.
+     */
+    public function teamOf(AttendanceEmployee $manager): Collection
+    {
+        $teamIds = \App\Models\Team::where('manager_employee_id', $manager->id)->where('is_active', true)->pluck('id');
+
+        return AttendanceEmployee::with('teams:id,name')->where('is_active', true)->whereKeyNot($manager->id)
+            ->where(fn ($q) => $q->where('manager_id', $manager->id)->orWhereHas('teams', fn ($t) => $t->whereIn('teams.id', $teamIds)))
+            ->orderBy('name')->get(['id', 'name', 'manager_id']);
+    }
+
+    /**
+     * Whether a line belongs to one of these people: their employee, or (lines typed in
+     * or imported without an HRMS employee) the developer name matching theirs.
+     */
+    public function lineOfAny(TimesheetEntry $line, Collection $people): bool
+    {
+        if ($line->employee_id) return $people->contains('id', $line->employee_id);
+        $name = mb_strtolower(trim((string) $line->developer_name));
+        if ($name === '') return false;
+
+        return $people->contains(fn ($p) => mb_strtolower($p->name) === $name || mb_strtolower(strtok($p->name, ' ')) === $name);
     }
 
     /** Whether the employee may still change this line: their own, added by hand, month not approved by the client. */
@@ -85,7 +117,7 @@ class TimesheetService
         $billable = $line && $line->billable_minutes !== $line->minutes ? $line->billable_minutes : $minutes;
         $values = ['project_id' => $project->id, 'work_date' => $date->toDateString(), 'employee_id' => $employee->id, 'developer_name' => null,
             'start_time' => $start, 'end_time' => $end, 'minutes' => $minutes, 'billable_minutes' => $billable,
-            'description' => trim((string) $data['description']), 'status' => ($data['status'] ?? null) ?: null, 'remarks' => ($data['remarks'] ?? null) ?: null];
+            'description' => trim((string) $data['description']), 'status' => ($data['status'] ?? null) ?: null, 'stage' => ($data['stage'] ?? null) ?: null, 'remarks' => ($data['remarks'] ?? null) ?: null];
         if ($line) {
             $line->update($values);
         } else {
@@ -268,9 +300,14 @@ class TimesheetService
                 $key = hash('sha256', implode('|', [$project->id, $date, $task, $developer, $minutes, $start]));
                 if (TimesheetEntry::where('import_key', $key)->exists()) { $kept++; continue; }
                 if ($this->isLocked($project, $date->format('Y-m'))) { $errors[] = "{$sheet['name']} row {$r}: month already approved."; continue; }
+                // Old sheets put Local / React / Live in the Status column: that is the stage.
+                $status = $get('status') ?: null;
+                $stage = $get('stage') ?: null;
+                $status = ['inprogress' => 'In progress', 'notdone' => 'Not done', 'done' => 'Done'][strtolower(str_replace([' ', '_', '-'], '', (string) $status))] ?? $status;
+                if ($status && ! $stage && in_array(ucfirst(strtolower($status)), TimesheetEntry::STAGES, true)) [$stage, $status] = [ucfirst(strtolower($status)), null];
                 TimesheetEntry::create(['project_id' => $project->id, 'employee_id' => $employee?->id, 'developer_name' => $employee ? null : ($developer ?: null),
                     'work_date' => $date->toDateString(), 'start_time' => $start, 'end_time' => $end, 'minutes' => $minutes, 'billable_minutes' => $billable,
-                    'description' => mb_substr($task ?: 'Work', 0, 5000), 'status' => $get('status') ?: null, 'remarks' => $get('remarks') ?: null, 'source' => 'import', 'import_key' => $key, 'created_by' => $actorId]);
+                    'description' => mb_substr($task ?: 'Work', 0, 5000), 'status' => $status, 'stage' => $stage, 'remarks' => $get('remarks') ?: null, 'source' => 'import', 'import_key' => $key, 'created_by' => $actorId]);
                 $created++;
                 $months[$date->format('Y-m')] = true;
             }
@@ -285,7 +322,7 @@ class TimesheetService
     private function header(array $rows): array
     {
         $map = ['date' => 'date', 'task_details' => 'task', 'task' => 'task', 'start_time' => 'start', 'end_time' => 'end', 'hours' => 'hours', 'in_minutes' => 'minutes', 'minutes' => 'minutes',
-            'adjustment' => 'adjustment', 'developer' => 'developer', 'status' => 'status', 'remarks' => 'remarks'];
+            'adjustment' => 'adjustment', 'developer' => 'developer', 'status' => 'status', 'stage' => 'stage', 'remarks' => 'remarks'];
         foreach (array_slice($rows, 0, 5, true) as $r => $cells) {
             $cols = [];
             foreach ($cells as $i => $text) if (isset($map[$slug = LegacySalaryImport::slug((string) $text)])) $cols[$map[$slug]] ??= $i;
@@ -348,7 +385,7 @@ class TimesheetService
     /** Lines of a month for the admin page or (visible only) the client portal. */
     public function entries(Project $project, string $month, bool $clientView = false): Collection
     {
-        return TimesheetEntry::with(['employee', 'objections.raiser', 'objections.responder', 'task'])->where('project_id', $project->id)
+        return TimesheetEntry::with(['employee.teams:id,name', 'objections.raiser', 'objections.responder', 'task'])->where('project_id', $project->id)
             ->where('work_date', '>=', $month.'-01')->where('work_date', '<=', Carbon::createFromFormat('Y-m', $month)->endOfMonth()->toDateString())
             ->when($clientView, fn ($q) => $q->where('visible_to_client', true))->orderBy('work_date')->orderBy('start_time')->orderBy('id')->get();
     }

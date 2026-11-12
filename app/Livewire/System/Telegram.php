@@ -16,7 +16,7 @@ use Livewire\Component;
  */
 class Telegram extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     /** Latest messages filters: to (admin / user), status, day. */
     public string $msgTarget = '';

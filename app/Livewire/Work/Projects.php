@@ -10,7 +10,7 @@ use App\Services\WorkService;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** "Projects" (manage) and "My Projects" (an employee's own projects, read-only) share this page. */
 class Projects extends Component

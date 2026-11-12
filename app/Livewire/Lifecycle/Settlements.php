@@ -14,7 +14,7 @@ use Livewire\Component;
 /** Final settlement calculated from real attendance, leave, OT, adjustments, penalties, advances and locked payroll. */
 class Settlements extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public ?int $case = null;
     public string $paymentAmount = '';

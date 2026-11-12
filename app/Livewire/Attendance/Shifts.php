@@ -15,7 +15,7 @@ use Livewire\Component;
 
 class Shifts extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public string $week = '';
     #[Url] public string $department = '';

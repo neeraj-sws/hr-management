@@ -12,7 +12,7 @@ use Livewire\Component;
 /** Interviews assigned to the signed-in user (recruiters can switch to all). */
 class Interviews extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     #[Url] public string $show = 'upcoming';
     #[Url] public bool $all = false;

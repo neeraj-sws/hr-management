@@ -136,11 +136,12 @@ class ClientPortalTest extends TestCase
         $page()->call('openEntry')->set('entry.work_date', '2026-10-31')->set('entry.employee_id', (string) $colleague->id)
             ->set('entry.description', 'Search API fix')->set('entry.start_time', '10:00')->set('entry.end_time', '11:30')->assertSet('entry.minutes', '90')
             ->set('entry.billable_minutes', '500')->call('saveEntry')->assertHasErrors('entry.work_date'); // 31 Oct 2026 is after "today" (30 Oct)
-        $page()->call('openEntry')->set('entry.work_date', '2026-10-29')->set('entry.employee_id', (string) $colleague->id)
+        $page()->call('openEntry')->assertSee('Stage')->assertSet('entry.status', 'Done')->assertSet('entry.stage', '')
+            ->set('entry.work_date', '2026-10-29')->set('entry.employee_id', (string) $colleague->id)
             ->set('entry.description', 'Search API fix')->set('entry.start_time', '10:00')->set('entry.end_time', '11:30')
-            ->set('entry.billable_minutes', '500')->call('saveEntry')->assertHasNoErrors()->assertSee('Search API fix')->assertDontSee('Colleague work');
+            ->set('entry.status', 'In progress')->set('entry.stage', 'React')->set('entry.billable_minutes', '500')->call('saveEntry')->assertHasNoErrors()->assertSee('Search API fix')->assertDontSee('Colleague work');
         $mineLine = TimesheetEntry::where('description', 'Search API fix')->firstOrFail();
-        $this->assertSame([$this->dev->id, null, 90, 90, true, 'manual'], [$mineLine->employee_id, $mineLine->developer_name, $mineLine->minutes, $mineLine->billable_minutes, $mineLine->visible_to_client, $mineLine->source]);
+        $this->assertSame([$this->dev->id, null, 90, 90, true, 'manual', 'In progress', 'React'], [$mineLine->employee_id, $mineLine->developer_name, $mineLine->minutes, $mineLine->billable_minutes, $mineLine->visible_to_client, $mineLine->source, $mineLine->status, $mineLine->stage]);
 
         // Cannot touch a colleague's line or the manager tools.
         $page()->call('openEntry', $theirs->id)->assertForbidden();
@@ -160,6 +161,39 @@ class ClientPortalTest extends TestCase
         $this->assertNull($mineLine->fresh());
     }
 
+    public function test_managers_see_their_teams_timesheet_with_the_team_name(): void
+    {
+        $managerUser = User::factory()->create(['email' => 'lead@example.com']);
+        $managerUser->assignRole('Employee');
+        $manager = AttendanceEmployee::create(['employee_code' => 'EMP-10', 'name' => 'Team Lead', 'is_active' => true, 'user_id' => $managerUser->id, 'joined_at' => '2026-01-01']);
+        $this->dev->update(['manager_id' => $manager->id]);
+        $riya = AttendanceEmployee::create(['employee_code' => 'EMP-11', 'name' => 'Riya Shah', 'is_active' => true, 'joined_at' => '2026-01-01']);
+        $outsider = AttendanceEmployee::create(['employee_code' => 'EMP-12', 'name' => 'Outsider', 'is_active' => true, 'joined_at' => '2026-01-01']);
+        $team = \App\Models\Team::create(['name' => 'React Squad', 'manager_employee_id' => $manager->id, 'is_active' => true]);
+        $team->members()->attach([$this->dev->id, $riya->id]);
+        $this->project->members()->attach($this->dev->id);
+        $devLine = TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'work_date' => '2026-10-07', 'minutes' => 60, 'billable_minutes' => 60, 'description' => 'Dev work', 'source' => 'manual']);
+        TimesheetEntry::create(['project_id' => $this->project->id, 'developer_name' => 'Riya', 'work_date' => '2026-10-08', 'minutes' => 45, 'billable_minutes' => 45, 'description' => 'Typed name work', 'source' => 'import']);
+        TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $outsider->id, 'work_date' => '2026-10-09', 'minutes' => 30, 'billable_minutes' => 30, 'description' => 'Outsider work', 'source' => 'manual']);
+
+        $page = fn (array $q = []) => Livewire::withQueryParams($q + ['month' => '2026-10'])->actingAs($managerUser)->test(\App\Livewire\Work\Timesheets::class, ['mine' => true]);
+        $page()->assertSee('Meri team (2)')->assertDontSee('Dev work');
+        $page(['scope' => 'team'])->assertSet('project', $this->project->id)->assertSee('Dev work')->assertSee('Typed name work')->assertSee('Team: React Squad')->assertDontSee('Outsider work');
+        $page(['scope' => 'team', 'member' => $riya->id])->assertSee('Typed name work')->assertDontSee('Dev work');
+        // The team view is read-only: a team member's line cannot be changed from here.
+        $page(['scope' => 'team', 'project' => $this->project->id])->call('openEntry', $devLine->id)->assertForbidden();
+
+        // Someone without a team stays on their own lines.
+        Livewire::withQueryParams(['scope' => 'team', 'month' => '2026-10'])->actingAs($this->dev->user)->test(\App\Livewire\Work\Timesheets::class, ['mine' => true])
+            ->assertSet('scope', 'mine')->assertDontSee('Typed name work');
+
+        \Laravel\Sanctum\Sanctum::actingAs($managerUser, ['*']);
+        $api = $this->getJson('/api/timesheet?month=2026-10&scope=team')->assertOk()->assertJsonPath('scope', 'team')->assertJsonCount(2, 'team');
+        $this->assertEqualsCanonicalizing(['Dev work', 'Typed name work'], collect($api->json('data'))->pluck('description')->all());
+        $this->assertSame([false, 'React Squad'], [collect($api->json('data'))->firstWhere('description', 'Dev work')['editable'], collect($api->json('data'))->firstWhere('description', 'Dev work')['team']]);
+        $this->getJson('/api/timesheet?month=2026-10')->assertJsonPath('scope', 'mine')->assertJsonCount(0, 'data');
+    }
+
     public function test_the_app_lets_employees_fill_their_own_timesheet(): void
     {
         $this->project->members()->attach($this->dev->id);
@@ -171,8 +205,8 @@ class ClientPortalTest extends TestCase
 
         $this->postJson('/api/timesheet', ['project_id' => $this->project->id, 'work_date' => '2026-10-31', 'start_time' => '10:00', 'end_time' => '11:00', 'description' => 'Future work'])
             ->assertStatus(422)->assertJsonValidationErrors('work_date');
-        $created = $this->postJson('/api/timesheet', ['project_id' => $this->project->id, 'work_date' => '2026-10-29', 'start_time' => '22:30', 'end_time' => '00:15', 'description' => 'Night deploy', 'status' => 'Live'])
-            ->assertCreated()->assertJsonPath('data.minutes', 105)->assertJsonPath('data.editable', true);
+        $created = $this->postJson('/api/timesheet', ['project_id' => $this->project->id, 'work_date' => '2026-10-29', 'start_time' => '22:30', 'end_time' => '00:15', 'description' => 'Night deploy', 'status' => 'Done', 'stage' => 'Live'])
+            ->assertCreated()->assertJsonPath('data.minutes', 105)->assertJsonPath('data.editable', true)->assertJsonPath('data.status', 'Done')->assertJsonPath('data.stage', 'Live');
         $id = $created->json('data.id');
         $this->assertSame([$this->dev->id, 105, true], [TimesheetEntry::find($id)->employee_id, TimesheetEntry::find($id)->billable_minutes, TimesheetEntry::find($id)->visible_to_client]);
 
@@ -207,7 +241,7 @@ class ClientPortalTest extends TestCase
             $sheet('Oct 2026', [
                 ['', 'Old remaining', '', '', '', 215, 215, '', '', ''],
                 [46302, 'Category & Subcategory Relationship Update', 0.4375, 0.0833333, '', 210, 100, 'Khushboo', 'Done', ''],
-                [46303, 'Meeting', '', '', '1.5', 90, '', 'Neeraj', '', ''],
+                [46303, 'Meeting', '', '', '1.5', 90, '', 'Neeraj', 'Live', ''],
             ]),
             ['name' => 'Sheet3', 'columns' => [['Start Time', 'text', 10]], 'rows' => [[0.41]]],
         ]);
@@ -218,6 +252,7 @@ class ClientPortalTest extends TestCase
         $line = TimesheetEntry::where('description', 'like', 'Category%')->firstOrFail();
         $this->assertSame(['2026-10-07', '10:30', '14:00', 210, 100, $this->dev->id], [$line->work_date->toDateString(), substr($line->start_time, 0, 5), substr($line->end_time, 0, 5), $line->minutes, $line->billable_minutes, $line->employee_id]);
         $this->assertSame([90, 'Neeraj', null], [TimesheetEntry::where('description', 'Meeting')->value('billable_minutes'), TimesheetEntry::where('description', 'Meeting')->value('developer_name'), TimesheetEntry::where('description', 'Meeting')->value('employee_id')]);
+        $this->assertSame([null, 'Live', 'Done', null], [TimesheetEntry::where('description', 'Meeting')->value('status'), TimesheetEntry::where('description', 'Meeting')->value('stage'), $line->status, $line->stage]);
         $this->assertSame(215, \App\Models\TimesheetMonth::where('month', '2026-10')->value('opening_remaining_minutes'));
         $this->assertSame(215 + 100 + 90, app(TimesheetService::class)->summary($this->project, '2026-10')['billable_minutes']);
 

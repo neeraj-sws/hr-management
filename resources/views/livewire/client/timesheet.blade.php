@@ -23,7 +23,7 @@
     @if($projectModel)
     <section class="card">
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th>@if($projectModel->client_sees_developer)<th>Developer</th>@endif<th>Task</th><th>Time</th><th class="num">Billable</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Date</th>@if($projectModel->client_sees_developer)<th>Developer</th>@endif<th>Task</th><th>Time</th><th class="num">Billable</th><th>Status</th><th>Stage</th><th></th></tr></thead>
             <tbody>
             @forelse($entries as $e)
                 @php($open = $e->objections->firstWhere('status', 'open'))
@@ -42,10 +42,11 @@
                     <td class="nowrap">{{ $e->start_time ? substr($e->start_time, 0, 5) : '' }}{{ $e->end_time ? '–'.substr($e->end_time, 0, 5) : '' }}</td>
                     <td class="num">{{ $fmt($e->billable_minutes) }}</td>
                     <td>{{ $e->status ?: '—' }}</td>
+                    <td>{{ $e->stage ?: '—' }}</td>
                     <td>@if(! $summary['approved_at'] && ! $open)<button class="btn btn-sm" wire:click="openObjection({{ $e->id }})">Object</button>@endif</td>
                 </tr>
             @empty
-                <tr><td colspan="7"><x-empty title="Nothing logged this month" icon="clock" /></td></tr>
+                <tr><td colspan="8"><x-empty title="Nothing logged this month" icon="clock" /></td></tr>
             @endforelse
             </tbody>
         </table></div>

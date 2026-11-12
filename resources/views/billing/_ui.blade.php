@@ -13,6 +13,42 @@
     .bill-badge.draft{background:var(--line-2);color:var(--muted)}
     .bill-badge.unpaid,.bill-badge.declined{background:rgba(239,68,68,.14);color:var(--red,#dc2626)}
     h1 .bill-badge{margin-left:12px;vertical-align:middle}
+    /* List look of the old CMS: bordered number button, solid status pill, coloured round action buttons. */
+    .cms-no{display:inline-block;border:1px solid #0d6efd;color:#0d6efd;border-radius:6px;padding:9px 18px;font-weight:600;white-space:nowrap;text-decoration:none}
+    .cms-no:hover{background:#0d6efd;color:#fff}
+    .cms-pill{display:inline-block;min-width:96px;text-align:center;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;color:#fff;background:#6c757d;white-space:nowrap}
+    .cms-pill.sent{background:#ffa21d}.cms-pill.paid{background:#6fd943}.cms-pill.part{background:#3ec9d6}.cms-pill.unpaid{background:#ff3a6e}
+    .cms-pill.draft{background:#6c757d}.cms-pill.accepted{background:#6fd943}.cms-pill.declined{background:#ff3a6e}.cms-pill.converted{background:#6f42c1}
+    .cms-acts{display:flex;gap:8px;flex-wrap:nowrap}
+    .cms-act{width:36px;height:36px;border-radius:8px;border:0;display:inline-flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;text-decoration:none}
+    .cms-act svg{width:16px;height:16px}
+    .cms-act:disabled{opacity:.45;cursor:not-allowed}
+    .cms-act.link{background:#ffa21d}.cms-act.copy{background:#6fd943}.cms-act.view{background:#3ec9d6}.cms-act.edit{background:#0d6efd}.cms-act.del{background:#ff3a6e}.cms-act.conv{background:#6f42c1}
+    .cms-act:hover{filter:brightness(.92);color:#fff}
+    .cms-late,.table td.cms-late{color:#ff3a6e}
+    /* CMS invoice detail: steps, button row, the invoice card. */
+    .cms-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;text-align:center;padding:26px 22px}
+    .cms-step h6{margin:10px 0 8px;font-size:15px;font-weight:600}
+    .cms-step p{margin:0 0 12px;font-size:12.5px;color:var(--muted);display:flex;gap:4px;align-items:center;justify-content:center}
+    .cms-step-ic svg{width:28px;height:28px}
+    .cms-b-primary,.cms-b-warning,.cms-b-info{color:#fff!important;border:0!important}
+    .cms-b-primary{background:#0d6efd!important}.cms-b-warning{background:#ffa21d!important}.cms-b-info{background:#3ec9d6!important}
+    .cms-b-primary:hover,.cms-b-warning:hover,.cms-b-info:hover{filter:brightness(.92)}
+    .cms-btnrow{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+    .cms-inv{padding:26px 28px}
+    .cms-inv-head{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:12px}
+    .cms-inv-head h4{margin:0;font-size:20px;font-weight:600}
+    .cms-inv-dates{display:flex;justify-content:flex-end;gap:26px;font-size:12.5px;text-align:left}
+    .cms-inv-parties{display:flex;justify-content:space-between;gap:20px;margin-top:14px;line-height:1.75}
+    .cms-qr{width:126px;height:126px;flex:none}
+    .cms-qr svg{width:100%;height:100%}
+    .cms-inv-status{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:16px;line-height:1.9}
+    .cms-inv-prod{margin:26px 0 10px}
+    .cms-inv-table th{background:var(--line-2);font-size:13px;text-transform:none;letter-spacing:0;color:var(--text)}
+    .cms-inv-table td,.cms-inv-table th{text-align:left;vertical-align:top}
+    .table .cms-r,.cms-inv-table .cms-r{text-align:right}
+    .cms-inv-table tfoot td{border-top:1px solid var(--line)}
+    @media (max-width:640px){.cms-steps{grid-template-columns:1fr}.cms-inv{padding:18px 14px}.cms-inv-parties{flex-direction:column}}
     .inv-totals{max-width:340px;margin-left:auto;margin-top:18px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
     .inv-totals .r{display:flex;justify-content:space-between;gap:16px;padding:9px 16px;font-size:14px}
     .inv-totals .r span{color:var(--muted)}

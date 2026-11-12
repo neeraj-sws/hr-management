@@ -8,7 +8,7 @@ use App\Models\AuditLog as Log;
 use App\Models\Screenshot;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Monitoring audit log (HR / Admin): who looked at whose data, which screenshot, view or download, and capture changes. */
 class AuditLog extends Component

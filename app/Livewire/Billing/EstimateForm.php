@@ -26,6 +26,7 @@ class EstimateForm extends Component
     public string $refNumber = '';
     public string $notes = '';
     public string $terms = '';
+    public ?int $categoryId = null;
     /** @var array<int, array{product_id:?int,name:string,description:string,quantity:string,price:string,discount:string,tax_id:?int}> */
     public array $items = [];
 
@@ -36,12 +37,13 @@ class EstimateForm extends Component
             $estimate->load('items');
             $this->estimateId = $estimate->id;
             $this->fill(['customerId' => $estimate->customer_id, 'issueDate' => $estimate->issue_date->toDateString(),
-                'expiryDate' => $estimate->expiry_date?->toDateString() ?? '', 'refNumber' => (string) $estimate->ref_number, 'notes' => (string) $estimate->notes, 'terms' => (string) $estimate->terms]);
+                'expiryDate' => $estimate->expiry_date?->toDateString() ?? '', 'refNumber' => (string) $estimate->ref_number, 'notes' => (string) $estimate->notes, 'terms' => (string) $estimate->terms, 'categoryId' => $estimate->category_id]);
             $this->items = $estimate->items->map(fn ($i) => ['product_id' => $i->product_id, 'name' => $i->name, 'description' => (string) $i->description,
                 'quantity' => (string) (float) $i->quantity, 'price' => (string) (float) $i->price, 'discount' => (string) (float) $i->discount, 'tax_id' => $i->tax_id])->all();
         } else {
             $this->issueDate = today()->toDateString();
             $this->expiryDate = today()->addDays(14)->toDateString();
+            if ($cid = (int) request('customer')) { if (BillingCustomer::whereKey($cid)->exists()) $this->customerId = $cid; }
             $this->addItem();
         }
     }
@@ -90,19 +92,21 @@ class EstimateForm extends Component
             'items.*.quantity' => ['required', 'numeric', 'min:0'],
             'items.*.price' => ['required', 'numeric', 'min:0'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            'categoryId' => ['nullable', 'exists:billing_categories,id'],
         ], [], ['customerId' => 'customer', 'issueDate' => 'issue date', 'expiryDate' => 'expiry date']);
 
         DB::transaction(function () use ($audit, $billing, $send) {
             if ($this->estimateId) {
                 $estimate = BillingEstimate::findOrFail($this->estimateId);
-                $estimate->update(['customer_id' => $this->customerId, 'issue_date' => $this->issueDate,
+                $estimate->update(['customer_id' => $this->customerId, 'category_id' => $this->categoryId ?: null, 'issue_date' => $this->issueDate,
                     'expiry_date' => $this->expiryDate ?: null, 'ref_number' => $this->refNumber ?: null,
                     'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null]);
                 $estimate->items()->delete();
             } else {
                 $n = $billing->nextEstimateNumber($this->issueDate);
                 $estimate = BillingEstimate::create(['number' => $n['number'], 'financial_year' => $n['financial_year'], 'company_id' => $n['company_id'],
-                    'customer_id' => $this->customerId, 'issue_date' => $this->issueDate, 'expiry_date' => $this->expiryDate ?: null,
+                    'customer_id' => $this->customerId, 'category_id' => $this->categoryId ?: null, 'issue_date' => $this->issueDate, 'expiry_date' => $this->expiryDate ?: null,
+                    'place_of_supply' => BillingCustomer::find($this->customerId)?->billing_state,
                     'ref_number' => $this->refNumber ?: null, 'notes' => $this->notes ?: null, 'terms' => $this->terms ?: null,
                     'status' => $send ? 'Sent' : 'Draft', 'created_by' => auth()->id()]);
             }
@@ -115,19 +119,30 @@ class EstimateForm extends Component
             $this->estimateId = $estimate->id;
         });
 
-        $this->toast('Estimate saved.');
+        $this->toast('Proposal saved.');
         $this->redirect(route('billing.estimates.show', $this->estimateId));
     }
 
     public function render()
     {
+        if ($this->estimateId) {
+            $numberPreview = BillingEstimate::find($this->estimateId)?->number();
+        } else {
+            $fy = app(BillingService::class)->financialYear($this->issueDate ?: today());
+            $numberPreview = (new BillingEstimate(['financial_year' => $fy, 'number' => (int) BillingEstimate::where('financial_year', $fy)->max('number') + 1]))->number();
+        }
+
         return $this->page('livewire.billing.estimate-form', [
+            'customer' => $this->customerId ? BillingCustomer::find($this->customerId) : null,
+            'categories' => \App\Models\BillingCategory::where('type', 'income')->orderBy('name')->get(['id', 'name']),
+            'numberPreview' => '#'.ltrim((string) $numberPreview, '#'),
+            'lineTotals' => collect($this->items)->map(fn ($it) => $this->lineTotal($it))->all(),
             'customers' => BillingCustomer::orderBy('name')->get(['id', 'name']),
             'products' => BillingProduct::where('is_active', true)->orderBy('name')->get(['id', 'name', 'sale_price', 'tax_id']),
             'taxes' => BillingTax::orderBy('name')->get(['id', 'name', 'rate']),
             'subTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['quantity'] * (float) $it['price'] - (float) $it['discount']), 2),
             'discountTotal' => round(collect($this->items)->sum(fn ($it) => (float) $it['discount']), 2),
             'grandTotal' => round(collect($this->items)->sum(fn ($it) => $this->lineTotal($it)), 2),
-        ], $this->estimateId ? 'Edit estimate' : 'New estimate');
+        ], $this->estimateId ? 'Proposal Edit' : 'Proposal Create');
     }
 }

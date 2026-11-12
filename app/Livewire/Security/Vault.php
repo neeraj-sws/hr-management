@@ -18,7 +18,7 @@ use Livewire\Component;
  */
 class Vault extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     public const CATEGORIES = ['database' => 'Database', 'login' => 'Login', 'service' => 'API / service'];
 

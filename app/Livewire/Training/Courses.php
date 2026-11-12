@@ -14,7 +14,7 @@ use Livewire\Component;
 /** HR manages the catalogue; managers can assign courses to their own team. */
 class Courses extends Component
 {
-    use InteractsWithHr, \App\Livewire\Concerns\EditsTrainingCourse, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\EditsTrainingCourse, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     public ?int $assigningId = null;
     public array $employeeIds = [];

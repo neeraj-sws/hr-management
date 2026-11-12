@@ -8,7 +8,7 @@ use App\Models\AuditLog;
 use App\Models\User;
 use Livewire\Attributes\Url;
 use Livewire\Component;
-use Livewire\WithPagination;
+use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** Audit log, grouped by category (Attendance, Payroll, Employee, Tasks, Leave, Assets, Expenses, System Activity). */
 class AuditLogs extends Component

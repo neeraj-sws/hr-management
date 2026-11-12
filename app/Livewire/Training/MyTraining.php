@@ -9,7 +9,7 @@ use Livewire\Component;
 
 class MyTraining extends Component
 {
-    use InteractsWithHr, \Livewire\WithPagination;
+    use InteractsWithHr, \App\Livewire\Concerns\WithPaginationNoUrl;
 
     public ?int $completingId = null;
     public string $note = '';
