@@ -15,7 +15,7 @@
             <a class="btn" href="{{ route('billing.customers.statement', $c) }}" target="_blank" title="Account statement"><x-icon name="file" class="icon-sm" />Statement</a>
             <button type="button" class="btn" wire:click="openEmail" title="E-mail the account statement"><x-icon name="mail" class="icon-sm" />Email statement</button>
             <a class="btn btn-primary btn-icon" href="{{ route('billing.customers', ['edit' => $c->id]) }}" title="Edit customer" aria-label="Edit customer"><x-icon name="edit" class="icon-sm" /></a>
-            <button type="button" class="btn btn-danger btn-icon" wire:click="deleteCustomer" wire:confirm="Customer {{ $c->name }} delete karein? Ye wapas nahi aayega." title="Delete customer" aria-label="Delete customer"><x-icon name="trash" class="icon-sm" /></button>
+            <button type="button" class="btn btn-danger btn-icon" wire:click="deleteCustomer" wire:confirm="Customer {{ $c->name }}? This cannot be undone." title="Delete customer" aria-label="Delete customer"><x-icon name="trash" class="icon-sm" /></button>
         </div>
     </div>
 
@@ -90,7 +90,7 @@
                         <button type="button" class="btn btn-sm" wire:click="duplicateEstimate({{ $e->id }})" wire:confirm="{{ $e->number() }} ki copy banayein?" title="Duplicate Proposal"><x-icon name="layers" class="icon-sm" /></button>
                         <a class="btn btn-sm" href="{{ route('billing.estimates.show', $e) }}" title="Show"><x-icon name="eye" class="icon-sm" /></a>
                         <a class="btn btn-sm" href="{{ route('billing.estimates.edit', $e) }}" title="Edit"><x-icon name="edit" class="icon-sm" /></a>
-                        <button type="button" class="btn btn-sm btn-danger" wire:click="deleteEstimate({{ $e->id }})" wire:confirm="Proposal {{ $e->number() }} delete karein?" title="Delete"><x-icon name="trash" class="icon-sm" /></button>
+                        <button type="button" class="btn btn-sm btn-danger" wire:click="deleteEstimate({{ $e->id }})" wire:confirm="Proposal {{ $e->number() }} — delete?" title="Delete"><x-icon name="trash" class="icon-sm" /></button>
                     </td></tr>
             @empty<tr><td colspan="5"><x-empty title="No proposals yet" icon="file" /></td></tr>@endforelse
             </tbody></table></div>
@@ -111,12 +111,12 @@
                     <td class="num">@if($due > 0)<strong style="color:var(--red,#dc2626)">₹{{ number_format($due, 2) }}</strong>@else<span class="muted">₹0.00</span>@endif</td>
                     <td><span class="bill-badge {{ billing_badge_class($i->status) }}">{{ $i->status }}</span></td>
                     <td class="row-actions">
-                        @if($i->status !== 'Draft')<button type="button" class="btn btn-sm" title="Copy link (customer bina login ke dekh sakta hai)" x-on:click="navigator.clipboard.writeText(@js(app(\App\Services\InvoiceActions::class)->publicUrl($i))).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Invoice link copied.', type: 'success' } })))"><x-icon name="external" class="icon-sm" /></button>@endif
-                        <button type="button" class="btn btn-sm" wire:click="duplicateInvoice({{ $i->id }})" wire:confirm="{{ $i->number() }} ki copy banake nayi Draft invoice kholein?" title="Duplicate"><x-icon name="layers" class="icon-sm" /></button>
+                        @if($i->status !== 'Draft')<button type="button" class="btn btn-sm" title="Copy link (the customer can open it without signing in)" x-on:click="navigator.clipboard.writeText(@js(app(\App\Services\InvoiceActions::class)->publicUrl($i))).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Invoice link copied.', type: 'success' } })))"><x-icon name="external" class="icon-sm" /></button>@endif
+                        <button type="button" class="btn btn-sm" wire:click="duplicateInvoice({{ $i->id }})" wire:confirm="{{ $i->number() }} — make a copy as a new Draft invoice?" title="Duplicate"><x-icon name="layers" class="icon-sm" /></button>
                         <a class="btn btn-sm" href="{{ route('billing.invoices.show', $i) }}" title="View"><x-icon name="eye" class="icon-sm" /></a>
                         <a class="btn btn-sm" href="{{ route('billing.invoices.edit', $i) }}" title="Edit"><x-icon name="edit" class="icon-sm" /></a>
                         <a class="btn btn-sm" href="{{ route('billing.invoices.print', $i) }}" target="_blank" title="Print / PDF"><x-icon name="printer" class="icon-sm" /></a>
-                        <button type="button" class="btn btn-sm btn-danger" wire:click="deleteInvoice({{ $i->id }})" wire:confirm="Invoice {{ $i->number() }} delete karein? Ye wapas nahi aayegi." title="Delete"><x-icon name="trash" class="icon-sm" /></button>
+                        <button type="button" class="btn btn-sm btn-danger" wire:click="deleteInvoice({{ $i->id }})" wire:confirm="Invoice {{ $i->number() }}? This cannot be undone." title="Delete"><x-icon name="trash" class="icon-sm" /></button>
                     </td></tr>
             @empty<tr><td colspan="6"><x-empty title="No invoices yet" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>
@@ -129,8 +129,8 @@
                 <x-field label="To (customer e-mail)" name="emailTo" full><input type="email" wire:model="emailTo" placeholder="customer@company.com"></x-field>
                 <x-field label="From" name="statementFrom"><input type="date" wire:model="statementFrom"></x-field>
                 <x-field label="To" name="statementTo"><input type="date" wire:model="statementTo"></x-field>
-                <x-field label="Message (optional)" name="emailMessage" full hint="mail me upar dikhega"><textarea wire:model="emailMessage" rows="3"></textarea></x-field>
-            </div><p class="small muted">Customer ko is period ka statement (invoices, payments, balance) ka link jayega — bina login ke khulega.</p></div>
+                <x-field label="Message (optional)" name="emailMessage" full hint="shown at the top of the e-mail"><textarea wire:model="emailMessage" rows="3"></textarea></x-field>
+            </div><p class="small muted">The customer gets a link to the statement for this period (invoices, payments, balance) — it opens without signing in.</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="$set('emailOpen', false)">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled"><x-icon name="mail" class="icon-sm" />Send e-mail</button></div></form>
         </x-modal>
     @endif

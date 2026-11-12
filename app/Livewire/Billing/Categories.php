@@ -59,7 +59,7 @@ class Categories extends Component
     {
         $this->guard();
         $c = BillingCategory::findOrFail($id);
-        if (BillingRevenue::where('category_id', $c->id)->exists()) { $this->toast('Is category me revenue hai — delete nahi ho sakti.', 'error'); return; }
+        if (BillingRevenue::where('category_id', $c->id)->exists()) { $this->toast('This category has revenue entries, so it cannot be deleted.', 'error'); return; }
         $audit->record('billing.category_deleted', $c);
         $c->delete();
         $this->toast('Category deleted.');

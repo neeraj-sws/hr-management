@@ -15,7 +15,7 @@
                     <td class="num"><strong>{{ number_format((float) $a->opening_balance + $a->money_in - $a->money_out, 2) }}</strong></td><td>{{ $a->contact ?: '—' }}</td>
                     <td><div class="row-actions">
                         <button class="btn btn-sm btn-icon" wire:click="edit({{ $a->id }})" title="Edit" aria-label="Edit account"><x-icon name="edit" class="icon-sm" /></button>
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $a->id }})" wire:confirm="Account {{ $a->bank_name }} delete karein?" title="Delete" aria-label="Delete account"><x-icon name="trash" class="icon-sm" /></button>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $a->id }})" wire:confirm="Account {{ $a->bank_name }} — delete?" title="Delete" aria-label="Delete account"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="9"><x-empty title="No accounts" icon="bank" /></td></tr>@endforelse
             </tbody></table></div>

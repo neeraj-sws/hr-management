@@ -89,7 +89,7 @@ class Expenses extends Component
             'reference' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
             'receipt' => BillingFileController::RULES,
-        ], ['receipt.mimes' => 'Receipt image (jpg / png) ya PDF honi chahiye.'], ['accountId' => 'account', 'categoryId' => 'category']);
+        ], ['receipt.mimes' => 'The receipt must be an image (jpg / png) or a PDF.'], ['accountId' => 'account', 'categoryId' => 'category']);
         $existing = $this->editingId ? BillingExpense::findOrFail($this->editingId) : null;
         $path = $existing?->receipt_path;
         if ($this->receipt || $this->removeReceipt) { BillingFileController::forget($path); $path = null; }

@@ -64,7 +64,7 @@ class BankAccounts extends Component
     {
         $this->guard();
         $a = BillingBankAccount::findOrFail($id);
-        if ($a->inUse()) { $this->toast('Is account me entries hain — delete nahi ho sakta (Inactive kar do).', 'error'); return; }
+        if ($a->inUse()) { $this->toast('This account has entries, so it cannot be deleted (mark it Inactive instead).', 'error'); return; }
         $audit->record('billing.account_deleted', $a);
         $a->delete();
         $this->toast('Account deleted.');

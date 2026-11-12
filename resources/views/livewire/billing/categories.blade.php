@@ -14,7 +14,7 @@
                     <td>{{ \App\Models\BillingCategory::TYPES[$c->type] ?? $c->type }}</td><td class="num">{{ $used[$c->id] ?? 0 }}</td>
                     <td><div class="row-actions">
                         <button class="btn btn-sm btn-icon" wire:click="edit({{ $c->id }})" title="Edit" aria-label="Edit category"><x-icon name="edit" class="icon-sm" /></button>
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $c->id }})" wire:confirm="Category {{ $c->name }} delete karein?" title="Delete" aria-label="Delete category"><x-icon name="trash" class="icon-sm" /></button>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $c->id }})" wire:confirm="Category {{ $c->name }} — delete?" title="Delete" aria-label="Delete category"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="4"><x-empty title="No categories" icon="layers" /></td></tr>@endforelse
             </tbody></table></div>

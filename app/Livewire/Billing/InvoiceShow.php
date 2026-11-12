@@ -89,7 +89,7 @@ class InvoiceShow extends Component
             return;
         }
         $kind = $this->emailKind === 'reminder' ? 'reminder' : 'send';
-        if ($kind === 'reminder' && $inv->due() <= 0) { $this->addError('emailTo', 'Is invoice par kuch due nahi hai.'); return; }
+        if ($kind === 'reminder' && $inv->due() <= 0) { $this->addError('emailTo', 'This invoice has nothing due.'); return; }
         if ($inv->status === 'Draft') {
             $inv->update(['status' => 'Sent', 'send_date' => now()->toDateString()]);
             $audit->record('billing.invoice_sent', $inv);
@@ -99,7 +99,7 @@ class InvoiceShow extends Component
                 ->notifyNow(new \App\Notifications\InvoiceEmail($inv, $kind, $actions->publicUrl($inv), $billing->company(), $this->emailMessage));
         } catch (\Throwable $e) {
             report($e);
-            $this->addError('emailTo', 'E-mail nahi gaya: '.\Illuminate\Support\Str::limit($e->getMessage(), 160).' (Settings → Email check karo).');
+            $this->addError('emailTo', 'E-mail was not sent: '.\Illuminate\Support\Str::limit($e->getMessage(), 160).' (check Settings → Email).');
 
             return;
         }
@@ -130,7 +130,7 @@ class InvoiceShow extends Component
         $this->validate([
             'creditAmount' => ['required', 'numeric', 'min:0.01', 'max:'.max(0.01, $max)],
             'creditDate' => ['required', 'date'], 'creditDescription' => ['nullable', 'string', 'max:500'],
-        ], ['creditAmount.max' => 'Credit note due amount (₹'.number_format($max, 2).') se zyada nahi ho sakta.'], ['creditAmount' => 'amount', 'creditDate' => 'date']);
+        ], ['creditAmount.max' => 'A credit note cannot be more than the amount due (₹'.number_format($max, 2).').'], ['creditAmount' => 'amount', 'creditDate' => 'date']);
         $values = ['invoice_id' => $inv->id, 'customer_id' => $inv->customer_id, 'amount' => (float) $this->creditAmount, 'date' => $this->creditDate,
             'description' => trim($this->creditDescription) ?: null];
         if ($existing) $existing->update($values);
@@ -202,7 +202,7 @@ class InvoiceShow extends Component
             'payAccountId' => ['nullable', 'exists:billing_bank_accounts,id'],
             'payNote' => ['nullable', 'string', 'max:500'],
             'payReceipt' => \App\Http\Controllers\BillingFileController::RULES,
-        ], ['payReceipt.mimes' => 'Receipt image (jpg / png) ya PDF honi chahiye.'], ['payAmount' => 'amount', 'payDate' => 'date', 'payMethod' => 'method', 'payAccountId' => 'account', 'payNote' => 'description']);
+        ], ['payReceipt.mimes' => 'The receipt must be an image (jpg / png) or a PDF.'], ['payAmount' => 'amount', 'payDate' => 'date', 'payMethod' => 'method', 'payAccountId' => 'account', 'payNote' => 'description']);
         $payment = BillingInvoicePayment::create(['invoice_id' => $inv->id, 'date' => $this->payDate, 'amount' => (float) $this->payAmount,
             'method' => $this->payMethod, 'reference' => $this->payReference ?: null, 'account_id' => $this->payAccountId ?: null, 'note' => trim($this->payNote) ?: null,
             'receipt_path' => $this->payReceipt ? \App\Http\Controllers\BillingFileController::store($this->payReceipt) : null, 'recorded_by' => auth()->id()]);

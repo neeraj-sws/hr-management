@@ -159,7 +159,7 @@ class Timesheets extends Component
             if (! empty($this->entry['work_date'])) {
                 $cal = $this->workCalendar($this->entry['work_date']);
                 if (! WorkCalendar::isWorkday($this->entry['work_date'], $cal)) {
-                    $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($this->entry['work_date'], $cal).') — timesheet line add nahi kar sakte.');
+                    $this->addError('entry.work_date', 'This day is off ('.WorkCalendar::offDayReason($this->entry['work_date'], $cal).') — a timesheet line cannot be added.');
                 }
             }
 
@@ -206,8 +206,8 @@ class Timesheets extends Component
             'entry.description' => ['required', 'string', 'max:5000'], 'entry.status' => ['nullable', 'string', 'max:40'], 'entry.stage' => ['nullable', 'string', 'max:40'], 'entry.remarks' => ['nullable', 'string', 'max:2000'],
         ], [], ['entry.work_date' => 'date', 'entry.minutes' => 'minutes', 'entry.billable_minutes' => 'billable minutes', 'entry.description' => 'task'])['entry'];
         $cal = $this->workCalendar($data['work_date']);
-        if (! WorkCalendar::isWorkday($data['work_date'], $cal)) { $this->addError('entry.work_date', 'Ye din off hai ('.WorkCalendar::offDayReason($data['work_date'], $cal).') — timesheet line add nahi kar sakte.'); return; }
-        if ($this->mine && Carbon::parse($data['work_date'])->isAfter(today())) { $this->addError('entry.work_date', 'Aage ki date ka timesheet nahi bhar sakte.'); return; }
+        if (! WorkCalendar::isWorkday($data['work_date'], $cal)) { $this->addError('entry.work_date', 'This day is off ('.WorkCalendar::offDayReason($data['work_date'], $cal).') — a timesheet line cannot be added.'); return; }
+        if ($this->mine && Carbon::parse($data['work_date'])->isAfter(today())) { $this->addError('entry.work_date', 'A timesheet cannot be filled for a future date.'); return; }
         if ($timesheets->isLocked($project, Carbon::parse($data['work_date'])->format('Y-m'))) { $this->addError('entry.work_date', 'That month is already approved by the client.'); return; }
         $values = ['project_id' => $project->id, 'work_date' => $data['work_date'], 'employee_id' => $data['employee_id'] ?: null, 'developer_name' => trim((string) $data['developer_name']) ?: null,
             'start_time' => $data['start_time'] ?: null, 'end_time' => $data['end_time'] ?: null, 'minutes' => (int) $data['minutes'],

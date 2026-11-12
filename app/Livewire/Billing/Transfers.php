@@ -68,7 +68,7 @@ class Transfers extends Component
             'fromAccountId' => ['required', 'exists:billing_bank_accounts,id'], 'toAccountId' => ['required', 'different:fromAccountId', 'exists:billing_bank_accounts,id'],
             'amount' => ['required', 'numeric', 'min:0.01'], 'date' => ['required', 'date'],
             'reference' => ['nullable', 'string', 'max:100'], 'description' => ['nullable', 'string', 'max:500'],
-        ], ['toAccountId.different' => 'From aur To account alag hone chahiye.'], ['fromAccountId' => 'from account', 'toAccountId' => 'to account']);
+        ], ['toAccountId.different' => 'The From and To accounts must be different.'], ['fromAccountId' => 'from account', 'toAccountId' => 'to account']);
         $t = BillingBankTransfer::updateOrCreate(['id' => $this->editingId], [
             'from_account_id' => $d['fromAccountId'], 'to_account_id' => $d['toAccountId'], 'amount' => (float) $d['amount'], 'date' => $d['date'],
             'reference' => $d['reference'] ?: null, 'description' => $d['description'] ?: null,

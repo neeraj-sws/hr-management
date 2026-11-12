@@ -75,7 +75,7 @@ class BillShow extends Component
             'payAmount' => ['required', 'numeric', 'min:0.01', 'max:'.max(0.01, $bill->due() + 0.01)], 'payDate' => ['required', 'date'],
             'payAccountId' => ['required', 'exists:billing_bank_accounts,id'], 'payMethod' => ['required', 'string', 'max:50'],
             'payReference' => ['nullable', 'string', 'max:100'], 'payNote' => ['nullable', 'string', 'max:500'], 'payReceipt' => BillingFileController::RULES,
-        ], ['payAmount.max' => 'Bill par itna due nahi hai.'], ['payAmount' => 'amount', 'payDate' => 'date', 'payAccountId' => 'account']);
+        ], ['payAmount.max' => 'This bill does not have that much due.'], ['payAmount' => 'amount', 'payDate' => 'date', 'payAccountId' => 'account']);
         BillingBillPayment::create(['bill_id' => $bill->id, 'date' => $this->payDate, 'amount' => (float) $this->payAmount, 'account_id' => $this->payAccountId,
             'method' => $this->payMethod, 'reference' => $this->payReference ?: null, 'note' => trim($this->payNote) ?: null,
             'receipt_path' => $this->payReceipt ? BillingFileController::store($this->payReceipt) : null, 'recorded_by' => auth()->id()]);
@@ -120,7 +120,7 @@ class BillShow extends Component
         $existing = $this->debitId ? $bill->debitNotes->firstWhere('id', $this->debitId) : null;
         $max = round(max(0, $bill->due()) + (float) $existing?->amount, 2);
         $this->validate(['debitAmount' => ['required', 'numeric', 'min:0.01', 'max:'.max(0.01, $max)], 'debitDate' => ['required', 'date'], 'debitDescription' => ['nullable', 'string', 'max:500']],
-            ['debitAmount.max' => 'Debit note due amount (₹'.number_format($max, 2).') se zyada nahi ho sakta.'], ['debitAmount' => 'amount', 'debitDate' => 'date']);
+            ['debitAmount.max' => 'A debit note cannot be more than the amount due (₹'.number_format($max, 2).').'], ['debitAmount' => 'amount', 'debitDate' => 'date']);
         $values = ['bill_id' => $bill->id, 'vendor_id' => $bill->vendor_id, 'amount' => (float) $this->debitAmount, 'date' => $this->debitDate, 'description' => trim($this->debitDescription) ?: null];
         if ($existing) $existing->update($values);
         $note = $existing ?? BillingDebitNote::create($values + ['created_by' => auth()->id()]);

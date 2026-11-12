@@ -18,7 +18,7 @@
                     <td class="num"><strong>₹{{ number_format($t->amount, 2) }}</strong></td><td>{{ $t->reference ?: '—' }}</td><td style="white-space:normal">{{ $t->description ?: '—' }}</td>
                     <td><div class="row-actions">
                         <button class="btn btn-sm btn-icon" wire:click="edit({{ $t->id }})" title="Edit" aria-label="Edit transfer"><x-icon name="edit" class="icon-sm" /></button>
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $t->id }})" wire:confirm="Transfer of ₹{{ number_format($t->amount, 2) }} delete karein?" title="Delete" aria-label="Delete transfer"><x-icon name="trash" class="icon-sm" /></button>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $t->id }})" wire:confirm="Transfer of ₹{{ number_format($t->amount, 2) }} — delete?" title="Delete" aria-label="Delete transfer"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="7"><x-empty title="No transfers" icon="refresh" /></td></tr>@endforelse
             </tbody></table></div>

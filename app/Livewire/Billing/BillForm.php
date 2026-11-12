@@ -91,7 +91,7 @@ class BillForm extends Component
             $existing = BillingBill::with('payments', 'debitNotes')->findOrFail($this->billId);
             $newTotal = round(collect($this->items)->sum(fn ($it) => $this->lineTotal($it)), 2);
             if ($newTotal + 0.005 < $existing->paidAmount() + $existing->debitTotal()) {
-                $this->addError('items', 'Naya total ('.number_format($newTotal, 2).') already paid amount se kam hai. Pehle payment hatao ya debit note lagao.');
+                $this->addError('items', 'The new total ('.number_format($newTotal, 2).') is less than the amount already paid. Remove a payment or add a debit note first.');
 
                 return;
             }

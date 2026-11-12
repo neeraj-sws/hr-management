@@ -31,7 +31,7 @@
                     <td>@if($r->receipt_path)<a class="btn btn-sm" href="{{ route('billing.receipt-file', ['revenue', $r->id]) }}" target="_blank"><x-icon name="eye" class="icon-sm" />View</a>@else—@endif</td>
                     <td><div class="row-actions">
                         <button class="btn btn-sm btn-icon" wire:click="edit({{ $r->id }})" title="Edit" aria-label="Edit revenue"><x-icon name="edit" class="icon-sm" /></button>
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $r->id }})" wire:confirm="Revenue of ₹{{ number_format($r->amount, 2) }} delete karein?" title="Delete" aria-label="Delete revenue"><x-icon name="trash" class="icon-sm" /></button>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $r->id }})" wire:confirm="Revenue of ₹{{ number_format($r->amount, 2) }} — delete?" title="Delete" aria-label="Delete revenue"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="9"><x-empty title="No revenue entries" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>

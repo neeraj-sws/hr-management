@@ -90,7 +90,7 @@ class InvoiceActions
     {
         $invoice->loadMissing('items', 'payments', 'creditNotes');
         if ($invoice->payments->isNotEmpty() || $invoice->creditNotes->isNotEmpty()) {
-            throw ValidationException::withMessages(['invoice' => 'Is invoice par payment / credit note hai — pehle unhe hatao, phir invoice delete hoga.']);
+            throw ValidationException::withMessages(['invoice' => 'This invoice has payments or credit notes — remove them first, then delete the invoice.']);
         }
         DB::transaction(function () use ($invoice) {
             $this->audit->record('billing.invoice_deleted', $invoice, ['number' => $invoice->number(), 'customer' => $invoice->customer?->name, 'amount' => $invoice->total()]);

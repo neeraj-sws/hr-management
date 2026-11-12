@@ -35,13 +35,13 @@
                     <td class="nowrap">Rs {{ number_format($due, 2) }}</td>
                     <td><span class="cms-pill {{ billing_badge_class($i->status) }}">{{ $i->status }}</span></td>
                     <td><div class="cms-acts">
-                        @if($i->status === 'Draft')<button type="button" class="cms-act link" disabled title="Draft ka link nahi — pehle Send karo" aria-label="Copy invoice link"><x-icon name="link" /></button>
+                        @if($i->status === 'Draft')<button type="button" class="cms-act link" disabled title="No link for a Draft — send it first" aria-label="Copy invoice link"><x-icon name="link" /></button>
                         @else<button type="button" class="cms-act link" title="Copy Invoice" aria-label="Copy invoice link"
                             x-on:click="navigator.clipboard.writeText(@js(app(\App\Services\InvoiceActions::class)->publicUrl($i))).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Link copied on clipboard.', type: 'success' } })))"><x-icon name="link" /></button>@endif
-                        <button type="button" class="cms-act copy" wire:click="duplicate({{ $i->id }})" wire:confirm="{{ $i->number() }} ki copy banake nayi Draft invoice kholein?" title="Duplicate" aria-label="Duplicate invoice"><x-icon name="copy" /></button>
+                        <button type="button" class="cms-act copy" wire:click="duplicate({{ $i->id }})" wire:confirm="{{ $i->number() }} — make a copy as a new Draft invoice?" title="Duplicate" aria-label="Duplicate invoice"><x-icon name="copy" /></button>
                         <a class="cms-act view" href="{{ route('billing.invoices.show', $i) }}" title="Show" aria-label="View invoice"><x-icon name="eye" /></a>
                         <a class="cms-act edit" href="{{ route('billing.invoices.edit', $i) }}" title="Edit" aria-label="Edit invoice"><x-icon name="edit" /></a>
-                        <button type="button" class="cms-act del" wire:click="delete({{ $i->id }})" wire:confirm="Invoice {{ $i->number() }} delete karein? Ye wapas nahi aayegi." title="Delete" aria-label="Delete invoice"><x-icon name="trash" /></button>
+                        <button type="button" class="cms-act del" wire:click="delete({{ $i->id }})" wire:confirm="Invoice {{ $i->number() }}? This cannot be undone." title="Delete" aria-label="Delete invoice"><x-icon name="trash" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="7"><x-empty title="No invoices" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>

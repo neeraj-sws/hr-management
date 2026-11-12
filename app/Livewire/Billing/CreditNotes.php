@@ -80,7 +80,7 @@ class CreditNotes extends Component
             'amount' => ['required', 'numeric', 'min:0.01', 'max:'.max(0.01, $max)],
             'date' => ['required', 'date'],
             'description' => ['nullable', 'string', 'max:500'],
-        ], ['amount.max' => 'Credit note invoice ke due (₹'.number_format($max, 2).') se zyada nahi ho sakta.', 'invoiceId.required' => 'Invoice choose karo.'], ['invoiceId' => 'invoice']);
+        ], ['amount.max' => 'A credit note cannot be more than the invoice due (₹'.number_format($max, 2).').', 'invoiceId.required' => 'Choose an invoice.'], ['invoiceId' => 'invoice']);
         $previousInvoice = $this->editingId ? BillingCreditNote::find($this->editingId)?->invoice_id : null;
         $note = BillingCreditNote::updateOrCreate(['id' => $this->editingId], [
             'invoice_id' => $invoice->id, 'customer_id' => $invoice->customer_id,

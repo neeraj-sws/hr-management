@@ -19,7 +19,7 @@
                     <td class="num"><strong>₹{{ number_format($n->amount, 2) }}</strong></td><td style="white-space:normal">{{ $n->description ?: '—' }}</td>
                     <td><div class="row-actions">
                         @if($n->bill)<a class="btn btn-sm btn-icon" href="{{ route('billing.bills.show', $n->bill) }}" title="Open bill" aria-label="Open bill"><x-icon name="eye" class="icon-sm" /></a>@endif
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $n->id }})" wire:confirm="Debit note delete karein?" title="Delete" aria-label="Delete debit note"><x-icon name="trash" class="icon-sm" /></button>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $n->id }})" wire:confirm="Debit note — delete?" title="Delete" aria-label="Delete debit note"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="6"><x-empty title="No debit notes" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>

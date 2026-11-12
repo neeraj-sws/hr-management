@@ -27,7 +27,7 @@
                     <td class="num"><strong>₹{{ number_format($n->amount, 2) }}</strong></td><td style="white-space:normal">{{ $n->description ?: '—' }}</td>
                     <td><div class="row-actions">
                         <button class="btn btn-sm btn-icon" wire:click="edit({{ $n->id }})" title="Edit" aria-label="Edit credit note"><x-icon name="edit" class="icon-sm" /></button>
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $n->id }})" wire:confirm="Credit note of {{ number_format($n->amount, 2) }} delete karein?" title="Delete" aria-label="Delete credit note"><x-icon name="trash" class="icon-sm" /></button>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $n->id }})" wire:confirm="Credit note of {{ number_format($n->amount, 2) }} — delete?" title="Delete" aria-label="Delete credit note"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="6"><x-empty title="No credit notes" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>

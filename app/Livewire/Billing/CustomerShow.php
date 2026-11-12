@@ -53,7 +53,7 @@ class CustomerShow extends Component
     {
         abort_unless($this->user()->canAny(['hr.manage', 'payroll.manage']), 403);
         if ($this->customer->invoices()->exists() || $this->customer->estimates()->exists()) {
-            $this->toast('Is customer ki invoices / proposals hain — delete nahi ho sakta.', 'error');
+            $this->toast('This customer has invoices or proposals, so it cannot be deleted.', 'error');
 
             return;
         }

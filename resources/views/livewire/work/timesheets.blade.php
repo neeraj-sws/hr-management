@@ -2,7 +2,7 @@
     @php($fmt = fn ($m) => \App\Support\Duration::fromMinutes((int) $m))
     @php($showDev = ! $mine || $teamView)
     @if($mine)
-    <div class="page-head"><div><h1>My Timesheet</h1><p>Jin projects par aap kaam karte ho (member / manager / task assigned), unka apna kaam yahan likho. Task timer ka time apne aap aata hai; baaki kaam "Add line" se daalo. Manager isse client ko dikhata aur bill karta hai.</p></div>
+    <div class="page-head"><div><h1>My Timesheet</h1><p>Write your own work here for the projects you are on (member / manager / task assigned). Task timer time comes in by itself; add the rest with "Add line". The manager shows this to the client and bills it.</p></div>
         @if($projectModel && ! ($summary['approved_at'] ?? null))<div class="row-actions"><button class="btn btn-primary" wire:click="openEntry"><x-icon name="plus" class="icon-sm" />Add line</button></div>@endif</div>
     @else
     <div class="page-head"><div><h1>Timesheets</h1><p>The project's monthly timesheet the client sees in their portal. Lines come in automatically from the team's task timers; you can add lines, import an old sheet, change the minutes charged and answer the client's objections.</p></div>
@@ -30,7 +30,7 @@
         @endif
         <div class="toolbar">
             @if($teamView)<label class="field"><span>Developer</span><select wire:model.live="member"><option value="">Poori team + main</option>@foreach($team as $m)<option value="{{ $m->id }}">{{ $m->name }}{{ $m->teams->isNotEmpty() ? ' · '.$m->teams->pluck('name')->join(', ') : '' }}</option>@endforeach</select></label>@endif
-            <label class="field grow"><span>Project</span><select wire:model.live="project">@if($projects->isEmpty())<option value="">— aap kisi project me nahi ho —</option>@endif @foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}{{ $p->client ? ' — '.$p->client->name : ' (no client)' }}</option>@endforeach</select></label>
+            <label class="field grow"><span>Project</span><select wire:model.live="project">@if($projects->isEmpty())<option value="">— you are not on any project —</option>@endif @foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}{{ $p->client ? ' — '.$p->client->name : ' (no client)' }}</option>@endforeach</select></label>
             <div class="field"><span>Month</span><div class="row-actions"><button class="btn btn-sm" wire:click="moveMonth(-1)">‹</button><input type="month" wire:model.live="month" style="width:auto"><button class="btn btn-sm" wire:click="moveMonth(1)">›</button></div></div>
         </div>
         @if($mine && $projectModel && $summary)
@@ -38,7 +38,7 @@
                 <span class="pill">Client <b>{{ $projectModel->client?->name ?? '—' }}</b></span>
                 <span class="pill">{{ $teamView ? 'Team lines' : 'My lines' }} <b>{{ $entries->count() }}</b></span>
                 <span class="pill">{{ $teamView ? 'Team time' : 'My time' }} <b>{{ $fmt($entries->sum('minutes')) }}</b></span>
-                @if($teamView)<span class="pill">Team ka timesheet sirf dekhne ke liye — badlav manager page / developer khud kare</span>@endif
+                @if($teamView)<span class="pill">Team timesheet is view-only — changes are made by the developer or from the manager page</span>@endif
                 @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Month approved by the client — lines locked</span>@endif
             </div>
         @elseif($projectModel && $summary)
@@ -97,14 +97,14 @@
     @if($showEntry)
         <x-modal :title="$entryId ? 'Edit line' : 'Add timesheet line'" size="lg">
             <form wire:submit="saveEntry"><div class="modal-body"><x-errors /><div class="form-grid">
-                <x-field label="Date" name="entry.work_date" hint="working day hona chahiye (weekly off / holiday allowed nahi)"><input type="date" wire:model.live="entry.work_date"></x-field>
+                <x-field label="Date" name="entry.work_date" hint="must be a working day (weekly off / holiday not allowed)"><input type="date" wire:model.live="entry.work_date"></x-field>
                 @unless($mine)<x-field label="Developer" name="entry.employee_id" hint="HRMS employee (list me na ho to “— other —”)"><select wire:model.live="entry.employee_id"><option value="">— other (type the name) —</option>@foreach($employees as $emp)<option value="{{ $emp->id }}">{{ $emp->name }}</option>@endforeach</select></x-field>
-                <x-field label="Developer name" name="entry.developer_name" hint="type karo — suggestions aayenge"><input wire:model.live.debounce.300ms="entry.developer_name" list="ts-developer-names" autocomplete="off" placeholder="Type the developer's name">
+                <x-field label="Developer name" name="entry.developer_name" hint="start typing — suggestions will appear"><input wire:model.live.debounce.300ms="entry.developer_name" list="ts-developer-names" autocomplete="off" placeholder="Type the developer's name">
                     <datalist id="ts-developer-names">@foreach($employees as $emp)<option value="{{ $emp->name }}">{{ $emp->teams->isNotEmpty() ? 'Team: '.$emp->teams->pluck('name')->join(', ') : '' }}</option>@endforeach</datalist>
                     @php($devPicked = $employees->firstWhere('id', (int) ($entry['employee_id'] ?? 0)))
                     @php($devShown = trim($entry['developer_name'] ?? '') ?: $devPicked?->name)
-                    <small class="muted" style="display:block;margin-top:4px">List / client me dikhega: <b>{{ $devShown ?: '—' }}</b>@if($devPicked && $devPicked->teams->isNotEmpty()) · Team: {{ $devPicked->teams->pluck('name')->join(', ') }}@endif
-                        @if(trim($entry['developer_name'] ?? '') !== '' && ! $devPicked)<br><span style="color:var(--amber)">Ye naam HRMS employee se juda nahi hai — upar Developer bhi chuno to time uske account me ginega.</span>@endif</small></x-field>@endunless
+                    <small class="muted" style="display:block;margin-top:4px">Shown in the list / to the client: <b>{{ $devShown ?: '—' }}</b>@if($devPicked && $devPicked->teams->isNotEmpty()) · Team: {{ $devPicked->teams->pluck('name')->join(', ') }}@endif
+                        @if(trim($entry['developer_name'] ?? '') !== '' && ! $devPicked)<br><span style="color:var(--amber)">This name is not linked to an HRMS employee — also pick the Developer above so the time counts for their account.</span>@endif</small></x-field>@endunless
                 <x-field label="Task" name="entry.description" full><textarea wire:model="entry.description" rows="3"></textarea></x-field>
                 <x-field label="Start" name="entry.start_time"><input type="time" wire:model.live="entry.start_time"></x-field>
                 <x-field label="End" name="entry.end_time"><input type="time" wire:model.live="entry.end_time"></x-field>

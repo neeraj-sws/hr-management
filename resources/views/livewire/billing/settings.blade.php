@@ -20,13 +20,13 @@
         <section class="card mb">
             <div class="card-head"><h2>Logo, colours &amp; numbering</h2></div>
             <div class="card-body"><div class="form-grid">
-                <x-field label="Logo" name="logoFile" hint="PNG / JPG, 300 KB tak — invoice, estimate, receipt aur customer link par dikhega">
+                <x-field label="Logo" name="logoFile" hint="PNG / JPG, up to 300 KB — shown on invoices, proposals, receipts and the customer link">
                     <input type="file" wire:model="logoFile" accept=".png,.jpg,.jpeg,.webp">
                     <div wire:loading wire:target="logoFile" class="small muted">Uploading…</div>
                     @if($logoFile && in_array(strtolower($logoFile->getClientOriginalExtension()), ['png', 'jpg', 'jpeg', 'webp'], true))<img src="{{ $logoFile->temporaryUrl() }}" alt="New logo" style="max-height:56px;margin-top:8px">
-                    @elseif($logoFile)<div class="small" style="color:var(--red)">Sirf PNG / JPG / WEBP image chalegi.</div>
+                    @elseif($logoFile)<div class="small" style="color:var(--red)">Only PNG / JPG / WEBP images are allowed.</div>
                     @elseif($hasLogo && ! $dropLogo)<div style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="{{ \App\Services\BillingService::settings()['logo'] }}" alt="Current logo" style="max-height:56px"><button type="button" class="btn btn-sm" wire:click="removeLogo">Remove</button></div>
-                    @elseif($dropLogo)<div class="small muted" style="margin-top:6px">Logo save karne par hat jayega.</div>@endif
+                    @elseif($dropLogo)<div class="small muted" style="margin-top:6px">The logo is removed when you save.</div>@endif
                 </x-field>
                 <x-field label="Invoice colour" name="company.invoice_color"><input type="color" wire:model="company.invoice_color" value="{{ $company['invoice_color'] ?: '#1f3a5f' }}"></x-field>
                 <x-field label="Estimate colour" name="company.estimate_color"><input type="color" wire:model="company.estimate_color" value="{{ $company['estimate_color'] ?: '#1f3a5f' }}"></x-field>
@@ -42,28 +42,28 @@
         <section class="card mb">
             <div class="card-head"><h2>Invoice e-mails</h2></div>
             <div class="card-body"><div class="form-grid">
-                <x-field label="Send invoices from (e-mail)" name="company.mail_from_address" hint="e.g. accounts@sohamsolution.com · khali = HRMS ka normal mail address"><input type="email" wire:model="company.mail_from_address"></x-field>
+                <x-field label="Send invoices from (e-mail)" name="company.mail_from_address" hint="e.g. accounts@sohamsolution.com · leave empty to use the normal HRMS mail address"><input type="email" wire:model="company.mail_from_address"></x-field>
                 <x-field label="Sender name" name="company.mail_from_name"><input wire:model="company.mail_from_name" placeholder="Soham Web Solution"></x-field>
             </div>
-            <p class="small muted">Mail server (SMTP) wahi rahega jo HRMS use karta hai — ye address us server se bhejne ke liye allowed hona chahiye (Office365 me "Send As" permission).</p></div>
+            <p class="small muted">The mail server (SMTP) stays the one HRMS uses — this address must be allowed to send from that server (Office365 needs the "Send As" permission).</p></div>
         </section>
         <section class="card mb">
             <div class="card-head"><h2>Invoice footer</h2></div>
             <div class="card-body"><div class="form-grid">
                 <x-field :label="$fields['terms']" name="company.terms" full><textarea wire:model="company.terms" rows="3" placeholder="e.g. Payment within 7 days. Interest @ 18% p.a. on late payment."></textarea></x-field>
                 <x-field :label="$fields['footer_title']" name="company.footer_title"><input wire:model="company.footer_title"></x-field>
-                <x-field :label="$fields['footer_notes']" name="company.footer_notes" full hint="invoice PDF me neeche dikhega (CMS jaisa) — &lt;b&gt;bold&lt;/b&gt; aur &lt;br&gt; chalega"><textarea wire:model="company.footer_notes" rows="5" placeholder="<b>Bank Details:</b><br>Bank Name - HDFC Bank ..."></textarea></x-field>
-                <x-field :label="$fields['signatory']" name="company.signatory" hint="e.g. Neeraj Malakar — signature ke neeche, 'Authorised Signatory' ke saath"><input wire:model="company.signatory"></x-field>
-                <x-field :label="$fields['signature']" name="signatureFile" hint="sign + seal ki PNG, 300 KB tak — PDF me neeche right side">
+                <x-field :label="$fields['footer_notes']" name="company.footer_notes" full hint="printed at the bottom of the invoice PDF (like the CMS) — &lt;b&gt;bold&lt;/b&gt; and &lt;br&gt; work"><textarea wire:model="company.footer_notes" rows="5" placeholder="<b>Bank Details:</b><br>Bank Name - HDFC Bank ..."></textarea></x-field>
+                <x-field :label="$fields['signatory']" name="company.signatory" hint="e.g. Neeraj Malakar — printed under the signature with Authorised Signatory"><input wire:model="company.signatory"></x-field>
+                <x-field :label="$fields['signature']" name="signatureFile" hint="PNG of the signature + seal, up to 300 KB — printed at the bottom right of the PDF">
                     <input type="file" wire:model="signatureFile" accept=".png,.jpg,.jpeg,.webp">
                     <div wire:loading wire:target="signatureFile" class="small muted">Uploading…</div>
                     @if($signatureFile && in_array(strtolower($signatureFile->getClientOriginalExtension()), ['png', 'jpg', 'jpeg', 'webp'], true))<img src="{{ $signatureFile->temporaryUrl() }}" alt="New signature" style="max-height:70px;margin-top:8px">
-                    @elseif($signatureFile)<div class="small" style="color:var(--red)">Sirf PNG / JPG / WEBP image chalegi.</div>
+                    @elseif($signatureFile)<div class="small" style="color:var(--red)">Only PNG / JPG / WEBP images are allowed.</div>
                     @elseif($hasSignature && ! $dropSignature)<div style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="{{ \App\Services\BillingService::settings()['signature'] }}" alt="Current signature" style="max-height:70px"><button type="button" class="btn btn-sm" wire:click="removeSignature">Remove</button></div>
-                    @elseif($dropSignature)<div class="small muted" style="margin-top:6px">Signature save karne par hat jayega.</div>@endif
+                    @elseif($dropSignature)<div class="small muted" style="margin-top:6px">The signature is removed when you save.</div>@endif
                 </x-field>
             </div>
-            <p class="small muted">Invoice numbers look like <code>{{ \App\Services\BillingService::prefix('invoice') }}/2026-27/00001</code>; the number restarts every financial year (April–March). Prefix badalne se purani invoices ka number bhi naye prefix ke saath dikhega.</p></div>
+            <p class="small muted">Invoice numbers look like <code>{{ \App\Services\BillingService::prefix('invoice') }}/2026-27/00001</code>; the number restarts every financial year (April–March). Changing the prefix also changes how older invoice numbers are shown.</p></div>
         </section>
         <div class="form-actions"><button class="btn btn-primary" wire:loading.attr="disabled">Save billing settings</button></div>
     </form>
@@ -71,7 +71,7 @@
         <section class="card mb" style="margin-top:18px">
             <div class="card-head"><h2>Import from the old CMS</h2></div>
             <div class="card-body">
-                <p class="small muted">CMS ka database dump (.sql, jaise <code>u841922431_sws_cms.sql</code>) upload karo. Customers, products, taxes, bank accounts, categories, invoices (abhi ke aur 2025-26 ke), items aur payments aa jayenge — CMS ke number, customer aur amount ke saath. Dobara chalana safe hai: jo invoice pehle se hai wo sirf theek hoti hai, dobara nahi banti; HRMS me jode payments rehte hain. Pehle database ka backup le lo.</p>
+                <p class="small muted">Upload the old CMS database dump (.sql, e.g. <code>u841922431_sws_cms.sql</code>). Customers, products, taxes, bank accounts, categories, invoices (current and 2025-26), items and payments are brought in — with the CMS numbers, customers and amounts. Running it again is safe: an invoice that already exists is only corrected, never duplicated, and payments added in HRMS are kept. Take a database backup first.</p>
                 <form wire:submit="importCms" class="row-actions" style="align-items:flex-end;flex-wrap:wrap">
                     <x-field label="CMS dump (.sql)" name="cmsDump"><input type="file" wire:model="cmsDump" accept=".sql"></x-field>
                     <button class="btn btn-primary" wire:loading.attr="disabled" wire:target="cmsDump,importCms" @disabled(! $cmsDump)><x-icon name="upload" class="icon-sm" />Import</button>

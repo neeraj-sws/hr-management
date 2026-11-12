@@ -52,7 +52,7 @@
                 <tr><td>@if($p->receipt_path)<a class="btn btn-sm" href="{{ route('billing.receipt-file', ['bill-payment', $p->id]) }}" target="_blank"><x-icon name="eye" class="icon-sm" />View</a>@else—@endif</td>
                     <td class="nowrap">{{ $d($p->date) }}</td><td class="num"><strong>{{ number_format($p->amount, 2) }}</strong></td><td>{{ $p->method ?: '—' }}</td>
                     <td>{{ $p->account?->label() ?? '—' }}</td><td>{{ $p->reference ?: '—' }}</td><td style="white-space:normal">{{ $p->note ?: '—' }}</td>
-                    <td><button class="btn btn-sm btn-icon btn-danger" wire:click="deletePayment({{ $p->id }})" wire:confirm="Payment of {{ number_format($p->amount, 2) }} remove karein?" title="Remove" aria-label="Remove payment"><x-icon name="trash" class="icon-sm" /></button></td></tr>
+                    <td><button class="btn btn-sm btn-icon btn-danger" wire:click="deletePayment({{ $p->id }})" wire:confirm="Payment of {{ number_format($p->amount, 2) }} — remove?" title="Remove" aria-label="Remove payment"><x-icon name="trash" class="icon-sm" /></button></td></tr>
             @empty<tr><td colspan="8"><x-empty title="No payments yet" icon="credit-card" /></td></tr>@endforelse
             </tbody></table></div>
     </section>
@@ -65,7 +65,7 @@
             @forelse($bill->debitNotes as $n)
                 <tr><td class="nowrap">{{ $d($n->date) }}</td><td class="num"><strong>{{ number_format($n->amount, 2) }}</strong></td><td style="white-space:normal">{{ $n->description ?: '—' }}</td>
                     <td><div class="row-actions"><button class="btn btn-sm btn-icon" wire:click="openDebit({{ $n->id }})" title="Edit" aria-label="Edit debit note"><x-icon name="edit" class="icon-sm" /></button>
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="deleteDebit({{ $n->id }})" wire:confirm="Debit note remove karein?" title="Delete" aria-label="Delete debit note"><x-icon name="trash" class="icon-sm" /></button></div></td></tr>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="deleteDebit({{ $n->id }})" wire:confirm="Debit note — remove?" title="Delete" aria-label="Delete debit note"><x-icon name="trash" class="icon-sm" /></button></div></td></tr>
             @empty<tr><td colspan="4"><x-empty title="No debit notes" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>
     </section>

@@ -456,18 +456,18 @@
             {{-- IP restriction --}}
             <section class="card sec-card">
                 <div class="sec-head">
-                    <div><h2><x-icon name="shield" class="icon-sm" />IP restriction</h2><p>Website sirf office ke internet (IP) se khule. Desktop / mobile app aur Master Admin par asar nahi.</p></div>
+                    <div><h2><x-icon name="shield" class="icon-sm" />IP restriction</h2><p>The website opens only from the office internet (IP). The desktop / mobile app and the Master Admin are not affected.</p></div>
                 </div>
                 <form wire:submit="saveIpRestriction">
                     <div class="sec-body">
                         <label class="sec-row">
-                            <span><strong>Restrict the website to these IPs</strong><small>Baaki jagah se sign-in karne wale agle click par bahar ho jayenge.</small></span>
+                            <span><strong>Restrict the website to these IPs</strong><small>Anyone signed in from elsewhere is signed out on their next click.</small></span>
                             <span class="sec-switch"><input type="checkbox" wire:model.live="ipRestrictEnabled" aria-label="Restrict the website to these IPs"><i aria-hidden="true"></i></span>
                         </label>
                         <x-field label="Allowed IPs / ranges" name="ipRestrictList" hint="ek line me ek — e.g. 103.21.4.17 ya 103.21.4.0/24"><textarea wire:model="ipRestrictList" rows="3" placeholder="103.21.4.17"></textarea></x-field>
-                        <div class="row-actions"><span class="small muted">Aapka abhi ka IP: <code>{{ request()->ip() }}</code></span><button type="button" class="btn btn-sm" wire:click="addMyIp">Add my IP</button></div>
+                        <div class="row-actions"><span class="small muted">Your current IP: <code>{{ request()->ip() }}</code></span><button type="button" class="btn btn-sm" wire:click="addMyIp">Add my IP</button></div>
                     </div>
-                    <div class="sec-foot"><span class="muted small">Office ka IP badle (naya internet) to yahan update karna.</span><div class="row-actions"><button class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveIpRestriction">Save</button></div></div>
+                    <div class="sec-foot"><span class="muted small">If the office IP changes (new internet connection), update it here.</span><div class="row-actions"><button class="btn btn-primary" wire:loading.attr="disabled" wire:target="saveIpRestriction">Save</button></div></div>
                 </form>
             </section>
 

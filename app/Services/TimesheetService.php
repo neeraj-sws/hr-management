@@ -92,14 +92,14 @@ class TimesheetService
     public function saveEmployeeLine(AttendanceEmployee $employee, array $data, ?TimesheetEntry $line = null, ?int $userId = null): TimesheetEntry
     {
         $project = $this->employeeProjects($employee)->find($data['project_id'] ?? 0);
-        if (! $project) throw ValidationException::withMessages(['project_id' => 'Aap is project me nahi ho.']);
-        if ($line && ! $this->employeeCanEdit($employee, $line)) throw ValidationException::withMessages(['work_date' => 'Ye line aap edit nahi kar sakte.']);
+        if (! $project) throw ValidationException::withMessages(['project_id' => 'You are not on this project.']);
+        if ($line && ! $this->employeeCanEdit($employee, $line)) throw ValidationException::withMessages(['work_date' => 'You cannot edit this line.']);
 
         $date = Carbon::parse($data['work_date'])->startOfDay();
-        if ($date->isAfter(today())) throw ValidationException::withMessages(['work_date' => 'Aage ki date ka timesheet nahi bhar sakte.']);
+        if ($date->isAfter(today())) throw ValidationException::withMessages(['work_date' => 'A timesheet cannot be filled for a future date.']);
         $calendar = app(PolicyConfigurationService::class)->forEmployee($employee, 'calendar.working_days', $date->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
         if (! \App\Support\WorkCalendar::isWorkday($date->toDateString(), $calendar)) {
-            throw ValidationException::withMessages(['work_date' => 'Ye din off hai ('.\App\Support\WorkCalendar::offDayReason($date->toDateString(), $calendar).') — timesheet line add nahi kar sakte.']);
+            throw ValidationException::withMessages(['work_date' => 'This day is off ('.\App\Support\WorkCalendar::offDayReason($date->toDateString(), $calendar).') — a timesheet line cannot be added.']);
         }
         if ($this->isLocked($project, $date->format('Y-m'))) throw ValidationException::withMessages(['work_date' => 'Is mahine ka timesheet client approve kar chuka hai.']);
 
@@ -130,7 +130,7 @@ class TimesheetService
 
     public function deleteEmployeeLine(AttendanceEmployee $employee, TimesheetEntry $line): void
     {
-        if (! $this->employeeCanEdit($employee, $line)) throw ValidationException::withMessages(['line' => 'Ye line aap delete nahi kar sakte.']);
+        if (! $this->employeeCanEdit($employee, $line)) throw ValidationException::withMessages(['line' => 'You cannot delete this line.']);
         $this->audit->record('timesheet.entry_deleted', $line, ['minutes' => $line->minutes, 'description' => $line->description, 'by_employee' => $employee->id]);
         $line->delete();
     }

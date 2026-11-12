@@ -3,11 +3,11 @@
     <div class="page-head"><div><h1>{{ $estimate->number() }}<span class="bill-badge {{ billing_badge_class($estimate->status) }}">{{ $estimate->status }}</span></h1><p>{{ $estimate->customer?->name }} · {{ \App\Services\BillingService::date($estimate->issue_date) }}</p></div>
         <div class="row-actions">
             <a class="btn" href="{{ route('billing.estimates.print', $estimate) }}" target="_blank"><x-icon name="download" class="icon-sm" />Print / PDF</a>
-            @if($estimate->status !== 'Draft')<button type="button" class="btn" x-on:click="navigator.clipboard.writeText(@js(app(\App\Services\InvoiceActions::class)->estimateUrl($estimate))).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Estimate link copied — customer bina login ke dekh sakta hai.', type: 'success' } })))"><x-icon name="external" class="icon-sm" />Copy link</button>@endif
+            @if($estimate->status !== 'Draft')<button type="button" class="btn" x-on:click="navigator.clipboard.writeText(@js(app(\App\Services\InvoiceActions::class)->estimateUrl($estimate))).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Proposal link copied — the customer can open it without signing in.', type: 'success' } })))"><x-icon name="external" class="icon-sm" />Copy link</button>@endif
             @if($estimate->status !== 'Converted')<button type="button" class="btn" wire:click="openEmail"><x-icon name="mail" class="icon-sm" />{{ $estimate->status === 'Draft' ? 'Send proposal' : 'Resend proposal' }}</button>@endif
-            <button type="button" class="btn" wire:click="duplicate" wire:confirm="Is estimate ki copy banake naya Draft kholein?"><x-icon name="layers" class="icon-sm" />Duplicate</button>
+            <button type="button" class="btn" wire:click="duplicate" wire:confirm="Make a copy of this proposal as a new Draft?"><x-icon name="layers" class="icon-sm" />Duplicate</button>
             <a class="btn" href="{{ route('billing.estimates.edit', $estimate) }}"><x-icon name="edit" class="icon-sm" />Edit</a>
-            <button type="button" class="btn btn-danger" wire:click="delete" wire:confirm="Proposal {{ $estimate->number() }} delete karein?"><x-icon name="trash" class="icon-sm" />Delete</button>
+            <button type="button" class="btn btn-danger" wire:click="delete" wire:confirm="Proposal {{ $estimate->number() }} — delete?"><x-icon name="trash" class="icon-sm" />Delete</button>
             @if($estimate->status !== 'Converted')
                 @if($estimate->status === 'Draft')<button class="btn" wire:click="setStatus('Sent')">Mark as sent</button>@endif
                 @if(in_array($estimate->status, ['Sent','Draft']))<button class="btn" wire:click="setStatus('Accepted')">Accepted</button><button class="btn" wire:click="setStatus('Declined')">Declined</button>@endif
@@ -45,8 +45,8 @@
         <x-modal title="Send proposal">
             <form wire:submit="sendEmail"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="To (customer e-mail)" name="emailTo" full><input type="email" wire:model="emailTo" placeholder="customer@company.com"></x-field>
-                <x-field label="Message (optional)" name="emailMessage" full hint="mail me upar dikhega"><textarea wire:model="emailMessage" rows="3"></textarea></x-field>
-            </div><p class="small muted">Customer ko proposal ka link jayega — bina login ke dekh / print kar sakta hai. Draft proposal bhejne par "Sent" ho jayega.</p></div>
+                <x-field label="Message (optional)" name="emailMessage" full hint="shown at the top of the e-mail"><textarea wire:model="emailMessage" rows="3"></textarea></x-field>
+            </div><p class="small muted">The customer gets a link to the proposal — they can view / print it without signing in. Sending a Draft proposal marks it "Sent".</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="$set('emailOpen', false)">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled"><x-icon name="mail" class="icon-sm" />Send e-mail</button></div></form>
         </x-modal>
     @endif

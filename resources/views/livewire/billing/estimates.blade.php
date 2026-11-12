@@ -27,13 +27,13 @@
                     <td><div class="cms-acts">
                         @if($e->status === 'Converted' && $e->converted_invoice_id)<a class="cms-act conv" href="{{ route('billing.invoices.show', $e->converted_invoice_id) }}" title="Already convert to Invoice" aria-label="Open invoice"><x-icon name="receipt" /></a>
                         @else<a class="cms-act conv" href="{{ route('billing.estimates.show', $e) }}" title="Convert to Invoice" aria-label="Convert to invoice"><x-icon name="refresh" /></a>@endif
-                        @if($e->status === 'Draft')<button type="button" class="cms-act link" disabled title="Draft ka link nahi — pehle Send karo" aria-label="Copy proposal link"><x-icon name="link" /></button>
+                        @if($e->status === 'Draft')<button type="button" class="cms-act link" disabled title="No link for a Draft — send it first" aria-label="Copy proposal link"><x-icon name="link" /></button>
                         @else<button type="button" class="cms-act link" title="Copy Proposal" aria-label="Copy proposal link"
                             x-on:click="navigator.clipboard.writeText(@js(app(\App\Services\InvoiceActions::class)->estimateUrl($e))).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Link copied on clipboard.', type: 'success' } })))"><x-icon name="link" /></button>@endif
-                        <button type="button" class="cms-act copy" wire:click="duplicate({{ $e->id }})" wire:confirm="{{ $e->number() }} ki copy banake naya Draft proposal kholein?" title="Duplicate" aria-label="Duplicate proposal"><x-icon name="copy" /></button>
+                        <button type="button" class="cms-act copy" wire:click="duplicate({{ $e->id }})" wire:confirm="{{ $e->number() }} — make a copy as a new Draft proposal?" title="Duplicate" aria-label="Duplicate proposal"><x-icon name="copy" /></button>
                         <a class="cms-act view" href="{{ route('billing.estimates.show', $e) }}" title="Show" aria-label="View proposal"><x-icon name="eye" /></a>
                         <a class="cms-act edit" href="{{ route('billing.estimates.edit', $e) }}" title="Edit" aria-label="Edit proposal"><x-icon name="edit" /></a>
-                        <button type="button" class="cms-act del" wire:click="delete({{ $e->id }})" wire:confirm="Proposal {{ $e->number() }} delete karein?{{ $e->status === 'Converted' ? ' (Bani hui invoice rahegi.)' : '' }}" title="Delete" aria-label="Delete proposal"><x-icon name="trash" /></button>
+                        <button type="button" class="cms-act del" wire:click="delete({{ $e->id }})" wire:confirm="Proposal {{ $e->number() }} — delete?{{ $e->status === 'Converted' ? ' (The invoice made from it stays.)' : '' }}" title="Delete" aria-label="Delete proposal"><x-icon name="trash" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="7"><x-empty title="No proposals" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>

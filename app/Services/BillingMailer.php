@@ -34,7 +34,7 @@ class BillingMailer
         } catch (\Throwable $e) {
             report($e);
 
-            return 'E-mail nahi gaya: '.Str::limit($e->getMessage(), 160).' (Settings → Email check karo).';
+            return 'E-mail was not sent: '.Str::limit($e->getMessage(), 160).' (check Settings → Email).';
         }
         $this->audit->record('billing.email_sent', $subject, ['to' => $to, 'kind' => $kind]);
 

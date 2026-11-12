@@ -24,7 +24,7 @@
                         <a class="btn btn-sm btn-icon" href="{{ route('billing.bills', ['vendor' => $v->id, 'fy' => '']) }}" title="Bills" aria-label="Bills of {{ $v->name }}"><x-icon name="receipt" class="icon-sm" /></a>
                         <a class="btn btn-sm btn-icon" href="{{ route('billing.bills.create', ['vendor' => $v->id]) }}" title="New bill" aria-label="New bill"><x-icon name="plus" class="icon-sm" /></a>
                         <button class="btn btn-sm btn-icon" wire:click="edit({{ $v->id }})" title="Edit" aria-label="Edit supplier"><x-icon name="edit" class="icon-sm" /></button>
-                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $v->id }})" wire:confirm="Supplier {{ $v->name }} delete karein?" title="Delete" aria-label="Delete supplier"><x-icon name="trash" class="icon-sm" /></button>
+                        <button class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $v->id }})" wire:confirm="Supplier {{ $v->name }} — delete?" title="Delete" aria-label="Delete supplier"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="8"><x-empty title="No suppliers" icon="users" /></td></tr>@endforelse
             </tbody></table></div>

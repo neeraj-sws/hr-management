@@ -54,7 +54,7 @@ class Bills extends Component
     {
         $this->guard();
         $bill = BillingBill::withCount(['payments', 'debitNotes'])->findOrFail($id);
-        if ($bill->payments_count || $bill->debit_notes_count) { $this->toast('Is bill par payment / debit note hai — pehle unhe hatao.', 'error'); return; }
+        if ($bill->payments_count || $bill->debit_notes_count) { $this->toast('This bill has payments or debit notes — remove them first.', 'error'); return; }
         $audit->record('billing.bill_deleted', $bill, ['number' => $bill->number()]);
         $bill->items()->delete();
         $bill->delete();

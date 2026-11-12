@@ -34,7 +34,7 @@
                         <button type="button" class="btn btn-sm btn-icon" wire:click="duplicate({{ $b->id }})" wire:confirm="{{ $b->number() }} ki copy banayein?" title="Duplicate" aria-label="Duplicate bill"><x-icon name="layers" class="icon-sm" /></button>
                         <a class="btn btn-sm btn-icon" href="{{ route('billing.bills.show', $b) }}" title="View" aria-label="View bill"><x-icon name="eye" class="icon-sm" /></a>
                         <a class="btn btn-sm btn-icon" href="{{ route('billing.bills.edit', $b) }}" title="Edit" aria-label="Edit bill"><x-icon name="edit" class="icon-sm" /></a>
-                        <button type="button" class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $b->id }})" wire:confirm="Bill {{ $b->number() }} delete karein?" title="Delete" aria-label="Delete bill"><x-icon name="trash" class="icon-sm" /></button>
+                        <button type="button" class="btn btn-sm btn-icon btn-danger" wire:click="delete({{ $b->id }})" wire:confirm="Bill {{ $b->number() }} — delete?" title="Delete" aria-label="Delete bill"><x-icon name="trash" class="icon-sm" /></button>
                     </div></td></tr>
             @empty<tr><td colspan="9"><x-empty title="No bills" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>

@@ -28,10 +28,10 @@
             <details class="menu inv-more">
                 <summary class="btn btn-icon" aria-label="More actions"><x-icon name="more" class="icon-sm" /></summary>
                 <div class="menu-panel inv-more-panel">
-                    @if($publicUrl)<button type="button" class="menu-item" x-on:click="navigator.clipboard.writeText(@js($publicUrl)).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Invoice link copied — customer bina login ke dekh sakta hai.', type: 'success' } })))"><x-icon name="external" class="icon-sm" />Copy link</button>
+                    @if($publicUrl)<button type="button" class="menu-item" x-on:click="navigator.clipboard.writeText(@js($publicUrl)).then(() => window.dispatchEvent(new CustomEvent('toast', { detail: { message: 'Invoice link copied — the customer can open it without signing in.', type: 'success' } })))"><x-icon name="external" class="icon-sm" />Copy link</button>
                     <a class="menu-item" href="{{ $publicUrl }}" target="_blank"><x-icon name="eye" class="icon-sm" />Customer view</a>@endif
-                    <button type="button" class="menu-item" wire:click="duplicate" wire:confirm="Is invoice ki copy banake nayi Draft invoice kholein?"><x-icon name="layers" class="icon-sm" />Copy invoice (duplicate)</button>
-                    <button type="button" class="menu-item" style="color:var(--red)" wire:click="delete" wire:confirm="Invoice {{ $invoice->number() }} delete karein? Ye wapas nahi aayegi."><x-icon name="trash" class="icon-sm" />Delete invoice</button>
+                    <button type="button" class="menu-item" wire:click="duplicate" wire:confirm="Is invoice — make a copy as a new Draft invoice?"><x-icon name="layers" class="icon-sm" />Copy invoice (duplicate)</button>
+                    <button type="button" class="menu-item" style="color:var(--red)" wire:click="delete" wire:confirm="Invoice {{ $invoice->number() }}? This cannot be undone."><x-icon name="trash" class="icon-sm" />Delete invoice</button>
                     <a class="menu-item" href="{{ route('billing.invoices.print', $invoice) }}" target="_blank"><x-icon name="printer" class="icon-sm" />Print / PDF</a>
                     <a class="menu-item" href="{{ route('billing.credit-notes') }}"><x-icon name="receipt" class="icon-sm" />Credit notes</a>
                     <a class="menu-item" href="{{ route('billing.customers') }}"><x-icon name="users" class="icon-sm" />Customers</a>
@@ -152,7 +152,7 @@
             @forelse($invoice->creditNotes as $cn)
                 <tr><td class="inv-n">{{ $loop->iteration }}</td><td class="nowrap">{{ \App\Services\BillingService::date($cn->date) ?? '—' }}</td>
                     <td class="num"><strong>{{ number_format($cn->amount, 2) }}</strong></td><td>{{ $cn->description ?: '—' }}</td>
-                    <td class="inv-act"><button class="btn btn-sm btn-icon" wire:click="openCredit({{ $cn->id }})" title="Edit" aria-label="Edit credit note"><x-icon name="edit" class="icon-sm" /></button><button class="btn btn-sm btn-danger btn-icon" wire:click="deleteCredit({{ $cn->id }})" wire:confirm="Credit note of {{ number_format($cn->amount, 2) }} remove karein?" title="Delete" aria-label="Delete credit note"><x-icon name="trash" class="icon-sm" /></button></td></tr>
+                    <td class="inv-act"><button class="btn btn-sm btn-icon" wire:click="openCredit({{ $cn->id }})" title="Edit" aria-label="Edit credit note"><x-icon name="edit" class="icon-sm" /></button><button class="btn btn-sm btn-danger btn-icon" wire:click="deleteCredit({{ $cn->id }})" wire:confirm="Credit note of {{ number_format($cn->amount, 2) }} — remove?" title="Delete" aria-label="Delete credit note"><x-icon name="trash" class="icon-sm" /></button></td></tr>
             @empty<tr><td colspan="5"><x-empty title="No credit notes" icon="receipt" /></td></tr>@endforelse
             </tbody></table></div>
     </section>
@@ -172,9 +172,9 @@
         <x-modal :title="$emailKind === 'payment' ? 'E-mail payment receipt' : ($emailKind === 'reminder' ? 'Payment reminder' : ($invoice->status === 'Draft' ? 'Send invoice' : 'Resend invoice'))">
             <form wire:submit="sendEmail"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="To (customer e-mail)" name="emailTo" full><input type="email" wire:model="emailTo" placeholder="customer@company.com"></x-field>
-                <x-field label="Message (optional)" name="emailMessage" full hint="mail me upar dikhega"><textarea wire:model="emailMessage" rows="3"></textarea></x-field>
+                <x-field label="Message (optional)" name="emailMessage" full hint="shown at the top of the e-mail"><textarea wire:model="emailMessage" rows="3"></textarea></x-field>
             </div>
-            <p class="small muted">@if($emailKind === 'payment')Customer ko payment milne ki receipt jayegi (amount, date, baaki due) aur invoice ka link.@else Mail me invoice ka link jayega — customer bina login ke dekh / print / PDF kar sakta hai.@if($emailKind === 'send' && $invoice->status === 'Draft') Bhejne par invoice "Sent" ho jayegi.@endif @endif</p></div>
+            <p class="small muted">@if($emailKind === 'payment')The customer gets a payment receipt (amount, date, balance due) and the invoice link.@else The e-mail contains the invoice link — the customer can view / print / download the PDF without signing in.@if($emailKind === 'send' && $invoice->status === 'Draft') Sending a Draft invoice marks it "Sent".@endif @endif</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="$set('emailKind', null)">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled"><x-icon name="mail" class="icon-sm" />Send e-mail</button></div></form>
         </x-modal>
     @endif
@@ -199,7 +199,7 @@
                 <x-field label="Reference" name="payReference"><input wire:model="payReference" placeholder="Enter Reference"></x-field>
                 <x-field label="Description" name="payNote" full><textarea wire:model="payNote" rows="2"></textarea></x-field>
                 <x-field label="Payment receipt" name="payReceipt" hint="image ya PDF, 5 MB tak" full><input type="file" wire:model="payReceipt" accept=".jpg,.jpeg,.png,.webp,.pdf"><div wire:loading wire:target="payReceipt" class="small muted">Uploading…</div></x-field>
-                <label class="check">@if($invoice->customer?->email)<input type="checkbox" wire:model="payEmail"> Customer ko receipt e-mail karo ({{ $invoice->customer->email }})@else<span class="small muted">Customer ka e-mail nahi hai — receipt e-mail nahi jayegi.</span>@endif</label>
+                <label class="check">@if($invoice->customer?->email)<input type="checkbox" wire:model="payEmail"> E-mail the receipt to the customer ({{ $invoice->customer->email }})@else<span class="small muted">The customer has no e-mail address, so the receipt will not be e-mailed.</span>@endif</label>
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="$set('showPayment', false)">Cancel</button><button class="btn btn-primary">Add</button></div></form>
         </x-modal>

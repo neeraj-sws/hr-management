@@ -16,7 +16,7 @@
             <section class="card inv-card">
                 <div class="inv-card-head"><h2><x-icon name="users" class="icon-sm" />Supplier &amp; dates</h2></div>
                 <div class="form-grid inv-form-body">
-                    <x-field label="Supplier" name="vendorId" :hint="$vendors->isEmpty() ? 'pehle Purchases → Suppliers me supplier add karo' : null"><select wire:model="vendorId"><option value="">Select supplier</option>@foreach($vendors as $v)<option value="{{ $v->id }}">{{ $v->name }}</option>@endforeach</select></x-field>
+                    <x-field label="Supplier" name="vendorId" :hint="$vendors->isEmpty() ? 'add a supplier first under Purchases → Suppliers' : null"><select wire:model="vendorId"><option value="">Select supplier</option>@foreach($vendors as $v)<option value="{{ $v->id }}">{{ $v->name }}</option>@endforeach</select></x-field>
                     <x-field label="Category" name="categoryId" hint="expense category"><select wire:model="categoryId"><option value="">—</option>@foreach($categories as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach</select></x-field>
                     <x-field label="Bill date" name="billDate"><input type="date" wire:model="billDate"></x-field>
                     <x-field label="Due date" name="dueDate"><input type="date" wire:model="dueDate"></x-field>

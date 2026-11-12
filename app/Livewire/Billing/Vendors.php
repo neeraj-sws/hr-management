@@ -76,7 +76,7 @@ class Vendors extends Component
     {
         $this->guard();
         $v = BillingVendor::withCount(['bills', 'expenses'])->findOrFail($id);
-        if ($v->bills_count || $v->expenses_count) { $this->toast('Is vendor ke bills / expenses hain — delete nahi ho sakta (Inactive kar do).', 'error'); return; }
+        if ($v->bills_count || $v->expenses_count) { $this->toast('This supplier has bills or expenses, so it cannot be deleted (mark it Inactive instead).', 'error'); return; }
         $audit->record('billing.vendor_deleted', $v);
         $v->delete();
         $this->toast('Vendor deleted.');

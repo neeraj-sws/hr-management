@@ -124,7 +124,7 @@ class Customers extends Component
     public function import(AuditLogger $audit): void
     {
         $this->guard();
-        $this->validate(['importFile' => ['required', 'file', 'max:5120', 'extensions:xlsx']], ['importFile.extensions' => 'Excel file (.xlsx) upload karo.'], ['importFile' => 'file']);
+        $this->validate(['importFile' => ['required', 'file', 'max:5120', 'extensions:xlsx']], ['importFile.extensions' => 'Upload an Excel file (.xlsx).'], ['importFile' => 'file']);
         $rows = \App\Support\XlsxReader::rows($this->importFile->getRealPath());
         $aliases = ['name' => 'name', 'customer' => 'name', 'customer_name' => 'name', 'email' => 'email', 'contact' => 'contact', 'phone' => 'contact', 'mobile' => 'contact',
             'gstin' => 'tax_number', 'gst' => 'tax_number', 'gst_number' => 'tax_number', 'tax_number' => 'tax_number',
@@ -151,11 +151,11 @@ class Customers extends Component
             BillingCustomer::create(array_map(fn ($v) => mb_substr($v, 0, 191), $values) + ['is_active' => true, 'created_by' => auth()->id()]);
             $created++;
         }
-        if ($cols === null) { $this->addError('importFile', 'Sheet me "Name" column wala header nahi mila.'); return; }
+        if ($cols === null) { $this->addError('importFile', 'The sheet has no header row with a "Name" column.'); return; }
         $audit->record('billing.customers_imported', null, ['created' => $created, 'skipped' => $skipped]);
         $this->reset('importFile');
         $this->showImport = false;
-        $this->toast("{$created} customers imported".($skipped ? ", {$skipped} pehle se the (skip)" : '').'.');
+        $this->toast("{$created} customers imported".($skipped ? ", {$skipped} already existed (skipped)" : '').'.');
     }
 
     public function closeModal(): void { $this->showForm = false; $this->showImport = false; }

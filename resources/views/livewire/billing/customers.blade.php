@@ -60,7 +60,7 @@
     @if($showImport)
         <x-modal title="Import customers (Excel)">
             <form wire:submit="import"><div class="modal-body"><x-errors />
-                <p class="small muted">.xlsx file me pehli row header ho: <b>Name</b> zaroori; Email, Contact, GSTIN, Billing address, City, State, Zip, Country, Shipping … optional. Jo naam pehle se hai wo skip hoga.</p>
+                <p class="small muted">The first row of the .xlsx file must be the header: <b>Name</b> is required; Email, Contact, GSTIN, Billing address, City, State, Zip, Country, Shipping … are optional. Names that already exist are skipped.</p>
                 <p><a class="btn btn-sm" href="{{ route('billing.customers.sample') }}"><x-icon name="download" class="icon-sm" />Download sample customer CSV / Excel</a></p>
                 <x-field label="Excel file" name="importFile"><input type="file" wire:model="importFile" accept=".xlsx"></x-field>
                 <div wire:loading wire:target="importFile" class="small muted">Uploading…</div>
