@@ -1,4 +1,4 @@
-<div>
+<div wire:poll.10s>
     <div class="page-head"><div><h1>Task Timer</h1><p>One timer runs at a time. Starting a break or checking out pauses it automatically.</p></div><a class="btn" href="{{ route('work.my-tasks') }}"><x-icon name="list" class="icon-sm" />My tasks</a></div>
     <x-errors />
     @if(!$session || $session->check_out)

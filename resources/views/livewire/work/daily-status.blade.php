@@ -1,4 +1,4 @@
-<div class="ds-page">
+<div class="ds-page" wire:poll.20s>
     @php
         $when = function ($status) {
             $at = $status->submitted_at ?? $status->created_at;
