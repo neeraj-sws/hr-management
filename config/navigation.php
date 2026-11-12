@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 /*
 | Sidebar definition. Access rules live on the routes themselves (the
