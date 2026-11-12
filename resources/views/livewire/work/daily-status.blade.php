@@ -221,9 +221,21 @@
                                 </tbody></table>
                                 @break
                             @case('tasks')
-                                <table class="table ds-mini-table" data-no-sort><thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Due</th></tr></thead><tbody>
-                                    @forelse($detail['tab'] as $task)<tr><td>{{ $task->title }}</td><td>{{ $task->project?->name ?? '—' }}</td><td><x-badge :status="$task->status" /></td><td>{{ $task->due_on?->format('d M') ?? '—' }}</td></tr>
-                                    @empty<tr><td colspan="4"><x-empty title="No tasks" icon="check-square" /></td></tr>@endforelse
+                                <table class="table ds-mini-table" data-no-sort><thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Due</th><th>Time logged</th><th>Start – End</th></tr></thead><tbody>
+                                    @forelse($detail['tab'] as $task)
+                                        @php($entries = $task->timeEntries)
+                                        @php($totalSec = $entries->sum('duration_seconds'))
+                                        @php($firstStart = $entries->first()?->started_at)
+                                        @php($lastEnd = $entries->last()?->ended_at)
+                                        <tr>
+                                            <td>{{ $task->title }}</td>
+                                            <td>{{ $task->project?->name ?? '—' }}</td>
+                                            <td><x-badge :status="$task->status" /></td>
+                                            <td>{{ $task->due_on?->format('d M') ?? '—' }}</td>
+                                            <td class="nowrap">{{ $totalSec > 0 ? \App\Support\Duration::hm($totalSec) : '—' }}</td>
+                                            <td class="nowrap muted small">{{ $firstStart ? $firstStart->format('h:i A').($lastEnd ? ' – '.$lastEnd->format('h:i A') : ' – running') : '—' }}</td>
+                                        </tr>
+                                    @empty<tr><td colspan="6"><x-empty title="No tasks" icon="check-square" /></td></tr>@endforelse
                                 </tbody></table>
                                 @break
                             @case('projects')
