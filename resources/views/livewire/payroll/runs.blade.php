@@ -191,7 +191,7 @@
         @php($aNextMonth = ($autoAdjust->run?->period_ends_on ?? now())->addMonthNoOverflow()->startOfMonth())
         <x-modal title="Auto adjustment · {{ $autoAdjust->employee?->name }}">
             <div class="modal-body">
-                <p class="small" style="margin-top:0">{{ $autoAdjust->employee?->name }} ko ₹{{ number_format($aExtra, 2) }} extra pay hua hai. Neeche ka adjustment {{ $aNextMonth->format('F Y') }} ke payroll mein automatically deduct ho jayega.</p>
+                <p class="small" style="margin-top:0">{{ $autoAdjust->employee?->name }} was paid ₹{{ number_format($aExtra, 2) }} extra. The adjustment below is deducted automatically in the {{ $aNextMonth->format('F Y') }} payroll.</p>
                 <table class="table"><tbody>
                     <tr><td>Extra paid</td><td class="num" style="color:var(--orange,#C4621A)"><strong>₹{{ number_format($aExtra, 2) }}</strong></td></tr>
                     <tr><td>Recovery month</td><td class="num">{{ $aNextMonth->format('F Y') }}</td></tr>

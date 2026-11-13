@@ -80,7 +80,7 @@ class TimesheetController extends ApiController
             'project_id' => ['required', 'integer'], 'work_date' => ['required', 'date'],
             'start_time' => ['nullable', 'date_format:H:i'], 'end_time' => ['nullable', 'date_format:H:i'], 'minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
             'description' => ['required', 'string', 'min:3', 'max:5000'], 'status' => ['nullable', 'string', 'max:40'], 'stage' => ['nullable', 'string', 'max:40'], 'remarks' => ['nullable', 'string', 'max:2000'],
-        ], ['description.required' => 'Task / kaam kya kiya likho.']);
+        ], ['description.required' => 'Write what task / work you did.']);
     }
 
     private function present(TimesheetEntry $l, TimesheetService $timesheets, $employee): array
