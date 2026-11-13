@@ -69,6 +69,15 @@ class WebAccessTest extends TestCase
         $this->postJson('/api/auth/token', ['email' => $employee->email, 'password' => 'Password12345', 'device_name' => 'phone'])->assertOk()->assertJsonStructure(['token']);
     }
 
+    public function test_client_logins_still_sign_in_when_the_website_is_limited_to_roles(): void
+    {
+        $this->onlyRoles(['HR']);
+        $client = \App\Models\Client::create(['name' => 'Source India', 'is_active' => true]);
+        $user = User::factory()->create(['email' => 'client-wa@example.com', 'password' => 'Password12345', 'is_active' => true, 'client_id' => $client->id]);
+        $this->post('/login', ['email' => $user->email, 'password' => 'Password12345'])->assertSessionDoesntHaveErrors();
+        $this->assertAuthenticatedAs($user, 'web');
+    }
+
     public function test_someone_already_signed_in_is_signed_out_on_the_next_click(): void
     {
         $employee = $this->person('WA-5', 'Employee');

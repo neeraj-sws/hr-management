@@ -38,7 +38,8 @@ class AuthenticatedSessionController extends Controller
         }
 
         // Website access (Settings > Security): this person uses the desktop / mobile app, not the website.
-        if (! app(\App\Services\WebAccessService::class)->allows($user)) {
+        // Client logins only ever use the client portal on the website, so the staff setting does not apply to them.
+        if (! $user->client_id && ! app(\App\Services\WebAccessService::class)->allows($user)) {
             return back()->withErrors(['email' => \App\Services\WebAccessService::MESSAGE])->onlyInput('email');
         }
 
