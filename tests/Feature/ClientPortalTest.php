@@ -57,6 +57,22 @@ class ClientPortalTest extends TestCase
         return TaskTimeEntry::create(['task_id' => $task->id, 'employee_id' => $this->dev->id, 'started_at' => $from, 'ended_at' => $from->copy()->addMinutes($minutes), 'duration_seconds' => $minutes * 60, 'status' => 'stopped']);
     }
 
+    public function test_a_monthly_hour_cap_limits_the_invoice_and_carries_the_rest_to_next_month(): void
+    {
+        $this->project->update(['monthly_cap_minutes' => 46 * 60]); // Source India: 46 hours a month
+        $service = app(TimesheetService::class);
+        foreach ([1, 2, 3, 4, 5, 6] as $d) TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'work_date' => "2026-09-0{$d}", 'minutes' => 600, 'billable_minutes' => 600, 'description' => 'Work', 'source' => 'manual', 'visible_to_client' => true]); // 60 h in September
+        $sep = $service->summary($this->project, '2026-09');
+        $this->assertSame([3600, 2760, 840], [$sep['available_minutes'], $sep['billable_minutes'], $sep['carry_minutes']]); // invoice 46:00, carry 14:00
+        TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'work_date' => '2026-10-05', 'minutes' => 1200, 'billable_minutes' => 1200, 'description' => 'More', 'source' => 'manual', 'visible_to_client' => true]); // 20 h in October
+        $oct = $service->summary($this->project, '2026-10');
+        $this->assertSame([840, 2040, 2040, 0], [$oct['opening_minutes'], $oct['available_minutes'], $oct['billable_minutes'], $oct['carry_minutes']]); // 14 h carried in + 20 h = 34 h, under the cap
+        $invoice = $service->createInvoice($this->project, '2026-09', $this->admin);
+        $invoice->load('items');
+        $this->assertEquals([46.0, 600.0], [(float) $invoice->items[0]->quantity, (float) $invoice->items[0]->price]);
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-09'])->assertSee(['Carry to next month', 'To invoice (cap 46:00:00)']);
+    }
+
     public function test_client_logins_only_reach_the_portal_and_staff_cannot_open_it(): void
     {
         $this->assertSame([$this->client->id, $this->client->id], [$this->clientUser->client_id, $this->project->client_id]);

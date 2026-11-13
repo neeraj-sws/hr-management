@@ -158,18 +158,30 @@ class TimesheetService
         return $added;
     }
 
-    /** Totals of a month: minutes carried in, worked, billable (incl. carried in), open objections, amount at the hourly rate. */
-    public function summary(Project $project, string $month, bool $clientView = false): array
+    /**
+     * Totals of a month: minutes carried in, worked, billable lines, what is available (carried in + this month), what is
+     * invoiced (all of it, or at most the project's monthly cap — e.g. 46 hours) and what moves on to the next month.
+     * Carried in = the "Old remaining" typed for the month, else what the previous month could not invoice.
+     */
+    public function summary(Project $project, string $month, bool $clientView = false, int $depth = 0): array
     {
         $entries = TimesheetEntry::where('project_id', $project->id)->where('work_date', '>=', $month.'-01')->where('work_date', '<=', Carbon::createFromFormat('Y-m', $month)->endOfMonth()->toDateString())
             ->when($clientView, fn ($q) => $q->where('visible_to_client', true))->get(['id', 'minutes', 'billable_minutes']);
         $record = TimesheetMonth::where('project_id', $project->id)->where('month', $month)->first();
         $opening = (int) ($record?->opening_remaining_minutes ?? 0);
-        $billable = (int) $entries->sum('billable_minutes') + $opening;
+        $cap = (int) ($project->monthly_cap_minutes ?? 0);
+        if ($opening === 0 && $cap > 0 && $depth < 12) {
+            // Nothing typed: take over what the previous month left (only projects with a cap carry anything).
+            $opening = $this->summary($project, Carbon::createFromFormat('Y-m-d', $month.'-01')->subMonthNoOverflow()->format('Y-m'), false, $depth + 1)['carry_minutes'];
+        }
+        $monthBillable = (int) $entries->sum('billable_minutes');
+        $available = $monthBillable + $opening;
+        $billable = $cap > 0 ? min($available, $cap) : $available;
 
         return [
             'entries' => $entries->count(), 'opening_minutes' => $opening, 'worked_minutes' => (int) $entries->sum('minutes'),
-            'month_billable_minutes' => $billable - $opening, 'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
+            'month_billable_minutes' => $monthBillable, 'available_minutes' => $available, 'cap_minutes' => $cap, 'carry_minutes' => max(0, $available - $billable),
+            'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
             'open_objections' => TimesheetObjection::where('status', 'open')->whereIn('timesheet_entry_id', $entries->pluck('id'))->count(),
             'approved_at' => $record?->approved_at, 'approved_by' => $record?->approver?->name, 'invoice' => $record?->invoice,
         ];
@@ -248,7 +260,7 @@ class TimesheetService
                 'place_of_supply' => \App\Models\BillingCustomer::find($customerId)?->billing_state, 'notes' => 'Timesheet '.Carbon::createFromFormat('Y-m', $month)->format('F Y').($record->approved_at ? ', approved by the client on '.$record->approved_at->format('d M Y') : ''), 'created_by' => $actor->id]);
             $hours = round($summary['billable_minutes'] / 60, 2);
             BillingInvoiceItem::create(['invoice_id' => $invoice->id, 'name' => 'Development services — '.$project->name.' — '.Carbon::createFromFormat('Y-m', $month)->format('F Y'),
-                'description' => \App\Support\Duration::fromMinutes($summary['billable_minutes']).' billable hours'.($summary['opening_minutes'] ? ' (incl. '.\App\Support\Duration::fromMinutes($summary['opening_minutes']).' carried in)' : ''),
+                'description' => \App\Support\Duration::fromMinutes($summary['billable_minutes']).' billable hours'.($summary['opening_minutes'] ? ' (incl. '.\App\Support\Duration::fromMinutes($summary['opening_minutes']).' carried in)' : '').($summary['carry_minutes'] ? ' — '.\App\Support\Duration::fromMinutes($summary['carry_minutes']).' carried to next month' : ''),
                 'quantity' => $hours, 'price' => (float) $project->hourly_rate, 'discount' => 0, 'hsn_sac' => '998314', 'tax_id' => BillingTax::where('rate', 18)->value('id')]);
             $record->update(['invoice_id' => $invoice->id]);
             $this->audit->record('timesheet.invoiced', $project, ['month' => $month, 'invoice_id' => $invoice->id, 'hours' => $hours]);

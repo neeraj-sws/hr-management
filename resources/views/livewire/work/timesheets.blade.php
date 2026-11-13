@@ -47,7 +47,9 @@
                 <div class="ts-stat" title="Time left over from the previous months"><span>Previous (carried in)</span><b>{{ $fmt($summary['opening_minutes']) }}</b></div>
                 <div class="ts-stat"><span>This month worked</span><b>{{ $fmt($summary['worked_minutes']) }}</b></div>
                 <div class="ts-stat" title="Sum of the Billable (min) column of this month's lines"><span>This month billable</span><b>{{ $fmt($summary['month_billable_minutes']) }}</b>@if($summary['month_billable_minutes'] !== $summary['worked_minutes'])<small>{{ $summary['month_billable_minutes'] > $summary['worked_minutes'] ? '+' : '−' }}{{ $fmt(abs($summary['month_billable_minutes'] - $summary['worked_minutes'])) }} vs worked</small>@endif</div>
-                <div class="ts-stat ts-stat-main" title="Previous + this month billable — this is what is invoiced"><span>Total billable</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
+                @if($summary['cap_minutes'])<div class="ts-stat" title="Previous + this month billable"><span>Available</span><b>{{ $fmt($summary['available_minutes']) }}</b></div>@endif
+                <div class="ts-stat ts-stat-main" title="What is invoiced for this month{{ $summary['cap_minutes'] ? ' (capped at '.$fmt($summary['cap_minutes']).')' : '' }}"><span>{{ $summary['cap_minutes'] ? 'To invoice (cap '.$fmt($summary['cap_minutes']).')' : 'Total billable' }}</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
+                @if($summary['cap_minutes'])<div class="ts-stat" title="Goes to next month's carried-in"><span>Carry to next month</span><b>{{ $fmt($summary['carry_minutes']) }}</b></div>@endif
                 <div class="ts-stat"><span>Rate</span><b>{{ $summary['rate'] ? '₹'.number_format($summary['rate'], 2).'/h' : 'Not set' }}</b></div>
                 <div class="ts-stat"><span>Amount</span><b>₹{{ number_format($summary['amount'], 2) }}</b></div>
             </div>
@@ -156,7 +158,8 @@
         <x-modal title="Rate & settings · {{ $projectModel?->name }}">
             <form wire:submit="saveSettings"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Hourly rate (₹)" name="rate" hint="used for the invoice"><input type="number" step="0.01" min="0" wire:model="rate"></x-field>
-                <x-field label="Minutes carried into {{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $month)->format('M Y') }}" name="opening" hint="“Old remaining”"><input type="number" wire:model="opening"></x-field>
+                <x-field label="Monthly invoice hours (cap)" name="cap" hint="e.g. 46 — more than this is carried to the next month; blank = invoice everything"><input type="number" step="0.01" min="0" wire:model="cap"></x-field>
+                <x-field label="Minutes carried into {{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $month)->format('M Y') }}" name="opening" hint="“Old remaining” — leave 0 to carry over from last month automatically"><input type="number" wire:model="opening"></x-field>
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="showDeveloper"> Show developer names to the client</label>
             </div><p class="small muted">The client, and the billing customer invoices go to, are set in Work → Clients.</p></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary">Save</button></div></form>

@@ -11,7 +11,8 @@
             <div class="ts-stats">
                 @if($summary['opening_minutes'])<div class="ts-stat"><span>Previous (carried in)</span><b>{{ $fmt($summary['opening_minutes']) }}</b></div>@endif
                 <div class="ts-stat"><span>This month</span><b>{{ $fmt($summary['month_billable_minutes']) }}</b></div>
-                <div class="ts-stat ts-stat-main"><span>Total billable</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
+                <div class="ts-stat ts-stat-main"><span>{{ $summary['cap_minutes'] ? 'Invoiced (up to '.$fmt($summary['cap_minutes']).')' : 'Total billable' }}</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
+                @if($summary['carry_minutes'])<div class="ts-stat"><span>Carried to next month</span><b>{{ $fmt($summary['carry_minutes']) }}</b></div>@endif
                 <div class="ts-stat"><span>Lines</span><b>{{ $summary['entries'] }}</b></div>
             </div>
             <div class="ts-status">
