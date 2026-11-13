@@ -169,7 +169,7 @@ class TimesheetService
 
         return [
             'entries' => $entries->count(), 'opening_minutes' => $opening, 'worked_minutes' => (int) $entries->sum('minutes'),
-            'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
+            'month_billable_minutes' => $billable - $opening, 'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
             'open_objections' => TimesheetObjection::where('status', 'open')->whereIn('timesheet_entry_id', $entries->pluck('id'))->count(),
             'approved_at' => $record?->approved_at, 'approved_by' => $record?->approver?->name, 'invoice' => $record?->invoice,
         ];

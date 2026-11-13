@@ -73,7 +73,8 @@ class ClientPortalTest extends TestCase
     {
         $this->logTime('2026-10-05 10:30', 90);
         $this->logTime('2026-10-06 11:00', 45, 'Meeting');
-        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->assertSee('Category &amp; Subcategory update', false);
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->assertSee('Category &amp; Subcategory update', false)
+            ->assertSee(['Previous (carried in)', 'This month worked', 'This month billable', 'Total billable', 'Client review', 'Not approved yet']);
         $this->assertSame([2, 135], [TimesheetEntry::count(), (int) TimesheetEntry::sum('billable_minutes')]);
         $meeting = TimesheetEntry::where('description', 'Meeting')->firstOrFail();
 
@@ -92,6 +93,7 @@ class ClientPortalTest extends TestCase
         $this->assertStringContainsString('accepted your objection', $this->clientUser->notifications()->latest()->first()->data['message']);
         Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class, ['project' => $this->project->id, 'month' => '2026-10'])
             ->assertSee('Agreed, corrected to 20 minutes.')->call('approve')->assertHasNoErrors()->assertSee('Approved by');
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->assertSee('Approved by client');
 
         // Approved lines are locked; the month becomes an invoice at ₹600/h for 110 minutes.
         Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->call('setBillable', $meeting->id, '5');

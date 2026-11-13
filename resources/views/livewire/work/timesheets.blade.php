@@ -44,9 +44,10 @@
         @elseif($projectModel && $summary)
             <div class="pill-row" style="padding:0 18px 14px">
                 <span class="pill">Client <b>{{ $projectModel->client?->name ?? '— set in Work → Clients' }}</b></span>
-                <span class="pill">Carried in <b>{{ $fmt($summary['opening_minutes']) }}</b></span>
-                <span class="pill">Worked <b>{{ $fmt($summary['worked_minutes']) }}</b></span>
-                <span class="pill">Billable <b>{{ $fmt($summary['billable_minutes']) }}</b></span>
+                <span class="pill" title="Time left over from the previous months">Previous (carried in) <b>{{ $fmt($summary['opening_minutes']) }}</b></span>
+                <span class="pill">This month worked <b>{{ $fmt($summary['worked_minutes']) }}</b></span>
+                <span class="pill" title="Sum of the Billable (min) column of this month's lines">This month billable <b>{{ $fmt($summary['month_billable_minutes']) }}</b>@if($summary['month_billable_minutes'] !== $summary['worked_minutes']) <small class="muted">({{ $summary['month_billable_minutes'] > $summary['worked_minutes'] ? '+' : '−' }}{{ $fmt(abs($summary['month_billable_minutes'] - $summary['worked_minutes'])) }} vs worked)</small>@endif</span>
+                <span class="pill" title="Previous + this month billable — this is what is invoiced">Total billable <b>{{ $fmt($summary['billable_minutes']) }}</b></span>
                 <span class="pill">Rate <b>{{ $summary['rate'] ? '₹'.number_format($summary['rate'], 2).'/h' : 'not set' }}</b></span>
                 <span class="pill">Amount <b>₹{{ number_format($summary['amount'], 2) }}</b></span>
                 @if($summary['open_objections'])<span class="pill" style="color:var(--red)">Open objections <b>{{ $summary['open_objections'] }}</b></span>@endif
@@ -61,7 +62,7 @@
     @if($projectModel)
     <section class="card">
         <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th>@if($showDev)<th>Developer</th>@endif<th>Task</th><th>Time</th><th class="num">Worked</th>@unless($mine)<th class="num">Billable (min)</th>@endunless<th>Status</th><th>Stage</th>@unless($mine)<th>Client</th>@endunless<th></th></tr></thead>
+            <thead><tr><th>Date</th>@if($showDev)<th>Developer</th>@endif<th>Task</th><th>Time</th><th class="num">Worked</th>@unless($mine)<th class="num">Billable (min)</th>@endunless<th>Status</th><th>Stage</th>@unless($mine)<th>Client</th><th>Client review</th>@endunless<th></th></tr></thead>
             <tbody>
             @forelse($entries as $e)
                 @php($open = $e->objections->firstWhere('status', 'open'))
@@ -73,7 +74,7 @@
                         @foreach($e->objections as $o)
                             <div class="small" style="margin-top:4px;padding:4px 8px;border-left:3px solid {{ $o->status === 'open' ? 'var(--amber)' : ($o->status === 'accepted' ? 'var(--green)' : 'var(--line)') }}">
                                 <strong>Objection</strong> by {{ $o->raiser?->name }} · {{ $o->created_at->format('d M') }}: “{{ $o->reason }}”@if($o->proposed_minutes !== null) (asks {{ $fmt($o->proposed_minutes) }})@endif
-                                @if($o->status === 'open')@unless($mine)<button class="btn btn-sm" wire:click="openAnswer({{ $o->id }})">Answer</button>@else<span class="muted">(manager answer karega)</span>@endunless
+                                @if($o->status === 'open')@unless($mine)<button class="btn btn-sm" wire:click="openAnswer({{ $o->id }})">Answer</button>@else<span class="muted">(the manager will answer)</span>@endunless
                                 @else<br><span class="muted">{{ ucfirst($o->status) }} by {{ $o->responder?->name }}: {{ $o->response }}</span>@endif
                             </div>
                         @endforeach</td>
@@ -83,11 +84,17 @@
                         @if($e->billable_minutes !== $e->minutes)<small class="muted">{{ $e->billable_minutes < $e->minutes ? '−' : '+' }}{{ abs($e->billable_minutes - $e->minutes) }}</small>@endif</td>@endunless
                     <td>{{ $e->status ?: '—' }}</td>
                     <td>{{ $e->stage ?: '—' }}</td>
-                    @unless($mine)<td><button class="btn btn-sm" wire:click="toggleVisible({{ $e->id }})" title="Show / hide this line in the client portal">{{ $e->visible_to_client ? 'Shown' : 'Hidden' }}</button></td>@endunless
+                    @unless($mine)<td><button class="btn btn-sm" wire:click="toggleVisible({{ $e->id }})" title="Show / hide this line in the client portal">{{ $e->visible_to_client ? 'Shown' : 'Hidden' }}</button></td>
+                    <td class="nowrap">@php($last = $e->objections->sortByDesc('id')->first())
+                        @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by client</span>
+                        @elseif($open)<span class="pill" style="color:var(--amber)">Objection open</span>
+                        @elseif($last)<span class="pill" style="color:{{ $last->status === 'accepted' ? 'var(--green)' : 'var(--muted)' }}">Objection {{ $last->status }}</span>
+                        @elseif($e->visible_to_client)<span class="pill">Not approved yet</span>
+                        @else<span class="pill muted">Hidden from client</span>@endif</td>@endunless
                     <td><div class="row-actions">@if($mine && $e->employee_id !== $ownId)<span class="small muted">team</span>@elseif($mine && $e->source !== 'manual')<span class="small muted">{{ $e->source === 'timer' ? 'task timer' : 'imported' }}</span>@elseif(! $summary['approved_at'])<button class="btn btn-sm" wire:click="openEntry({{ $e->id }})">Edit</button><button class="btn btn-sm btn-danger" wire:click="deleteEntry({{ $e->id }})" wire:confirm="Remove this line?">×</button>@endif</div></td>
                 </tr>
             @empty
-                <tr><td colspan="{{ $mine ? ($showDev ? 8 : 7) : 10 }}"><x-empty title="No timesheet lines this month" icon="clock">Time the team logs on this project's tasks appears here automatically. You can also add a line or import the old Excel sheet.</x-empty></td></tr>
+                <tr><td colspan="{{ $mine ? ($showDev ? 8 : 7) : 11 }}"><x-empty title="No timesheet lines this month" icon="clock">Time the team logs on this project's tasks appears here automatically. You can also add a line or import the old Excel sheet.</x-empty></td></tr>
             @endforelse
             </tbody>
         </table></div>

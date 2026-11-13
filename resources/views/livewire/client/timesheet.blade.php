@@ -9,8 +9,9 @@
         </div>
         @if($summary)
             <div class="pill-row" style="padding:0 18px 14px">
-                @if($summary['opening_minutes'])<span class="pill">Carried in <b>{{ $fmt($summary['opening_minutes']) }}</b></span>@endif
-                <span class="pill">Billable this month <b>{{ $fmt($summary['billable_minutes']) }}</b></span>
+                @if($summary['opening_minutes'])<span class="pill">Previous (carried in) <b>{{ $fmt($summary['opening_minutes']) }}</b></span>@endif
+                <span class="pill">This month <b>{{ $fmt($summary['month_billable_minutes']) }}</b></span>
+                <span class="pill">Total billable <b>{{ $fmt($summary['billable_minutes']) }}</b></span>
                 <span class="pill">Lines <b>{{ $summary['entries'] }}</b></span>
                 @if($summary['open_objections'])<span class="pill" style="color:var(--amber)">Open objections <b>{{ $summary['open_objections'] }}</b></span>@endif
                 @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by {{ $summary['approved_by'] }} on {{ $summary['approved_at']->format('d M Y') }}</span>
