@@ -1705,3 +1705,12 @@ div.tm-card{cursor:default}
 .table.fx th,.table.fx td{overflow-wrap:anywhere;word-break:normal}
 .table.fx .cms-no{white-space:normal;padding:8px 10px;text-align:center}
 .table.fx .cms-pill{min-width:0;max-width:100%}
+
+/* Timesheet summary: stat cards instead of a row of pills */
+.ts-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:4px 18px 14px}
+.ts-stat{border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--surface,#fff);min-width:0}
+.ts-stat span{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.ts-stat b{display:block;font-size:19px;margin-top:3px;overflow-wrap:anywhere}
+.ts-stat small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.ts-stat-main{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.35)}
+.ts-status{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:0 18px 16px}

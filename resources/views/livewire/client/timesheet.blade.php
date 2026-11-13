@@ -8,11 +8,13 @@
             <div class="field"><span>Month</span><div class="row-actions"><button class="btn btn-sm" wire:click="moveMonth(-1)">‹</button><input type="month" wire:model.live="month" style="width:auto"><button class="btn btn-sm" wire:click="moveMonth(1)">›</button></div></div>
         </div>
         @if($summary)
-            <div class="pill-row" style="padding:0 18px 14px">
-                @if($summary['opening_minutes'])<span class="pill">Previous (carried in) <b>{{ $fmt($summary['opening_minutes']) }}</b></span>@endif
-                <span class="pill">This month <b>{{ $fmt($summary['month_billable_minutes']) }}</b></span>
-                <span class="pill">Total billable <b>{{ $fmt($summary['billable_minutes']) }}</b></span>
-                <span class="pill">Lines <b>{{ $summary['entries'] }}</b></span>
+            <div class="ts-stats">
+                @if($summary['opening_minutes'])<div class="ts-stat"><span>Previous (carried in)</span><b>{{ $fmt($summary['opening_minutes']) }}</b></div>@endif
+                <div class="ts-stat"><span>This month</span><b>{{ $fmt($summary['month_billable_minutes']) }}</b></div>
+                <div class="ts-stat ts-stat-main"><span>Total billable</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
+                <div class="ts-stat"><span>Lines</span><b>{{ $summary['entries'] }}</b></div>
+            </div>
+            <div class="ts-status">
                 @if($summary['open_objections'])<span class="pill" style="color:var(--amber)">Open objections <b>{{ $summary['open_objections'] }}</b></span>@endif
                 @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by {{ $summary['approved_by'] }} on {{ $summary['approved_at']->format('d M Y') }}</span>
                 @elseif($summary['entries'])<button class="btn btn-primary btn-sm" wire:click="approve" wire:confirm="Approve this month's timesheet ({{ $fmt($summary['billable_minutes']) }} billable)?" @disabled($summary['open_objections'])>Approve this month</button>

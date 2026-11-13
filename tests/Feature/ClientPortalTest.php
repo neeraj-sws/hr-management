@@ -179,7 +179,7 @@ class ClientPortalTest extends TestCase
         TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $outsider->id, 'work_date' => '2026-10-09', 'minutes' => 30, 'billable_minutes' => 30, 'description' => 'Outsider work', 'source' => 'manual']);
 
         $page = fn (array $q = []) => Livewire::withQueryParams($q + ['month' => '2026-10'])->actingAs($managerUser)->test(\App\Livewire\Work\Timesheets::class, ['mine' => true]);
-        $page()->assertSee('Meri team (2)')->assertDontSee('Dev work');
+        $page()->assertSee('My team (2)')->assertDontSee('Dev work');
         $page(['scope' => 'team'])->assertSet('project', $this->project->id)->assertSee('Dev work')->assertSee('Typed name work')->assertSee('Team: React Squad')->assertDontSee('Outsider work');
         $page(['scope' => 'team', 'member' => $riya->id])->assertSee('Typed name work')->assertDontSee('Dev work');
         // The team view is read-only: a team member's line cannot be changed from here.

@@ -25,11 +25,11 @@
         @if($mine && $team->isNotEmpty())
             <div class="row-actions" style="padding:14px 18px 0">
                 <button class="btn btn-sm {{ $teamView ? '' : 'btn-primary' }}" wire:click="$set('scope', 'mine')">Mera timesheet</button>
-                <button class="btn btn-sm {{ $teamView ? 'btn-primary' : '' }}" wire:click="$set('scope', 'team')">Meri team ({{ $team->count() }})</button>
+                <button class="btn btn-sm {{ $teamView ? 'btn-primary' : '' }}" wire:click="$set('scope', 'team')">My team ({{ $team->count() }})</button>
             </div>
         @endif
         <div class="toolbar">
-            @if($teamView)<label class="field"><span>Developer</span><select wire:model.live="member"><option value="">Poori team + main</option>@foreach($team as $m)<option value="{{ $m->id }}">{{ $m->name }}{{ $m->teams->isNotEmpty() ? ' · '.$m->teams->pluck('name')->join(', ') : '' }}</option>@endforeach</select></label>@endif
+            @if($teamView)<label class="field"><span>Developer</span><select wire:model.live="member"><option value="">Whole team + me</option>@foreach($team as $m)<option value="{{ $m->id }}">{{ $m->name }}{{ $m->teams->isNotEmpty() ? ' · '.$m->teams->pluck('name')->join(', ') : '' }}</option>@endforeach</select></label>@endif
             <label class="field grow"><span>Project</span><select wire:model.live="project">@if($projects->isEmpty())<option value="">— you are not on any project —</option>@endif @foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}{{ $p->client ? ' — '.$p->client->name : ' (no client)' }}</option>@endforeach</select></label>
             <div class="field"><span>Month</span><div class="row-actions"><button class="btn btn-sm" wire:click="moveMonth(-1)">‹</button><input type="month" wire:model.live="month" style="width:auto"><button class="btn btn-sm" wire:click="moveMonth(1)">›</button></div></div>
         </div>
@@ -42,14 +42,16 @@
                 @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Month approved by the client — lines locked</span>@endif
             </div>
         @elseif($projectModel && $summary)
-            <div class="pill-row" style="padding:0 18px 14px">
-                <span class="pill">Client <b>{{ $projectModel->client?->name ?? '— set in Work → Clients' }}</b></span>
-                <span class="pill" title="Time left over from the previous months">Previous (carried in) <b>{{ $fmt($summary['opening_minutes']) }}</b></span>
-                <span class="pill">This month worked <b>{{ $fmt($summary['worked_minutes']) }}</b></span>
-                <span class="pill" title="Sum of the Billable (min) column of this month's lines">This month billable <b>{{ $fmt($summary['month_billable_minutes']) }}</b>@if($summary['month_billable_minutes'] !== $summary['worked_minutes']) <small class="muted">({{ $summary['month_billable_minutes'] > $summary['worked_minutes'] ? '+' : '−' }}{{ $fmt(abs($summary['month_billable_minutes'] - $summary['worked_minutes'])) }} vs worked)</small>@endif</span>
-                <span class="pill" title="Previous + this month billable — this is what is invoiced">Total billable <b>{{ $fmt($summary['billable_minutes']) }}</b></span>
-                <span class="pill">Rate <b>{{ $summary['rate'] ? '₹'.number_format($summary['rate'], 2).'/h' : 'not set' }}</b></span>
-                <span class="pill">Amount <b>₹{{ number_format($summary['amount'], 2) }}</b></span>
+            <div class="ts-stats">
+                <div class="ts-stat"><span>Client</span><b>{{ $projectModel->client?->name ?? '—' }}</b>@unless($projectModel->client)<small>set in Work → Clients</small>@endunless</div>
+                <div class="ts-stat" title="Time left over from the previous months"><span>Previous (carried in)</span><b>{{ $fmt($summary['opening_minutes']) }}</b></div>
+                <div class="ts-stat"><span>This month worked</span><b>{{ $fmt($summary['worked_minutes']) }}</b></div>
+                <div class="ts-stat" title="Sum of the Billable (min) column of this month's lines"><span>This month billable</span><b>{{ $fmt($summary['month_billable_minutes']) }}</b>@if($summary['month_billable_minutes'] !== $summary['worked_minutes'])<small>{{ $summary['month_billable_minutes'] > $summary['worked_minutes'] ? '+' : '−' }}{{ $fmt(abs($summary['month_billable_minutes'] - $summary['worked_minutes'])) }} vs worked</small>@endif</div>
+                <div class="ts-stat ts-stat-main" title="Previous + this month billable — this is what is invoiced"><span>Total billable</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
+                <div class="ts-stat"><span>Rate</span><b>{{ $summary['rate'] ? '₹'.number_format($summary['rate'], 2).'/h' : 'Not set' }}</b></div>
+                <div class="ts-stat"><span>Amount</span><b>₹{{ number_format($summary['amount'], 2) }}</b></div>
+            </div>
+            <div class="ts-status">
                 @if($summary['open_objections'])<span class="pill" style="color:var(--red)">Open objections <b>{{ $summary['open_objections'] }}</b></span>@endif
                 @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by <b>{{ $summary['approved_by'] }}</b> · {{ $summary['approved_at']->format('d M Y') }}</span>@else<span class="pill">Not approved by the client yet</span>@endif
                 @if($summary['invoice'])<a class="pill" href="{{ route('billing.invoices.show', $summary['invoice']) }}">Invoice <b>{{ $summary['invoice']->number() }}</b></a>
