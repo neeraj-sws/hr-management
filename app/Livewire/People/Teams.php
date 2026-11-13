@@ -78,7 +78,10 @@ class Teams extends Component
         $team = Team::withCount('members')->findOrFail($id);
         $history = \App\Models\EmployeeTeamHistory::where('team_id', $team->id)->count();
         if ($team->members_count || $history) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['team' => "{$team->name} has ".($team->members_count ?: $history).' member record(s), so it cannot be removed. Archive it instead — its history stays for reports and team policies.']);
+            $why = $team->members_count
+                ? "{$team->name} has {$team->members_count} current member(s)"
+                : "{$team->name} has no current members, but {$history} past membership record(s) (people who were in it earlier)";
+            throw \Illuminate\Validation\ValidationException::withMessages(['team' => $why.', so it cannot be removed. Archive it instead — its history stays for reports and team policies.']);
         }
         \App\Models\TeamPolicyOverride::where('team_id', $team->id)->delete();
         $audit->record('team.removed', null, ['id' => $team->id, 'name' => $team->name]);
