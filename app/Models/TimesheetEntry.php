@@ -10,13 +10,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class TimesheetEntry extends Model
 {
     protected $fillable = ['project_id', 'task_id', 'employee_id', 'developer_name', 'work_date', 'start_time', 'end_time', 'minutes', 'billable_minutes',
-        'description', 'status', 'stage', 'remarks', 'source', 'task_time_entry_id', 'import_key', 'visible_to_client', 'created_by'];
+        'description', 'status', 'stage', 'remarks', 'source', 'task_time_entry_id', 'import_key', 'visible_to_client', 'client_approved_at', 'client_approved_by', 'created_by'];
 
     /** Progress of the work, and where it is (separate fields). */
     public const STATUSES = ['Done', 'In progress', 'Not done'];
     public const STAGES = ['Local', 'React', 'Live'];
 
-    protected $casts = ['work_date' => 'date', 'visible_to_client' => 'boolean', 'minutes' => 'integer', 'billable_minutes' => 'integer'];
+    protected $casts = ['work_date' => 'date', 'visible_to_client' => 'boolean', 'client_approved_at' => 'datetime', 'minutes' => 'integer', 'billable_minutes' => 'integer'];
 
     public function project(): BelongsTo { return $this->belongsTo(Project::class); }
     public function task(): BelongsTo { return $this->belongsTo(Task::class); }

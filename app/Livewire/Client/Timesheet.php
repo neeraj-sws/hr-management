@@ -60,6 +60,29 @@ class Timesheet extends Component
         $this->dispatch('toast', message: 'Objection sent. You will see the answer here.', type: 'success');
     }
 
+    /** The client marks one line as reviewed / OK, or takes it back. */
+    public function approveLine(int $entryId, bool $approved, TimesheetService $timesheets): void
+    {
+        $entry = \App\Models\TimesheetEntry::with('project')->findOrFail($entryId);
+        try {
+            $timesheets->approveLine($entry, auth()->user(), $approved);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->dispatch('toast', message: collect($e->errors())->flatten()->first(), type: 'error');
+        }
+    }
+
+    /** All lines without an open objection in one go. */
+    public function approveAllLines(TimesheetService $timesheets): void
+    {
+        $project = $this->projectModel();
+        abort_unless($project, 404);
+        foreach ($timesheets->entries($project, $this->month, true)->whereNull('client_approved_at') as $entry) {
+            if ($entry->objections->where('status', 'open')->isNotEmpty()) continue;
+            $timesheets->approveLine($entry, auth()->user(), true);
+        }
+        $this->dispatch('toast', message: 'All lines without an objection are marked OK.', type: 'success');
+    }
+
     public function approve(TimesheetService $timesheets): void
     {
         $timesheets->approveMonth($this->projectModel(), $this->month, auth()->user());

@@ -59,7 +59,7 @@ class BillingEmailsTest extends TestCase
     {
         $est = BillingEstimate::create(['number' => 1, 'financial_year' => '2026-27', 'customer_id' => $this->customer->id, 'issue_date' => '2026-11-01', 'status' => 'Draft']);
         BillingEstimateItem::create(['estimate_id' => $est->id, 'name' => 'App', 'quantity' => 1, 'price' => 5000]);
-        Livewire::actingAs($this->admin)->test(EstimateShow::class, ['estimate' => $est])->assertSee('Send proposal')
+        Livewire::actingAs($this->admin)->test(EstimateShow::class, ['estimate' => $est])->assertSee('Send Proposal')
             ->call('openEmail')->assertSet('emailTo', 'accounts@elcina.test')->call('sendEmail')->assertHasNoErrors();
         $this->assertSame('Sent', $est->fresh()->status);
         Notification::assertSentTimes(BillingMail::class, 1);

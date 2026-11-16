@@ -182,6 +182,7 @@ class TimesheetService
             'entries' => $entries->count(), 'opening_minutes' => $opening, 'worked_minutes' => (int) $entries->sum('minutes'),
             'month_billable_minutes' => $monthBillable, 'available_minutes' => $available, 'cap_minutes' => $cap, 'carry_minutes' => max(0, $available - $billable),
             'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
+            'approved_lines' => (int) TimesheetEntry::whereIn('id', $entries->pluck('id'))->whereNotNull('client_approved_at')->count(),
             'open_objections' => TimesheetObjection::where('status', 'open')->whereIn('timesheet_entry_id', $entries->pluck('id'))->count(),
             'approved_at' => $record?->approved_at, 'approved_by' => $record?->approver?->name, 'invoice' => $record?->invoice,
         ];
@@ -194,6 +195,7 @@ class TimesheetService
         if ($this->isLocked($entry->project, $entry->work_date->format('Y-m'))) throw ValidationException::withMessages(['reason' => 'This month is already approved.']);
         if ($entry->objections()->where('status', 'open')->exists()) throw ValidationException::withMessages(['reason' => 'There is already an open objection on this line.']);
         $objection = TimesheetObjection::create(['timesheet_entry_id' => $entry->id, 'raised_by' => $client->id, 'reason' => trim($reason), 'proposed_minutes' => $proposedMinutes]);
+        $entry->update(['client_approved_at' => null, 'client_approved_by' => null]);
         $this->audit->record('timesheet.objection_raised', $entry, ['objection_id' => $objection->id, 'proposed_minutes' => $proposedMinutes]);
         $project = $entry->project()->with('manager.user')->first();
         Notifier::send(Notifier::withPermission('projects.manage')->push($project?->manager?->user), 'TimesheetObjection', $objection->id,
@@ -201,6 +203,16 @@ class TimesheetService
             route('work.timesheets', ['project' => $project?->id, 'month' => $entry->work_date->format('Y-m')], false), $client->id);
 
         return $objection;
+    }
+
+    /** The client marks one line as reviewed and OK (or takes the mark back). An open objection blocks it. */
+    public function approveLine(TimesheetEntry $entry, User $client, bool $approved = true): void
+    {
+        $this->assertClientCanSee($client, $entry);
+        if ($this->isLocked($entry->project, $entry->work_date->format('Y-m'))) throw ValidationException::withMessages(['line' => 'This month is already approved.']);
+        if ($approved && $entry->objections()->where('status', 'open')->exists()) throw ValidationException::withMessages(['line' => 'This line has an open objection — wait for the answer first.']);
+        $entry->update(['client_approved_at' => $approved ? now() : null, 'client_approved_by' => $approved ? $client->id : null]);
+        $this->audit->record($approved ? 'timesheet.line_approved' : 'timesheet.line_approval_removed', $entry, ['by_client' => $client->id]);
     }
 
     /** The manager answers: accept (optionally setting the billable minutes) or reject; the client is told. */

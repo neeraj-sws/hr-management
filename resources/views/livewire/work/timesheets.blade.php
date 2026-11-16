@@ -91,6 +91,7 @@
                     @unless($mine)<td><button class="btn btn-sm" wire:click="toggleVisible({{ $e->id }})" title="Show / hide this line in the client portal">{{ $e->visible_to_client ? 'Shown' : 'Hidden' }}</button></td>
                     <td class="nowrap">@php($last = $e->objections->sortByDesc('id')->first())
                         @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by client</span>
+                        @elseif($e->client_approved_at && ! $open)<span class="pill" style="color:var(--green)">OK by client · {{ $e->client_approved_at->format('d M') }}</span>
                         @elseif($open)<span class="pill" style="color:var(--amber)">Objection open</span>
                         @elseif($last)<span class="pill" style="color:{{ $last->status === 'accepted' ? 'var(--green)' : 'var(--muted)' }}">Objection {{ $last->status }}</span>
                         @elseif($e->visible_to_client)<span class="pill">Not approved yet</span>

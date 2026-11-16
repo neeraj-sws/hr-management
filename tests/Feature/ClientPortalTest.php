@@ -57,6 +57,28 @@ class ClientPortalTest extends TestCase
         return TaskTimeEntry::create(['task_id' => $task->id, 'employee_id' => $this->dev->id, 'started_at' => $from, 'ended_at' => $from->copy()->addMinutes($minutes), 'duration_seconds' => $minutes * 60, 'status' => 'stopped']);
     }
 
+    public function test_the_client_marks_single_lines_ok_and_the_manager_sees_it(): void
+    {
+        $this->logTime('2026-10-05 10:30', 90);
+        $this->logTime('2026-10-06 11:00', 45, 'Meeting');
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10']); // timer time becomes lines
+        $ok = TimesheetEntry::where('description', 'Category & Subcategory update')->firstOrFail();
+        $meeting = TimesheetEntry::where('description', 'Meeting')->firstOrFail();
+        $page = fn () => Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class, ['project' => $this->project->id, 'month' => '2026-10']);
+        $page()->assertSee(['Your review', 'Not reviewed', '0 / 2'])->call('approveLine', $ok->id, true)->assertSee('1 / 2');
+        $this->assertNotNull($ok->fresh()->client_approved_at);
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->assertSee('OK by client');
+        // An objection takes the OK back; with an open objection the line cannot be marked OK.
+        $page()->set('objecting', $ok->id)->set('reason', 'Too long for this task')->call('object');
+        $this->assertNull($ok->fresh()->client_approved_at);
+        $page()->call('approveLine', $ok->id, true);
+        $this->assertNull($ok->fresh()->client_approved_at);
+        // Everything else in one go.
+        $page()->call('approveAllLines');
+        $this->assertNotNull($meeting->fresh()->client_approved_at);
+        $this->assertNull($ok->fresh()->client_approved_at);
+    }
+
     public function test_a_monthly_hour_cap_limits_the_invoice_and_carries_the_rest_to_next_month(): void
     {
         $this->project->update(['monthly_cap_minutes' => 46 * 60]); // Source India: 46 hours a month

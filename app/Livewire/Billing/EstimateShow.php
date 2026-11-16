@@ -54,7 +54,7 @@ class EstimateShow extends Component
 
     public function setStatus(string $status, AuditLogger $audit): void
     {
-        if (! in_array($status, ['Sent', 'Accepted', 'Declined'], true)) return;
+        if (! in_array($status, ['Draft', 'Sent', 'Accepted', 'Declined'], true)) return;
         $est = $this->estimate();
         if ($est->status === 'Converted') { $this->toast('Already converted.'); return; }
         $est->update(['status' => $status]);
