@@ -12,12 +12,13 @@ use App\Services\WorkService;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use App\Livewire\Concerns\WithPaginationNoUrl as WithPagination;
 
 /** "Tasks" (assign/manage team work) and "My Tasks" (own work + timer) share this page. */
 class Tasks extends Component
 {
-    use InteractsWithHr, WithPagination;
+    use InteractsWithHr, WithPagination, WithFileUploads;
 
     #[Locked] public bool $mine = false;
     #[Url] public string $search = '';
@@ -50,6 +51,8 @@ class Tasks extends Component
     public ?int $returnToId = null;
     #[Url(as: 'task')] public ?int $openId = null;
     public string $comment = '';
+    /** Documents chosen in the form (Excel, Word, PDF, images …). */
+    public array $uploads = [];
 
     public function mount(): void
     {
@@ -137,10 +140,16 @@ class Tasks extends Component
             'dueOn' => ['nullable', 'date'],
             'workDate' => ['nullable', 'date', 'before_or_equal:today'],
             'parentId' => ['nullable', 'exists:tasks,id'],
-        ], [], ['workDate' => 'work date', 'parentId' => 'parent task', 'assigneeId' => 'assignee', 'projectId' => 'project', 'estimatedHours' => 'estimated hours', 'dueOn' => 'due date']);
+            'uploads' => ['array', 'max:10'],
+            'uploads.*' => ['file', 'max:10240', 'mimes:xlsx,xls,csv,doc,docx,pdf,ppt,pptx,txt,png,jpg,jpeg,webp,zip'],
+        ], ['uploads.*.max' => 'Each document can be up to 10 MB.', 'uploads.*.mimes' => 'Allowed: Excel, Word, PowerPoint, PDF, text, images or a zip.'], ['uploads.*' => 'document', 'workDate' => 'work date', 'parentId' => 'parent task', 'assigneeId' => 'assignee', 'projectId' => 'project', 'estimatedHours' => 'estimated hours', 'dueOn' => 'due date']);
         $task = $this->editingId ? $this->visibleTasks()->findOrFail($this->editingId) : null;
         if ($task && ! $this->canAssign() && $task->created_by !== auth()->id()) abort(403);
-        $work->saveTask($task, ['work_date' => $this->workDate ?: null, 'parent_id' => $this->parentId ?: null, 'title' => $this->title, 'description' => $this->description ?: null, 'project_id' => $this->projectId ?: null, 'assignee_id' => $this->assigneeId, 'priority' => $this->taskPriority, 'status' => $this->taskStatus, 'estimated_hours' => $this->estimatedHours === '' ? null : $this->estimatedHours, 'progress' => $this->taskProgress === '' ? null : (int) $this->taskProgress, 'due_on' => $this->dueOn ?: null], $this->user());
+        $saved = $work->saveTask($task, ['work_date' => $this->workDate ?: null, 'parent_id' => $this->parentId ?: null, 'title' => $this->title, 'description' => $this->description ?: null, 'project_id' => $this->projectId ?: null, 'assignee_id' => $this->assigneeId, 'priority' => $this->taskPriority, 'status' => $this->taskStatus, 'estimated_hours' => $this->estimatedHours === '' ? null : $this->estimatedHours, 'progress' => $this->taskProgress === '' ? null : (int) $this->taskProgress, 'due_on' => $this->dueOn ?: null], $this->user());
+        foreach ($this->uploads as $file) {
+            $saved->attachments()->create(['name' => mb_substr($file->getClientOriginalName(), 0, 250), 'path' => $file->store('tasks/'.$saved->id, 'local'), 'mime' => $file->getMimeType(), 'size' => (int) $file->getSize(), 'uploaded_by' => auth()->id()]);
+        }
+        $this->uploads = [];
         $this->toast($this->editingId ? 'Task updated.' : ($this->parentId ? 'Subtask added.' : 'Task assigned.'));
         $this->closeModal();
     }
@@ -194,8 +203,20 @@ class Tasks extends Component
         $this->openId = null;
     }
 
+    /** Removes one document from a task being edited. */
+    public function removeAttachment(int $id): void
+    {
+        $file = \App\Models\TaskAttachment::findOrFail($id);
+        $task = $this->visibleTasks()->findOrFail($file->task_id);
+        abort_unless($this->canAssign() || ($this->canAddOwn() && $task->created_by === auth()->id()), 403);
+        \Illuminate\Support\Facades\Storage::disk('local')->delete($file->path);
+        $file->delete();
+        $this->toast('Document removed.');
+    }
+
     private function resetForm(): void
     {
+        $this->uploads = [];
         $this->reset('editingId', 'title', 'description', 'projectId', 'assigneeId', 'taskPriority', 'taskStatus', 'estimatedHours', 'taskProgress', 'dueOn', 'workDate', 'parentId', 'returnToId');
         $this->resetValidation();
     }
@@ -234,7 +255,7 @@ class Tasks extends Component
         $own = $this->ownEmployee();
         $base = $this->visibleTasks();
 
-        $opened = $this->openId ? $this->visibleTasks()->with(['assignee', 'project', 'parent', 'subtasks.assignee', 'comments.author', 'timeEntries', 'creator'])->find($this->openId) : null;
+        $opened = $this->openId ? $this->visibleTasks()->with(['assignee', 'project', 'parent', 'subtasks.assignee', 'comments.author', 'timeEntries', 'creator', 'attachments'])->find($this->openId) : null;
         // Completion history: who created, assigned, started, completed or re-opened the task, and when.
         $history = $opened ? \App\Models\AuditLog::with('actor')->where('subject_type', Task::class)->where('subject_id', $opened->id)->where('action', 'like', 'task.%')->where('action', '!=', 'task.commented')->latest('id')->limit(50)->get() : collect();
         $parentChoices = $this->showForm ? $this->visibleTasks()->whereNull('parent_id')->where('status', '!=', 'completed')->when($this->editingId, fn ($q) => $q->whereKeyNot($this->editingId))->orderBy('title')->limit(200)->get(['id', 'title']) : collect();
@@ -251,6 +272,7 @@ class Tasks extends Component
             'canAddOwn' => $this->canAddOwn(),
             'opened' => $opened,
             'parentChoices' => $parentChoices,
+            'editingFiles' => $this->editingId ? \App\Models\TaskAttachment::where('task_id', $this->editingId)->orderBy('id')->get() : collect(),
         ], $this->mine ? 'My Tasks' : 'Tasks');
     }
 }

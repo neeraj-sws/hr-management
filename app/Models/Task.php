@@ -58,4 +58,5 @@ class Task extends Model
     public function parent(): \Illuminate\Database\Eloquent\Relations\BelongsTo { return $this->belongsTo(self::class, 'parent_id'); }
     public function subtasks(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(self::class, 'parent_id'); }
     public function comments(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(TaskComment::class)->latest(); }
+    public function attachments(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(TaskAttachment::class)->oldest('id'); }
 }

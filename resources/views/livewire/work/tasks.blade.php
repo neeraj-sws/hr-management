@@ -78,6 +78,12 @@
                 <x-field label="Progress %" name="taskProgress" hint="empty = automatic"><input type="number" min="0" max="100" step="5" wire:model="taskProgress"></x-field>
                 <x-field label="Due date" name="dueOn"><input type="date" wire:model="dueOn"></x-field>
                 @if($mine)<x-field label="Work date" name="workDate" hint="the day this work is for"><input type="date" wire:model="workDate" max="{{ today()->toDateString() }}"></x-field>@endif
+                <x-field label="Documents" name="uploads" full hint="Excel, Word, PDF, images … up to 10 files, 10 MB each (optional)">
+                    <input type="file" wire:model="uploads" multiple accept=".xlsx,.xls,.csv,.doc,.docx,.pdf,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.webp,.zip">
+                    <div wire:loading wire:target="uploads" class="small muted">Uploading…</div>
+                    @foreach($uploads as $u)<div class="small">📎 {{ $u->getClientOriginalName() }}</div>@endforeach
+                    @foreach($editingFiles as $f)<div class="small" style="display:flex;gap:8px;align-items:center"><a href="{{ route('work.task-file', $f) }}">📎 {{ $f->name }}</a><span class="muted">{{ $f->sizeLabel() }}</span><button type="button" class="linklike" style="color:var(--red)" wire:click="removeAttachment({{ $f->id }})" wire:confirm="Remove this document?">Remove</button></div>@endforeach
+                </x-field>
                 <x-field label="Subtask of" name="parentId" hint="optional"><select wire:model="parentId"><option value="">— not a subtask —</option>@foreach($parentChoices as $p)<option value="{{ $p->id }}">{{ $p->title }}</option>@endforeach</select></x-field>
             </div></div>
             <div class="modal-foot"><button type="button" class="btn" wire:click="closeModal">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">{{ $editingId ? 'Save task' : 'Assign task' }}</button></div></form>
@@ -127,6 +133,12 @@
                         @endforelse
                     </ol>
                 </div>
+                @if($opened->attachments->isNotEmpty())
+                    <div class="task-view-section">
+                        <h3>Documents <span class="muted">· {{ $opened->attachments->count() }}</span></h3>
+                        @foreach($opened->attachments as $f)<div class="small" style="margin:4px 0"><a href="{{ route('work.task-file', $f) }}">📎 {{ $f->name }}</a> <span class="muted">· {{ $f->sizeLabel() }}@if($f->uploader) · {{ $f->uploader->name }}@endif · {{ $f->created_at->format('d M') }}</span></div>@endforeach
+                    </div>
+                @endif
                 <div class="task-view-section">
                     <h3>Comments @if($opened->comments->isNotEmpty())<span class="muted">· {{ $opened->comments->count() }}</span>@endif</h3>
                     @foreach($opened->comments as $c)
