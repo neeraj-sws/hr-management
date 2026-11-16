@@ -64,6 +64,8 @@ class Timesheets extends Component
         $this->guard();
         if (! preg_match('/^\d{4}-\d{2}$/', $this->month)) $this->month = today()->format('Y-m');
         if ($this->mine) {
+            // A manager lands on the team's timesheet (the toggle still switches to their own).
+            if (request()->query('scope') === null && $this->team()->isNotEmpty()) $this->scope = 'team';
             if (! $this->teamView()) $this->scope = 'mine';
             if ($this->project && ! $this->myProjects()->whereKey($this->project)->exists()) $this->project = null;
             $this->project ??= $this->myProjects()->orderByRaw('client_id IS NULL')->orderBy('name')->value('id');
@@ -196,7 +198,7 @@ class Timesheets extends Component
             $existing = $this->entryId ? $this->line($this->entryId) : null;
             $this->entry['employee_id'] = (string) $this->ownEmployee()->id;
             $this->entry['developer_name'] = '';
-            $this->entry['visible_to_client'] = $existing?->visible_to_client ?? true;
+            $this->entry['visible_to_client'] = $existing?->visible_to_client ?? false;
             // Billable follows the worked minutes unless a manager already changed it.
             $this->entry['billable_minutes'] = $existing && $existing->billable_minutes !== $existing->minutes ? (string) $existing->billable_minutes : '';
         }

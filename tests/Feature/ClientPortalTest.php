@@ -62,6 +62,7 @@ class ClientPortalTest extends TestCase
         $this->logTime('2026-10-05 10:30', 90);
         $this->logTime('2026-10-06 11:00', 45, 'Meeting');
         Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10']); // timer time becomes lines
+        TimesheetEntry::query()->update(['visible_to_client' => true]); // the manager shows them to the client
         $ok = TimesheetEntry::where('description', 'Category & Subcategory update')->firstOrFail();
         $meeting = TimesheetEntry::where('description', 'Meeting')->firstOrFail();
         $page = fn () => Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class, ['project' => $this->project->id, 'month' => '2026-10']);
@@ -111,7 +112,10 @@ class ClientPortalTest extends TestCase
     {
         $this->logTime('2026-10-05 10:30', 90);
         $this->logTime('2026-10-06 11:00', 45, 'Meeting');
-        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->assertSee('Category &amp; Subcategory update', false)
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->assertSee('Category &amp; Subcategory update', false);
+        $this->assertSame([0], [TimesheetEntry::where('visible_to_client', true)->count()]); // hidden from the client until shown
+        TimesheetEntry::query()->update(['visible_to_client' => true]); // the manager shows them
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])
             ->assertSee(['Previous (carried in)', 'This month worked', 'This month billable', 'Total billable', 'Client review', 'Not approved yet']);
         $this->assertSame([2, 135], [TimesheetEntry::count(), (int) TimesheetEntry::sum('billable_minutes')]);
         $meeting = TimesheetEntry::where('description', 'Meeting')->firstOrFail();
@@ -181,7 +185,7 @@ class ClientPortalTest extends TestCase
             ->set('entry.description', 'Search API fix')->set('entry.start_time', '10:00')->set('entry.end_time', '11:30')
             ->set('entry.status', 'In progress')->set('entry.stage', 'React')->set('entry.billable_minutes', '500')->call('saveEntry')->assertHasNoErrors()->assertSee('Search API fix')->assertDontSee('Colleague work');
         $mineLine = TimesheetEntry::where('description', 'Search API fix')->firstOrFail();
-        $this->assertSame([$this->dev->id, null, 90, 90, true, 'manual', 'In progress', 'React'], [$mineLine->employee_id, $mineLine->developer_name, $mineLine->minutes, $mineLine->billable_minutes, $mineLine->visible_to_client, $mineLine->source, $mineLine->status, $mineLine->stage]);
+        $this->assertSame([$this->dev->id, null, 90, 90, false, 'manual', 'In progress', 'React'], [$mineLine->employee_id, $mineLine->developer_name, $mineLine->minutes, $mineLine->billable_minutes, $mineLine->visible_to_client, $mineLine->source, $mineLine->status, $mineLine->stage]);
 
         // Cannot touch a colleague's line or the manager tools.
         $page()->call('openEntry', $theirs->id)->assertForbidden();
@@ -217,7 +221,8 @@ class ClientPortalTest extends TestCase
         TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $outsider->id, 'work_date' => '2026-10-09', 'minutes' => 30, 'billable_minutes' => 30, 'description' => 'Outsider work', 'source' => 'manual']);
 
         $page = fn (array $q = []) => Livewire::withQueryParams($q + ['month' => '2026-10'])->actingAs($managerUser)->test(\App\Livewire\Work\Timesheets::class, ['mine' => true]);
-        $page()->assertSee('My team (2)')->assertDontSee('Dev work');
+        $page()->assertSet('scope', 'team')->assertSee('Dev work'); // a manager lands on the team's timesheet
+        $page(['scope' => 'mine'])->assertSee('My team (2)')->assertDontSee('Dev work');
         $page(['scope' => 'team'])->assertSet('project', $this->project->id)->assertSee('Dev work')->assertSee('Typed name work')->assertSee('Team: React Squad')->assertDontSee('Outsider work');
         $page(['scope' => 'team', 'member' => $riya->id])->assertSee('Typed name work')->assertDontSee('Dev work');
         // The team view is read-only: a team member's line cannot be changed from here.
@@ -248,7 +253,7 @@ class ClientPortalTest extends TestCase
         $created = $this->postJson('/api/timesheet', ['project_id' => $this->project->id, 'work_date' => '2026-10-29', 'start_time' => '22:30', 'end_time' => '00:15', 'description' => 'Night deploy', 'status' => 'Done', 'stage' => 'Live'])
             ->assertCreated()->assertJsonPath('data.minutes', 105)->assertJsonPath('data.editable', true)->assertJsonPath('data.status', 'Done')->assertJsonPath('data.stage', 'Live');
         $id = $created->json('data.id');
-        $this->assertSame([$this->dev->id, 105, true], [TimesheetEntry::find($id)->employee_id, TimesheetEntry::find($id)->billable_minutes, TimesheetEntry::find($id)->visible_to_client]);
+        $this->assertSame([$this->dev->id, 105, false], [TimesheetEntry::find($id)->employee_id, TimesheetEntry::find($id)->billable_minutes, TimesheetEntry::find($id)->visible_to_client]);
 
         $this->postJson("/api/timesheet/{$id}", ['project_id' => $this->project->id, 'work_date' => '2026-10-29', 'start_time' => '22:30', 'end_time' => '23:30', 'description' => 'Night deploy'])
             ->assertOk()->assertJsonPath('data.minutes', 60);

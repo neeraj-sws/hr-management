@@ -121,7 +121,7 @@ class TimesheetService
         if ($line) {
             $line->update($values);
         } else {
-            $line = TimesheetEntry::create($values + ['source' => 'manual', 'visible_to_client' => true, 'created_by' => $userId]);
+            $line = TimesheetEntry::create($values + ['source' => 'manual', 'visible_to_client' => false, 'created_by' => $userId]);
         }
         $this->audit->record($line->wasRecentlyCreated ? 'timesheet.entry_added' : 'timesheet.entry_updated', $line, ['billable_minutes' => $line->billable_minutes, 'by_employee' => $employee->id]);
 
@@ -151,7 +151,7 @@ class TimesheetService
                 if ($minutes <= 0) return;
                 TimesheetEntry::create(['project_id' => $project->id, 'task_id' => $t->task_id, 'employee_id' => $t->employee_id, 'work_date' => $t->started_at->toDateString(),
                     'start_time' => $t->started_at->format('H:i'), 'end_time' => $t->ended_at?->format('H:i'), 'minutes' => $minutes, 'billable_minutes' => $minutes,
-                    'description' => (string) $t->task?->title, 'status' => $t->task?->status === 'completed' ? 'Done' : 'In progress', 'source' => 'timer', 'task_time_entry_id' => $t->id]);
+                    'description' => (string) $t->task?->title, 'status' => $t->task?->status === 'completed' ? 'Done' : 'In progress', 'source' => 'timer', 'task_time_entry_id' => $t->id, 'visible_to_client' => false]); // hidden from the client until the manager shows it
                 $added++;
             });
 
@@ -330,7 +330,7 @@ class TimesheetService
                 if ($status && ! $stage && in_array(ucfirst(strtolower($status)), TimesheetEntry::STAGES, true)) [$stage, $status] = [ucfirst(strtolower($status)), null];
                 TimesheetEntry::create(['project_id' => $project->id, 'employee_id' => $employee?->id, 'developer_name' => $employee ? null : ($developer ?: null),
                     'work_date' => $date->toDateString(), 'start_time' => $start, 'end_time' => $end, 'minutes' => $minutes, 'billable_minutes' => $billable,
-                    'description' => mb_substr($task ?: 'Work', 0, 5000), 'status' => $status, 'stage' => $stage, 'remarks' => $get('remarks') ?: null, 'source' => 'import', 'import_key' => $key, 'created_by' => $actorId]);
+                    'description' => mb_substr($task ?: 'Work', 0, 5000), 'status' => $status, 'stage' => $stage, 'remarks' => $get('remarks') ?: null, 'source' => 'import', 'import_key' => $key, 'visible_to_client' => false, 'created_by' => $actorId]);
                 $created++;
                 $months[$date->format('Y-m')] = true;
             }
