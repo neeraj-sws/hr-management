@@ -24,7 +24,7 @@
     <section class="card mb">
         @if($mine && $team->isNotEmpty())
             <div class="row-actions" style="padding:14px 18px 0">
-                <button class="btn btn-sm {{ $teamView ? '' : 'btn-primary' }}" wire:click="$set('scope', 'mine')">Mera timesheet</button>
+                <button class="btn btn-sm {{ $teamView ? '' : 'btn-primary' }}" wire:click="$set('scope', 'mine')">My timesheet</button>
                 <button class="btn btn-sm {{ $teamView ? 'btn-primary' : '' }}" wire:click="$set('scope', 'team')">My team ({{ $team->count() }})</button>
             </div>
         @endif
