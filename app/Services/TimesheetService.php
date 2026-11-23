@@ -174,7 +174,11 @@ class TimesheetService
     public function summary(Project $project, string $month, bool $clientView = false, int $depth = 0): array
     {
         $entries = TimesheetEntry::where('project_id', $project->id)->where('work_date', '>=', $month.'-01')->where('work_date', '<=', Carbon::createFromFormat('Y-m', $month)->endOfMonth()->toDateString())
-            ->when($clientView, fn ($q) => $q->where('visible_to_client', true))->get(['id', 'minutes', 'billable_minutes']);
+            ->get(['id', 'minutes', 'billable_minutes', 'visible_to_client']);
+        // Only the lines the client can see are invoiced (those are what the client reviews and approves); hidden ones wait until shown.
+        $shown = $entries->where('visible_to_client', true);
+        $hidden = $entries->where('visible_to_client', false);
+        if ($clientView) $entries = $shown;
         $record = TimesheetMonth::where('project_id', $project->id)->where('month', $month)->first();
         $opening = (int) ($record?->opening_remaining_minutes ?? 0);
         $projectCap = (int) ($project->monthly_cap_minutes ?? 0);
@@ -184,12 +188,12 @@ class TimesheetService
             // Nothing typed: take over what the previous month left (only projects with a cap carry anything).
             $opening = $this->summary($project, Carbon::createFromFormat('Y-m-d', $month.'-01')->subMonthNoOverflow()->format('Y-m'), false, $depth + 1)['carry_minutes'];
         }
-        $monthBillable = (int) $entries->sum('billable_minutes');
+        $monthBillable = (int) $shown->sum('billable_minutes');
         $available = $monthBillable + $opening;
         $billable = $cap > 0 ? min($available, $cap) : $available;
 
         return [
-            'entries' => $entries->count(), 'opening_minutes' => $opening, 'worked_minutes' => (int) $entries->sum('minutes'),
+            'entries' => $entries->count(), 'hidden_lines' => $clientView ? 0 : $hidden->count(), 'hidden_minutes' => $clientView ? 0 : (int) $hidden->sum('billable_minutes'), 'opening_minutes' => $opening, 'worked_minutes' => (int) $entries->sum('minutes'),
             'month_billable_minutes' => $monthBillable, 'available_minutes' => $available, 'cap_minutes' => $projectCap, 'cap_applied' => $cap > 0, 'approved_mode' => $record?->approved_mode, 'carry_minutes' => max(0, $available - $billable),
             'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
             'approved_lines' => self::hasColumn('timesheet_entries', 'client_approved_at') ? (int) TimesheetEntry::whereIn('id', $entries->pluck('id'))->whereNotNull('client_approved_at')->count() : 0,

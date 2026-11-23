@@ -319,6 +319,8 @@ class ClientPortalTest extends TestCase
         $this->assertSame([90, 'Neeraj', null], [TimesheetEntry::where('description', 'Meeting')->value('billable_minutes'), TimesheetEntry::where('description', 'Meeting')->value('developer_name'), TimesheetEntry::where('description', 'Meeting')->value('employee_id')]);
         $this->assertSame([null, 'Live', 'Done', null], [TimesheetEntry::where('description', 'Meeting')->value('status'), TimesheetEntry::where('description', 'Meeting')->value('stage'), $line->status, $line->stage]);
         $this->assertSame(215, \App\Models\TimesheetMonth::where('month', '2026-10')->value('opening_remaining_minutes'));
+        $this->assertSame(215, app(TimesheetService::class)->summary($this->project, '2026-10')['billable_minutes']); // imported lines start hidden: only the carried-in is billable
+        TimesheetEntry::query()->update(['visible_to_client' => true]);
         $this->assertSame(215 + 100 + 90, app(TimesheetService::class)->summary($this->project, '2026-10')['billable_minutes']);
 
         $again = app(TimesheetService::class)->import($this->project, $file(), $this->admin->id);

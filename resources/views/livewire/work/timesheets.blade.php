@@ -45,6 +45,7 @@
             <div class="ts-stats">
                 <div class="ts-stat"><span>Client</span><b>{{ $projectModel->client?->name ?? '—' }}</b>@unless($projectModel->client)<small>set in Work → Clients</small>@endunless</div>
                 <div class="ts-stat" title="Time left over from the previous months"><span>Previous (carried in)</span><b>{{ $fmt($summary['opening_minutes']) }}</b></div>
+                @if($summary['hidden_lines'])<div class="ts-stat" title="Lines hidden from the client are not invoiced until you show them"><span>Hidden from client</span><b>{{ $fmt($summary['hidden_minutes']) }}</b><small>{{ $summary['hidden_lines'] }} line(s), not invoiced yet</small></div>@endif
                 <div class="ts-stat"><span>This month worked</span><b>{{ $fmt($summary['worked_minutes']) }}</b></div>
                 <div class="ts-stat" title="Sum of the Billable (min) column of this month's lines"><span>This month billable</span><b>{{ $fmt($summary['month_billable_minutes']) }}</b>@if($summary['month_billable_minutes'] !== $summary['worked_minutes'])<small>{{ $summary['month_billable_minutes'] > $summary['worked_minutes'] ? '+' : '−' }}{{ $fmt(abs($summary['month_billable_minutes'] - $summary['worked_minutes'])) }} vs worked</small>@endif</div>
                 @if($summary['cap_minutes'])<div class="ts-stat" title="Previous + this month billable"><span>Available</span><b>{{ $fmt($summary['available_minutes']) }}</b></div>@endif
@@ -90,7 +91,8 @@
                     <td>{{ $e->stage ?: '—' }}</td>
                     @unless($mine)<td><button class="btn btn-sm" wire:click="toggleVisible({{ $e->id }})" title="Show / hide this line in the client portal">{{ $e->visible_to_client ? 'Shown' : 'Hidden' }}</button></td>
                     <td class="nowrap">@php($last = $e->objections->sortByDesc('id')->first())
-                        @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by client</span>
+                        @if(! $e->visible_to_client)<span class="pill muted">Hidden from client</span>
+                        @elseif($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by client</span>
                         @elseif($e->client_approved_at && ! $open)<span class="pill" style="color:var(--green)">OK by client · {{ $e->client_approved_at->format('d M') }}</span>
                         @elseif($open)<span class="pill" style="color:var(--amber)">Objection open</span>
                         @elseif($last)<span class="pill" style="color:{{ $last->status === 'accepted' ? 'var(--green)' : 'var(--muted)' }}">Objection {{ $last->status }}</span>
