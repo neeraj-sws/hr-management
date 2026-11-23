@@ -57,6 +57,26 @@ class ClientPortalTest extends TestCase
         return TaskTimeEntry::create(['task_id' => $task->id, 'employee_id' => $this->dev->id, 'started_at' => $from, 'ended_at' => $from->copy()->addMinutes($minutes), 'duration_seconds' => $minutes * 60, 'status' => 'stopped']);
     }
 
+    public function test_the_client_approves_either_all_hours_or_the_monthly_cap(): void
+    {
+        $this->project->update(['monthly_cap_minutes' => 46 * 60]);
+        $service = app(TimesheetService::class);
+        foreach ([1, 2, 3, 4, 5, 6] as $d) TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'work_date' => "2026-09-0{$d}", 'minutes' => 600, 'billable_minutes' => 600, 'description' => 'Work', 'source' => 'manual', 'visible_to_client' => true]); // 60 h
+        $page = fn () => Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class, ['project' => $this->project->id, 'month' => '2026-09']);
+        $page()->call('openApprove')->assertSet('approving', true)->assertSee(['Billable hours incl. extra work', 'Monthly invoice hours (cap)', '60:00:00', '46:00:00']);
+
+        // Cap: 46 h invoiced, 14 h carried.
+        $page()->call('openApprove')->set('approveMode', 'cap')->call('approve')->assertHasNoErrors();
+        $sep = $service->summary($this->project, '2026-09');
+        $this->assertSame(['cap', 2760, 840], [$sep['approved_mode'], $sep['billable_minutes'], $sep['carry_minutes']]);
+
+        // Another month approved with all hours: everything is invoiced, nothing carries.
+        foreach ([1, 2, 3] as $d) TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'work_date' => "2026-08-0{$d}", 'minutes' => 1200, 'billable_minutes' => 1200, 'description' => 'Work', 'source' => 'manual', 'visible_to_client' => true]); // 60 h
+        Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class, ['project' => $this->project->id, 'month' => '2026-08'])->call('openApprove')->set('approveMode', 'all')->call('approve')->assertHasNoErrors();
+        $aug = $service->summary($this->project, '2026-08');
+        $this->assertSame(['all', 3600, 0], [$aug['approved_mode'], $aug['billable_minutes'], $aug['carry_minutes']]);
+    }
+
     public function test_the_client_marks_single_lines_ok_and_the_manager_sees_it(): void
     {
         $this->logTime('2026-10-05 10:30', 90);

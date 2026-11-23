@@ -11,14 +11,14 @@
             <div class="ts-stats">
                 @if($summary['opening_minutes'])<div class="ts-stat"><span>Previous (carried in)</span><b>{{ $fmt($summary['opening_minutes']) }}</b></div>@endif
                 <div class="ts-stat"><span>This month</span><b>{{ $fmt($summary['month_billable_minutes']) }}</b></div>
-                <div class="ts-stat ts-stat-main"><span>{{ $summary['cap_minutes'] ? 'Invoiced (up to '.$fmt($summary['cap_minutes']).')' : 'Total billable' }}</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
+                <div class="ts-stat ts-stat-main"><span>{{ $summary['cap_applied'] ? 'Invoiced (up to '.$fmt($summary['cap_minutes']).')' : 'Total billable' }}</span><b>{{ $fmt($summary['billable_minutes']) }}</b></div>
                 @if($summary['carry_minutes'])<div class="ts-stat"><span>Carried to next month</span><b>{{ $fmt($summary['carry_minutes']) }}</b></div>@endif
                 <div class="ts-stat"><span>Lines reviewed</span><b>{{ $summary['approved_lines'] }} / {{ $summary['entries'] }}</b></div>
             </div>
             <div class="ts-status">
                 @if($summary['open_objections'])<span class="pill" style="color:var(--amber)">Open objections <b>{{ $summary['open_objections'] }}</b></span>@endif
-                @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by {{ $summary['approved_by'] }} on {{ $summary['approved_at']->format('d M Y') }}</span>
-                @elseif($summary['entries'])<button class="btn btn-primary btn-sm" wire:click="approve" wire:confirm="Approve this month's timesheet ({{ $fmt($summary['billable_minutes']) }} billable{{ $summary['carry_minutes'] ? ', '.$fmt($summary['carry_minutes']).' carried to next month' : '' }})?" @disabled($summary['open_objections'])>Approve this month</button>
+                @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by {{ $summary['approved_by'] }} on {{ $summary['approved_at']->format('d M Y') }}@if($summary['cap_minutes'] > 0) · {{ $summary['approved_mode'] === 'all' ? 'all hours incl. extra work' : 'monthly cap' }}@endif</span>
+                @elseif($summary['entries'])<button class="btn btn-primary btn-sm" wire:click="openApprove" @if($summary['cap_minutes'] <= 0) wire:confirm="Approve this month's timesheet ({{ $fmt($summary['billable_minutes']) }} billable)?" @endif @disabled($summary['open_objections'])>Approve this month</button>
                     @if($summary['open_objections'])<span class="small muted">You can approve once the open objections are answered.</span>@endif
                 @endif
             </div>
@@ -63,6 +63,19 @@
             </tbody>
         </table></div>
     </section>
+    @endif
+
+    @if($approving && $summary)
+        <x-modal title="Approve this month">
+            <div class="modal-body">
+                <p class="small muted">Choose what you are approving for {{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $month)->format('F Y') }}.</p>
+                <label class="check" style="display:flex;gap:10px;align-items:flex-start;margin:10px 0"><input type="radio" wire:model.live="approveMode" value="all">
+                    <span><strong>Billable hours incl. extra work</strong> — {{ $fmt($summary['available_minutes']) }}<br><small class="muted">Every hour worked (previous + this month) is approved and invoiced now.</small></span></label>
+                <label class="check" style="display:flex;gap:10px;align-items:flex-start;margin:10px 0"><input type="radio" wire:model.live="approveMode" value="cap">
+                    <span><strong>Monthly invoice hours (cap)</strong> — {{ $fmt(min($summary['available_minutes'], $summary['cap_minutes'])) }}<br><small class="muted">Only the monthly hours are approved{{ $summary['available_minutes'] > $summary['cap_minutes'] ? '; '.$fmt($summary['available_minutes'] - $summary['cap_minutes']).' carries to next month' : '' }}.</small></span></label>
+            </div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="$set('approving', false)">Cancel</button><button type="button" class="btn btn-primary" wire:click="approve" wire:loading.attr="disabled">Approve</button></div>
+        </x-modal>
     @endif
 
     @if($objectingEntry)

@@ -169,8 +169,10 @@ class TimesheetService
             ->when($clientView, fn ($q) => $q->where('visible_to_client', true))->get(['id', 'minutes', 'billable_minutes']);
         $record = TimesheetMonth::where('project_id', $project->id)->where('month', $month)->first();
         $opening = (int) ($record?->opening_remaining_minutes ?? 0);
-        $cap = (int) ($project->monthly_cap_minutes ?? 0);
-        if ($opening === 0 && $cap > 0 && $depth < 12) {
+        $projectCap = (int) ($project->monthly_cap_minutes ?? 0);
+        // The client may approve every hour ("all", extra work included) instead of the cap.
+        $cap = $record?->approved_mode === 'all' ? 0 : $projectCap;
+        if ($opening === 0 && $projectCap > 0 && $depth < 12) {
             // Nothing typed: take over what the previous month left (only projects with a cap carry anything).
             $opening = $this->summary($project, Carbon::createFromFormat('Y-m-d', $month.'-01')->subMonthNoOverflow()->format('Y-m'), false, $depth + 1)['carry_minutes'];
         }
@@ -180,7 +182,7 @@ class TimesheetService
 
         return [
             'entries' => $entries->count(), 'opening_minutes' => $opening, 'worked_minutes' => (int) $entries->sum('minutes'),
-            'month_billable_minutes' => $monthBillable, 'available_minutes' => $available, 'cap_minutes' => $cap, 'carry_minutes' => max(0, $available - $billable),
+            'month_billable_minutes' => $monthBillable, 'available_minutes' => $available, 'cap_minutes' => $projectCap, 'cap_applied' => $cap > 0, 'approved_mode' => $record?->approved_mode, 'carry_minutes' => max(0, $available - $billable),
             'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
             'approved_lines' => (int) TimesheetEntry::whereIn('id', $entries->pluck('id'))->whereNotNull('client_approved_at')->count(),
             'open_objections' => TimesheetObjection::where('status', 'open')->whereIn('timesheet_entry_id', $entries->pluck('id'))->count(),
@@ -235,18 +237,21 @@ class TimesheetService
     }
 
     /** The client approves the month (no open objections left); its lines are then locked. */
-    public function approveMonth(Project $project, string $month, User $client): TimesheetMonth
+    public function approveMonth(Project $project, string $month, User $client, string $mode = 'cap'): TimesheetMonth
     {
+        if (! in_array($mode, ['cap', 'all'], true)) throw ValidationException::withMessages(['month' => 'Choose what to approve.']);
         abort_unless($client->client_id && $project->client_id === $client->client_id, 403);
         $summary = $this->summary($project, $month, true);
         if ($summary['open_objections'] > 0) throw ValidationException::withMessages(['month' => 'Some objections are still open. They need an answer before the month can be approved.']);
         if ($summary['entries'] === 0) throw ValidationException::withMessages(['month' => 'There is nothing to approve in this month.']);
         $record = $this->month($project, $month);
         if ($record->approved_at) return $record;
-        $record->update(['approved_at' => now(), 'approved_by' => $client->id]);
-        $this->audit->record('timesheet.month_approved', $project, ['month' => $month, 'billable_minutes' => $summary['billable_minutes']]);
+        $hasCap = (int) ($project->monthly_cap_minutes ?? 0) > 0;
+        $record->update(['approved_at' => now(), 'approved_by' => $client->id, 'approved_mode' => $hasCap ? $mode : null]);
+        $summary = $this->summary($project, $month, true); // as approved: all hours, or capped
+        $this->audit->record('timesheet.month_approved', $project, ['month' => $month, 'billable_minutes' => $summary['billable_minutes'], 'mode' => $hasCap ? $mode : null]);
         Notifier::send(Notifier::withPermission('projects.manage')->push($project->manager?->user), 'TimesheetApproved', $project->id,
-            "{$client->name} approved the {$project->name} timesheet for ".Carbon::createFromFormat('Y-m', $month)->format('F Y').' ('.\App\Support\Duration::fromMinutes($summary['billable_minutes']).' billable).',
+            "{$client->name} approved the {$project->name} timesheet for ".Carbon::createFromFormat('Y-m', $month)->format('F Y').' ('.\App\Support\Duration::fromMinutes($summary['billable_minutes']).' billable'.($hasCap ? ($mode === 'all' ? ', all hours incl. extra work' : ', monthly cap — '.\App\Support\Duration::fromMinutes($summary['carry_minutes']).' carried to next month') : '').').',
             route('work.timesheets', ['project' => $project->id, 'month' => $month], false), $client->id);
 
         return $record;

@@ -16,6 +16,9 @@ class Timesheet extends Component
     #[Url] public string $month = '';
 
     public ?int $objecting = null;
+    /** The approve box (projects with a monthly cap): approve every hour, or only the cap. */
+    public bool $approving = false;
+    public string $approveMode = 'cap';
     public string $reason = '';
     public string $proposed = '';
 
@@ -83,9 +86,17 @@ class Timesheet extends Component
         $this->dispatch('toast', message: 'All lines without an objection are marked OK.', type: 'success');
     }
 
+    /** With a monthly cap the client first chooses what to approve; otherwise one click. */
+    public function openApprove(TimesheetService $timesheets): void
+    {
+        if ((int) ($this->projectModel()?->monthly_cap_minutes ?? 0) > 0) { $this->approveMode = 'cap'; $this->approving = true; return; }
+        $this->approve($timesheets);
+    }
+
     public function approve(TimesheetService $timesheets): void
     {
-        $timesheets->approveMonth($this->projectModel(), $this->month, auth()->user());
+        $timesheets->approveMonth($this->projectModel(), $this->month, auth()->user(), $this->approveMode);
+        $this->approving = false;
         $this->dispatch('toast', message: 'Thank you — the month is approved.', type: 'success');
     }
 
