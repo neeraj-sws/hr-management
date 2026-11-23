@@ -28,6 +28,14 @@ class TimesheetService
 {
     public function __construct(private readonly AuditLogger $audit) {}
 
+    /** Whether a column from a newer migration is already in the database (so a page does not crash while the update is pending). */
+    public static function hasColumn(string $table, string $column): bool
+    {
+        static $cache = [];
+
+        return $cache[$table.'.'.$column] ??= \Illuminate\Support\Facades\Schema::hasColumn($table, $column);
+    }
+
     public function month(Project $project, string $month): TimesheetMonth
     {
         return TimesheetMonth::firstOrCreate(['project_id' => $project->id, 'month' => $month]);
@@ -184,7 +192,7 @@ class TimesheetService
             'entries' => $entries->count(), 'opening_minutes' => $opening, 'worked_minutes' => (int) $entries->sum('minutes'),
             'month_billable_minutes' => $monthBillable, 'available_minutes' => $available, 'cap_minutes' => $projectCap, 'cap_applied' => $cap > 0, 'approved_mode' => $record?->approved_mode, 'carry_minutes' => max(0, $available - $billable),
             'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
-            'approved_lines' => (int) TimesheetEntry::whereIn('id', $entries->pluck('id'))->whereNotNull('client_approved_at')->count(),
+            'approved_lines' => self::hasColumn('timesheet_entries', 'client_approved_at') ? (int) TimesheetEntry::whereIn('id', $entries->pluck('id'))->whereNotNull('client_approved_at')->count() : 0,
             'open_objections' => TimesheetObjection::where('status', 'open')->whereIn('timesheet_entry_id', $entries->pluck('id'))->count(),
             'approved_at' => $record?->approved_at, 'approved_by' => $record?->approver?->name, 'invoice' => $record?->invoice,
         ];
@@ -197,7 +205,7 @@ class TimesheetService
         if ($this->isLocked($entry->project, $entry->work_date->format('Y-m'))) throw ValidationException::withMessages(['reason' => 'This month is already approved.']);
         if ($entry->objections()->where('status', 'open')->exists()) throw ValidationException::withMessages(['reason' => 'There is already an open objection on this line.']);
         $objection = TimesheetObjection::create(['timesheet_entry_id' => $entry->id, 'raised_by' => $client->id, 'reason' => trim($reason), 'proposed_minutes' => $proposedMinutes]);
-        $entry->update(['client_approved_at' => null, 'client_approved_by' => null]);
+        if (self::hasColumn('timesheet_entries', 'client_approved_at')) $entry->update(['client_approved_at' => null, 'client_approved_by' => null]);
         $this->audit->record('timesheet.objection_raised', $entry, ['objection_id' => $objection->id, 'proposed_minutes' => $proposedMinutes]);
         $project = $entry->project()->with('manager.user')->first();
         Notifier::send(Notifier::withPermission('projects.manage')->push($project?->manager?->user), 'TimesheetObjection', $objection->id,
@@ -211,6 +219,7 @@ class TimesheetService
     public function approveLine(TimesheetEntry $entry, User $client, bool $approved = true): void
     {
         $this->assertClientCanSee($client, $entry);
+        if (! self::hasColumn('timesheet_entries', 'client_approved_at')) throw ValidationException::withMessages(['line' => 'This option is being set up — please try again in a few minutes.']);
         if ($this->isLocked($entry->project, $entry->work_date->format('Y-m'))) throw ValidationException::withMessages(['line' => 'This month is already approved.']);
         if ($approved && $entry->objections()->where('status', 'open')->exists()) throw ValidationException::withMessages(['line' => 'This line has an open objection — wait for the answer first.']);
         $entry->update(['client_approved_at' => $approved ? now() : null, 'client_approved_by' => $approved ? $client->id : null]);
@@ -247,7 +256,7 @@ class TimesheetService
         $record = $this->month($project, $month);
         if ($record->approved_at) return $record;
         $hasCap = (int) ($project->monthly_cap_minutes ?? 0) > 0;
-        $record->update(['approved_at' => now(), 'approved_by' => $client->id, 'approved_mode' => $hasCap ? $mode : null]);
+        $record->update(['approved_at' => now(), 'approved_by' => $client->id] + (self::hasColumn('timesheet_months', 'approved_mode') ? ['approved_mode' => $hasCap ? $mode : null] : []));
         $summary = $this->summary($project, $month, true); // as approved: all hours, or capped
         $this->audit->record('timesheet.month_approved', $project, ['month' => $month, 'billable_minutes' => $summary['billable_minutes'], 'mode' => $hasCap ? $mode : null]);
         Notifier::send(Notifier::withPermission('projects.manage')->push($project->manager?->user), 'TimesheetApproved', $project->id,

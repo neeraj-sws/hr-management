@@ -300,7 +300,9 @@ class Timesheets extends Component
         $this->managerGuard();
         $this->validate(['rate' => ['nullable', 'numeric', 'min:0', 'max:1000000'], 'opening' => ['nullable', 'integer', 'min:-100000', 'max:100000'], 'capMode' => ['required', 'in:all,fixed'], 'cap' => ['exclude_unless:capMode,fixed', 'required', 'numeric', 'min:0.25', 'max:1000']], [], ['rate' => 'hourly rate', 'opening' => 'carried-in minutes', 'cap' => 'monthly invoice hours']);
         $p = $this->projectModel();
-        $p->update(['hourly_rate' => $this->rate === '' ? null : $this->rate, 'monthly_cap_minutes' => $this->capMode === 'fixed' && (float) $this->cap > 0 ? (int) round((float) $this->cap * 60) : null, 'client_sees_developer' => $this->showDeveloper]);
+        $p->update(['hourly_rate' => $this->rate === '' ? null : $this->rate, 'client_sees_developer' => $this->showDeveloper]
+            + (TimesheetService::hasColumn('projects', 'monthly_cap_minutes') ? ['monthly_cap_minutes' => $this->capMode === 'fixed' && (float) $this->cap > 0 ? (int) round((float) $this->cap * 60) : null] : []));
+        if ($this->capMode === 'fixed' && ! TimesheetService::hasColumn('projects', 'monthly_cap_minutes')) { $this->addError('cap', 'The monthly hours option is not set up on the server yet (database update pending).'); return; }
         if (! $timesheets->isLocked($p, $this->month)) $timesheets->month($p, $this->month)->update(['opening_remaining_minutes' => (int) $this->opening]);
         $audit->record('timesheet.settings_saved', $p, ['hourly_rate' => $this->rate, 'month' => $this->month, 'opening_minutes' => (int) $this->opening]);
         $this->showSettings = false;
