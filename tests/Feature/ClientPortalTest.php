@@ -75,6 +75,8 @@ class ClientPortalTest extends TestCase
         Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class, ['project' => $this->project->id, 'month' => '2026-08'])->call('openApprove')->set('approveMode', 'all')->call('approve')->assertHasNoErrors();
         $aug = $service->summary($this->project, '2026-08');
         $this->assertSame(['all', 3600, 0], [$aug['approved_mode'], $aug['billable_minutes'], $aug['carry_minutes']]);
+        $this->assertNotNull(\App\Models\TimesheetMonth::where('month', '2026-08')->value('invoice_id')); // approving made the Draft invoice
+        $this->assertEquals(60.0, (float) \App\Models\BillingInvoice::find(\App\Models\TimesheetMonth::where('month', '2026-08')->value('invoice_id'))->items()->value('quantity'));
     }
 
     public function test_the_invoice_has_only_the_lines_shown_to_the_client(): void
@@ -93,6 +95,18 @@ class ClientPortalTest extends TestCase
         $mk('2026-10-01', 120, false);
         $mk('2026-10-02', 60, true);
         $this->assertSame([60, 120], [$service->summary($this->project, '2026-10')['billable_minutes'], $service->summary($this->project, '2026-10')['hidden_minutes']]);
+    }
+
+    public function test_approving_still_works_when_the_invoice_cannot_be_made_yet(): void
+    {
+        $this->project->update(['hourly_rate' => null]); // no rate yet → no automatic invoice
+        TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'work_date' => '2026-09-01', 'minutes' => 120, 'billable_minutes' => 120, 'description' => 'Work', 'source' => 'manual', 'visible_to_client' => true]);
+        Livewire::actingAs($this->clientUser)->test(\App\Livewire\Client\Timesheet::class, ['project' => $this->project->id, 'month' => '2026-09'])->call('openApprove')->assertHasNoErrors();
+        $month = \App\Models\TimesheetMonth::where('month', '2026-09')->firstOrFail();
+        $this->assertNotNull($month->approved_at);
+        $this->assertNull($month->invoice_id); // the manager is told, and can make it once the rate is set
+        $this->project->update(['hourly_rate' => 500]);
+        $this->assertNotNull(app(TimesheetService::class)->createInvoice($this->project, '2026-09', $this->admin)->id);
     }
 
     public function test_the_client_marks_single_lines_ok_and_the_manager_sees_it(): void
@@ -178,7 +192,8 @@ class ClientPortalTest extends TestCase
         // Approved lines are locked; the month becomes an invoice at ₹600/h for 110 minutes.
         Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10'])->call('setBillable', $meeting->id, '5');
         $this->assertSame(20, $meeting->fresh()->billable_minutes);
-        $invoice = app(TimesheetService::class)->createInvoice($this->project, '2026-10', $this->admin);
+        $invoice = \App\Models\BillingInvoice::findOrFail(\App\Models\TimesheetMonth::where('month', '2026-10')->value('invoice_id')); // made automatically when the client approved
+        $this->assertSame('Draft', $invoice->status);
         $invoice->load('items.tax');
         $this->assertEquals([1.83, 600.0, $this->project->id, '998314'], [(float) $invoice->items[0]->quantity, (float) $invoice->items[0]->price, $invoice->project_id, $invoice->items[0]->hsn_sac]);
         $this->assertSame($invoice->id, \App\Models\TimesheetMonth::where('month', '2026-10')->value('invoice_id'));

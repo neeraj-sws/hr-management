@@ -267,11 +267,24 @@ class TimesheetService
             "{$client->name} approved the {$project->name} timesheet for ".Carbon::createFromFormat('Y-m', $month)->format('F Y').' ('.\App\Support\Duration::fromMinutes($summary['billable_minutes']).' billable'.($hasCap ? ($mode === 'all' ? ', all hours incl. extra work' : ', monthly cap — '.\App\Support\Duration::fromMinutes($summary['carry_minutes']).' carried to next month') : '').').',
             route('work.timesheets', ['project' => $project->id, 'month' => $month], false), $client->id);
 
+        // Approved → the Draft invoice is made right away (the manager only checks and sends it).
+        $recipients = fn () => Notifier::withPermission('projects.manage')->push($project->manager?->user);
+        try {
+            $invoice = $this->createInvoice($project, $month, null);
+            Notifier::send($recipients(), 'TimesheetInvoiced', $invoice->id,
+                'Draft invoice '.$invoice->number().' was created from the approved '.$project->name.' timesheet for '.Carbon::createFromFormat('Y-m', $month)->format('F Y').' ('.\App\Support\Duration::fromMinutes($summary['billable_minutes']).'). Check it and send it.',
+                route('billing.invoices.show', $invoice, false), $client->id);
+        } catch (ValidationException $e) {
+            Notifier::send($recipients(), 'TimesheetInvoiceNeeded', $project->id,
+                'The '.$project->name.' timesheet for '.Carbon::createFromFormat('Y-m', $month)->format('F Y').' is approved, but its invoice could not be created: '.collect($e->errors())->flatten()->first(),
+                route('work.timesheets', ['project' => $project->id, 'month' => $month], false), $client->id);
+        }
+
         return $record;
     }
 
     /** An invoice for the month's billable hours at the project's rate, for the client's billing customer. */
-    public function createInvoice(Project $project, string $month, User $actor): BillingInvoice
+    public function createInvoice(Project $project, string $month, ?User $actor): BillingInvoice
     {
         $project->loadMissing('client');
         $customerId = $project->client?->billing_customer_id;
@@ -287,7 +300,7 @@ class TimesheetService
             $n = $billing->nextInvoiceNumber(today());
             $invoice = BillingInvoice::create($n + ['customer_id' => $customerId, 'issue_date' => today()->toDateString(),
                 'due_date' => today()->addDays((int) ($billing->company()['due_days'] ?: 7))->toDateString(), 'status' => 'Draft', 'project_id' => $project->id,
-                'place_of_supply' => \App\Models\BillingCustomer::find($customerId)?->billing_state, 'notes' => 'Timesheet '.Carbon::createFromFormat('Y-m', $month)->format('F Y').($record->approved_at ? ', approved by the client on '.$record->approved_at->format('d M Y') : ''), 'created_by' => $actor->id]);
+                'place_of_supply' => \App\Models\BillingCustomer::find($customerId)?->billing_state, 'notes' => 'Timesheet '.Carbon::createFromFormat('Y-m', $month)->format('F Y').($record->approved_at ? ', approved by the client on '.$record->approved_at->format('d M Y') : ''), 'created_by' => $actor?->id]);
             $hours = round($summary['billable_minutes'] / 60, 2);
             BillingInvoiceItem::create(['invoice_id' => $invoice->id, 'name' => 'Development services — '.$project->name.' — '.Carbon::createFromFormat('Y-m', $month)->format('F Y'),
                 'description' => \App\Support\Duration::fromMinutes($summary['billable_minutes']).' billable hours'.($summary['opening_minutes'] ? ' (incl. '.\App\Support\Duration::fromMinutes($summary['opening_minutes']).' carried in)' : '').($summary['carry_minutes'] ? ' — '.\App\Support\Duration::fromMinutes($summary['carry_minutes']).' carried to next month' : ''),

@@ -97,7 +97,7 @@ class Timesheet extends Component
     {
         $timesheets->approveMonth($this->projectModel(), $this->month, auth()->user(), $this->approveMode);
         $this->approving = false;
-        $this->dispatch('toast', message: 'Thank you — the month is approved.', type: 'success');
+        $this->dispatch('toast', message: 'Thank you — the month is approved and the invoice is being prepared.', type: 'success');
     }
 
     public function render(TimesheetService $timesheets)
