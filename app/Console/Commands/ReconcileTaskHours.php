@@ -69,7 +69,9 @@ class ReconcileTaskHours extends Command
                 $expected = $entry->ended_at->lt($entry->started_at) ? 0 : (int) $entry->started_at->diffInSeconds($entry->ended_at);
                 if ((int) $entry->duration_seconds === $expected) continue;
                 $rows[] = [$entry->id, $entry->task_id, 'duration mismatch', (int) $entry->duration_seconds.' s', $expected.' s'];
-                if ($fix) { $entry->forceFill(['duration_seconds' => $expected])->saveQuietly(); $fixed++; }
+                if ($fix) {
+                    try { $entry->forceFill(['duration_seconds' => $expected])->saveQuietly(); $fixed++; } catch (\Illuminate\Database\QueryException) { $this->skipped[] = $entry->id; }
+                }
             }
         });
 
@@ -88,14 +90,22 @@ class ReconcileTaskHours extends Command
 
         if ($rows) $this->table(['Entry', 'Task', 'Problem', 'Found', $fix ? 'Fixed' : 'Proposed'], $rows);
         $this->info(count($rows).' issue(s) found'.($fix ? ", {$fixed} fixed" : ' (run with --fix to correct them)').($overlaps ? ", {$overlaps} overlap(s) need a manual check." : '.'));
+        if ($this->skipped) $this->warn('Could not fix entries (their employee record is missing?): #'.implode(', #', array_unique($this->skipped)).'. Check task_time_entries.employee_id.');
         if ($fix && $fixed) $audit->record('task.hours_reconciled', null, ['fixed' => $fixed, 'overlaps' => $overlaps]);
 
         return self::SUCCESS;
     }
 
+    /** Entries that could not be fixed (e.g. their employee record is gone): listed at the end, the run goes on. */
+    private array $skipped = [];
+
     private function stop(TaskTimeEntry $entry, Carbon $end): void
     {
-        $entry->forceFill(['ended_at' => $end, 'duration_seconds' => (int) $entry->started_at->diffInSeconds($end), 'status' => 'stopped'])->saveQuietly();
-        Task::whereKey($entry->task_id)->increment('server_version');
+        try {
+            $entry->forceFill(['ended_at' => $end, 'duration_seconds' => (int) $entry->started_at->diffInSeconds($end), 'status' => 'stopped'])->saveQuietly();
+            Task::whereKey($entry->task_id)->increment('server_version');
+        } catch (\Illuminate\Database\QueryException) {
+            $this->skipped[] = $entry->id;
+        }
     }
 }
