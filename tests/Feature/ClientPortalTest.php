@@ -77,6 +77,23 @@ class ClientPortalTest extends TestCase
         $this->assertSame(['all', 3600, 0], [$aug['approved_mode'], $aug['billable_minutes'], $aug['carry_minutes']]);
     }
 
+    public function test_the_invoice_has_only_the_lines_shown_to_the_client(): void
+    {
+        $mk = fn (string $date, int $min, bool $shown) => TimesheetEntry::create(['project_id' => $this->project->id, 'employee_id' => $this->dev->id, 'work_date' => $date, 'minutes' => $min, 'billable_minutes' => $min, 'description' => 'Work '.$date, 'source' => 'manual', 'visible_to_client' => $shown]);
+        $mk('2026-09-01', 600, true);   // 10 h shown
+        $mk('2026-09-02', 300, true);   // 5 h shown
+        $mk('2026-09-03', 1200, false); // 20 h hidden
+        $service = app(TimesheetService::class);
+        $sum = $service->summary($this->project, '2026-09');
+        $this->assertSame([900, 1200, 900], [$sum['billable_minutes'], $sum['hidden_minutes'], $sum['available_minutes']]);
+        $invoice = $service->createInvoice($this->project, '2026-09', $this->admin);
+        $invoice->load('items');
+        $this->assertEquals(15.0, (float) $invoice->items[0]->quantity); // 15 hours, the hidden 20 are not billed
+        $mk('2026-10-01', 120, false);
+        $mk('2026-10-02', 60, true);
+        $this->assertSame([60, 120], [$service->summary($this->project, '2026-10')['billable_minutes'], $service->summary($this->project, '2026-10')['hidden_minutes']]);
+    }
+
     public function test_the_client_marks_single_lines_ok_and_the_manager_sees_it(): void
     {
         $this->logTime('2026-10-05 10:30', 90);
