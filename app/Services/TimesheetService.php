@@ -194,7 +194,7 @@ class TimesheetService
             'billable_minutes' => $billable, 'rate' => (float) $project->hourly_rate, 'amount' => round($billable / 60 * (float) $project->hourly_rate, 2),
             'approved_lines' => self::hasColumn('timesheet_entries', 'client_approved_at') ? (int) TimesheetEntry::whereIn('id', $entries->pluck('id'))->whereNotNull('client_approved_at')->count() : 0,
             'open_objections' => TimesheetObjection::where('status', 'open')->whereIn('timesheet_entry_id', $entries->pluck('id'))->count(),
-            'approved_at' => $record?->approved_at, 'approved_by' => $record?->approver?->name, 'invoice' => $record?->invoice,
+            'approved_at' => $record?->approved_at, 'approved_by' => $record?->approver?->client?->name ?? $record?->approver?->name, // a client login is named by its number; show the client's name 'invoice' => $record?->invoice,
         ];
     }
 
