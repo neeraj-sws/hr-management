@@ -89,6 +89,7 @@ class ClientPortalTest extends TestCase
         $invoice = $service->createInvoice($this->project, '2026-09', $this->admin);
         $invoice->load('items');
         $this->assertEquals(15.0, (float) $invoice->items[0]->quantity); // 15 hours, the hidden 20 are not billed
+        Livewire::actingAs($this->admin)->test(\App\Livewire\Billing\InvoiceShow::class, ['invoice' => $invoice])->assertSee(['Made from the client-approved timesheet', 'Open timesheet', '15:00:00', 'lines marked OK']);
         $mk('2026-10-01', 120, false);
         $mk('2026-10-02', 60, true);
         $this->assertSame([60, 120], [$service->summary($this->project, '2026-10')['billable_minutes'], $service->summary($this->project, '2026-10')['hidden_minutes']]);

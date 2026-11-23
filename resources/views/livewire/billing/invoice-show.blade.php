@@ -72,6 +72,19 @@
         <button type="button" class="btn btn-sm cms-b-primary" x-data x-on:click="(() => { const b = $el, t = b.innerHTML; document.getElementById('sws-pdf-frame')?.remove(); const f = document.createElement('iframe'); f.id = 'sws-pdf-frame'; f.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:1300px;border:0'; f.src = @js(route('billing.invoices.print', ['invoice' => $invoice, 'download' => 1])); document.body.appendChild(f); b.disabled = true; b.innerHTML = 'Downloading…'; setTimeout(() => { b.disabled = false; b.innerHTML = t; }, 6000); })()">Download</button>
     </div>
 
+    @if($timesheet)
+        {{-- $ts: the month's totals --}}
+        <section class="card mb" style="padding:14px 20px;border-left:4px solid var(--green)">
+            <div style="display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;justify-content:space-between">
+                <div><strong>Made from the client-approved timesheet</strong>
+                    <div class="small muted">{{ $timesheet['month']->project->name }} · {{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $timesheet['month']->month)->format('F Y') }}
+                        @if($ts['approved_at']) · approved by {{ $ts['approved_by'] }} on {{ $ts['approved_at']->format('d M Y') }}@if($ts['cap_minutes'] > 0) · {{ $ts['approved_mode'] === 'all' ? 'all hours incl. extra work' : 'monthly cap' }}@endif @else · <span style="color:var(--amber)">not approved by the client</span>@endif</div></div>
+                <div class="small"><strong>{{ \App\Support\Duration::fromMinutes($ts['billable_minutes']) }}</strong> invoiced @if($ts['carry_minutes']) · {{ \App\Support\Duration::fromMinutes($ts['carry_minutes']) }} carried to next month @endif · {{ $ts['approved_lines'] }} / {{ $ts['entries'] }} lines marked OK</div>
+                <a class="btn btn-sm" href="{{ $timesheet['url'] }}">Open timesheet</a>
+            </div>
+        </section>
+    @endif
+
     <section class="card mb cms-inv">
         <div class="cms-inv-head"><h4>Invoice</h4><h4>#{{ ltrim($invoice->number(), '#') }}</h4></div>
         <div class="cms-inv-dates">

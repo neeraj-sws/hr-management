@@ -252,7 +252,19 @@ class InvoiceShow extends Component
             'activity' => $this->activity($invoice),
             'accounts' => \App\Models\BillingBankAccount::where('is_active', true)->orderBy('bank_name')->get(),
             'publicUrl' => $invoice->status === 'Draft' ? null : app(\App\Services\InvoiceActions::class)->publicUrl($invoice),
+            'timesheet' => ($ts = $this->timesheetOf($invoice)),
+            'ts' => $ts['summary'] ?? null,
         ], 'Invoice');
+    }
+
+    /** The client-approved timesheet month this invoice was made from (Work → Timesheets → Create invoice), if any. */
+    private function timesheetOf($invoice): ?array
+    {
+        $month = \App\Models\TimesheetMonth::with(['project', 'approver.client'])->where('invoice_id', $invoice->id)->first();
+        if (! $month || ! $month->project) return null;
+        $summary = app(\App\Services\TimesheetService::class)->summary($month->project, $month->month, true);
+
+        return ['month' => $month, 'summary' => $summary, 'url' => route('work.timesheets', ['project' => $month->project_id, 'month' => $month->month])];
     }
 
     /** What happened to this invoice (and its credit notes), newest first, in plain words with a colour for the pill. */
