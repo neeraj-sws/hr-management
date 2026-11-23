@@ -18,7 +18,7 @@
             <div class="ts-status">
                 @if($summary['open_objections'])<span class="pill" style="color:var(--amber)">Open objections <b>{{ $summary['open_objections'] }}</b></span>@endif
                 @if($summary['approved_at'])<span class="pill" style="color:var(--green)">Approved by {{ $summary['approved_by'] }} on {{ $summary['approved_at']->format('d M Y') }}</span>
-                @elseif($summary['entries'])<button class="btn btn-primary btn-sm" wire:click="approve" wire:confirm="Approve this month's timesheet ({{ $fmt($summary['billable_minutes']) }} billable)?" @disabled($summary['open_objections'])>Approve this month</button>
+                @elseif($summary['entries'])<button class="btn btn-primary btn-sm" wire:click="approve" wire:confirm="Approve this month's timesheet ({{ $fmt($summary['billable_minutes']) }} billable{{ $summary['carry_minutes'] ? ', '.$fmt($summary['carry_minutes']).' carried to next month' : '' }})?" @disabled($summary['open_objections'])>Approve this month</button>
                     @if($summary['open_objections'])<span class="small muted">You can approve once the open objections are answered.</span>@endif
                 @endif
             </div>

@@ -43,6 +43,8 @@ class Timesheets extends Component
     public bool $showDeveloper = true;
     public string $opening = '';
     public string $cap = '';
+    /** 'all' = invoice every hour; 'fixed' = at most $cap hours a month, the rest carries to the next month. */
+    public string $capMode = 'all';
 
     /** Who may open the page: managers/HR, or (My Timesheet) any employee. */
     private function guard(): void
@@ -289,15 +291,16 @@ class Timesheets extends Component
         $this->showDeveloper = (bool) $p->client_sees_developer;
         $this->opening = (string) $timesheets->month($p, $this->month)->opening_remaining_minutes;
         $this->cap = $p->monthly_cap_minutes ? (string) round($p->monthly_cap_minutes / 60, 2) : '';
+        $this->capMode = $p->monthly_cap_minutes ? 'fixed' : 'all';
         $this->showSettings = true;
     }
 
     public function saveSettings(TimesheetService $timesheets, AuditLogger $audit): void
     {
         $this->managerGuard();
-        $this->validate(['rate' => ['nullable', 'numeric', 'min:0', 'max:1000000'], 'opening' => ['nullable', 'integer', 'min:-100000', 'max:100000'], 'cap' => ['nullable', 'numeric', 'min:0', 'max:1000']], [], ['rate' => 'hourly rate', 'opening' => 'carried-in minutes', 'cap' => 'monthly invoice hours']);
+        $this->validate(['rate' => ['nullable', 'numeric', 'min:0', 'max:1000000'], 'opening' => ['nullable', 'integer', 'min:-100000', 'max:100000'], 'capMode' => ['required', 'in:all,fixed'], 'cap' => ['exclude_unless:capMode,fixed', 'required', 'numeric', 'min:0.25', 'max:1000']], [], ['rate' => 'hourly rate', 'opening' => 'carried-in minutes', 'cap' => 'monthly invoice hours']);
         $p = $this->projectModel();
-        $p->update(['hourly_rate' => $this->rate === '' ? null : $this->rate, 'monthly_cap_minutes' => (float) $this->cap > 0 ? (int) round((float) $this->cap * 60) : null, 'client_sees_developer' => $this->showDeveloper]);
+        $p->update(['hourly_rate' => $this->rate === '' ? null : $this->rate, 'monthly_cap_minutes' => $this->capMode === 'fixed' && (float) $this->cap > 0 ? (int) round((float) $this->cap * 60) : null, 'client_sees_developer' => $this->showDeveloper]);
         if (! $timesheets->isLocked($p, $this->month)) $timesheets->month($p, $this->month)->update(['opening_remaining_minutes' => (int) $this->opening]);
         $audit->record('timesheet.settings_saved', $p, ['hourly_rate' => $this->rate, 'month' => $this->month, 'opening_minutes' => (int) $this->opening]);
         $this->showSettings = false;

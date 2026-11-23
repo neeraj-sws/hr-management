@@ -159,7 +159,10 @@
         <x-modal title="Rate & settings · {{ $projectModel?->name }}">
             <form wire:submit="saveSettings"><div class="modal-body"><x-errors /><div class="form-grid">
                 <x-field label="Hourly rate (₹)" name="rate" hint="used for the invoice"><input type="number" step="0.01" min="0" wire:model="rate"></x-field>
-                <x-field label="Monthly invoice hours (cap)" name="cap" hint="e.g. 46 — more than this is carried to the next month; blank = invoice everything"><input type="number" step="0.01" min="0" wire:model="cap"></x-field>
+                <x-field label="Monthly invoice hours" name="capMode" hint="how many hours are invoiced each month">
+                    <select wire:model.live="capMode"><option value="all">Invoice all hours worked</option><option value="fixed">Fixed hours per month — the rest carries to the next month</option></select>
+                </x-field>
+                @if($capMode === 'fixed')<x-field label="Hours invoiced per month" name="cap" hint="e.g. 46 — anything above this moves to the next month"><input type="number" step="0.25" min="0.25" wire:model="cap"></x-field>@endif
                 <x-field label="Minutes carried into {{ \Illuminate\Support\Carbon::createFromFormat('Y-m', $month)->format('M Y') }}" name="opening" hint="“Old remaining” — leave 0 to carry over from last month automatically"><input type="number" wire:model="opening"></x-field>
                 <label class="check" style="grid-column:1/-1"><input type="checkbox" wire:model="showDeveloper"> Show developer names to the client</label>
             </div><p class="small muted">The client, and the billing customer invoices go to, are set in Work → Clients.</p></div>
