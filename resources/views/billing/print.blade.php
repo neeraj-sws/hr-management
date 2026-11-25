@@ -10,32 +10,32 @@
     <style>
         :root{--acc:{{ \App\Services\BillingService::color($kind) }}}
         *{box-sizing:border-box}
-        body{margin:0;background:#eef1f6;color:#111;font-family:Lato,Arial,sans-serif;font-size:15px}
-        .doc{max-width:860px;margin:24px auto;background:#fff;padding:36px 44px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+        body{margin:0;background:#eef1f6;color:#111;font-family:Lato,Arial,sans-serif;font-size:14px}
+        .doc{max-width:800px;margin:24px auto;background:#fff;padding:26px 34px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
         .bar{display:flex;justify-content:flex-end;gap:8px;max-width:860px;margin:16px auto 0}
         .bar button{background:#0d6efd;color:#fff;border:0;border-radius:6px;padding:10px 22px;font-size:15px;cursor:pointer}
         .top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
-        .top h1{margin:0 0 10px;font-size:34px;font-weight:900;letter-spacing:.01em}
-        .logo{max-height:70px;max-width:230px}
+        .top h1{margin:0 0 8px;font-size:30px;font-weight:900;letter-spacing:.01em}
+        .logo{max-height:60px;max-width:200px}
         .company-name{font-size:20px;font-weight:900;color:var(--acc)}
-        .meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 30px;font-size:18px;margin-bottom:14px}
+        .meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 30px;font-size:16px;margin-bottom:10px}
         .meta b{font-weight:700}
         hr{border:0;border-top:1px solid #999;margin:6px 0 14px}
-        .parties{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-bottom:22px}
-        .parties h3{margin:0 0 8px;font-size:19px}
-        .parties p{margin:0;line-height:1.6;font-size:16px}
+        .parties{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-bottom:16px}
+        .parties h3{margin:0 0 6px;font-size:17px}
+        .parties p{margin:0;line-height:1.55;font-size:14px}
         table.items{width:100%;border-collapse:collapse;margin-top:10px}
-        .items th{background:var(--acc);color:#fff;text-align:left;padding:14px 16px;font-size:15px}
-        .items td{padding:14px 16px;font-size:14px;font-weight:700;vertical-align:top;border-bottom:1px solid var(--acc)}
+        .items th{background:var(--acc);color:#fff;text-align:left;padding:11px 12px;font-size:14px}
+        .items td{padding:11px 12px;font-size:13px;font-weight:700;vertical-align:top;border-bottom:1px solid var(--acc)}
         .items td.desc{font-weight:700}
         .num{white-space:nowrap}
         table.totals{margin-left:auto;border-collapse:collapse;min-width:300px}
-        .totals td{padding:14px 16px;font-weight:700;font-size:14px;border-bottom:1px solid var(--acc)}
+        .totals td{padding:10px 12px;font-weight:700;font-size:13px;border-bottom:1px solid var(--acc)}
         .totals td:last-child{white-space:nowrap}
         .extra{margin-top:26px;font-size:13px;line-height:1.6;color:#333}
         .extra .bank{border:1px solid #ccc;padding:10px 14px;display:inline-block;margin-top:6px}
-        .sign{text-align:right;margin-top:40px;font-size:14px}
-        .foot-notes{font-size:15px;font-weight:700;line-height:1.7;color:#111;margin-top:34px}
+        .sign{text-align:right;margin-top:22px;font-size:14px;page-break-inside:avoid;break-inside:avoid}
+        .foot-notes{font-size:14px;font-weight:700;line-height:1.6;color:#111;margin-top:24px}
         .foot-note{margin-top:20px;font-size:11px;color:#666;text-align:center}
         @media print{body{background:#fff}.bar{display:none!important}.doc{box-shadow:none;margin:0;max-width:none;padding:10px 6px}}
     </style>
@@ -48,7 +48,8 @@
     $rs = fn ($v) => 'Rs '.number_format((float) $v, 2);
     $isInvoice = $kind === 'invoice';
     $hasTax = collect($taxes)->sum('total_tax') > 0;
-    $location = $company['state'] ? \App\Services\BillingService::stateLabel($company['state']) : '';
+    $stateCode = \App\Services\BillingService::stateCode($company['state']);
+    $location = $company['state'] ? ($stateCode ? \App\Services\BillingService::STATES[$stateCode][0] : $company['state']) : '';
 @endphp
 <div class="bar"><button type="button" onclick="swsDownloadPdf()">Download PDF</button><button type="button" onclick="window.print()" style="background:#6c757d">Print</button></div>
 <div class="doc" id="sws-doc">
@@ -140,8 +141,8 @@
     function swsDownloadPdf() {
         var el = document.getElementById('sws-doc');
         if (typeof html2pdf !== 'function') { if (window.self === window.top) window.print(); return; }
-        html2pdf().set({ margin: [8, 8, 8, 8], filename: @js(preg_replace('/[^A-Za-z0-9-]+/', '-', trim($number, '#/')).'.pdf'),
-            image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).save();
+        html2pdf().set({ margin: [8, 8, 8, 8], filename: @js('#'.preg_replace('/[^A-Za-z0-9-]+/', '_', trim($number, '#/')).'.pdf'),
+            image: { type: 'jpeg', quality: 0.98 }, pagebreak: { mode: ['css'], avoid: ['.sign', 'tr'] }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).save();
     }
     @if(($autoPrint ?? false) || request()->boolean('download'))
     window.addEventListener('load', function () { setTimeout(swsDownloadPdf, 300); });
