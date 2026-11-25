@@ -123,6 +123,18 @@ class ClientPortalTest extends TestCase
         $this->assertSame(1, TimesheetEntry::count());
     }
 
+    public function test_the_timesheet_table_filters_by_search_employee_and_status(): void
+    {
+        $mk = fn (string $desc, string $dev, string $status, bool $shown) => TimesheetEntry::create(['project_id' => $this->project->id, 'developer_name' => $dev, 'work_date' => '2026-10-06', 'minutes' => 30, 'billable_minutes' => 30, 'description' => $desc, 'status' => $status, 'source' => 'manual', 'visible_to_client' => $shown]);
+        $mk('Login page fix', 'Riya', 'Done', true);
+        $mk('Payment gateway', 'Aman', 'In progress', false);
+        $page = fn () => Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10']);
+        $page()->assertSee(['Login page fix', 'Payment gateway'])->set('search', 'login')->assertSee('Login page fix')->assertDontSee('Payment gateway');
+        $page()->set('filterDeveloper', 'Aman')->assertSee('Payment gateway')->assertDontSee('Login page fix');
+        $page()->set('filterStatus', 'Done')->assertSee('Login page fix')->assertDontSee('Payment gateway');
+        $page()->set('filterStatus', 'hidden')->assertSee('Payment gateway')->assertDontSee('Login page fix');
+    }
+
     public function test_the_client_marks_single_lines_ok_and_the_manager_sees_it(): void
     {
         $this->logTime('2026-10-05 10:30', 90);

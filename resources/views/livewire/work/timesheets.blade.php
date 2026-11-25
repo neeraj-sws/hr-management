@@ -33,6 +33,17 @@
             <label class="field grow"><span>Project</span><select wire:model.live="project">@if($projects->isEmpty())<option value="">— you are not on any project —</option>@endif @foreach($projects as $p)<option value="{{ $p->id }}">{{ $p->name }}{{ $p->client ? ' — '.$p->client->name : ' (no client)' }}</option>@endforeach</select></label>
             <div class="field"><span>Month</span><div class="row-actions"><button class="btn btn-sm" wire:click="moveMonth(-1)">‹</button><input type="month" wire:model.live="month" style="width:auto"><button class="btn btn-sm" wire:click="moveMonth(1)">›</button></div></div>
         </div>
+        @if($projectModel)
+            <div class="toolbar" style="padding-top:0">
+                <label class="field grow"><span>Search</span><input type="search" wire:model.live.debounce.300ms="search" placeholder="Task, remarks or developer"></label>
+                @unless($mine && ! $teamView)<label class="field"><span>Employee</span><select wire:model.live="filterDeveloper"><option value="">All employees</option>@foreach($developers as $d)<option value="{{ $d }}">{{ $d }}</option>@endforeach</select></label>@endunless
+                <label class="field"><span>Status</span><select wire:model.live="filterStatus"><option value="">Any status</option>
+                    <optgroup label="Work">@foreach(\App\Models\TimesheetEntry::STATUSES as $st)<option value="{{ $st }}">{{ $st }}</option>@endforeach</optgroup>
+                    @unless($mine)<optgroup label="Client"><option value="shown">Shown to client</option><option value="hidden">Hidden from client</option><option value="ok">OK by client</option><option value="objection">Objection open</option></optgroup>@endunless
+                </select></label>
+                @if($search !== '' || $filterDeveloper !== '' || $filterStatus !== '')<div class="field"><span>&nbsp;</span><button type="button" class="btn" wire:click="$set('search', ''); $set('filterDeveloper', ''); $set('filterStatus', '')">Reset</button></div>@endif
+            </div>
+        @endif
         @if($mine && $projectModel && $summary)
             <div class="pill-row" style="padding:0 18px 14px">
                 <span class="pill">Client <b>{{ $projectModel->client?->name ?? '—' }}</b></span>

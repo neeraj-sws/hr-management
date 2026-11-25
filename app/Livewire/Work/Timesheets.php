@@ -43,6 +43,10 @@ class Timesheets extends Component
     public bool $showDeveloper = true;
     public string $opening = '';
     public string $cap = '';
+    /** Table filters (the month's totals above are not filtered). */
+    public string $search = '';
+    public string $filterDeveloper = '';
+    public string $filterStatus = '';
     /** 'all' = invoice every hour; 'fixed' = at most $cap hours a month, the rest carries to the next month. */
     public string $capMode = 'all';
 
@@ -353,11 +357,22 @@ class Timesheets extends Component
         } elseif ($this->mine) {
             $entries = $entries->where('employee_id', $this->ownEmployee()->id)->values();
         }
+        $developers = $entries->map(fn ($e) => $e->developer())->filter(fn ($n) => $n !== '—')->unique()->sort()->values();
+        $term = mb_strtolower(trim($this->search));
+        if ($term !== '') $entries = $entries->filter(fn ($e) => str_contains(mb_strtolower($e->description.' '.$e->remarks.' '.$e->developer()), $term))->values();
+        if ($this->filterDeveloper !== '') $entries = $entries->filter(fn ($e) => $e->developer() === $this->filterDeveloper)->values();
+        if ($this->filterStatus !== '') $entries = $entries->filter(fn ($e) => match ($this->filterStatus) {
+            'shown' => (bool) $e->visible_to_client, 'hidden' => ! $e->visible_to_client,
+            'objection' => $e->objections->contains('status', 'open'),
+            'ok' => (bool) ($e->client_approved_at ?? null),
+            default => (string) $e->status === $this->filterStatus,
+        })->values();
 
         return $this->page('livewire.work.timesheets', [
             'projects' => ($this->mine ? $this->myProjects() : Project::query())->with('client:id,name')->orderByRaw('client_id IS NULL')->orderBy('name')->get(['id', 'name', 'client_id']),
             'projectModel' => $project,
             'entries' => $entries,
+            'developers' => $developers,
             'summary' => $project ? $timesheets->summary($project, $this->month) : null,
             'employees' => AttendanceEmployee::with('teams:id,name')->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'answeringObjection' => $this->answering ? TimesheetObjection::with(['entry', 'raiser'])->find($this->answering) : null,
