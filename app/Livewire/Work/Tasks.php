@@ -154,6 +154,20 @@ class Tasks extends Component
         $this->closeModal();
     }
 
+    /** Changes a task's due date right from the list (managers, or whoever created the task); kept in the task history. */
+    public function updateDue(int $taskId, string $date): void
+    {
+        $task = $this->visibleTasks()->findOrFail($taskId);
+        abort_unless(($this->canAssign() && ! $this->mine) || ($this->canAddOwn() && $task->created_by === auth()->id()), 403);
+        $date = trim($date);
+        if ($date !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) { $this->toast('Pick a valid date.', 'error'); return; }
+        $before = $task->due_on?->toDateString();
+        $task->update(['due_on' => $date === '' ? null : $date]);
+        $task->increment('server_version');
+        app(\App\Services\AuditLogger::class)->record('task.due_changed', $task, ['from' => $before, 'to' => $date ?: null]);
+        $this->toast($date === '' ? 'Due date removed.' : 'Due date set to '.\Illuminate\Support\Carbon::parse($date)->format('d M Y').'.');
+    }
+
     /** The assignee (or whoever can manage the task) updates its progress %; kept in the task history. */
     public function updateProgress(int $taskId, int $percent): void
     {

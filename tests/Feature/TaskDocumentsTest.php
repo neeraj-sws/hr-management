@@ -49,4 +49,18 @@ class TaskDocumentsTest extends TestCase
         $this->assertNull(TaskAttachment::find($file->id));
         Storage::disk('local')->assertMissing($file->path);
     }
+
+    public function test_the_due_date_is_changed_from_the_list(): void
+    {
+        $this->seed();
+        $admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $employee = AttendanceEmployee::create(['employee_code' => 'EMP-T2', 'name' => 'Date Person', 'is_active' => true, 'joined_at' => '2026-01-01']);
+        Livewire::actingAs($admin)->test(Tasks::class)->call('create')->set('title', 'Dated task')->set('assigneeId', $employee->id)->set('dueOn', '2026-11-30')->call('save')->assertHasNoErrors();
+        $task = Task::where('title', 'Dated task')->firstOrFail();
+        Livewire::actingAs($admin)->test(Tasks::class)->assertSee('Change due date')->call('updateDue', $task->id, '2026-12-05');
+        $this->assertSame('2026-12-05', $task->fresh()->due_on->toDateString());
+        Livewire::actingAs($admin)->test(Tasks::class)->call('updateDue', $task->id, 'not-a-date');
+        $this->assertSame('2026-12-05', $task->fresh()->due_on->toDateString());
+        $this->assertSame(1, \App\Models\AuditLog::where('action', 'task.due_changed')->count());
+    }
 }
