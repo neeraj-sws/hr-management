@@ -109,6 +109,20 @@ class ClientPortalTest extends TestCase
         $this->assertNotNull(app(TimesheetService::class)->createInvoice($this->project, '2026-09', $this->admin)->id);
     }
 
+    public function test_the_manager_moves_a_timer_line_to_another_date(): void
+    {
+        $this->logTime('2026-10-05 10:30', 90);
+        $page = fn () => Livewire::actingAs($this->admin)->test(\App\Livewire\Work\Timesheets::class, ['project' => $this->project->id, 'month' => '2026-10']);
+        $page()->assertSee('Move this line to another date');
+        $line = TimesheetEntry::firstOrFail();
+        $page()->call('setDate', $line->id, '2026-10-07');
+        $this->assertSame('2026-10-07', $line->fresh()->work_date->toDateString());
+        $page()->call('setDate', $line->id, '2026-10-04'); // a Sunday: refused
+        $this->assertSame('2026-10-07', $line->fresh()->work_date->toDateString());
+        $page(); // the timer is not added a second time after the move
+        $this->assertSame(1, TimesheetEntry::count());
+    }
+
     public function test_the_client_marks_single_lines_ok_and_the_manager_sees_it(): void
     {
         $this->logTime('2026-10-05 10:30', 90);

@@ -225,6 +225,23 @@ class Timesheets extends Component
     }
 
     /** Quick change of the minutes charged to the client, right in the table. */
+    /** Moves a line (also one from a task timer) to another date — e.g. work done for a different day. */
+    public function setDate(int $id, string $date, TimesheetService $timesheets, AuditLogger $audit): void
+    {
+        $this->managerGuard();
+        $line = TimesheetEntry::where('project_id', $this->project)->findOrFail($id);
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) { $this->toast('Pick a valid date.', 'error'); return; }
+        if ($timesheets->isLocked($line->project, $line->work_date->format('Y-m'))) { $this->toast('This month is approved; lines are locked.', 'error'); return; }
+        if ($timesheets->isLocked($line->project, Carbon::parse($date)->format('Y-m'))) { $this->toast('That month is already approved by the client.', 'error'); return; }
+        $cal = $this->workCalendar($date);
+        if (! WorkCalendar::isWorkday($date, $cal)) { $this->toast('That day is off ('.WorkCalendar::offDayReason($date, $cal).').', 'error'); return; }
+        $before = $line->work_date->toDateString();
+        // A moved line is new to the client again, so its OK is taken back.
+        $line->update(['work_date' => $date] + (TimesheetService::hasColumn('timesheet_entries', 'client_approved_at') ? ['client_approved_at' => null, 'client_approved_by' => null] : []));
+        $audit->record('timesheet.date_changed', $line, ['from' => $before, 'to' => $date]);
+        $this->toast('Line moved to '.Carbon::parse($date)->format('D d M Y').'.');
+    }
+
     public function setBillable(int $id, string $minutes, TimesheetService $timesheets, AuditLogger $audit): void
     {
         $this->managerGuard();

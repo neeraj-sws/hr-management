@@ -72,7 +72,7 @@
             @forelse($entries as $e)
                 @php($open = $e->objections->firstWhere('status', 'open'))
                 <tr wire:key="ts-{{ $e->id }}" @if($open) style="background:#fff7ed" @endif>
-                    <td class="nowrap">{{ $e->work_date->format('D d M') }}</td>
+                    <td class="nowrap">{{ $e->work_date->format('D d M') }}@if(! $mine && ! $summary['approved_at'])<input type="date" class="input input-sm" style="display:block;margin-top:4px;width:auto" value="{{ $e->work_date->toDateString() }}" aria-label="Change date" title="Move this line to another date" x-on:change="$wire.setDate({{ $e->id }}, $event.target.value)">@endif</td>
                     @if($showDev)<td>{{ $e->developer() }}@if($e->developer_name && $e->employee && $e->employee->name !== $e->developer_name)<small>HRMS: {{ $e->employee->name }}</small>@endif
                         @if($e->employee?->teams->isNotEmpty())<small>Team: {{ $e->employee->teams->pluck('name')->join(', ') }}</small>@endif<small>{{ ['timer' => 'task timer', 'manual' => 'added', 'import' => 'imported'][$e->source] ?? $e->source }}</small></td>@endif
                     <td style="text-align:left;max-width:380px;white-space:normal">{{ \Illuminate\Support\Str::limit($e->description, 160) }}@if($e->remarks)<small>{{ $e->remarks }}</small>@endif
