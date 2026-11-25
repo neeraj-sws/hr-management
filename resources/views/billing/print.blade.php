@@ -50,6 +50,12 @@
     $hasTax = collect($taxes)->sum('total_tax') > 0;
     $stateCode = \App\Services\BillingService::stateCode($company['state']);
     $location = $company['state'] ? ($stateCode ? \App\Services\BillingService::STATES[$stateCode][0] : $company['state']) : '';
+    // SWS (the main company) prints its own logo and Neeraj sir's sign + seal even before they are uploaded in Billing settings.
+    $isMain = ! $doc->company_id || $doc->company_id === \App\Models\Company::main()?->id;
+    $asset = fn (string $file) => is_file(public_path('images/billing/'.$file)) ? 'data:image/png;base64,'.base64_encode(file_get_contents(public_path('images/billing/'.$file))) : '';
+    if ($isMain && empty($company['logo'])) $company['logo'] = $asset('sws-logo.png');
+    if ($isMain && empty($company['signature'])) $company['signature'] = $asset('sws-signature-seal.png');
+    if ($isMain && empty($company['signatory'])) $company['signatory'] = 'Neeraj Malakar';
 @endphp
 <div class="bar"><button type="button" onclick="swsDownloadPdf()">Download PDF</button><button type="button" onclick="window.print()" style="background:#6c757d">Print</button></div>
 <div class="doc" id="sws-doc">

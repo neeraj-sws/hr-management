@@ -68,7 +68,7 @@ class BillingInvoiceTest extends TestCase
         $this->actingAs($this->admin)->get(route('billing.invoices.print', $invoice))->assertOk()
             ->assertSee('Tax Invoice')->assertSee('Soham Web Solution')->assertSee('23ABCDE1234F1Z5')->assertSee('27AAACS1234A1Z1')
             ->assertSee('(CGST + SGST)')->assertSee('998314')
-            ->assertSee('HDFC0001234')->assertSee('SWS/2026-27/00001');
+            ->assertSee('HDFC0001234')->assertSee('SWS/2026-27/00001')->assertSee('alt="Signature"', false)->assertSee('Authorised Signatory');
         $this->get(route('billing.invoices.show', $invoice))->assertOk()->assertSee('Print / PDF')->assertSee('CGST');
     }
 

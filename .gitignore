@@ -45,3 +45,6 @@ Thumbs.db
 /.claude/
 /resources.zip
 /.github/workflows/build-apps.yml
+
+# Signature / logo images are deployed with the zip, not kept in git
+/public/images/billing/
