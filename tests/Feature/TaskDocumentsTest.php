@@ -63,4 +63,22 @@ class TaskDocumentsTest extends TestCase
         $this->assertSame('2026-12-05', $task->fresh()->due_on->toDateString());
         $this->assertSame(1, \App\Models\AuditLog::where('action', 'task.due_changed')->count());
     }
+
+    public function test_a_task_is_put_on_its_project_timesheet(): void
+    {
+        $this->seed();
+        \Illuminate\Support\Carbon::setTestNow('2026-10-30 12:00:00');
+        $admin = User::where('email', 'admin@example.com')->firstOrFail();
+        $employee = AttendanceEmployee::create(['employee_code' => 'EMP-T3', 'name' => 'Timesheet Person', 'is_active' => true, 'joined_at' => '2026-01-01']);
+        $project = \App\Models\Project::create(['name' => 'Source India', 'status' => 'active']);
+        Livewire::actingAs($admin)->test(Tasks::class)->call('create')->set('title', 'Fix login page')->set('assigneeId', $employee->id)->set('projectId', $project->id)->set('estimatedHours', '2')->call('save')->assertHasNoErrors();
+        $task = Task::where('title', 'Fix login page')->firstOrFail();
+
+        $page = Livewire::actingAs($admin)->test(Tasks::class)->assertSee('To timesheet')->call('openToTimesheet', $task->id)->assertSet('tsMinutes', '120');
+        $page->set('tsDate', '2026-10-04')->call('saveToTimesheet')->assertHasErrors('tsDate'); // a Sunday
+        $page->call('openToTimesheet', $task->id)->set('tsDate', '2026-10-06')->set('tsMinutes', '90')->call('saveToTimesheet')->assertHasNoErrors();
+        $line = \App\Models\TimesheetEntry::where('task_id', $task->id)->firstOrFail();
+        $this->assertSame([$project->id, $employee->id, '2026-10-06', 90, 'Fix login page', false], [$line->project_id, $line->employee_id, $line->work_date->toDateString(), $line->minutes, $line->description, $line->visible_to_client]);
+        Livewire::actingAs($admin)->test(Tasks::class)->call('openToTimesheet', $task->id)->assertSee('already has 01:30:00 on the timesheet');
+    }
 }

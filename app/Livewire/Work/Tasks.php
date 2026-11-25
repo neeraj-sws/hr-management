@@ -53,6 +53,10 @@ class Tasks extends Component
     public string $comment = '';
     /** Documents chosen in the form (Excel, Word, PDF, images …). */
     public array $uploads = [];
+    /** "To timesheet": the task, the day and the minutes to put on its project's timesheet. */
+    public ?int $tsTaskId = null;
+    public string $tsDate = '';
+    public string $tsMinutes = '';
 
     public function mount(): void
     {
@@ -217,6 +221,28 @@ class Tasks extends Component
         $this->openId = null;
     }
 
+    /** Opens "To timesheet" for a task: the date defaults to its work / completion day, the time to what was logged (else the estimate). */
+    public function openToTimesheet(int $id): void
+    {
+        abort_unless($this->canAssign() && ! $this->mine, 403);
+        $task = $this->visibleTasks()->with('timeEntries')->findOrFail($id);
+        $this->tsTaskId = $task->id;
+        $this->tsDate = ($task->work_date ?? $task->completed_at ?? today())->toDateString();
+        $logged = (int) round($task->timeEntries->sum('duration_seconds') / 60);
+        $this->tsMinutes = (string) ($logged ?: (int) round(((float) $task->estimated_hours) * 60) ?: '');
+        $this->resetValidation();
+    }
+
+    public function saveToTimesheet(\App\Services\TimesheetService $timesheets): void
+    {
+        abort_unless($this->canAssign() && ! $this->mine, 403);
+        $this->validate(['tsDate' => ['required', 'date'], 'tsMinutes' => ['required', 'integer', 'min:1', 'max:1440']], [], ['tsDate' => 'date', 'tsMinutes' => 'minutes']);
+        $task = $this->visibleTasks()->with(['project', 'assignee'])->findOrFail($this->tsTaskId);
+        $line = $timesheets->addTask($task, $this->tsDate, (int) $this->tsMinutes, $this->user());
+        $this->tsTaskId = null;
+        $this->toast('Added to the '.$task->project->name.' timesheet ('.\App\Support\Duration::fromMinutes($line->minutes).', '.$line->work_date->format('d M').') — hidden from the client until you show it.');
+    }
+
     /** Removes one document from a task being edited. */
     public function removeAttachment(int $id): void
     {
@@ -286,6 +312,8 @@ class Tasks extends Component
             'canAddOwn' => $this->canAddOwn(),
             'opened' => $opened,
             'parentChoices' => $parentChoices,
+            'tsTask' => $this->tsTaskId ? Task::with(['project', 'assignee'])->withSum('timeEntries', 'duration_seconds')->find($this->tsTaskId) : null,
+            'tsAlready' => $this->tsTaskId ? (int) \App\Models\TimesheetEntry::where('task_id', $this->tsTaskId)->sum('minutes') : 0,
             'editingFiles' => $this->editingId ? \App\Models\TaskAttachment::where('task_id', $this->editingId)->orderBy('id')->get() : collect(),
         ], $this->mine ? 'My Tasks' : 'Tasks');
     }

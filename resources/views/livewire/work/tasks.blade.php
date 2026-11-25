@@ -56,6 +56,7 @@
                         @endif
                         <button class="btn btn-sm" wire:click="open({{ $task->id }})">Open</button>
                         @if(($canAssign && !$mine) || ($canAddOwn && $task->created_by === auth()->id()))<button class="btn btn-sm" wire:click="edit({{ $task->id }})">Edit</button>@endif
+                        @if($canAssign && ! $mine && $task->project_id)<button class="btn btn-sm" wire:click="openToTimesheet({{ $task->id }})" title="Put this task on the project's timesheet">To timesheet</button>@endif
                     </div></td>
                 </tr>
             @empty
@@ -152,6 +153,19 @@
                 @if(($canAssign && !$mine) || ($canAddOwn && $opened->created_by === auth()->id()))<button type="button" class="btn" wire:click="edit({{ $opened->id }})">Edit</button>@endif
                 <button type="button" class="btn" wire:click="closeModal">Close</button>
             </div>
+        </x-modal>
+    @endif
+
+    @if($tsTask)
+        <x-modal title="To timesheet · {{ $tsTask->title }}">
+            <form wire:submit="saveToTimesheet"><div class="modal-body"><x-errors /><div class="form-grid">
+                <x-field label="Project timesheet" name="tsProject"><input value="{{ $tsTask->project?->name }} · {{ $tsTask->assignee?->name }}" disabled></x-field>
+                <x-field label="Date" name="tsDate" hint="the day this work goes on"><input type="date" wire:model="tsDate"></x-field>
+                <x-field label="Time worked (minutes)" name="tsMinutes" hint="prefilled from the task timer, else the estimate"><input type="number" min="1" max="1440" wire:model="tsMinutes"></x-field>
+            </div>
+            @if($tsAlready)<p class="small" style="color:var(--amber)">This task already has {{ \App\Support\Duration::fromMinutes($tsAlready) }} on the timesheet (from its timer or an earlier add) — add only time that is not there yet.</p>@endif
+            <p class="small muted">The line is hidden from the client until you show it on the Timesheets page.</p></div>
+            <div class="modal-foot"><button type="button" class="btn" wire:click="$set('tsTaskId', null)">Cancel</button><button class="btn btn-primary" wire:loading.attr="disabled">Add to timesheet</button></div></form>
         </x-modal>
     @endif
 </div>

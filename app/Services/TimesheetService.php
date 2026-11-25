@@ -219,6 +219,29 @@ class TimesheetService
         return $objection;
     }
 
+    /**
+     * Puts a task on its project's timesheet as one line (for work that was not timed, or on another day): the
+     * assignee, the date and minutes given, the task title; hidden from the client until the manager shows it.
+     */
+    public function addTask(\App\Models\Task $task, string $date, int $minutes, User $actor): TimesheetEntry
+    {
+        $project = $task->project;
+        if (! $project) throw ValidationException::withMessages(['tsDate' => 'This task has no project, so it has no timesheet. Set its project first.']);
+        if ($minutes <= 0 || $minutes > 1440) throw ValidationException::withMessages(['tsMinutes' => 'Enter the time worked (1 minute to 24 hours).']);
+        $day = Carbon::parse($date);
+        if ($this->isLocked($project, $day->format('Y-m'))) throw ValidationException::withMessages(['tsDate' => 'That month is already approved by the client.']);
+        $calendar = app(PolicyConfigurationService::class)->forEmployee($task->assignee, 'calendar.working_days', $day->toDateString(), ['days' => [1, 2, 3, 4, 5], 'holidays' => []]);
+        if (! \App\Support\WorkCalendar::isWorkday($day->toDateString(), $calendar)) {
+            throw ValidationException::withMessages(['tsDate' => 'That day is off ('.\App\Support\WorkCalendar::offDayReason($day->toDateString(), $calendar).').']);
+        }
+        $line = TimesheetEntry::create(['project_id' => $project->id, 'task_id' => $task->id, 'employee_id' => $task->assignee_id, 'work_date' => $day->toDateString(),
+            'minutes' => $minutes, 'billable_minutes' => $minutes, 'description' => $task->title, 'status' => $task->status === 'completed' ? 'Done' : 'In progress',
+            'source' => 'manual', 'visible_to_client' => false, 'created_by' => $actor->id]);
+        $this->audit->record('timesheet.entry_added', $line, ['from_task' => $task->id, 'minutes' => $minutes]);
+
+        return $line;
+    }
+
     /** The client marks one line as reviewed and OK (or takes the mark back). An open objection blocks it. */
     public function approveLine(TimesheetEntry $entry, User $client, bool $approved = true): void
     {
